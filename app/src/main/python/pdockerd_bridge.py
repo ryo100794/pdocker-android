@@ -1,25 +1,28 @@
-"""Thin Kotlin→Python adapter for invoking pdockerd under Chaquopy.
+"""Kotlin -> pdockerd adapter run inside Chaquopy.
 
-pdockerd itself is shipped as a submodule-extracted copy under
-`src/main/python/pdockerd/` (populated by scripts/copy-native.sh at
-build time). This module sets the right environment variables and
-hands off to pdockerd's main() — so the daemon code stays identical
-to the Linux path.
+Kotlin stages the expected pdockerd project layout at `runtime_dir`
+(bin/pdockerd, docker-bin/crane, docker-bin/proot, lib/libcow.so), so
+pdockerd's `_PROJECT_DIR = dirname(dirname(__file__))` resolves to that
+directory and the daemon finds all native deps via the same relative
+paths it uses on a Linux host. We just exec the script via runpy.
 """
 import os
+import runpy
 import sys
 
-def run_daemon(sock_path: str, home: str) -> None:
-    os.environ.setdefault("PDOCKER_HOME", home)
-    os.environ.setdefault("PDOCKER_NO_COW", "1")  # Android bionic, no glibc shim
-    # docker-bin is staged alongside pdockerd by copy-native.sh
-    bin_dir = os.path.join(os.path.dirname(__file__), "pdockerd", "docker-bin")
+
+def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
+    os.environ["PDOCKER_HOME"] = home
+
+    # The bundled proot is the aarch64 Android ELF shipped via jniLibs.
+    # PDOCKER_RUNNER makes pdockerd skip its own runner discovery and
+    # use exactly this binary. The symlink resolves to nativeLibraryDir,
+    # which is the only exec-allowed location on API 29+.
+    os.environ["PDOCKER_RUNNER"] = os.path.join(runtime_dir, "docker-bin", "proot")
+
+    bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
-    src_dir = os.path.join(os.path.dirname(__file__), "pdockerd", "bin")
-    sys.path.insert(0, src_dir)
-
-    # pdockerd uses __main__ guard, so import its main directly
-    import runpy
+    pdockerd_path = os.path.join(runtime_dir, "bin", "pdockerd")
     sys.argv = ["pdockerd", "--socket", sock_path]
-    runpy.run_path(os.path.join(src_dir, "pdockerd"), run_name="__main__")
+    runpy.run_path(pdockerd_path, run_name="__main__")

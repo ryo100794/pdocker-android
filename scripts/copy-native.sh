@@ -13,23 +13,31 @@ if [[ ! -d "$SUB" ]]; then
     exit 1
 fi
 
-# --- python: pdockerd source tree ---
-rm -rf "$APP/python/pdockerd"
-mkdir -p "$APP/python/pdockerd/bin" "$APP/python/pdockerd/docker-bin"
-cp "$SUB/bin/pdockerd" "$APP/python/pdockerd/bin/"
-cp "$SUB/bin/pdocker"  "$APP/python/pdockerd/bin/" 2>/dev/null || true
+# --- python: pdockerd script as an Android asset ---
+# We deliberately don't ship pdockerd through Chaquopy's src/main/python
+# tree. Chaquopy's AssetFinder only handles .py/.pyc via its custom
+# importer, and pdockerd expects to resolve its runtime layout (docker-bin,
+# lib) relative to its own __file__. So we stage the raw single-file
+# script under assets/pdockerd/ and let Kotlin extract it to
+# filesDir/pdocker-runtime/bin/ on first launch.
+mkdir -p "$APP/assets/pdockerd"
+cp "$SUB/bin/pdockerd" "$APP/assets/pdockerd/pdockerd"
 
 # --- native: crane + proot ---
-# Only bundle binaries actually needed at runtime. They ride in assets/native
-# and get extracted to filesDir on first launch (so we don't waste APK space
-# on duplicate ABI copies — Android doesn't auto-expose assets as x-executable).
-mkdir -p "$APP/assets/native"
-for b in crane proot; do
-    if [[ -f "$SUB/docker-bin/$b" ]]; then
-        cp "$SUB/docker-bin/$b" "$APP/assets/native/"
-        chmod +x "$APP/assets/native/$b"
-    fi
-done
+# Package as jniLibs with lib*.so naming so Android extracts them to
+# nativeLibraryDir — the only location an app is allowed to execve
+# from on API 29+ (files in /data/data/<pkg>/files/ have exec_no_trans
+# SELinux denial). The names must start with "lib" and end with ".so"
+# or AGP drops them during packaging. crane is static Go + proot is a
+# Termux-built aarch64 ELF, so both run on Android without bionic
+# repackaging.
+JNI_DIR="$APP/jniLibs/arm64-v8a"
+mkdir -p "$JNI_DIR"
+cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
+cp "$SUB/docker-bin/proot" "$JNI_DIR/libproot.so"
+chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so"
+echo "staged crane -> $JNI_DIR/libcrane.so"
+echo "staged proot -> $JNI_DIR/libproot.so"
 
 # --- jniLibs ---
 # libcow.so + libpdockerpty.so are produced by scripts/build-native-termux.sh

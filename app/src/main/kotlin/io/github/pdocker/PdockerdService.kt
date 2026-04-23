@@ -76,6 +76,7 @@ class PdockerdService : Service() {
     }
 
     private fun startPdockerd() {
+        val runtime = PdockerdRuntime.prepare(this)
         val home = File(filesDir, "pdocker").apply { mkdirs() }
         val sock = File(home, "pdockerd.sock")
         stopFlag = false
@@ -84,7 +85,12 @@ class PdockerdService : Service() {
             try {
                 val py = Python.getInstance()
                 val mod = py.getModule("pdockerd_bridge")
-                mod.callAttr("run_daemon", sock.absolutePath, home.absolutePath)
+                mod.callAttr(
+                    "run_daemon",
+                    sock.absolutePath,
+                    home.absolutePath,
+                    runtime.absolutePath,
+                )
             } catch (t: Throwable) {
                 Log.e(TAG, "pdockerd crashed", t)
             }
