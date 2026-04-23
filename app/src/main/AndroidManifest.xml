@@ -12,7 +12,8 @@
         android:icon="@android:drawable/ic_menu_manage"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
-        android:extractNativeLibs="true">
+        android:extractNativeLibs="true"
+        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar">
 
         <activity
             android:name=".MainActivity"

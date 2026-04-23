@@ -1,6 +1,8 @@
 package io.github.pdocker
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import java.io.File
 
@@ -29,25 +31,39 @@ object PdockerdRuntime {
         val lib = File(root, "lib").apply { mkdirs() }
 
         val nativeDir = File(ctx.applicationInfo.nativeLibraryDir)
+        val versionStamp = File(root, ".apk-version")
+        val currentVersion = longVersionCode(ctx).toString()
 
-        extractIfChanged(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"))
+        val versionChanged = versionStamp.readTextOrNull() != currentVersion
+        extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
         linkTo(File(nativeDir, "libcrane.so"), File(dockerBin, "crane"))
         linkTo(File(nativeDir, "libproot.so"), File(dockerBin, "proot"))
         linkTo(File(nativeDir, "libcow.so"),   File(lib, "libcow.so"))
 
+        if (versionChanged) versionStamp.writeText(currentVersion)
+
         return root
     }
 
-    private fun extractIfChanged(ctx: Context, assetPath: String, dst: File) {
-        // Re-extract whenever the source asset's size differs from dst.
-        // This catches APK upgrades without tracking a separate version file.
-        val expected = ctx.assets.open(assetPath).use { it.available().toLong() }
-        if (dst.exists() && dst.length() == expected) return
+    private fun extractAsset(ctx: Context, assetPath: String, dst: File, force: Boolean) {
+        if (!force && dst.exists()) return
         ctx.assets.open(assetPath).use { input ->
             dst.outputStream().use { output -> input.copyTo(output) }
         }
         Log.i(TAG, "extracted $assetPath -> $dst (${dst.length()} bytes)")
     }
+
+    private fun longVersionCode(ctx: Context): Long {
+        val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pi.longVersionCode
+        } else {
+            @Suppress("DEPRECATION") pi.versionCode.toLong()
+        }
+    }
+
+    private fun File.readTextOrNull(): String? =
+        if (exists()) runCatching { readText() }.getOrNull() else null
 
     private fun linkTo(target: File, link: File) {
         if (link.exists()) {
