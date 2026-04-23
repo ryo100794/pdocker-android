@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+app/src/main/python/pdockerd/
+app/src/main/assets/native/*
+!app/src/main/assets/native/.keep
+app/src/main/jniLibs/*/libcow.so
+app/src/main/jniLibs/*/libpdockerpty.so
+app/src/main/assets/xterm/xterm.js
+app/src/main/assets/xterm/xterm.css
+app/src/main/assets/xterm/xterm-addon-fit.js

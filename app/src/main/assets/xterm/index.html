@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>pdocker terminal</title>
+<link rel="stylesheet" href="xterm.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
+  #term { height: 100%; }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<script src="xterm.js"></script>
+<script src="xterm-addon-fit.js"></script>
+<script>
+  const term = new Terminal({
+    fontFamily: 'monospace',
+    fontSize: 14,
+    cursorBlink: true,
+    scrollback: 4000,
+    convertEol: true
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('term'));
+  fit.fit();
+
+  const enc = new TextEncoder();
+  const toB64 = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s);
+  };
+  const fromB64 = (b64) => {
+    const s = atob(b64);
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  };
+
+  term.onData((data) => {
+    PdockerBridge.input(toB64(enc.encode(data)));
+  });
+
+  window.pdockerRecv = (b64) => {
+    term.write(fromB64(b64));
+  };
+
+  const pushResize = () => {
+    fit.fit();
+    PdockerBridge.resize(term.rows, term.cols);
+  };
+  window.addEventListener('resize', pushResize);
+
+  // Default shell target: local sh for now; terminal activity can override.
+  PdockerBridge.start('sh');
+  setTimeout(pushResize, 100);
+</script>
+</body>
+</html>

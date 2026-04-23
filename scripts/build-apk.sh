@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# build-apk.sh — end-to-end build from PRoot Ubuntu aarch64.
+# Expects: JDK 17, gradle, Android cmdline-tools, NDK r26d.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+: "${ANDROID_HOME:=$HOME/android-sdk}"
+: "${ANDROID_NDK_HOME:=$HOME/android-ndk-r26d}"
+export ANDROID_HOME ANDROID_NDK_HOME
+export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+# Ensure submodule is populated.
+git submodule update --init --recursive
+
+# Build libcow.so + libpdockerpty.so natively with Termux aarch64 clang.
+# Bypasses the x86_64-only NDK toolchain (which would need box64 emulation
+# on aarch64 hosts). Output goes directly to app/src/main/jniLibs/arm64-v8a/.
+bash scripts/build-native-termux.sh
+
+# Stage submodule assets (crane, proot, pdockerd python tree).
+bash scripts/copy-native.sh
+
+# Gradle build.
+gradle :app:assembleDebug
+
+APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
+if [[ -f "$APK" ]]; then
+    echo
+    echo "APK: $APK"
+    ls -lh "$APK"
+else
+    echo "APK missing — build failed" >&2
+    exit 1
+fi

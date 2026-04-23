@@ -1,0 +1,3 @@
+[submodule "docker-proot-setup"]
+	path = docker-proot-setup
+	url = ../docker-proot-setup
