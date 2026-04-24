@@ -1,4 +1,4 @@
-package io.github.pdocker
+package io.github.ryo100794.pdocker
 
 import android.util.Base64
 import android.webkit.JavascriptInterface

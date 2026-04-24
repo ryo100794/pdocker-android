@@ -1,4 +1,4 @@
-package io.github.pdocker
+package io.github.ryo100794.pdocker
 
 /**
  * JNI bridge to pty.c — fork/exec a child inside a pseudo-terminal.

@@ -5,12 +5,12 @@ plugins {
 }
 
 android {
-    namespace = "io.github.pdocker"
+    namespace = "io.github.ryo100794.pdocker"
     compileSdk = 34
     ndkVersion = "26.3.11579264"
 
     defaultConfig {
-        applicationId = "io.github.pdocker"
+        applicationId = "io.github.ryo100794.pdocker"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

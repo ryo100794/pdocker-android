@@ -1,4 +1,4 @@
-package io.github.pdocker
+package io.github.ryo100794.pdocker
 
 import android.content.Context
 import android.content.pm.PackageManager
@@ -36,9 +36,14 @@ object PdockerdRuntime {
 
         val versionChanged = versionStamp.readTextOrNull() != currentVersion
         extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
-        linkTo(File(nativeDir, "libcrane.so"), File(dockerBin, "crane"))
-        linkTo(File(nativeDir, "libproot.so"), File(dockerBin, "proot"))
-        linkTo(File(nativeDir, "libcow.so"),   File(lib, "libcow.so"))
+        linkTo(File(nativeDir, "libcrane.so"),  File(dockerBin, "crane"))
+        linkTo(File(nativeDir, "libproot.so"),  File(dockerBin, "proot"))
+        linkTo(File(nativeDir, "libcow.so"),    File(lib, "libcow.so"))
+        // proot dynamically links libtalloc; surface it via runtime/lib/ so
+        // LD_LIBRARY_PATH=runtime/lib is enough to resolve all runtime deps
+        // from one place. Android's linker doesn't auto-search a binary's
+        // own dir on execve, so we can't just rely on nativeLibraryDir.
+        linkTo(File(nativeDir, "libtalloc.so"), File(lib, "libtalloc.so"))
 
         if (versionChanged) versionStamp.writeText(currentVersion)
 
@@ -66,12 +71,13 @@ object PdockerdRuntime {
         if (exists()) runCatching { readText() }.getOrNull() else null
 
     private fun linkTo(target: File, link: File) {
-        if (link.exists()) {
-            // Clear stale regular file or mis-pointing symlink before recreating.
-            val current = try { link.canonicalPath } catch (_: Exception) { null }
-            if (current == target.canonicalPath) return
-            link.delete()
-        }
+        // Unconditionally delete the existing entry. link.exists() returns
+        // false for a dangling symlink (canonicalPath to a now-deleted APK
+        // install dir), and if we skip the delete, createSymbolicLink hits
+        // EEXIST and the copyTo fallback follows the dead symlink into
+        // nowhere with ENOENT. Files.deleteIfExists acts on the link itself,
+        // not the target.
+        java.nio.file.Files.deleteIfExists(link.toPath())
         try {
             java.nio.file.Files.createSymbolicLink(link.toPath(), target.toPath())
         } catch (e: Exception) {

@@ -75,7 +75,7 @@ static void free_cstrarr(char **a) {
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_pdocker_PtyNative_open(JNIEnv *env, jobject this,
+Java_io_github_ryo100794_pdocker_PtyNative_open(JNIEnv *env, jobject this,
                                       jstring j_cmd, jobjectArray j_argv,
                                       jobjectArray j_env)
 {
@@ -113,7 +113,7 @@ Java_io_github_pdocker_PtyNative_open(JNIEnv *env, jobject this,
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_pdocker_PtyNative_resize(JNIEnv *env, jobject this,
+Java_io_github_ryo100794_pdocker_PtyNative_resize(JNIEnv *env, jobject this,
                                         jint fd, jint rows, jint cols)
 {
     struct winsize ws = { .ws_row = rows, .ws_col = cols };
@@ -121,7 +121,7 @@ Java_io_github_pdocker_PtyNative_resize(JNIEnv *env, jobject this,
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_pdocker_PtyNative_write(JNIEnv *env, jobject this,
+Java_io_github_ryo100794_pdocker_PtyNative_write(JNIEnv *env, jobject this,
                                        jint fd, jbyteArray j_data)
 {
     jsize n = (*env)->GetArrayLength(env, j_data);
@@ -132,7 +132,7 @@ Java_io_github_pdocker_PtyNative_write(JNIEnv *env, jobject this,
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_pdocker_PtyNative_read(JNIEnv *env, jobject this,
+Java_io_github_ryo100794_pdocker_PtyNative_read(JNIEnv *env, jobject this,
                                       jint fd, jbyteArray j_buf)
 {
     jsize cap = (*env)->GetArrayLength(env, j_buf);
@@ -153,7 +153,7 @@ Java_io_github_pdocker_PtyNative_read(JNIEnv *env, jobject this,
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_pdocker_PtyNative_close(JNIEnv *env, jobject this, jint fd)
+Java_io_github_ryo100794_pdocker_PtyNative_close(JNIEnv *env, jobject this, jint fd)
 {
     pid_t pid = lookup(fd);
     if (pid > 0) kill(pid, SIGHUP);
@@ -163,7 +163,7 @@ Java_io_github_pdocker_PtyNative_close(JNIEnv *env, jobject this, jint fd)
 }
 
 JNIEXPORT jint JNICALL
-Java_io_github_pdocker_PtyNative_waitpid(JNIEnv *env, jobject this, jint fd)
+Java_io_github_ryo100794_pdocker_PtyNative_waitpid(JNIEnv *env, jobject this, jint fd)
 {
     pid_t pid = lookup(fd);
     if (pid <= 0) return -1;

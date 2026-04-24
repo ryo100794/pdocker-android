@@ -1,4 +1,4 @@
-package io.github.pdocker
+package io.github.ryo100794.pdocker
 
 import android.content.Intent
 import android.net.LocalSocket

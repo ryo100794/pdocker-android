@@ -35,9 +35,22 @@ JNI_DIR="$APP/jniLibs/arm64-v8a"
 mkdir -p "$JNI_DIR"
 cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
 cp "$SUB/docker-bin/proot" "$JNI_DIR/libproot.so"
-chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so"
+cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
+
+# proot (from Termux packaging) has DT_NEEDED=libtalloc.so.2 and the
+# bundled libtalloc carries SONAME libtalloc.so.2 — Android's JNI lib
+# loader only looks for "lib*.so" filenames in nativeLibraryDir, so we
+# patchelf both sides to the simple libtalloc.so name. Without this,
+# proot aborts at startup with 'library "libtalloc.so.2" not found'.
+command -v patchelf >/dev/null 2>&1 \
+    || { echo "ABORT: patchelf required (apt install patchelf)" >&2; exit 1; }
+patchelf --replace-needed libtalloc.so.2 libtalloc.so "$JNI_DIR/libproot.so"
+patchelf --set-soname     libtalloc.so                 "$JNI_DIR/libtalloc.so"
+
+chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so" "$JNI_DIR/libtalloc.so"
 echo "staged crane -> $JNI_DIR/libcrane.so"
-echo "staged proot -> $JNI_DIR/libproot.so"
+echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
+echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
 
 # --- jniLibs ---
 # libcow.so + libpdockerpty.so are produced by scripts/build-native-termux.sh

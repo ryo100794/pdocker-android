@@ -1,4 +1,4 @@
-package io.github.pdocker
+package io.github.ryo100794.pdocker
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -98,7 +98,7 @@ class PdockerdService : Service() {
     }
 
     companion object {
-        const val ACTION_START = "io.github.pdocker.action.START"
+        const val ACTION_START = "io.github.ryo100794.pdocker.action.START"
         private const val NOTIF_ID = 1
         private const val TAG = "pdockerd"
     }
