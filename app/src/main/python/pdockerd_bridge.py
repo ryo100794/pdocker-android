@@ -8,31 +8,175 @@ paths it uses on a Linux host. We just exec the script via runpy.
 """
 import os
 import runpy
+import socket
+import socketserver
 import sys
+import threading
+
+
+class _ConnectProxyHandler(socketserver.BaseRequestHandler):
+    """Minimal HTTP CONNECT proxy.
+
+    Why: crane (pure-Go, CGO disabled) resolves DNS by reading
+    /etc/resolv.conf directly — Android app sandboxes don't ship one,
+    so Go falls back to [::1]:53 and everything ENOENTs. proot can't
+    step in because its ptrace-based execve intercept on Android 15
+    returns ENOENT for child execve. By setting HTTPS_PROXY/HTTP_PROXY
+    to this proxy, crane sends `CONNECT docker.io:443 HTTP/1.1` and we
+    resolve docker.io via Python's socket.create_connection which goes
+    through bionic's getaddrinfo and honours Android's per-network DNS.
+    """
+    timeout = 30
+
+    def handle(self) -> None:
+        client = self.request
+        try:
+            header = b""
+            while b"\r\n\r\n" not in header:
+                chunk = client.recv(4096)
+                if not chunk:
+                    return
+                header += chunk
+                if len(header) > 16384:
+                    return
+            line = header.split(b"\r\n", 1)[0].decode("latin-1", "replace")
+            parts = line.split()
+            if len(parts) < 2 or parts[0].upper() != "CONNECT":
+                client.sendall(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n")
+                return
+            host, _, port = parts[1].rpartition(":")
+            if not host:
+                client.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\n")
+                return
+            try:
+                upstream = socket.create_connection((host, int(port)), timeout=30)
+            except (socket.gaierror, OSError) as e:
+                msg = f"HTTP/1.1 502 Bad Gateway\r\n\r\n{e}".encode()
+                client.sendall(msg)
+                return
+            client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+            _pipe(client, upstream)
+        except Exception:
+            pass
+        finally:
+            try: client.close()
+            except Exception: pass
+
+
+def _pipe(a: socket.socket, b: socket.socket) -> None:
+    def forward(src: socket.socket, dst: socket.socket) -> None:
+        try:
+            while True:
+                data = src.recv(16384)
+                if not data:
+                    break
+                dst.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for s in (src, dst):
+                try: s.shutdown(socket.SHUT_RDWR)
+                except OSError: pass
+    t1 = threading.Thread(target=forward, args=(a, b), daemon=True)
+    t2 = threading.Thread(target=forward, args=(b, a), daemon=True)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
+    for s in (a, b):
+        try: s.close()
+        except OSError: pass
+
+
+class _ReusingThreadingServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+def _start_connect_proxy() -> int:
+    server = _ReusingThreadingServer(("127.0.0.1", 0), _ConnectProxyHandler)
+    threading.Thread(
+        target=server.serve_forever, name="pdockerd-proxy", daemon=True
+    ).start()
+    return server.server_address[1]
 
 
 def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
     os.environ["PDOCKER_HOME"] = home
+    # pdockerd stages blob downloads, layer tars and image save/load tarballs
+    # under /tmp by default. Android app sandboxes can't write there, so
+    # point pdockerd at runtime/tmp (already created for proot).
+    os.environ["PDOCKER_TMP_DIR"] = os.path.join(runtime_dir, "tmp")
 
-    # The bundled proot is the aarch64 Android ELF shipped via jniLibs.
-    # PDOCKER_RUNNER makes pdockerd skip its own runner discovery and
-    # use exactly this binary. The symlink resolves to nativeLibraryDir,
-    # which is the only exec-allowed location on API 29+.
     os.environ["PDOCKER_RUNNER"] = os.path.join(runtime_dir, "docker-bin", "proot")
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
-    # Android's bionic linker doesn't search the executable's own directory
-    # on execve. proot needs libtalloc.so at load time, so point
-    # LD_LIBRARY_PATH at runtime/lib/ where the Kotlin runtime shim
-    # symlinks libtalloc.so + libcow.so from nativeLibraryDir. Any
-    # subprocess pdockerd spawns (crane, proot, container processes)
-    # inherits this env.
+    # Surface proot's libtalloc via runtime/lib (Android's linker doesn't
+    # auto-search the executable's own dir on execve).
     lib_dir = os.path.join(runtime_dir, "lib")
     existing = os.environ.get("LD_LIBRARY_PATH", "")
     os.environ["LD_LIBRARY_PATH"] = lib_dir + (os.pathsep + existing if existing else "")
 
+    # DNS fix for crane: start an in-process CONNECT proxy on 127.0.0.1
+    # and advertise it via HTTP(S)_PROXY. Python's socket.gethostbyname
+    # uses bionic's Android-aware resolver, so DNS "just works".
+    port = _start_connect_proxy()
+    proxy_url = f"http://127.0.0.1:{port}"
+    os.environ["HTTP_PROXY"]  = proxy_url
+    os.environ["HTTPS_PROXY"] = proxy_url
+    os.environ["NO_PROXY"]    = "localhost,127.0.0.1,::1"
+
+    # TLS roots: Go's default certFiles/certDirectories list doesn't cover
+    # Android. SSL_CERT_DIR points crane at the system CA store
+    # (/system/etc/security/cacerts, c_rehash-hashed filenames, readable
+    # by untrusted_app_29). Without this crane reports
+    # "x509: certificate signed by unknown authority".
+    os.environ.setdefault("SSL_CERT_DIR", "/system/etc/security/cacerts")
+
+    # Probe hardlink capability on the app's own data dir, then pick a
+    # layer-extraction link policy. Android app sandboxes return EACCES
+    # on link() for app_data_file via SELinux, so use symlink as the
+    # nearest-lossless substitute — same "two names, one content" feel,
+    # zero extra disk.
+    link_ok = _probe_hardlink(home)
+    os.environ["PDOCKER_LINK_MODE"] = "hard" if link_ok else "symlink"
+
     pdockerd_path = os.path.join(runtime_dir, "bin", "pdockerd")
     sys.argv = ["pdockerd", "--socket", sock_path]
     runpy.run_path(pdockerd_path, run_name="__main__")
+
+
+def _probe_hardlink(home: str) -> bool:
+    """Probe whether os.link() works under the app's data dir. Android
+    SELinux (untrusted_app_29) denies link() on app_data_file with EACCES
+    — we don't find that out from the manifest, only by trying."""
+    import errno
+    probe_dir = os.path.join(home, ".probe")
+    os.makedirs(probe_dir, exist_ok=True)
+    src = os.path.join(probe_dir, "src")
+    dst = os.path.join(probe_dir, "dst")
+    symdst = os.path.join(probe_dir, "symdst")
+    for p in (src, dst, symdst):
+        try: os.remove(p)
+        except OSError: pass
+    with open(src, "w") as f:
+        f.write("probe")
+    link_ok = False
+    link_err = sym_ok = sym_err = None
+    try:
+        os.link(src, dst); link_ok = True
+    except OSError as e:
+        link_err = f"{errno.errorcode.get(e.errno, e.errno)}: {e.strerror}"
+    try:
+        os.symlink(src, symdst); sym_ok = True
+    except OSError as e:
+        sym_err = f"{errno.errorcode.get(e.errno, e.errno)}: {e.strerror}"
+    sys.stderr.write(
+        f"[pdockerd] hardlink_probe: link_ok={link_ok} ({link_err}), "
+        f"symlink_ok={sym_ok} ({sym_err}) at {probe_dir}\n"
+    )
+    sys.stderr.flush()
+    for p in (src, dst, symdst):
+        try: os.remove(p)
+        except OSError: pass
+    return link_ok

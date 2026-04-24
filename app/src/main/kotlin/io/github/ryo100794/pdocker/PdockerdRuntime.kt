@@ -11,24 +11,49 @@ import java.io.File
  * that matches what pdockerd expects at import time:
  *
  *   runtime/
- *   ├── bin/pdockerd       (extracted from assets/pdockerd/pdockerd)
- *   ├── docker-bin/crane   (-> nativeLibraryDir/libcrane.so)
- *   ├── docker-bin/proot   (-> nativeLibraryDir/libproot.so)
- *   └── lib/libcow.so      (-> nativeLibraryDir/libcow.so)
+ *   ├── bin/pdockerd
+ *   ├── docker-bin/
+ *   │   ├── crane          (-> nativeLibraryDir/libcrane.so)
+ *   │   └── proot          (-> nativeLibraryDir/libproot.so)
+ *   ├── etc/resolv.conf    (DNS nameservers; crane reads via proot bind)
+ *   └── lib/
+ *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
+ *       └── libtalloc.so   (-> nativeLibraryDir/libtalloc.so, proot dep)
  *
  * pdockerd derives _PROJECT_DIR = dirname(dirname(__file__)), so running
- * runtime/bin/pdockerd makes it find crane/proot/libcow via the expected
- * relative paths. Symlinks point at the real ELFs in nativeLibraryDir —
- * that's the only location where Android allows execve on API 29+.
+ * runtime/bin/pdockerd makes it find everything via the expected relative
+ * paths. Symlinks point at real ELFs in nativeLibraryDir — the only
+ * location where Android allows execve on API 29+.
+ *
+ * DNS: crane is pure-Go with CGO disabled, so it reads /etc/resolv.conf
+ * directly instead of going through Android's bionic resolver. Android
+ * doesn't ship /etc/resolv.conf to apps, so crane falls back to [::1]:53
+ * and hits "connection refused". We can't shim with a shell wrapper
+ * because SELinux blocks execve of scripts under /data/data/<pkg>/files
+ * (exec_no_trans on API 29+). Instead, pdockerd itself honours
+ * PDOCKER_CRANE_WRAP: pdockerd_bridge.py sets it to the proot invocation
+ * that bind-mounts our resolv.conf onto /etc/resolv.conf before crane
+ * runs. proot itself is a symlink into nativeLibraryDir, so its execve
+ * is allowed.
  */
 object PdockerdRuntime {
     private const val TAG = "pdockerd-runtime"
+
+    private const val FALLBACK_RESOLV_CONF = """nameserver 8.8.8.8
+nameserver 1.1.1.1
+"""
 
     fun prepare(ctx: Context): File {
         val root = File(ctx.filesDir, "pdocker-runtime")
         val bin = File(root, "bin").apply { mkdirs() }
         val dockerBin = File(root, "docker-bin").apply { mkdirs() }
         val lib = File(root, "lib").apply { mkdirs() }
+        val etc = File(root, "etc").apply { mkdirs() }
+        // proot needs a writable temp dir for its "glue rootfs" (fabricated
+        // directory stubs for missing bind targets). Android app sandboxes
+        // have no writable /tmp, so hand proot one inside the app's data dir
+        // via PROOT_TMP_DIR (wired up in pdockerd_bridge.py).
+        File(root, "tmp").apply { mkdirs() }
 
         val nativeDir = File(ctx.applicationInfo.nativeLibraryDir)
         val versionStamp = File(root, ".apk-version")
@@ -36,18 +61,24 @@ object PdockerdRuntime {
 
         val versionChanged = versionStamp.readTextOrNull() != currentVersion
         extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
+
         linkTo(File(nativeDir, "libcrane.so"),  File(dockerBin, "crane"))
         linkTo(File(nativeDir, "libproot.so"),  File(dockerBin, "proot"))
         linkTo(File(nativeDir, "libcow.so"),    File(lib, "libcow.so"))
-        // proot dynamically links libtalloc; surface it via runtime/lib/ so
-        // LD_LIBRARY_PATH=runtime/lib is enough to resolve all runtime deps
-        // from one place. Android's linker doesn't auto-search a binary's
-        // own dir on execve, so we can't just rely on nativeLibraryDir.
         linkTo(File(nativeDir, "libtalloc.so"), File(lib, "libtalloc.so"))
+
+        writeIfChanged(File(etc, "resolv.conf"), FALLBACK_RESOLV_CONF)
 
         if (versionChanged) versionStamp.writeText(currentVersion)
 
         return root
+    }
+
+    private fun writeIfChanged(dst: File, content: String) {
+        if (!dst.exists() || dst.readText() != content) {
+            dst.writeText(content)
+            Log.i(TAG, "wrote ${content.length} bytes to $dst")
+        }
     }
 
     private fun extractAsset(ctx: Context, assetPath: String, dst: File, force: Boolean) {
