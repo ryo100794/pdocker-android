@@ -65,6 +65,7 @@ nameserver 1.1.1.1
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
         linkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
         linkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
+        linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
         linkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
 

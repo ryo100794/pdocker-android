@@ -13,8 +13,8 @@ android {
         applicationId = "io.github.ryo100794.pdocker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 18
-        versionName = "0.4.3"
+        versionCode = 19
+        versionName = "0.5.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a")

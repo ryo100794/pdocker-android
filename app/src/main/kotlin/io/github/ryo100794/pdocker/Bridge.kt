@@ -29,10 +29,20 @@ class Bridge(private val activity: AppCompatActivity, private val webView: WebVi
         // Pass the requested cmdline to `sh -c` so xterm.js doesn't need
         // to tokenize.
         val argv = arrayOf("sh", "-c", cmdline)
+        // Stage runtime so docker/crane/proot symlinks exist + sock path
+        // is predictable. PdockerdRuntime.prepare is idempotent.
+        val runtime = PdockerdRuntime.prepare(activity)
+        val sock = File(activity.filesDir, "pdocker/pdockerd.sock")
         val env = arrayOf(
             "TERM=xterm-256color",
             "HOME=${activity.filesDir}",
-            "PATH=/system/bin:/system/xbin:${activity.applicationInfo.nativeLibraryDir}"
+            // docker CLI lives at runtime/docker-bin/docker (symlink into
+            // nativeLibraryDir/libdocker.so). Putting docker-bin first on
+            // PATH means the user can just type `docker ps` in xterm.
+            "PATH=${runtime.absolutePath}/docker-bin:/system/bin:/system/xbin",
+            "DOCKER_HOST=unix://${sock.absolutePath}",
+            // Some CLIs honor this; harmless if not.
+            "DOCKER_CONFIG=${activity.filesDir}/.docker"
         )
         fd = PtyNative.open(shell, argv, env)
         if (fd < 0) return

@@ -11,6 +11,7 @@ app/src/main/jniLibs/*/libcrane.so
 app/src/main/jniLibs/*/libproot.so
 app/src/main/jniLibs/*/libtalloc.so
 app/src/main/jniLibs/*/libproot-loader.so
+app/src/main/jniLibs/*/libdocker.so
 app/src/main/assets/xterm/xterm.js
 app/src/main/assets/xterm/xterm.css
 app/src/main/assets/xterm/xterm-addon-fit.js

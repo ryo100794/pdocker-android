@@ -47,6 +47,10 @@ cp "$ROOT/vendor/lib/proot-loader" "$JNI_DIR/libproot-loader.so"
 # ld-linux-*). Stage the host-glibc build pdockerd ships in lib/
 # (built on Termux+PRoot Ubuntu = same glibc as ubuntu containers).
 cp "$SUB/lib/libcow.so" "$JNI_DIR/libcow.so"
+# docker CLI (Go static, host-stripped 26 MB) so the WebView terminal
+# can drive pdockerd via DOCKER_HOST=unix://... pdocker/pdockerd.sock
+# without us building a custom client.
+cp "$ROOT/vendor/lib/docker" "$JNI_DIR/libdocker.so"
 
 # proot (from Termux packaging) has DT_NEEDED=libtalloc.so.2 and the
 # bundled libtalloc carries SONAME libtalloc.so.2 — Android's JNI lib
@@ -60,12 +64,13 @@ patchelf --set-soname     libtalloc.so                 "$JNI_DIR/libtalloc.so"
 
 chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so" \
            "$JNI_DIR/libtalloc.so" "$JNI_DIR/libproot-loader.so" \
-           "$JNI_DIR/libcow.so"
+           "$JNI_DIR/libcow.so" "$JNI_DIR/libdocker.so"
 echo "staged crane -> $JNI_DIR/libcrane.so"
 echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
 echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
 echo "staged proot-loader -> $JNI_DIR/libproot-loader.so"
 echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
+echo "staged docker CLI -> $JNI_DIR/libdocker.so"
 
 # --- jniLibs sanity ---
 # libpdockerpty.so is built natively by scripts/build-native-termux.sh
