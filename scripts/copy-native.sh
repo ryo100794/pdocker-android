@@ -36,6 +36,17 @@ mkdir -p "$JNI_DIR"
 cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
 cp "$SUB/docker-bin/proot" "$JNI_DIR/libproot.so"
 cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
+# proot bootstraps its tracee via a separate loader binary that
+# Termux ships at /data/data/com.termux/files/usr/libexec/proot/loader.
+# Without it, every execve under proot dies with "No such file or
+# directory" (it's the loader that's missing, not the target binary).
+cp "$ROOT/vendor/lib/proot-loader" "$JNI_DIR/libproot-loader.so"
+# libcow.so is LD_PRELOAD'd inside the *container* rootfs (typically
+# glibc — ubuntu/debian — or musl — alpine). A bionic-targeted shim
+# fails to load there ("libdl.so" vs "libdl.so.2", ld-android-* vs
+# ld-linux-*). Stage the host-glibc build pdockerd ships in lib/
+# (built on Termux+PRoot Ubuntu = same glibc as ubuntu containers).
+cp "$SUB/lib/libcow.so" "$JNI_DIR/libcow.so"
 
 # proot (from Termux packaging) has DT_NEEDED=libtalloc.so.2 and the
 # bundled libtalloc carries SONAME libtalloc.so.2 — Android's JNI lib
@@ -47,16 +58,20 @@ command -v patchelf >/dev/null 2>&1 \
 patchelf --replace-needed libtalloc.so.2 libtalloc.so "$JNI_DIR/libproot.so"
 patchelf --set-soname     libtalloc.so                 "$JNI_DIR/libtalloc.so"
 
-chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so" "$JNI_DIR/libtalloc.so"
+chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so" \
+           "$JNI_DIR/libtalloc.so" "$JNI_DIR/libproot-loader.so" \
+           "$JNI_DIR/libcow.so"
 echo "staged crane -> $JNI_DIR/libcrane.so"
 echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
 echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
+echo "staged proot-loader -> $JNI_DIR/libproot-loader.so"
+echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
 
-# --- jniLibs ---
-# libcow.so + libpdockerpty.so are produced by scripts/build-native-termux.sh
-# directly into app/src/main/jniLibs/arm64-v8a/, so nothing to copy here.
-# Just sanity-check that they exist.
-for lib in libcow.so libpdockerpty.so; do
+# --- jniLibs sanity ---
+# libpdockerpty.so is built natively by scripts/build-native-termux.sh
+# (the Kotlin/JNI pty bridge for the WebView terminal — no glibc/bionic
+# concern because it runs in the Android process).
+for lib in libpdockerpty.so; do
     p="$APP/jniLibs/arm64-v8a/$lib"
     if [[ ! -f "$p" ]]; then
         echo "warn: $p missing — run scripts/build-native-termux.sh first" >&2

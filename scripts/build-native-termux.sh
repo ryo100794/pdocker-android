@@ -72,14 +72,12 @@ strip_rpath() {
     command -v patchelf >/dev/null 2>&1 && patchelf --remove-rpath "$1" || true
 }
 
-# ---- libcow.so ----
-echo "==> building libcow.so"
-"$CLANG" "${COMMON_FLAGS[@]}" \
-    -o "$JNI_DIR/libcow.so" \
-    "$SUB/src/overlay/libcow.c" \
-    -ldl
-strip_rpath "$JNI_DIR/libcow.so"
-file "$JNI_DIR/libcow.so" | head -1
+# NOTE: libcow.so is intentionally NOT built here. It's LD_PRELOAD'd
+# inside the container's rootfs (typically glibc or musl), where a
+# bionic-targeted shim fails to load (libdl.so vs libdl.so.2 NEEDED
+# mismatch + ld-linux-* vs ld-android-* interpreter). copy-native.sh
+# stages docker-proot-setup/lib/libcow.so (host glibc build) into
+# jniLibs, which loads cleanly inside ubuntu/debian containers.
 
 # ---- libpdockerpty.so ----
 echo "==> building libpdockerpty.so"
@@ -89,11 +87,6 @@ echo "==> building libpdockerpty.so"
     -llog
 strip_rpath "$JNI_DIR/libpdockerpty.so"
 file "$JNI_DIR/libpdockerpty.so" | head -1
-
-# ---- mirror libcow.so back into the submodule's lib/ for parity with
-#      `make android-arm64`, so tests depending on it still find it. ----
-mkdir -p "$SUB/src/overlay"
-cp "$JNI_DIR/libcow.so" "$SUB/src/overlay/libcow-android-arm64.so"
 
 echo
 echo "==> JNI .so ready:"

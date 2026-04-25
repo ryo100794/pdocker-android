@@ -62,10 +62,11 @@ nameserver 1.1.1.1
         val versionChanged = versionStamp.readTextOrNull() != currentVersion
         extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
 
-        linkTo(File(nativeDir, "libcrane.so"),  File(dockerBin, "crane"))
-        linkTo(File(nativeDir, "libproot.so"),  File(dockerBin, "proot"))
-        linkTo(File(nativeDir, "libcow.so"),    File(lib, "libcow.so"))
-        linkTo(File(nativeDir, "libtalloc.so"), File(lib, "libtalloc.so"))
+        linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
+        linkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
+        linkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
+        linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
+        linkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
 
         writeIfChanged(File(etc, "resolv.conf"), FALLBACK_RESOLV_CONF)
 
