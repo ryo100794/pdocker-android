@@ -103,8 +103,14 @@ def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
     os.environ["PDOCKER_HOME"] = home
     # pdockerd stages blob downloads, layer tars and image save/load tarballs
     # under /tmp by default. Android app sandboxes can't write there, so
-    # point pdockerd at runtime/tmp (already created for proot).
-    os.environ["PDOCKER_TMP_DIR"] = os.path.join(runtime_dir, "tmp")
+    # point pdockerd at runtime/tmp (already created for proot). Also set
+    # TMPDIR so proot's f2fs probe + path canonicalization don't fall back
+    # to its baked-in Termux default (/data/data/com.termux/files/usr/tmp,
+    # which doesn't exist outside Termux and floods stderr with two
+    # warnings on every container start).
+    tmp_dir = os.path.join(runtime_dir, "tmp")
+    os.environ["PDOCKER_TMP_DIR"] = tmp_dir
+    os.environ["TMPDIR"] = tmp_dir
 
     os.environ["PDOCKER_RUNNER"] = os.path.join(runtime_dir, "docker-bin", "proot")
     # proot bootstraps every tracee through a tiny static loader binary
