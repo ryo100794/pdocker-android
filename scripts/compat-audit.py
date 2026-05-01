@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Reusable Docker-compatibility audit for pdocker-android.
+
+The default mode is intentionally offline and repeatable:
+  - inspect pdockerd's Engine API surface
+  - start pdockerd and exercise basic HTTP-over-UDS protocol behavior
+  - inspect APK/native payloads for expected exchange/protocol features
+  - validate the maintained third-party license inventory
+
+Use --full to chain the heavier docker-proot-setup/scripts/verify_all.sh
+suite, which pulls public images and runs containers.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND = ROOT / "docker-proot-setup"
+PDOCKERD = BACKEND / "bin" / "pdockerd"
+APK = ROOT / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+LICENSE_DOC = ROOT / "docs" / "THIRD_PARTY_LICENSES.md"
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+@dataclass
+class Check:
+    name: str
+    status: str
+    detail: str = ""
+
+
+def run(cmd: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None,
+        timeout: int = 30) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+    )
+
+
+def uds_request(sock_path: Path, method: str, path: str) -> tuple[int, dict[str, str], bytes]:
+    req = f"{method} {path} HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n".encode()
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(10)
+        s.connect(str(sock_path))
+        s.sendall(req)
+        chunks: list[bytes] = []
+        while True:
+            data = s.recv(65536)
+            if not data:
+                break
+            chunks.append(data)
+    raw = b"".join(chunks)
+    head, _, body = raw.partition(b"\r\n\r\n")
+    lines = head.decode("iso-8859-1", "replace").split("\r\n")
+    status = int(lines[0].split()[1])
+    headers: dict[str, str] = {}
+    for line in lines[1:]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            headers[k.lower()] = v.strip()
+    return status, headers, body
+
+
+def check_static_api() -> list[Check]:
+    src = PDOCKERD.read_text()
+    expected = {
+        "ping": r'/_ping',
+        "version": r'path == "/version"',
+        "info": r'path == "/info"',
+        "image list/create/save/load/history/inspect/delete": r'/images/(json|create|get|load|.+?/(history|json)|.+)',
+        "container lifecycle/inspect/logs/wait/archive/exec/stats": r'/containers/.+?(start|json|logs|wait|archive|exec|stats)',
+        "exec start/json": r'/exec/.+?/(start|json)',
+        "network list/create/connect/disconnect/inspect/delete": r'/networks',
+        "volume list/create/prune/inspect/delete": r'/volumes',
+        "build": r'path == "/build"',
+    }
+    checks = []
+    for name, pattern in expected.items():
+        ok = re.search(pattern, src) is not None
+        checks.append(Check(f"static api: {name}", "PASS" if ok else "FAIL", pattern))
+    for token in ("application/vnd.docker.raw-stream", "X-Docker-Container-Path-Stat",
+                  "Api-Version", "application/x-tar"):
+        checks.append(Check(f"protocol token: {token}", "PASS" if token in src else "FAIL"))
+    return checks
+
+
+def check_protocol_smoke() -> list[Check]:
+    checks: list[Check] = []
+    tmp = Path(tempfile.mkdtemp(prefix="pdocker-compat-"))
+    sock = tmp / "pdockerd.sock"
+    env = os.environ.copy()
+    env["PDOCKER_HOME"] = str(tmp / "home")
+    env["PDOCKER_TMP_DIR"] = str(tmp / "tmp")
+    proc = subprocess.Popen(
+        [sys.executable, str(PDOCKERD), "--socket", str(sock)],
+        cwd=BACKEND,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        for _ in range(100):
+            if sock.exists():
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(0.05)
+        if not sock.exists():
+            stderr = proc.stderr.read() if proc.stderr else ""
+            return [Check("protocol: daemon start", "FAIL", stderr[-1000:])]
+        checks.append(Check("protocol: daemon start", "PASS", str(sock)))
+
+        probes = [
+            ("GET", "/_ping", 200),
+            ("GET", "/version", 200),
+            ("GET", "/info", 200),
+            ("GET", "/containers/json?all=1", 200),
+            ("GET", "/images/json", 200),
+            ("GET", "/volumes", 200),
+            ("GET", "/networks", 200),
+            ("GET", "/v1.43/version", 200),
+        ]
+        for method, path, want in probes:
+            status, headers, body = uds_request(sock, method, path)
+            ok = status == want and "api-version" in headers
+            checks.append(Check(f"protocol: {method} {path}", "PASS" if ok else "FAIL",
+                                f"status={status}, headers={headers}, body={body[:120]!r}"))
+
+        docker = BACKEND / "docker-bin" / "docker"
+        if docker.exists() and os.access(docker, os.X_OK):
+            r = run([str(docker), "version"], cwd=BACKEND,
+                    env={**env, "DOCKER_HOST": f"unix://{sock}"}, timeout=20)
+            checks.append(Check("docker CLI: version negotiation",
+                                "PASS" if r.returncode == 0 else "FAIL",
+                                (r.stdout + r.stderr)[-1000:]))
+        else:
+            checks.append(Check("docker CLI: version negotiation", "SKIP", "docker CLI missing"))
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        shutil.rmtree(tmp, ignore_errors=True)
+    return checks
+
+
+def check_apk_payload() -> list[Check]:
+    checks: list[Check] = []
+    if not APK.exists():
+        return [Check("apk: debug artifact", "SKIP", "run scripts/build-apk.sh first")]
+    checks.append(Check("apk: debug artifact", "PASS", str(APK)))
+    with zipfile.ZipFile(APK) as zf:
+        names = set(zf.namelist())
+        required = [
+            "lib/arm64-v8a/libproot.so",
+            "lib/arm64-v8a/libproot-loader.so",
+            "lib/arm64-v8a/libtalloc.so",
+            "lib/arm64-v8a/libcrane.so",
+            "lib/arm64-v8a/libdocker.so",
+            "lib/arm64-v8a/libcow.so",
+            "lib/arm64-v8a/libpdockerpty.so",
+            "assets/pdockerd/pdockerd",
+            "assets/xterm/xterm.js",
+            "assets/oss-licenses/THIRD_PARTY_NOTICES.md",
+        ]
+        for name in required:
+            checks.append(Check(f"apk payload: {name}", "PASS" if name in names else "FAIL"))
+        if "lib/arm64-v8a/libproot.so" in names:
+            data = zf.read("lib/arm64-v8a/libproot.so")
+            checks.append(Check("apk payload: proot advertises --cow-bind",
+                                "PASS" if b"--cow-bind" in data else "FAIL"))
+    return checks
+
+
+def check_license_inventory() -> list[Check]:
+    checks: list[Check] = []
+    if not LICENSE_DOC.exists():
+        return [Check("license inventory", "FAIL", "docs/THIRD_PARTY_LICENSES.md missing")]
+    text = LICENSE_DOC.read_text()
+    required = [
+        "PROot", "GPL-2.0-or-later", "talloc", "LGPL-3.0-or-later",
+        "Docker CLI", "Apache-2.0", "go-containerregistry", "xterm.js",
+        "MIT", "Chaquopy", "AndroidX", "Kotlin",
+    ]
+    for token in required:
+        checks.append(Check(f"license token: {token}", "PASS" if token in text else "FAIL"))
+    return checks
+
+
+def maybe_run_full(timeout: int) -> list[Check]:
+    script = BACKEND / "scripts" / "verify_all.sh"
+    if not script.exists():
+        return [Check("full regression", "FAIL", "verify_all.sh missing")]
+    try:
+        r = run(["bash", str(script)], cwd=BACKEND, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        stdout = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+        stderr = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+        output = (stdout + "\n" + stderr)[-4000:]
+        return [Check("full regression: verify_all.sh", "FAIL",
+                      f"timed out after {timeout}s; last output: {output}")]
+    return [Check("full regression: verify_all.sh",
+                  "PASS" if r.returncode == 0 else "FAIL",
+                  (r.stdout + "\n" + r.stderr)[-4000:])]
+
+
+def write_report(checks: list[Check], path: Path) -> None:
+    grouped = {"PASS": 0, "FAIL": 0, "SKIP": 0}
+    for c in checks:
+        grouped[c.status] = grouped.get(c.status, 0) + 1
+    data = {
+        "summary": grouped,
+        "checks": [c.__dict__ for c in checks],
+    }
+    if path.suffix == ".json":
+        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    else:
+        lines = [
+            "# pdocker compatibility audit result",
+            "",
+            f"Summary: PASS={grouped.get('PASS', 0)} FAIL={grouped.get('FAIL', 0)} SKIP={grouped.get('SKIP', 0)}",
+            "",
+            "| status | check | detail |",
+            "|---|---|---|",
+        ]
+        for c in checks:
+            detail = ANSI_RE.sub("", c.detail).replace("\n", "<br>").replace("|", "\\|")
+            lines.append(f"| {c.status} | {c.name} | {detail} |")
+        path.write_text("\n".join(lines) + "\n")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--full", action="store_true", help="also run heavyweight image/container regression")
+    ap.add_argument("--full-timeout", type=int, default=1800,
+                    help="timeout in seconds for --full verify_all.sh")
+    ap.add_argument("--output", type=Path, help="write .json or markdown report")
+    args = ap.parse_args()
+
+    checks: list[Check] = []
+    checks += check_static_api()
+    checks += check_protocol_smoke()
+    checks += check_apk_payload()
+    checks += check_license_inventory()
+    if args.full:
+        checks += maybe_run_full(args.full_timeout)
+
+    if args.output:
+        write_report(checks, args.output)
+
+    for c in checks:
+        print(f"{c.status:4} {c.name} {('- ' + c.detail) if c.detail else ''}")
+    return 1 if any(c.status == "FAIL" for c in checks) else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

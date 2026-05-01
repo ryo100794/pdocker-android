@@ -13,6 +13,12 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 
 Plan document: [`docker-proot-setup/APK_PLAN.md`](docker-proot-setup/APK_PLAN.md)
 
+Compatibility and compliance records:
+
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)
+- [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
+- `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
+
 ## Build (from Termux+PRoot Ubuntu aarch64)
 
 ```sh
