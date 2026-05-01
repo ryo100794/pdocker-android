@@ -63,10 +63,14 @@ Most `docker run --rm` test containers are auto-removed quickly, so `docker logs
 is most useful for named or long-running containers created by the compose,
 exec, stats, and network parts of the regression.
 
-Latest recorded result: [compat-audit-latest.md](compat-audit-latest.md)
-has 48 PASS and 0 FAIL. The reusable offline/API/APK/license checks pass, the
-APK payload is present, and the full backend regression completed with 63 PASS
-and 0 FAIL.
+Latest recorded fast result: [compat-audit-latest.md](compat-audit-latest.md)
+has 53 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
+design checks pass, and the APK payload is present.
+
+Recent focused backend smoke checks also passed for a small Dockerfile build, a
+multi-step RUN/COPY/RUN Dockerfile build, and `docker compose up -d --build` /
+`compose ps` / `compose down`. The full backend regression remains the slow
+suite and should be recorded separately when it is run to completion.
 
 ## Current compatibility matrix
 

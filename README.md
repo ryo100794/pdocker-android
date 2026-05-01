@@ -65,6 +65,7 @@ Compatibility and compliance records:
 - [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)
 - [`docs/DEFAULT_DEV_WORKSPACE.md`](docs/DEFAULT_DEV_WORKSPACE.md)
 - [`docs/GPU_COMPAT.md`](docs/GPU_COMPAT.md)
+- [`docs/REPLAN_2026-05-01.md`](docs/REPLAN_2026-05-01.md)
 - [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
 - `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
 - `python3 scripts/verify-project-library.py`
