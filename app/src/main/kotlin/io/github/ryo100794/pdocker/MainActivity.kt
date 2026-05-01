@@ -134,6 +134,9 @@ class MainActivity : AppCompatActivity() {
         addAction("Docker console", "Interactive shell with DOCKER_HOST set") {
             openTerminal("Docker console", "sh")
         }
+        addAction("Project editor", "Edit Compose and Dockerfile text") {
+            openEditor(File(projectRoot, "default/Dockerfile"))
+        }
 
         addSection("Inventory")
         addMetric("Images", imageDirs().size.toString())
@@ -144,9 +147,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCompose() {
         addSection("Compose")
-        addAction("New compose shell", "Open at ${projectRoot.absolutePath}") {
+        addAction("New compose.yaml", "Create or edit default Compose project") {
+            openEditor(File(projectRoot, "default/compose.yaml"))
+        }
+        addAction("Compose shell", "Open at ${projectRoot.absolutePath}") {
             projectRoot.mkdirs()
-            openTerminal("Compose", "cd '${projectRoot.absolutePath}' && sh")
+            openTerminal("Compose", "cd ${shellQuote(projectRoot.absolutePath)} && sh")
         }
         val files = composeFiles()
         if (files.isEmpty()) {
@@ -154,18 +160,24 @@ class MainActivity : AppCompatActivity() {
             return
         }
         files.forEach { file ->
-            addAction(file.name, file.parentFile?.absolutePath.orEmpty()) {
+            addAction("Edit ${file.name}", file.parentFile?.absolutePath.orEmpty()) {
+                openEditor(file)
+            }
+            addAction("Up ${file.parentFile?.name ?: file.name}", "docker compose up") {
                 val dir = file.parentFile ?: projectRoot
-                openTerminal("compose up", "cd '${dir.absolutePath}' && docker compose up")
+                openTerminal("compose up", "cd ${shellQuote(dir.absolutePath)} && docker compose up")
             }
         }
     }
 
     private fun renderDockerfiles() {
         addSection("Dockerfile")
+        addAction("New Dockerfile", "Create or edit default build file") {
+            openEditor(File(projectRoot, "default/Dockerfile"))
+        }
         addAction("Build shell", "Open project directory for docker build") {
             projectRoot.mkdirs()
-            openTerminal("Docker build", "cd '${projectRoot.absolutePath}' && sh")
+            openTerminal("Docker build", "cd ${shellQuote(projectRoot.absolutePath)} && sh")
         }
         val files = dockerfiles()
         if (files.isEmpty()) {
@@ -173,9 +185,12 @@ class MainActivity : AppCompatActivity() {
             return
         }
         files.forEach { file ->
-            addAction(file.parentFile?.name ?: file.name, file.absolutePath) {
+            addAction("Edit ${file.parentFile?.name ?: file.name}", file.absolutePath) {
+                openEditor(file)
+            }
+            addAction("Build ${file.parentFile?.name ?: file.name}", file.absolutePath) {
                 val dir = file.parentFile ?: projectRoot
-                openTerminal("docker build", "cd '${dir.absolutePath}' && docker build -t local/${dir.name}:latest .")
+                openTerminal("docker build", "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest .")
             }
         }
     }
@@ -231,7 +246,10 @@ class MainActivity : AppCompatActivity() {
         }
         addAction("Compose session", "Run compose commands in projects directory") {
             projectRoot.mkdirs()
-            openTerminal("Compose session", "cd '${projectRoot.absolutePath}' && docker compose ps; sh")
+            openTerminal("Compose session", "cd ${shellQuote(projectRoot.absolutePath)} && docker compose ps; sh")
+        }
+        addAction("Text editor", "Edit default Dockerfile") {
+            openEditor(File(projectRoot, "default/Dockerfile"))
         }
     }
 
@@ -250,6 +268,12 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(this, TerminalActivity::class.java).apply {
             putExtra(TerminalActivity.EXTRA_TITLE, title)
             putExtra(TerminalActivity.EXTRA_COMMAND, command)
+        })
+    }
+
+    private fun openEditor(file: File) {
+        startActivity(Intent(this, TextEditorActivity::class.java).apply {
+            putExtra(TextEditorActivity.EXTRA_PATH, file.absolutePath)
         })
     }
 
@@ -362,4 +386,7 @@ class MainActivity : AppCompatActivity() {
         val count = rootfs.list()?.size ?: 0
         return "$count top-level entries"
     }
+
+    private fun shellQuote(s: String): String =
+        "'" + s.replace("'", "'\"'\"'") + "'"
 }

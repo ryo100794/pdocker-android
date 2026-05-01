@@ -6,8 +6,23 @@
 <title>pdocker terminal</title>
 <link rel="stylesheet" href="xterm.css">
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden; }
-  #term { height: 100%; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #050505;
+    overflow: hidden;
+  }
+  #term {
+    height: 100%;
+    touch-action: manipulation;
+  }
+  .xterm {
+    height: 100%;
+  }
+  .xterm-viewport {
+    overflow-y: auto;
+  }
 </style>
 </head>
 <body>
@@ -16,11 +31,19 @@
 <script src="xterm-addon-fit.js"></script>
 <script>
   const term = new Terminal({
-    fontFamily: 'monospace',
+    termName: 'xterm-256color',
+    fontFamily: '"Noto Sans Mono CJK JP","Droid Sans Mono","Roboto Mono",monospace',
     fontSize: 14,
+    lineHeight: 1.22,
+    letterSpacing: 0,
     cursorBlink: true,
+    cursorStyle: 'block',
     scrollback: 4000,
-    convertEol: true
+    convertEol: false,
+    drawBoldTextInBrightColors: true,
+    rightClickSelectsWord: true,
+    scrollOnUserInput: true,
+    tabStopWidth: 8
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -28,6 +51,7 @@
   fit.fit();
 
   const enc = new TextEncoder();
+  const dec = new TextDecoder('utf-8', { fatal: false });
   const toB64 = (bytes) => {
     let s = '';
     for (const b of bytes) s += String.fromCharCode(b);
@@ -45,7 +69,7 @@
   });
 
   window.pdockerRecv = (b64) => {
-    term.write(fromB64(b64));
+    term.write(dec.decode(fromB64(b64), { stream: true }));
   };
 
   const pushResize = () => {
@@ -53,9 +77,24 @@
     PdockerBridge.resize(term.rows, term.cols);
   };
   window.addEventListener('resize', pushResize);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', pushResize);
+  }
+
+  const tuneIme = () => {
+    const ta = document.querySelector('.xterm-helper-textarea');
+    if (!ta) return;
+    ta.setAttribute('autocomplete', 'off');
+    ta.setAttribute('autocorrect', 'off');
+    ta.setAttribute('autocapitalize', 'off');
+    ta.setAttribute('spellcheck', 'false');
+    ta.setAttribute('inputmode', 'text');
+  };
 
   PdockerBridge.start(PdockerBridge.initialCommand());
-  setTimeout(pushResize, 100);
+  term.focus();
+  setTimeout(() => { tuneIme(); pushResize(); }, 100);
+  setTimeout(pushResize, 500);
 </script>
 </body>
 </html>

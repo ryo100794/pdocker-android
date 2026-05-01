@@ -38,6 +38,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden" />
 
+        <activity
+            android:name=".TextEditorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".PdockerdService"
             android:exported="false"

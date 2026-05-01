@@ -6,10 +6,13 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   Chaquopy-hosted ForegroundService. Unix socket at
   `filesDir/pdocker/pdockerd.sock`.
 - **Console**: WebView + xterm.js (CJK IME compatible) backed by a
-  pty child via JNI (`app/src/main/cpp/pty.c`).
+  pty child via JNI (`app/src/main/cpp/pty.c`), with UTF-8 decoding and a
+  Japanese-capable monospace font stack.
 - **Workspace UI**: top-level tabs for Compose, Dockerfile, images,
   containers, and PTY-backed sessions, so normal UI use does not require
   typing the bundled `docker` command directly.
+- **Editor**: in-app text editor for Compose files and Dockerfiles under
+  `filesDir/pdocker/projects`.
 - **Image files**: read-only in-app browser for pulled image rootfs trees
   under `filesDir/pdocker/images/*/rootfs`, without invoking the docker CLI.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
