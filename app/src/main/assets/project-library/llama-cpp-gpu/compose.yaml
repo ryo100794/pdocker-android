@@ -1,0 +1,26 @@
+services:
+  llama-cpp:
+    build:
+      context: .
+      args:
+        LLAMA_CPP_REF: "${LLAMA_CPP_REF:-master}"
+    image: pdocker/llama-cpp-gpu:latest
+    container_name: pdocker-llama-cpp
+    gpus: all
+    working_dir: /workspace
+    environment:
+      PDOCKER_GPU: "auto"
+      PDOCKER_GPU_AUTO: "1"
+      LLAMA_ARG_MODEL: "${LLAMA_ARG_MODEL:-/models/model.gguf}"
+      LLAMA_ARG_CTX: "${LLAMA_ARG_CTX:-4096}"
+      LLAMA_ARG_PORT: "${LLAMA_ARG_PORT:-8081}"
+      LLAMA_ARG_THREADS: "${LLAMA_ARG_THREADS:-}"
+      LLAMA_ARG_N_GPU_LAYERS: "${LLAMA_ARG_N_GPU_LAYERS:-}"
+      LLAMA_EXTRA_ARGS: "${LLAMA_EXTRA_ARGS:-}"
+    command: ["/usr/local/bin/start-llama-server"]
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./models:/models
+      - ./workspace:/workspace
+      - ./profiles:/profiles

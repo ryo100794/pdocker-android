@@ -181,6 +181,9 @@ def check_apk_payload() -> list[Check]:
             "lib/arm64-v8a/libcow.so",
             "lib/arm64-v8a/libpdockerpty.so",
             "assets/pdockerd/pdockerd",
+            "assets/project-library/library.json",
+            "assets/project-library/llama-cpp-gpu/compose.yaml",
+            "assets/project-library/llama-cpp-gpu/scripts/pdocker-gpu-profile.sh",
             "assets/xterm/xterm.js",
             "assets/oss-licenses/THIRD_PARTY_NOTICES.md",
         ]
@@ -206,6 +209,15 @@ def check_license_inventory() -> list[Check]:
     for token in required:
         checks.append(Check(f"license token: {token}", "PASS" if token in text else "FAIL"))
     return checks
+
+
+def check_project_library() -> list[Check]:
+    script = ROOT / "scripts" / "verify-project-library.py"
+    if not script.exists():
+        return [Check("project library", "FAIL", "scripts/verify-project-library.py missing")]
+    r = run([sys.executable, str(script)], cwd=ROOT, timeout=30)
+    output = (r.stdout + r.stderr)[-2000:]
+    return [Check("project library templates", "PASS" if r.returncode == 0 else "FAIL", output)]
 
 
 def maybe_run_full(timeout: int) -> list[Check]:
@@ -264,6 +276,7 @@ def main() -> int:
     checks += check_protocol_smoke()
     checks += check_apk_payload()
     checks += check_license_inventory()
+    checks += check_project_library()
     if args.full:
         checks += maybe_run_full(args.full_timeout)
 

@@ -7,6 +7,7 @@
     <string name="action_stop">Stop</string>
 
     <string name="tab_overview">Overview</string>
+    <string name="tab_library">Library</string>
     <string name="tab_compose">Compose</string>
     <string name="tab_dockerfile">Dockerfile</string>
     <string name="tab_images">Images</string>
@@ -22,6 +23,8 @@
     <string name="status_unexpected_response">socket up, unexpected response</string>
     <string name="status_ping_failed">socket up, ping failed: %1$s</string>
     <string name="status_pdocker_fmt">pdockerd: %1$s</string>
+    <string name="status_library_failed">library load failed: %1$s</string>
+    <string name="status_library_installed_fmt">installed template: %1$s</string>
 
     <string name="section_runtime">Runtime</string>
     <string name="action_start_pdockerd">Start pdockerd</string>
@@ -42,6 +45,22 @@
     <string name="widget_compose_projects">Compose projects</string>
     <string name="widget_dockerfiles">Dockerfiles</string>
     <string name="detail_dockerfiles_inventory">Build definitions under projects</string>
+
+    <string name="section_project_library">Project Library</string>
+    <string name="action_library_shell">Library shell</string>
+    <string name="detail_library_shell">Inspect installed compose and Dockerfile projects</string>
+    <string name="message_library_empty">No project templates are bundled.</string>
+    <string name="library_features_fmt">Features: %1$s</string>
+    <string name="library_gpu_fmt">GPU: %1$s</string>
+    <string name="library_target_fmt">Target: %1$s</string>
+    <string name="library_installed">Installed</string>
+    <string name="action_install_template_fmt">Install %1$s</string>
+    <string name="detail_install_template">Copy template files into projects without overwriting existing files</string>
+    <string name="action_open_template_compose_fmt">Open %1$s compose</string>
+    <string name="action_open_template_dockerfile_fmt">Open %1$s Dockerfile</string>
+    <string name="action_gpu_profile_fmt">Optimize %1$s GPU profile</string>
+    <string name="detail_gpu_profile">Generate profiles/pdocker-gpu.env from current runtime hints</string>
+    <string name="action_compose_up_template_fmt">Compose up %1$s</string>
 
     <string name="section_compose">Compose</string>
     <string name="action_new_compose">New compose.yaml</string>
@@ -112,6 +131,7 @@
     <string name="terminal_docker_ps">docker ps</string>
     <string name="terminal_container_fmt">container %1$s</string>
     <string name="terminal_docker_interactive">Docker interactive</string>
+    <string name="terminal_gpu_profile">GPU profile</string>
 
     <string name="button_back">Back</string>
     <string name="button_refresh">Refresh</string>

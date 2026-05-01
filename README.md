@@ -22,6 +22,10 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Grouped tool tabs**: lower tabs are grouped by workspace or container, so a
   container can keep its console/editor sessions together. Split tabs can stack
   a console above an editor inside the lower pane.
+- **Project Library**: bundled Compose/Dockerfile templates can be installed
+  into `filesDir/pdocker/projects` from the UI. The library includes the
+  existing VS Code Server + Continue + Codex workspace and a llama.cpp GPU
+  workspace with auto GPU profile generation.
 - **Localization**: Android string resources cover the main UI in English and
   Japanese (`values/` and `values-ja/`), following the device language.
 - **Widgets first**: image/container/project tabs show state, counts, paths,
@@ -57,6 +61,7 @@ Compatibility and compliance records:
 - [`docs/GPU_COMPAT.md`](docs/GPU_COMPAT.md)
 - [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
 - `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
+- `python3 scripts/verify-project-library.py`
 
 ## Build (from Termux+PRoot Ubuntu aarch64)
 

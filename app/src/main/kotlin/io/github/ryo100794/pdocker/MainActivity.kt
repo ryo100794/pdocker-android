@@ -33,7 +33,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
-    private enum class Tab { Overview, Compose, Dockerfiles, Images, Containers, Sessions }
+    private enum class Tab { Overview, Library, Compose, Dockerfiles, Images, Containers, Sessions }
     private enum class ToolKind { Terminal, Editor, Split }
 
     private data class ToolTab(
@@ -44,13 +44,26 @@ class MainActivity : AppCompatActivity() {
         val bridge: Bridge? = null,
     )
 
+    private data class ProjectTemplate(
+        val id: String,
+        val name: String,
+        val category: String,
+        val description: String,
+        val assetPath: String,
+        val projectDir: String,
+        val compose: String,
+        val dockerfile: String,
+        val gpu: String,
+        val features: List<String>,
+    )
+
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 100
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
     }
 
     private val ui = Handler(Looper.getMainLooper())
-    private val tabs = listOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers, Tab.Sessions)
+    private val tabs = listOf(Tab.Overview, Tab.Library, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers, Tab.Sessions)
     private val pollTask = object : Runnable {
         override fun run() {
             refreshStatus()
@@ -225,6 +238,7 @@ class MainActivity : AppCompatActivity() {
         content.removeAllViews()
         when (currentTab) {
             Tab.Overview -> renderOverview()
+            Tab.Library -> renderLibrary()
             Tab.Compose -> renderCompose()
             Tab.Dockerfiles -> renderDockerfiles()
             Tab.Images -> renderImages()
@@ -235,6 +249,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun tabLabel(tab: Tab): String = getString(when (tab) {
         Tab.Overview -> R.string.tab_overview
+        Tab.Library -> R.string.tab_library
         Tab.Compose -> R.string.tab_compose
         Tab.Dockerfiles -> R.string.tab_dockerfile
         Tab.Images -> R.string.tab_images
@@ -264,6 +279,65 @@ class MainActivity : AppCompatActivity() {
         addWidget(getString(R.string.widget_containers), containerDirs().size.toString(), getString(R.string.detail_containers_inventory))
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
+    }
+
+    private fun renderLibrary() {
+        addSection(getString(R.string.section_project_library))
+        addAction(getString(R.string.action_library_shell), getString(R.string.detail_library_shell)) {
+            projectRoot.mkdirs()
+            openTerminal(getString(R.string.action_library_shell), "cd ${shellQuote(projectRoot.absolutePath)} && find . -maxdepth 2 -name compose.yaml -o -name Dockerfile; sh")
+        }
+        val templates = projectTemplates()
+        if (templates.isEmpty()) {
+            addMessage(getString(R.string.message_library_empty))
+            return
+        }
+        templates.forEach { template ->
+            val target = File(projectRoot, template.projectDir)
+            val installed = File(target, template.compose).isFile || File(target, template.dockerfile).isFile
+            val detail = listOf(
+                template.description,
+                getString(R.string.library_features_fmt, template.features.joinToString(", ")),
+                getString(R.string.library_gpu_fmt, template.gpu),
+                getString(R.string.library_target_fmt, target.absolutePath),
+            ).joinToString("\n")
+            addWidget(
+                template.name,
+                if (installed) getString(R.string.library_installed) else template.category,
+                detail,
+            ) {
+                installTemplate(template)
+                openEditor(File(target, template.compose))
+            }
+            addAction(getString(R.string.action_install_template_fmt, template.name), getString(R.string.detail_install_template)) {
+                installTemplate(template)
+                renderContent()
+            }
+            addAction(getString(R.string.action_open_template_compose_fmt, template.name), template.compose) {
+                installTemplate(template)
+                openEditor(File(target, template.compose))
+            }
+            addAction(getString(R.string.action_open_template_dockerfile_fmt, template.name), template.dockerfile) {
+                installTemplate(template)
+                openEditor(File(target, template.dockerfile))
+            }
+            if (template.gpu == "auto") {
+                addAction(getString(R.string.action_gpu_profile_fmt, template.name), getString(R.string.detail_gpu_profile)) {
+                    installTemplate(template)
+                    openTerminal(
+                        getString(R.string.terminal_gpu_profile),
+                        "cd ${shellQuote(target.absolutePath)} && bash scripts/pdocker-gpu-profile.sh profiles/pdocker-gpu.env; printf '\\n'; cat profiles/pdocker-gpu.env; sh",
+                    )
+                }
+            }
+            addAction(getString(R.string.action_compose_up_template_fmt, template.name), getString(R.string.detail_compose_up)) {
+                installTemplate(template)
+                openTerminal(
+                    getString(R.string.terminal_compose_up),
+                    "cd ${shellQuote(target.absolutePath)} && docker compose up",
+                )
+            }
+        }
     }
 
     private fun renderCompose() {
@@ -725,6 +799,38 @@ class MainActivity : AppCompatActivity() {
         projectRoot.walkSafe()
             .filter { it.isFile && it.name == "Dockerfile" }
             .sortedBy { it.absolutePath }
+
+    private fun projectTemplates(): List<ProjectTemplate> =
+        runCatching {
+            val root = JSONObject(assets.open("project-library/library.json").bufferedReader().use { it.readText() })
+            val arr = root.optJSONArray("templates") ?: JSONArray()
+            (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { obj ->
+                    val features = obj.optJSONArray("features") ?: JSONArray()
+                    ProjectTemplate(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        category = obj.optString("category"),
+                        description = obj.optString("description"),
+                        assetPath = obj.optString("assetPath"),
+                        projectDir = obj.optString("projectDir"),
+                        compose = obj.optString("compose", "compose.yaml"),
+                        dockerfile = obj.optString("dockerfile", "Dockerfile"),
+                        gpu = obj.optString("gpu", "none"),
+                        features = (0 until features.length()).mapNotNull { j -> features.optString(j).takeIf { it.isNotBlank() } },
+                    )
+                }
+            }.filter { it.id.isNotBlank() && it.assetPath.isNotBlank() && it.projectDir.isNotBlank() }
+        }.getOrElse {
+            status.text = getString(R.string.status_library_failed, it.message.orEmpty())
+            emptyList()
+        }
+
+    private fun installTemplate(template: ProjectTemplate) {
+        val target = File(projectRoot, template.projectDir)
+        copyAssetTree(template.assetPath, target)
+        status.text = getString(R.string.status_library_installed_fmt, template.name)
+    }
 
     private fun File.walkSafe(): List<File> =
         if (!exists()) emptyList() else walkTopDown().onEnter { it.name !in setOf(".git", "node_modules") }.toList()

@@ -189,6 +189,10 @@ pdocker-android/
 │   └── assets/
 │       ├── pdockerd/pdockerd         — 132 KB Python script (extracted on first launch)
 │       ├── xterm/index.html          — terminal UI + shortcut key palette
+│       ├── default-project/          — VS Code Server + Continue + Codex template
+│       ├── project-library/library.json
+│       └── project-library/llama-cpp-gpu/
+│                                      — llama.cpp GPU/CPU workspace template
 │       └── xterm/{index.html,xterm.js,xterm.css,xterm-addon-fit.js}
 ├── docker-proot-setup/                — git submodule
 │   └── bin/pdockerd                   — the actual daemon (3500 LOC)

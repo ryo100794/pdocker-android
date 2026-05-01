@@ -20,6 +20,7 @@ license texts/notices are preserved.
 | AndroidX core/appcompat/webkit | App dependencies | Apache-2.0 | Include license notice when redistributed. | OK with notice asset. |
 | Material Components for Android | App dependency | Apache-2.0 | Include license notice when redistributed. | OK with notice asset. |
 | Kotlin Gradle plugin / stdlib | Kotlin build/runtime dependency | Apache-2.0 | Include license notice when redistributed. | OK with notice asset. |
+| llama.cpp | Optional source fetched by the bundled `project-library/llama-cpp-gpu` Dockerfile during user-initiated container builds; no llama.cpp source or binary is bundled in the APK | MIT | If a user or distributor publishes a prebuilt llama.cpp image, include upstream MIT license notice for that image. | OK: template reference only, not APK-bundled code. |
 
 ## Source and license references
 
@@ -33,6 +34,7 @@ license texts/notices are preserved.
 - xterm.js upstream: https://github.com/xtermjs/xterm.js
 - Chaquopy license page: https://chaquo.com/chaquopy/license/
 - Kotlin upstream: https://github.com/JetBrains/kotlin
+- llama.cpp upstream: https://github.com/ggml-org/llama.cpp
 
 ## Compliance notes
 

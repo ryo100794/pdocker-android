@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "templates": [
+    {
+      "id": "dev-workspace",
+      "name": "VS Code Server + Continue + Codex",
+      "category": "development",
+      "description": "Browser VS Code, Continue, OpenAI Codex CLI, Python, Node/npm, Docker tooling, and common editor extensions.",
+      "assetPath": "default-project",
+      "projectDir": "default",
+      "compose": "compose.yaml",
+      "dockerfile": "Dockerfile",
+      "gpu": "vulkan-cuda-compat",
+      "features": ["code-server", "continue", "codex", "vscode-extensions", "vulkan"]
+    },
+    {
+      "id": "llama-cpp-gpu",
+      "name": "llama.cpp GPU workspace",
+      "category": "ai-runtime",
+      "description": "llama.cpp server development workspace with pdocker GPU auto-profile generation for Vulkan, CUDA-compatible, or CPU fallback execution.",
+      "assetPath": "project-library/llama-cpp-gpu",
+      "projectDir": "llama-cpp-gpu",
+      "compose": "compose.yaml",
+      "dockerfile": "Dockerfile",
+      "gpu": "auto",
+      "features": ["llama.cpp", "vulkan", "cuda-compat", "cpu-fallback", "gguf-models"]
+    }
+  ]
+}

@@ -7,6 +7,7 @@
     <string name="action_stop">停止</string>
 
     <string name="tab_overview">概要</string>
+    <string name="tab_library">ライブラリ</string>
     <string name="tab_compose">Compose</string>
     <string name="tab_dockerfile">Dockerfile</string>
     <string name="tab_images">イメージ</string>
@@ -22,6 +23,8 @@
     <string name="status_unexpected_response">ソケットは有効、応答が想定外です</string>
     <string name="status_ping_failed">ソケットは有効、ping 失敗: %1$s</string>
     <string name="status_pdocker_fmt">pdockerd: %1$s</string>
+    <string name="status_library_failed">ライブラリの読み込みに失敗: %1$s</string>
+    <string name="status_library_installed_fmt">テンプレートを展開しました: %1$s</string>
 
     <string name="section_runtime">ランタイム</string>
     <string name="action_start_pdockerd">pdockerd を起動</string>
@@ -42,6 +45,22 @@
     <string name="widget_compose_projects">Compose プロジェクト</string>
     <string name="widget_dockerfiles">Dockerfile</string>
     <string name="detail_dockerfiles_inventory">projects 配下のビルド定義</string>
+
+    <string name="section_project_library">プロジェクトライブラリ</string>
+    <string name="action_library_shell">ライブラリシェル</string>
+    <string name="detail_library_shell">展開済み compose / Dockerfile プロジェクトを確認</string>
+    <string name="message_library_empty">内蔵プロジェクトテンプレートがありません。</string>
+    <string name="library_features_fmt">機能: %1$s</string>
+    <string name="library_gpu_fmt">GPU: %1$s</string>
+    <string name="library_target_fmt">展開先: %1$s</string>
+    <string name="library_installed">展開済み</string>
+    <string name="action_install_template_fmt">%1$s を展開</string>
+    <string name="detail_install_template">既存ファイルを上書きせず projects にテンプレートをコピー</string>
+    <string name="action_open_template_compose_fmt">%1$s compose を開く</string>
+    <string name="action_open_template_dockerfile_fmt">%1$s Dockerfile を開く</string>
+    <string name="action_gpu_profile_fmt">%1$s GPU profile 最適化</string>
+    <string name="detail_gpu_profile">現在のランタイム情報から profiles/pdocker-gpu.env を生成</string>
+    <string name="action_compose_up_template_fmt">%1$s compose up</string>
 
     <string name="section_compose">Compose</string>
     <string name="action_new_compose">新規 compose.yaml</string>
@@ -112,6 +131,7 @@
     <string name="terminal_docker_ps">docker ps</string>
     <string name="terminal_container_fmt">コンテナ %1$s</string>
     <string name="terminal_docker_interactive">Docker 対話セッション</string>
+    <string name="terminal_gpu_profile">GPU profile</string>
 
     <string name="button_back">戻る</string>
     <string name="button_refresh">更新</string>
