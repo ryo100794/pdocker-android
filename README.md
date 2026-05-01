@@ -10,7 +10,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   device boot or APK replacement unless explicitly stopped.
 - **Console**: WebView + xterm.js (CJK IME compatible) backed by a
   pty child via JNI (`app/src/main/cpp/pty.c`), with UTF-8 decoding and a
-  Japanese-capable monospace font stack.
+  Japanese-capable monospace font stack. The terminal includes a keyboard-side
+  shortcut palette for Esc/Ctrl/Alt, arrows, Tab, Enter, Backspace, Delete,
+  paging, common Ctrl chords, and shell punctuation.
 - **Workspace UI**: top-level tabs for Compose, Dockerfile, images,
   containers, and PTY-backed sessions, so normal UI use does not require
   typing the bundled `docker` command directly.

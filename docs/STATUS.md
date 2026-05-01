@@ -188,6 +188,7 @@ pdocker-android/
 │   ├── python/pdockerd_bridge.py     — Chaquopy entry: env setup + CONNECT proxy + runpy
 │   └── assets/
 │       ├── pdockerd/pdockerd         — 132 KB Python script (extracted on first launch)
+│       ├── xterm/index.html          — terminal UI + shortcut key palette
 │       └── xterm/{index.html,xterm.js,xterm.css,xterm-addon-fit.js}
 ├── docker-proot-setup/                — git submodule
 │   └── bin/pdockerd                   — the actual daemon (3500 LOC)

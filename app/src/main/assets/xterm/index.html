@@ -12,9 +12,12 @@
     height: 100%;
     background: #050505;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   #term {
-    height: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     touch-action: manipulation;
   }
   .xterm {
@@ -23,10 +26,74 @@
   .xterm-viewport {
     overflow-y: auto;
   }
+  #keybar {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    overflow-x: auto;
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+    background: #151515;
+    border-top: 1px solid #303030;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  #keybar::-webkit-scrollbar {
+    display: none;
+  }
+  .key {
+    flex: 0 0 auto;
+    min-width: 42px;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid #3a3a3a;
+    border-radius: 5px;
+    background: #232323;
+    color: #eeeeee;
+    font: 12px/1.1 system-ui, sans-serif;
+    white-space: nowrap;
+  }
+  .key.compact {
+    min-width: 34px;
+    padding: 0 8px;
+  }
+  .key.toggle.active {
+    background: #0e5f9d;
+    border-color: #58a6ff;
+    color: #ffffff;
+  }
+  .key:active {
+    background: #444444;
+  }
 </style>
 </head>
 <body>
 <div id="term"></div>
+<div id="keybar" aria-label="terminal shortcut keys">
+  <button class="key toggle compact" data-toggle="esc">Esc</button>
+  <button class="key toggle compact" data-toggle="ctrl">Ctrl</button>
+  <button class="key toggle compact" data-toggle="alt">Alt</button>
+  <button class="key compact" data-key="\t">Tab</button>
+  <button class="key compact" data-key="\r">Enter</button>
+  <button class="key compact" data-key="\u007f">Bksp</button>
+  <button class="key compact" data-key="\u001b[D">←</button>
+  <button class="key compact" data-key="\u001b[B">↓</button>
+  <button class="key compact" data-key="\u001b[A">↑</button>
+  <button class="key compact" data-key="\u001b[C">→</button>
+  <button class="key" data-key="\u001b[H">Home</button>
+  <button class="key" data-key="\u001b[F">End</button>
+  <button class="key" data-key="\u001b[3~">Del</button>
+  <button class="key" data-key="\u001b[5~">PgUp</button>
+  <button class="key" data-key="\u001b[6~">PgDn</button>
+  <button class="key" data-key="\u0003" data-raw="1">Ctrl-C</button>
+  <button class="key" data-key="\u0004" data-raw="1">Ctrl-D</button>
+  <button class="key" data-key="\u001a" data-raw="1">Ctrl-Z</button>
+  <button class="key" data-key="\u000c" data-raw="1">Ctrl-L</button>
+  <button class="key compact" data-key="|">|</button>
+  <button class="key compact" data-key="~">~</button>
+  <button class="key compact" data-key="/">/</button>
+  <button class="key compact" data-key="-">-</button>
+</div>
 <script src="xterm.js"></script>
 <script src="xterm-addon-fit.js"></script>
 <script>
@@ -64,8 +131,70 @@
     return out;
   };
 
+  const mods = { esc: false, ctrl: false, alt: false };
+  const keybar = document.getElementById('keybar');
+  const ctrlMap = (ch) => {
+    if (ch.length !== 1) return ch;
+    const code = ch.codePointAt(0);
+    if (code >= 0x61 && code <= 0x7a) return String.fromCharCode(code - 0x60);
+    if (code >= 0x41 && code <= 0x5a) return String.fromCharCode(code - 0x40);
+    switch (ch) {
+      case ' ': return '\x00';
+      case '[': return '\x1b';
+      case '\\': return '\x1c';
+      case ']': return '\x1d';
+      case '^': return '\x1e';
+      case '_': return '\x1f';
+      case '?': return '\x7f';
+      default: return ch;
+    }
+  };
+  const applyModifiers = (data) => {
+    let out = data;
+    if (mods.ctrl && data.length === 1) out = ctrlMap(data);
+    if (mods.alt || mods.esc) out = '\x1b' + out;
+    return out;
+  };
+  const decodeKey = (value) => {
+    if (value == null) return '';
+    return value
+      .replace(/\\t/g, '\t')
+      .replace(/\\r/g, '\r')
+      .replace(/\\n/g, '\n')
+      .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  };
+  const refreshModifiers = () => {
+    keybar.querySelectorAll('[data-toggle]').forEach((btn) => {
+      btn.classList.toggle('active', !!mods[btn.dataset.toggle]);
+    });
+  };
+  const focusTerm = () => {
+    term.focus();
+    tuneIme();
+  };
+  const sendInput = (data, raw = false) => {
+    const payload = raw ? data : applyModifiers(data);
+    PdockerBridge.input(toB64(enc.encode(payload)));
+  };
+
   term.onData((data) => {
-    PdockerBridge.input(toB64(enc.encode(data)));
+    sendInput(data);
+  });
+
+  keybar.addEventListener('click', (event) => {
+    const btn = event.target.closest('button');
+    if (!btn) return;
+    event.preventDefault();
+    if (btn.dataset.toggle) {
+      mods[btn.dataset.toggle] = !mods[btn.dataset.toggle];
+      refreshModifiers();
+      focusTerm();
+      return;
+    }
+    if (btn.dataset.key != null) {
+      sendInput(decodeKey(btn.dataset.key), btn.dataset.raw === '1');
+      focusTerm();
+    }
   });
 
   window.pdockerRecv = (b64) => {
