@@ -15,12 +15,15 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.webkit.WebView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -31,9 +34,19 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private enum class Tab { Overview, Compose, Dockerfiles, Images, Containers, Sessions }
+    private enum class ToolKind { Terminal, Editor, Split }
+
+    private data class ToolTab(
+        val group: String,
+        val title: String,
+        val kind: ToolKind,
+        val view: View,
+        val bridge: Bridge? = null,
+    )
 
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 100
+        private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -48,7 +61,19 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var content: LinearLayout
     private lateinit var tabRow: LinearLayout
+    private lateinit var upperPane: LinearLayout
+    private lateinit var lowerPane: LinearLayout
+    private lateinit var lowerGroupRow: LinearLayout
+    private lateinit var lowerTabRow: LinearLayout
+    private lateinit var lowerHost: FrameLayout
     private var currentTab = Tab.Overview
+    private val toolTabs = mutableListOf<ToolTab>()
+    private var currentTool = -1
+    private var currentToolGroup: String? = null
+    private var upperWeight = 0.56f
+    private var lowerWeight = 0.44f
+    private var splitDragStartY = 0f
+    private var splitDragStartUpper = 0f
 
     private val pdockerHome: File by lazy { File(filesDir, "pdocker") }
     private val imageRoot: File by lazy { File(pdockerHome, "images") }
@@ -64,6 +89,12 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(28, 28, 28, 28)
         }
+        upperPane = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        lowerPane = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
 
         status = TextView(this).apply {
             text = getString(R.string.status_unknown)
@@ -78,18 +109,46 @@ class MainActivity : AppCompatActivity() {
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
+        lowerGroupRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        lowerTabRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        lowerHost = FrameLayout(this)
 
-        root.addView(status)
-        root.addView(HorizontalScrollView(this).apply { addView(tabRow) })
-        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(
+        upperPane.addView(status)
+        upperPane.addView(HorizontalScrollView(this).apply { addView(tabRow) })
+        upperPane.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             0,
             1f,
+        ))
+        lowerPane.addView(HorizontalScrollView(this).apply { addView(lowerGroupRow) })
+        lowerPane.addView(HorizontalScrollView(this).apply { addView(lowerTabRow) })
+        lowerPane.addView(lowerHost, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f,
+        ))
+        root.addView(upperPane, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            upperWeight,
+        ))
+        root.addView(splitterView())
+        root.addView(lowerPane, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            lowerWeight,
         ))
         setContentView(root)
 
         renderTabs()
         renderContent()
+        renderToolChrome()
     }
 
     override fun onResume() {
@@ -102,6 +161,49 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         ui.removeCallbacks(pollTask)
     }
+
+    override fun onDestroy() {
+        toolTabs.forEach { it.bridge?.close() }
+        toolTabs.clear()
+        super.onDestroy()
+    }
+
+    private fun splitterView(): View =
+        TextView(this).apply {
+            text = "━━"
+            gravity = Gravity.CENTER
+            textSize = 12f
+            alpha = 0.62f
+            setPadding(0, 3, 0, 3)
+            setBackgroundColor(0x11888888)
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        splitDragStartY = event.rawY
+                        splitDragStartUpper = upperWeight
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val total = (upperPane.height + lowerPane.height).coerceAtLeast(1)
+                        val delta = (event.rawY - splitDragStartY) / total
+                        upperWeight = (splitDragStartUpper + delta).coerceIn(0.24f, 0.78f)
+                        lowerWeight = 1f - upperWeight
+                        upperPane.layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            0,
+                            upperWeight,
+                        )
+                        lowerPane.layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            0,
+                            lowerWeight,
+                        )
+                        true
+                    }
+                    else -> true
+                }
+            }
+        }
 
     private fun renderTabs() {
         tabRow.removeAllViews()
@@ -256,7 +358,11 @@ class MainActivity : AppCompatActivity() {
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
             val statusText = state?.optString("Status")?.ifBlank { getString(R.string.unknown_status) } ?: getString(R.string.unknown_status)
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
-                openTerminal(getString(R.string.terminal_container_fmt, name), "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh")
+                openTerminal(
+                    getString(R.string.terminal_container_fmt, name),
+                    "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh",
+                    name,
+                )
             }
         }
     }
@@ -275,6 +381,13 @@ class MainActivity : AppCompatActivity() {
         }
         addAction(getString(R.string.action_text_editor), getString(R.string.detail_text_editor)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
+        }
+        addAction(getString(R.string.action_console_editor_split), getString(R.string.detail_console_editor_split)) {
+            openConsoleEditorSplit(
+                getString(R.string.action_console_editor_split),
+                "cd ${shellQuote(projectRoot.absolutePath)} && sh",
+                File(projectRoot, "default/Dockerfile"),
+            )
         }
     }
 
@@ -312,20 +425,173 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun openTerminal(title: String, command: String) {
-        startActivity(Intent(this, TerminalActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(TerminalActivity.EXTRA_TITLE, title)
-            putExtra(TerminalActivity.EXTRA_COMMAND, command)
+    private fun openTerminal(title: String, command: String, group: String = workspaceGroup()) {
+        val existing = toolTabs.indexOfFirst {
+            it.kind == ToolKind.Terminal && it.group == group && it.title == title
+        }
+        if (existing >= 0) {
+            switchTool(existing)
+            return
+        }
+        val view = terminalView(command)
+        val bridge = view.getTag(R.id.pdocker_bridge_tag) as Bridge
+        toolTabs += ToolTab(group, title, ToolKind.Terminal, view, bridge)
+        switchTool(toolTabs.lastIndex)
+    }
+
+    private fun openEditor(file: File, group: String = workspaceGroup()) {
+        val target = resolveProjectFile(file)
+        val title = target.name
+        val existing = toolTabs.indexOfFirst {
+            it.kind == ToolKind.Editor && it.group == group && it.title == title
+        }
+        if (existing >= 0) {
+            switchTool(existing)
+            return
+        }
+        toolTabs += ToolTab(group, title, ToolKind.Editor, editorView(target))
+        switchTool(toolTabs.lastIndex)
+    }
+
+    private fun openConsoleEditorSplit(title: String, command: String, file: File, group: String = workspaceGroup()) {
+        val target = resolveProjectFile(file)
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val terminal = terminalView(command)
+            addView(terminal, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                0.56f,
+            ))
+            addView(editorView(target), LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                0.44f,
+            ))
+        }
+        val bridge = findBridge(view)
+        toolTabs += ToolTab(group, title, ToolKind.Split, view, bridge)
+        switchTool(toolTabs.lastIndex)
+    }
+
+    private fun terminalView(command: String): View {
+        val webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+        }
+        val bridge = Bridge(this, webView, command)
+        webView.addJavascriptInterface(bridge, "PdockerBridge")
+        webView.loadUrl("file:///android_asset/xterm/index.html")
+        webView.setTag(R.id.pdocker_bridge_tag, bridge)
+        return webView
+    }
+
+    private fun editorView(file: File): View {
+        return CodeEditorView(this, file, MAX_INLINE_EDIT_BYTES, ::defaultEditorContent)
+    }
+
+    private fun switchTool(index: Int) {
+        if (index !in toolTabs.indices) return
+        currentTool = index
+        currentToolGroup = toolTabs[index].group
+        lowerHost.removeAllViews()
+        val view = toolTabs[index].view
+        if (view.parent != null) {
+            (view.parent as? FrameLayout)?.removeView(view)
+        }
+        lowerHost.addView(view, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        ))
+        renderToolChrome()
+    }
+
+    private fun renderToolChrome() {
+        if (!::lowerGroupRow.isInitialized || !::lowerTabRow.isInitialized || !::lowerHost.isInitialized) return
+        lowerGroupRow.removeAllViews()
+        lowerTabRow.removeAllViews()
+        if (toolTabs.isEmpty()) {
+            lowerHost.removeAllViews()
+            lowerHost.addView(TextView(this).apply {
+                text = getString(R.string.tool_empty)
+                textSize = 14f
+                alpha = 0.72f
+                gravity = Gravity.CENTER
+            }, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ))
+            return
+        }
+        val groups = toolTabs.map { it.group }.distinct()
+        if (currentTool !in toolTabs.indices) currentTool = 0
+        if (currentToolGroup == null || currentToolGroup !in groups) {
+            currentToolGroup = toolTabs[currentTool].group
+        }
+        groups.forEach { group ->
+            lowerGroupRow.addView(Button(this).apply {
+                text = group
+                isAllCaps = false
+                alpha = if (group == currentToolGroup) 1f else 0.66f
+                setOnClickListener {
+                    currentToolGroup = group
+                    switchTool(toolTabs.indexOfFirst { it.group == group })
+                }
+            })
+        }
+        toolTabs.forEachIndexed { index, tab ->
+            if (tab.group == currentToolGroup) {
+                lowerTabRow.addView(Button(this).apply {
+                    text = tab.title
+                    isAllCaps = false
+                    alpha = if (index == currentTool) 1f else 0.72f
+                    setOnClickListener { switchTool(index) }
+                })
+            }
+        }
+        lowerTabRow.addView(Button(this).apply {
+            text = "+"
+            isAllCaps = false
+            setOnClickListener {
+                openTerminal(
+                    getString(R.string.terminal_shell_numbered, toolTabs.count { it.group == currentToolGroup } + 1),
+                    "sh",
+                    currentToolGroup ?: workspaceGroup(),
+                )
+            }
         })
     }
 
-    private fun openEditor(file: File) {
-        startActivity(Intent(this, TextEditorActivity::class.java).apply {
-            putExtra(TextEditorActivity.EXTRA_PATH, file.absolutePath)
-        })
+    private fun findBridge(view: View): Bridge? {
+        (view.getTag(R.id.pdocker_bridge_tag) as? Bridge)?.let { return it }
+        if (view is LinearLayout) {
+            for (i in 0 until view.childCount) {
+                findBridge(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
     }
+
+    private fun workspaceGroup(): String = getString(R.string.tool_group_workspace)
+
+    private fun resolveProjectFile(file: File): File {
+        val projects = projectRoot.apply { mkdirs() }.canonicalFile
+        val canonical = file.canonicalFile
+        return if (canonical.toPath().startsWith(projects.toPath())) {
+            canonical
+        } else {
+            File(projects, "default/${file.name.ifBlank { "Dockerfile" }}").canonicalFile
+        }
+    }
+
+    private fun defaultEditorContent(name: String): String =
+        when (name) {
+            "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml" ->
+                "services:\n  app:\n    image: ubuntu:22.04\n    command: [\"/bin/bash\", \"-lc\", \"echo hello from compose\"]\n"
+            "Dockerfile" ->
+                "FROM ubuntu:22.04\nCMD [\"/bin/bash\", \"-lc\", \"echo hello from Dockerfile\"]\n"
+            else -> ""
+        }
 
     private fun refreshStatus() {
         val sock = File(pdockerHome, "pdockerd.sock")

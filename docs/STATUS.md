@@ -155,10 +155,16 @@ pdocker-android/
 │   │                                   REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
 │   │                                   RECEIVE_BOOT_COMPLETED
 │   ├── kotlin/io/github/ryo100794/pdocker/
-│   │   ├── MainActivity.kt           — tabbed workspace + LocalSocket /_ping poll
-│   │   │                              container cards show IP/ports/hook plan
+│   │   ├── MainActivity.kt           — resizable split workspace + LocalSocket
+│   │   │                              /_ping poll; upper pane for Compose,
+│   │   │                              Dockerfile, status/control; lower pane
+│   │   │                              for grouped console/editor tabs; container
+│   │   │                              cards show IP/ports/hook plan
 │   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image rootfs files
-│   │   ├── TextEditorActivity.kt     — Compose/Dockerfile text editor
+│   │   ├── TextEditorActivity.kt     — Compose/Dockerfile code editor host
+│   │   ├── CodeEditorView.kt         — line numbers, visible whitespace,
+│   │   │                              highlighting, tab/space conversion,
+│   │   │                              selected-line indent/outdent
 │   │   ├── PdockerdService.kt        — resident ForegroundService (dataSync),
 │   │   │                              notification action + task-removal restart
 │   │   ├── PdockerdBootReceiver.kt   — boot / package-replaced daemon restart

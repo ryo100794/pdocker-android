@@ -1,0 +1,264 @@
+package io.github.ryo100794.pdocker
+
+import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
+import android.text.Editable
+import android.text.InputType
+import android.text.Spannable
+import android.text.TextUtils
+import android.text.TextWatcher
+import android.text.method.ReplacementTransformationMethod
+import android.text.style.ForegroundColorSpan
+import android.view.Gravity
+import android.widget.Button
+import android.widget.EditText
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
+import android.widget.TextView
+import java.io.File
+
+class CodeEditorView(
+    context: Context,
+    private val file: File,
+    private val maxBytes: Int,
+    private val defaultContent: (String) -> String,
+) : LinearLayout(context) {
+    private val message: TextView
+    private val lineNumbers: TextView
+    private val editor: EditText
+    private var spacesMode = true
+    private var tabWidth = 4
+    private var highlighting = false
+
+    init {
+        orientation = VERTICAL
+        setPadding(0, 8, 0, 0)
+
+        val pathView = TextView(context).apply {
+            text = file.absolutePath
+            textSize = 12f
+            alpha = 0.72f
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.MIDDLE
+            setPadding(10, 0, 0, 0)
+        }
+        message = TextView(context).apply {
+            textSize = 12f
+            alpha = 0.72f
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.MIDDLE
+        }
+        lineNumbers = TextView(context).apply {
+            typeface = Typeface.MONOSPACE
+            textSize = 14f
+            gravity = Gravity.END or Gravity.TOP
+            alpha = 0.58f
+            setPadding(0, 8, 10, 8)
+        }
+        editor = EditText(context).apply {
+            setTextIsSelectable(true)
+            setHorizontallyScrolling(true)
+            gravity = Gravity.START or Gravity.TOP
+            typeface = Typeface.MONOSPACE
+            textSize = 14f
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            minLines = 12
+            transformationMethod = VisibleWhitespaceTransformation()
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(s: Editable) {
+                    updateLineNumbers()
+                    applyHighlighting(s)
+                }
+            })
+        }
+
+        addView(toolPalette(pathView))
+        addView(message)
+        addView(LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            addView(lineNumbers, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
+            addView(HorizontalScrollView(context).apply { addView(editor) }, LayoutParams(
+                0,
+                LayoutParams.MATCH_PARENT,
+                1f,
+            ))
+        }, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+        load()
+    }
+
+    private fun toolPalette(pathView: TextView): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addToolButton(context.getString(R.string.button_save)) { save() }
+            addToolButton(context.getString(R.string.button_reload)) { load() }
+            addToolButton(modeLabel()) { toggleIndentMode() }
+            addToolButton(widthLabel()) { cycleTabWidth() }
+            addToolButton(context.getString(R.string.editor_indent)) { indentSelection() }
+            addToolButton(context.getString(R.string.editor_outdent)) { outdentSelection() }
+            addView(pathView, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+    private fun LinearLayout.addToolButton(label: String, action: () -> Unit) {
+        addView(Button(context).apply {
+            text = label
+            isAllCaps = false
+            minWidth = 0
+            setPadding(12, 0, 12, 0)
+            setOnClickListener { action() }
+        })
+    }
+
+    fun load() {
+        file.parentFile?.mkdirs()
+        if (!file.exists()) file.writeText(defaultContent(file.name))
+        val size = file.length()
+        if (size > maxBytes) {
+            editor.setText("")
+            message.text = context.getString(R.string.editor_file_too_large_fmt, size)
+            return
+        }
+        editor.setText(file.readText())
+        editor.setSelection(editor.text.length)
+        message.text = context.getString(R.string.editor_loaded_fmt, file.length())
+        updateLineNumbers()
+    }
+
+    fun save() {
+        file.parentFile?.mkdirs()
+        file.writeText(editor.text.toString())
+        message.text = context.getString(R.string.editor_saved_fmt, file.length())
+    }
+
+    private fun toggleIndentMode() {
+        spacesMode = !spacesMode
+        replaceAllText(convertIndentation(editor.text.toString(), spacesMode))
+        refreshToolbar()
+    }
+
+    private fun cycleTabWidth() {
+        tabWidth = when (tabWidth) {
+            2 -> 4
+            4 -> 8
+            else -> 2
+        }
+        if (spacesMode) replaceAllText(convertIndentation(editor.text.toString(), true))
+        refreshToolbar()
+    }
+
+    private fun indentSelection() {
+        transformSelectedLines { line ->
+            if (spacesMode) " ".repeat(tabWidth) + line else "\t$line"
+        }
+    }
+
+    private fun outdentSelection() {
+        transformSelectedLines { line ->
+            val normalized = normalizeLeadingSpaces(line)
+            when {
+                normalized.startsWith("\t") -> normalized.drop(1)
+                normalized.startsWith(" ".repeat(tabWidth)) -> normalized.drop(tabWidth)
+                normalized.startsWith(" ") -> normalized.drop(normalized.takeWhile { it == ' ' }.length)
+                else -> normalized
+            }
+        }
+    }
+
+    private fun transformSelectedLines(transform: (String) -> String) {
+        val text = editor.text.toString()
+        val start = lineStart(text, minOf(editor.selectionStart, editor.selectionEnd).coerceAtLeast(0))
+        val end = lineEnd(text, maxOf(editor.selectionStart, editor.selectionEnd).coerceAtLeast(0))
+        val block = text.substring(start, end)
+        val trailingNewline = block.endsWith("\n")
+        val lines = block.removeSuffix("\n").split("\n")
+        val replacement = lines.joinToString("\n") { transform(it) } + if (trailingNewline) "\n" else ""
+        editor.text.replace(start, end, replacement)
+        editor.setSelection(start, (start + replacement.length).coerceAtMost(editor.text.length))
+    }
+
+    private fun convertIndentation(text: String, toSpaces: Boolean): String =
+        text.lines().joinToString("\n") { line ->
+            val indent = line.takeWhile { it == ' ' || it == '\t' }
+            val rest = line.drop(indent.length)
+            val columns = indent.fold(0) { acc, ch -> acc + if (ch == '\t') tabWidth else 1 }
+            val adjustedColumns = ((columns + tabWidth - 1) / tabWidth) * tabWidth
+            val converted = if (toSpaces) {
+                " ".repeat(adjustedColumns)
+            } else {
+                "\t".repeat(adjustedColumns / tabWidth)
+            }
+            converted + rest
+        }
+
+    private fun normalizeLeadingSpaces(line: String): String {
+        val indent = line.takeWhile { it == ' ' }
+        if (indent.isEmpty() || indent.length % tabWidth == 0) return line
+        val adjusted = (indent.length / tabWidth) * tabWidth
+        return " ".repeat(adjusted) + line.drop(indent.length)
+    }
+
+    private fun replaceAllText(text: String) {
+        val cursor = editor.selectionStart.coerceAtLeast(0)
+        editor.setText(text)
+        editor.setSelection(cursor.coerceAtMost(editor.text.length))
+    }
+
+    private fun refreshToolbar() {
+        val parent = getChildAt(0) as? LinearLayout ?: return
+        (parent.getChildAt(2) as? Button)?.text = modeLabel()
+        (parent.getChildAt(3) as? Button)?.text = widthLabel()
+    }
+
+    private fun modeLabel(): String =
+        if (spacesMode) context.getString(R.string.editor_spaces_mode)
+        else context.getString(R.string.editor_tabs_mode)
+
+    private fun widthLabel(): String = context.getString(R.string.editor_tab_width_fmt, tabWidth)
+
+    private fun updateLineNumbers() {
+        val count = editor.text.count { it == '\n' } + 1
+        lineNumbers.text = (1..count).joinToString("\n")
+    }
+
+    private fun applyHighlighting(text: Editable) {
+        if (highlighting) return
+        highlighting = true
+        text.getSpans(0, text.length, ForegroundColorSpan::class.java).forEach { text.removeSpan(it) }
+        val src = text.toString()
+        highlight(src, text, Regex("\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'"), Color.rgb(170, 98, 25))
+        highlight(src, text, Regex("(?m)#.*$|//.*$"), Color.rgb(96, 128, 96))
+        val keywordPattern = when (file.name.lowercase()) {
+            "dockerfile" -> "\\b(FROM|RUN|CMD|ENTRYPOINT|COPY|ADD|WORKDIR|ENV|ARG|EXPOSE|VOLUME|USER|LABEL)\\b"
+            else -> "\\b(services|image|build|command|volumes|ports|environment|container_name|depends_on)\\b(?=\\s*:)"
+        }
+        highlight(src, text, Regex(keywordPattern, RegexOption.IGNORE_CASE), Color.rgb(32, 92, 190))
+        highlighting = false
+    }
+
+    private fun highlight(src: String, editable: Editable, regex: Regex, color: Int) {
+        regex.findAll(src).forEach { m ->
+            editable.setSpan(
+                ForegroundColorSpan(color),
+                m.range.first,
+                m.range.last + 1,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+    }
+
+    private fun lineStart(text: String, pos: Int): Int =
+        text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)).let { if (it < 0) 0 else it + 1 }
+
+    private fun lineEnd(text: String, pos: Int): Int =
+        text.indexOf('\n', pos.coerceAtMost(text.length)).let { if (it < 0) text.length else it }
+
+    private class VisibleWhitespaceTransformation : ReplacementTransformationMethod() {
+        override fun getOriginal(): CharArray = charArrayOf(' ', '\t', '\u3000')
+        override fun getReplacement(): CharArray = charArrayOf('·', '→', '□')
+    }
+}

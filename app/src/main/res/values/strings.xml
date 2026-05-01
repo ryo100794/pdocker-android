@@ -99,6 +99,10 @@
     <string name="detail_compose_session">Run compose commands in projects directory</string>
     <string name="action_text_editor">Text editor</string>
     <string name="detail_text_editor">Edit default Dockerfile</string>
+    <string name="action_console_editor_split">Console + editor</string>
+    <string name="detail_console_editor_split">Stack a shell over the default Dockerfile editor</string>
+    <string name="tool_group_workspace">Workspace</string>
+    <string name="tool_empty">Open a console, editor, or container session from the upper pane.</string>
 
     <string name="terminal_title">Terminal</string>
     <string name="terminal_shell">Shell</string>
@@ -132,6 +136,11 @@
     <string name="button_save">Save</string>
     <string name="button_reload">Reload</string>
     <string name="button_close">Close</string>
+    <string name="editor_spaces_mode">Spaces</string>
+    <string name="editor_tabs_mode">Tabs</string>
+    <string name="editor_tab_width_fmt">Tab %1$d</string>
+    <string name="editor_indent">Indent</string>
+    <string name="editor_outdent">Outdent</string>
     <string name="editor_file_too_large_fmt">File is too large to edit safely: %1$d bytes</string>
     <string name="editor_loaded_fmt">Loaded %1$d bytes</string>
     <string name="editor_saved_fmt">Saved %1$d bytes</string>

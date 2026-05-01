@@ -99,6 +99,10 @@
     <string name="detail_compose_session">projects ディレクトリで compose コマンドを実行</string>
     <string name="action_text_editor">テキストエディタ</string>
     <string name="detail_text_editor">標準 Dockerfile を編集</string>
+    <string name="action_console_editor_split">コンソール + エディタ</string>
+    <string name="detail_console_editor_split">シェルを上、標準 Dockerfile エディタを下に重ねる</string>
+    <string name="tool_group_workspace">Workspace</string>
+    <string name="tool_empty">上段からコンソール、エディタ、コンテナセッションを開いてください。</string>
 
     <string name="terminal_title">ターミナル</string>
     <string name="terminal_shell">シェル</string>
@@ -132,6 +136,11 @@
     <string name="button_save">保存</string>
     <string name="button_reload">再読み込み</string>
     <string name="button_close">閉じる</string>
+    <string name="editor_spaces_mode">スペース</string>
+    <string name="editor_tabs_mode">タブ</string>
+    <string name="editor_tab_width_fmt">Tab %1$d</string>
+    <string name="editor_indent">インデント+</string>
+    <string name="editor_outdent">インデント-</string>
     <string name="editor_file_too_large_fmt">安全に編集するにはファイルが大きすぎます: %1$d bytes</string>
     <string name="editor_loaded_fmt">%1$d bytes 読み込みました</string>
     <string name="editor_saved_fmt">%1$d bytes 保存しました</string>
