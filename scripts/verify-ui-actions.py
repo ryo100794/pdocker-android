@@ -47,6 +47,10 @@ def main() -> int:
     docker_action_count = main_src.count("openDockerTerminal(") - 1
     require("docker actions use persistent terminal helper", docker_action_count >= 7)
     require("docker terminal starts pdockerd first", "private fun openDockerTerminal" in main_src and "startDaemon()" in main_src)
+    require("docker actions wait for daemon readiness", "waiting for pdockerd" in main_src and "docker version >/dev/null" in main_src)
+    require("docker build uses legacy builder env", "DOCKER_BUILDKIT=0" in main_src and "COMPOSE_DOCKER_CLI_BUILD=0" in main_src)
+    require("terminal exports legacy builder env", "DOCKER_BUILDKIT=0" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt").read_text())
+    require("compose up action is detached and builds first", "docker compose up -d --build" in main_src)
     require("one-shot docker commands leave an interactive shell", "status=\\$?" in main_src and "exec sh" in main_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)

@@ -72,7 +72,7 @@
     <string name="message_no_compose_fmt">No compose files under %1$s.</string>
     <string name="detail_compose_file">Compose file</string>
     <string name="action_up_fmt">Up %1$s</string>
-    <string name="detail_compose_up">docker compose up</string>
+    <string name="detail_compose_up">docker compose up -d --build</string>
 
     <string name="section_dockerfile">Dockerfile</string>
     <string name="action_new_dockerfile">New Dockerfile</string>

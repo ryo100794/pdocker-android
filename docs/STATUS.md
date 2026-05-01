@@ -70,9 +70,11 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   Containers, and Sessions. Tabs show widget-style state, counts, paths, and
   log previews in the native UI instead of immediately dropping into a console.
 - Main UI action wiring → Docker-backed actions start pdockerd before opening
-  the PTY tool tab and append an interactive shell after one-shot commands, so
-  `docker ps`, `docker pull`, `docker build`, and `compose up` results remain
-  visible and usable instead of ending on a dead terminal.
+  the PTY tool tab, wait for `docker version`, export
+  `DOCKER_BUILDKIT=0` / `COMPOSE_DOCKER_CLI_BUILD=0`, and append an
+  interactive shell after one-shot commands. Compose actions run
+  `docker compose up -d --build` followed by `ps` and recent logs, so the UI
+  does not stay pinned to foreground logs.
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
   between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
   equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is

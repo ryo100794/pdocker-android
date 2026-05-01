@@ -45,6 +45,11 @@ class Bridge(
             // PATH means the user can just type `docker ps` in xterm.
             "PATH=${runtime.absolutePath}/docker-bin:/system/bin:/system/xbin",
             "DOCKER_HOST=unix://${sock.absolutePath}",
+            "DOCKER_BUILDKIT=0",
+            "COMPOSE_DOCKER_CLI_BUILD=0",
+            "BUILDKIT_PROGRESS=plain",
+            "COMPOSE_PROGRESS=plain",
+            "COMPOSE_MENU=false",
             // Some CLIs honor this; harmless if not.
             "DOCKER_CONFIG=${activity.filesDir}/.docker"
         )

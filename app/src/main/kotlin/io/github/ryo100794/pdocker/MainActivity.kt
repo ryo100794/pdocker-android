@@ -336,7 +336,7 @@ class MainActivity : AppCompatActivity() {
                 installTemplate(template)
                 openDockerTerminal(
                     getString(R.string.terminal_compose_up_fmt, template.projectDir),
-                    "cd ${shellQuote(target.absolutePath)} && docker compose up",
+                    composeUpCommand(target),
                 )
             }
         }
@@ -365,7 +365,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_up_fmt, file.parentFile?.name ?: file.name), getString(R.string.detail_compose_up)) {
                 val dir = file.parentFile ?: projectRoot
-                openDockerTerminal(getString(R.string.terminal_compose_up_fmt, dir.name), "cd ${shellQuote(dir.absolutePath)} && docker compose up")
+                openDockerTerminal(getString(R.string.terminal_compose_up_fmt, dir.name), composeUpCommand(dir))
             }
         }
     }
@@ -393,7 +393,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_build_fmt, file.parentFile?.name ?: file.name), file.absolutePath) {
                 val dir = file.parentFile ?: projectRoot
-                openDockerTerminal(getString(R.string.terminal_docker_build_fmt, dir.name), "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest .")
+                openDockerTerminal(getString(R.string.terminal_docker_build_fmt, dir.name), dockerBuildCommand(dir))
             }
         }
     }
@@ -518,7 +518,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openDockerTerminal(title: String, command: String, group: String = workspaceGroup()) {
         startDaemon()
-        openTerminal(title, stayAfterCommand(command), group)
+        openTerminal(title, stayAfterCommand(dockerCommand(command)), group)
     }
 
     private fun openEditor(file: File, group: String = workspaceGroup()) {
@@ -689,6 +689,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun stayAfterCommand(command: String): String =
         "$command; status=\$?; printf '\\n[pdocker] command exited: %s\\n' \"\$status\"; exec sh"
+
+    private fun dockerCommand(command: String): String =
+        listOf(
+            "export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false",
+            "i=0; until docker version >/dev/null 2>&1; do i=\$((i+1)); if [ \"\$i\" -ge 30 ]; then echo '[pdocker] pdockerd did not become ready within 30s'; break; fi; printf '[pdocker] waiting for pdockerd... %s/30\\n' \"\$i\"; sleep 1; done",
+            command,
+        ).joinToString("; ")
+
+    private fun dockerBuildCommand(dir: File): String =
+        "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest ."
+
+    private fun composeUpCommand(dir: File): String =
+        "cd ${shellQuote(dir.absolutePath)} && docker compose up -d --build && docker compose ps && docker compose logs --tail=80"
 
     private fun refreshStatus() {
         val sock = File(pdockerHome, "pdockerd.sock")

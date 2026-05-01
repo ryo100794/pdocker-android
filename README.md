@@ -33,7 +33,10 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   display surface.
 - **Persistent command actions**: UI actions such as `docker ps`, `docker pull`,
   `docker build`, and `docker compose up` start pdockerd, run in PTY-backed
-  lower tabs, and leave an interactive shell open when the command exits.
+  lower tabs, export the legacy builder/Compose environment expected by
+  pdockerd, and leave an interactive shell open when the command exits.
+  Compose actions use `docker compose up -d --build` so the UI does not stay
+  pinned to foreground logs.
 - **Network visibility**: container cards show the synthetic container IP,
   exposed/published ports, and planned port-hook rewrite count from pdockerd.
 - **Terminal tabs**: one terminal screen can keep multiple PTY sessions alive

@@ -229,6 +229,26 @@ def check_ui_actions() -> list[Check]:
     return [Check("native UI action wiring", "PASS" if r.returncode == 0 else "FAIL", output)]
 
 
+def check_gpu_design_doc() -> list[Check]:
+    doc = ROOT / "docs" / "GPU_COMPAT.md"
+    if not doc.exists():
+        return [Check("gpu compatibility design", "FAIL", "docs/GPU_COMPAT.md missing")]
+    text = doc.read_text()
+    required = [
+        "Vulkan-first compatibility stack",
+        "cuvk_transpile",
+        "compile_ms + upload_ms + dispatch_ms + download_ms = total_ms",
+        "vector_add",
+        "saxpy",
+        "matmul_fp32",
+        "native_cuda",
+        "non-goals",
+    ]
+    missing = [token for token in required if token not in text]
+    return [Check("gpu compatibility design", "PASS" if not missing else "FAIL",
+                  "missing: " + ", ".join(missing) if missing else "cuVK/Vulkan benchmark scope recorded")]
+
+
 def maybe_run_full(timeout: int) -> list[Check]:
     script = BACKEND / "scripts" / "verify_all.sh"
     if not script.exists():
@@ -287,6 +307,7 @@ def main() -> int:
     checks += check_license_inventory()
     checks += check_project_library()
     checks += check_ui_actions()
+    checks += check_gpu_design_doc()
     if args.full:
         checks += maybe_run_full(args.full_timeout)
 
