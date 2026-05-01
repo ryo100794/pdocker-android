@@ -7,8 +7,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   `filesDir/pdocker/pdockerd.sock`.
 - **Console**: WebView + xterm.js (CJK IME compatible) backed by a
   pty child via JNI (`app/src/main/cpp/pty.c`).
-- **CoW**: `libcow.so` built for `arm64-v8a` and `x86_64` via the
-  submodule's Android NDK Makefile.
+- **CoW**: current runtime uses the bundled glibc `libcow.so` inside
+  containers; pdockerd also has an opt-in `PDOCKER_USE_COW_BIND=1` gate
+  ready for the next proot `--cow-bind` backend.
 
 Plan document: [`docker-proot-setup/APK_PLAN.md`](docker-proot-setup/APK_PLAN.md)
 

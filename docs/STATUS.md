@@ -77,6 +77,7 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 | proot `libtalloc.so.2` SONAME doesn't fit `lib*.so` jniLibs filter | patchelf `--replace-needed` on proot + `--set-soname` on libtalloc to use the bare `libtalloc.so` form |
 | proot fails execve "No such file or directory" without its loader | bundle Termux's `proot/loader` (18 KB static aarch64) and set `PROOT_LOADER` |
 | bionic-built libcow.so won't load inside ubuntu (libdl.so vs libdl.so.2) | ship the host-glibc libcow build instead — pdockerd just `shutil.copy`s it into the container, container's own ld.so does the loading |
+| future proot cow_bind rollout | `PDOCKER_USE_COW_BIND=1` is now gated in pdockerd; it only switches to `Storage.Mode=cow_bind` when the bundled proot advertises `--cow-bind`, otherwise it falls back to libcow |
 
 ### 5. Gaps vs upstream Docker
 
@@ -90,6 +91,7 @@ What mainline docker has that pdockerd doesn't:
 
 #### Storage / drivers
 - ✗ **Real overlayfs**: container CoW is via libcow.so LD_PRELOAD, which only intercepts dynamically-linked binaries. Statically-linked binaries inside the container write through to the shared image rootfs.
+- ◐ **proot cow_bind path**: pdockerd has the opt-in lower/upper plumbing (`PDOCKER_USE_COW_BIND=1`), but the proot syscall extension is still the blocking piece.
 - ✗ **Volumes with native mount semantics**: bind mounts work via `proot -b`, but `docker volume` is a thin shim (per-name dir under `$PDOCKER_HOME/volumes/`).
 - ✗ **tmpfs / devpts / proc / sys mounts**: proot binds `/proc`, `/sys`, `/dev` from host; no isolation.
 
