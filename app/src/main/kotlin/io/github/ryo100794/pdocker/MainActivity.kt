@@ -1,88 +1,93 @@
 package io.github.ryo100794.pdocker
 
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
+import android.view.Gravity
+import android.view.View
 import android.widget.Button
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import kotlin.concurrent.thread
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
+    private enum class Tab { Overview, Compose, Dockerfiles, Images, Containers, Sessions }
+
     private val ui = Handler(Looper.getMainLooper())
+    private val tabs = linkedMapOf(
+        Tab.Overview to "Overview",
+        Tab.Compose to "Compose",
+        Tab.Dockerfiles to "Dockerfile",
+        Tab.Images to "Images",
+        Tab.Containers to "Containers",
+        Tab.Sessions to "Sessions",
+    )
     private val pollTask = object : Runnable {
         override fun run() {
             refreshStatus()
-            ui.postDelayed(this, 2000)
+            ui.postDelayed(this, 3000)
         }
     }
+
     private lateinit var status: TextView
+    private lateinit var content: LinearLayout
+    private lateinit var tabRow: LinearLayout
+    private var currentTab = Tab.Overview
+
+    private val pdockerHome: File by lazy { File(filesDir, "pdocker") }
+    private val imageRoot: File by lazy { File(pdockerHome, "images") }
+    private val containerRoot: File by lazy { File(pdockerHome, "containers") }
+    private val projectRoot: File by lazy { File(pdockerHome, "projects") }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 48, 48, 48)
+            setPadding(28, 28, 28, 28)
         }
 
         status = TextView(this).apply {
             text = "pdockerd: unknown"
-            textSize = 16f
+            textSize = 14f
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.END
         }
-
-        val startBtn = Button(this).apply {
-            text = "Start pdockerd"
-            setOnClickListener {
-                val intent = Intent(this@MainActivity, PdockerdService::class.java)
-                    .setAction(PdockerdService.ACTION_START)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
-                status.text = "pdockerd: starting..."
-            }
+        tabRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
-
-        val termBtn = Button(this).apply {
-            text = "Open terminal"
-            setOnClickListener {
-                startActivity(Intent(this@MainActivity, TerminalActivity::class.java))
-            }
-        }
-
-        val imageFilesBtn = Button(this).apply {
-            text = "Browse image files"
-            setOnClickListener {
-                startActivity(Intent(this@MainActivity, ImageFilesActivity::class.java))
-            }
-        }
-
-        val stopBtn = Button(this).apply {
-            text = "Stop pdockerd"
-            setOnClickListener {
-                stopService(Intent(this@MainActivity, PdockerdService::class.java))
-                status.text = "pdockerd: stopped"
-            }
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
 
         root.addView(status)
-        root.addView(startBtn)
-        root.addView(termBtn)
-        root.addView(imageFilesBtn)
-        root.addView(stopBtn)
+        root.addView(HorizontalScrollView(this).apply { addView(tabRow) })
+        root.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f,
+        ))
         setContentView(root)
+
+        renderTabs()
+        renderContent()
     }
 
     override fun onResume() {
         super.onResume()
+        renderContent()
         ui.post(pollTask)
     }
 
@@ -91,11 +96,165 @@ class MainActivity : AppCompatActivity() {
         ui.removeCallbacks(pollTask)
     }
 
-    // Off-thread health check: speak Docker Engine API /_ping over the
-    // AF_UNIX socket and look for "OK" back. Uses Android's LocalSocket
-    // with FILESYSTEM namespace so the path resolves to our filesDir.
+    private fun renderTabs() {
+        tabRow.removeAllViews()
+        tabs.forEach { (tab, label) ->
+            tabRow.addView(Button(this).apply {
+                text = label
+                isAllCaps = false
+                alpha = if (tab == currentTab) 1f else 0.72f
+                setOnClickListener {
+                    currentTab = tab
+                    renderTabs()
+                    renderContent()
+                }
+            })
+        }
+    }
+
+    private fun renderContent() {
+        content.removeAllViews()
+        when (currentTab) {
+            Tab.Overview -> renderOverview()
+            Tab.Compose -> renderCompose()
+            Tab.Dockerfiles -> renderDockerfiles()
+            Tab.Images -> renderImages()
+            Tab.Containers -> renderContainers()
+            Tab.Sessions -> renderSessions()
+        }
+    }
+
+    private fun renderOverview() {
+        addSection("Runtime")
+        addAction("Start pdockerd", "Launch foreground daemon") { startDaemon() }
+        addAction("Stop pdockerd", "Stop foreground service") {
+            stopService(Intent(this, PdockerdService::class.java))
+            status.text = "pdockerd: stopped"
+        }
+        addAction("Docker console", "Interactive shell with DOCKER_HOST set") {
+            openTerminal("Docker console", "sh")
+        }
+
+        addSection("Inventory")
+        addMetric("Images", imageDirs().size.toString())
+        addMetric("Containers", containerDirs().size.toString())
+        addMetric("Compose projects", composeFiles().size.toString())
+        addMetric("Dockerfiles", dockerfiles().size.toString())
+    }
+
+    private fun renderCompose() {
+        addSection("Compose")
+        addAction("New compose shell", "Open at ${projectRoot.absolutePath}") {
+            projectRoot.mkdirs()
+            openTerminal("Compose", "cd '${projectRoot.absolutePath}' && sh")
+        }
+        val files = composeFiles()
+        if (files.isEmpty()) {
+            addMessage("No compose files under ${projectRoot.absolutePath}.")
+            return
+        }
+        files.forEach { file ->
+            addAction(file.name, file.parentFile?.absolutePath.orEmpty()) {
+                val dir = file.parentFile ?: projectRoot
+                openTerminal("compose up", "cd '${dir.absolutePath}' && docker compose up")
+            }
+        }
+    }
+
+    private fun renderDockerfiles() {
+        addSection("Dockerfile")
+        addAction("Build shell", "Open project directory for docker build") {
+            projectRoot.mkdirs()
+            openTerminal("Docker build", "cd '${projectRoot.absolutePath}' && sh")
+        }
+        val files = dockerfiles()
+        if (files.isEmpty()) {
+            addMessage("No Dockerfile found under ${projectRoot.absolutePath}.")
+            return
+        }
+        files.forEach { file ->
+            addAction(file.parentFile?.name ?: file.name, file.absolutePath) {
+                val dir = file.parentFile ?: projectRoot
+                openTerminal("docker build", "cd '${dir.absolutePath}' && docker build -t local/${dir.name}:latest .")
+            }
+        }
+    }
+
+    private fun renderImages() {
+        addSection("Images")
+        addAction("Pull image", "Open docker pull shell") {
+            openTerminal("Pull image", "docker pull ubuntu:22.04")
+        }
+        addAction("Browse image files", "Inspect pulled rootfs trees") {
+            startActivity(Intent(this, ImageFilesActivity::class.java))
+        }
+        val images = imageDirs()
+        if (images.isEmpty()) {
+            addMessage("No pulled images yet.")
+            return
+        }
+        images.forEach { image ->
+            addAction(image.name, summarizeRootfs(File(image, "rootfs"))) {
+                openTerminal("Run ${image.name}", "docker run --rm ${image.name.replace('_', '/')} sh")
+            }
+        }
+    }
+
+    private fun renderContainers() {
+        addSection("Containers")
+        addAction("docker ps", "Show current containers") {
+            openTerminal("docker ps", "docker ps -a")
+        }
+        val containers = containerDirs()
+        if (containers.isEmpty()) {
+            addMessage("No containers yet.")
+            return
+        }
+        containers.forEach { dir ->
+            val state = readState(dir)
+            val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
+            val image = state?.optString("Image")?.ifBlank { "unknown image" } ?: "unknown image"
+            val statusText = state?.optString("Status")?.ifBlank { "unknown status" } ?: "unknown status"
+            addAction(name, "$image, $statusText") {
+                openTerminal("container $name", "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh")
+            }
+        }
+    }
+
+    private fun renderSessions() {
+        addSection("Sessions")
+        addAction("Shell", "Plain app shell") {
+            openTerminal("Shell", "sh")
+        }
+        addAction("Docker -it equivalent", "PTY-backed docker exec/run console") {
+            openTerminal("Docker interactive", "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
+        }
+        addAction("Compose session", "Run compose commands in projects directory") {
+            projectRoot.mkdirs()
+            openTerminal("Compose session", "cd '${projectRoot.absolutePath}' && docker compose ps; sh")
+        }
+    }
+
+    private fun startDaemon() {
+        val intent = Intent(this, PdockerdService::class.java)
+            .setAction(PdockerdService.ACTION_START)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        status.text = "pdockerd: starting..."
+    }
+
+    private fun openTerminal(title: String, command: String) {
+        startActivity(Intent(this, TerminalActivity::class.java).apply {
+            putExtra(TerminalActivity.EXTRA_TITLE, title)
+            putExtra(TerminalActivity.EXTRA_COMMAND, command)
+        })
+    }
+
     private fun refreshStatus() {
-        val sock = File(filesDir, "pdocker/pdockerd.sock")
+        val sock = File(pdockerHome, "pdockerd.sock")
         if (!sock.exists()) {
             status.text = "pdockerd: socket absent"
             return
@@ -117,5 +276,90 @@ class MainActivity : AppCompatActivity() {
             }.getOrElse { "socket up, ping failed: ${it.message}" }
             ui.post { status.text = "pdockerd: $msg" }
         }
+    }
+
+    private fun addSection(text: String) {
+        content.addView(TextView(this).apply {
+            this.text = text
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 22, 0, 8)
+        })
+    }
+
+    private fun addAction(label: String, detail: String, onClick: () -> Unit) {
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            isClickable = true
+            setPadding(0, 16, 0, 16)
+            setOnClickListener { onClick() }
+            addView(TextView(this@MainActivity).apply {
+                text = label
+                textSize = 16f
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = detail
+                textSize = 12f
+                alpha = 0.72f
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.MIDDLE
+            })
+            content.addView(this)
+            addDivider()
+        }
+    }
+
+    private fun addMetric(label: String, value: String) {
+        addAction(label, value) {}
+    }
+
+    private fun addMessage(text: String) {
+        content.addView(TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setPadding(0, 16, 0, 16)
+        })
+    }
+
+    private fun addDivider() {
+        content.addView(View(this).apply {
+            alpha = 0.18f
+            setBackgroundColor(0xff888888.toInt())
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1))
+    }
+
+    private fun imageDirs(): List<File> =
+        imageRoot.listFiles()
+            ?.filter { File(it, "rootfs").isDirectory }
+            ?.sortedBy { it.name }
+            .orEmpty()
+
+    private fun containerDirs(): List<File> =
+        containerRoot.listFiles()
+            ?.filter { it.isDirectory }
+            ?.sortedByDescending { it.lastModified() }
+            .orEmpty()
+
+    private fun composeFiles(): List<File> =
+        projectRoot.walkSafe()
+            .filter { it.isFile && it.name in setOf("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml") }
+            .sortedBy { it.absolutePath }
+
+    private fun dockerfiles(): List<File> =
+        projectRoot.walkSafe()
+            .filter { it.isFile && it.name == "Dockerfile" }
+            .sortedBy { it.absolutePath }
+
+    private fun File.walkSafe(): List<File> =
+        if (!exists()) emptyList() else walkTopDown().onEnter { it.name !in setOf(".git", "node_modules") }.toList()
+
+    private fun readState(dir: File): JSONObject? =
+        runCatching { JSONObject(File(dir, "state.json").readText()) }.getOrNull()
+
+    private fun summarizeRootfs(rootfs: File): String {
+        val count = rootfs.list()?.size ?: 0
+        return "$count top-level entries"
     }
 }

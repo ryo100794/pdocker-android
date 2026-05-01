@@ -54,8 +54,7 @@
   };
   window.addEventListener('resize', pushResize);
 
-  // Default shell target: local sh for now; terminal activity can override.
-  PdockerBridge.start('sh');
+  PdockerBridge.start(PdockerBridge.initialCommand());
   setTimeout(pushResize, 100);
 </script>
 </body>

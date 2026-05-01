@@ -18,7 +18,9 @@ class TerminalActivity : AppCompatActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
         }
-        bridge = Bridge(this, webView)
+        val command = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
+        title = intent.getStringExtra(EXTRA_TITLE) ?: "Terminal"
+        bridge = Bridge(this, webView, command)
         webView.addJavascriptInterface(bridge, "PdockerBridge")
         webView.loadUrl("file:///android_asset/xterm/index.html")
         setContentView(webView)
@@ -27,5 +29,10 @@ class TerminalActivity : AppCompatActivity() {
     override fun onDestroy() {
         bridge.close()
         super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_COMMAND = "io.github.ryo100794.pdocker.extra.COMMAND"
+        const val EXTRA_TITLE = "io.github.ryo100794.pdocker.extra.TITLE"
     }
 }

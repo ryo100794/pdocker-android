@@ -17,7 +17,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Kotlin pushes output back via `window.pdockerRecv(base64)` on the UI thread.
  */
-class Bridge(private val activity: AppCompatActivity, private val webView: WebView) {
+class Bridge(
+    private val activity: AppCompatActivity,
+    private val webView: WebView,
+    private val initialCommand: String = "sh",
+) {
     private var fd: Int = -1
     private var reader: Thread? = null
     private val alive = AtomicBoolean(false)
@@ -60,6 +64,9 @@ class Bridge(private val activity: AppCompatActivity, private val webView: WebVi
             alive.set(false)
         }, "pty-reader").also { it.start() }
     }
+
+    @JavascriptInterface
+    fun initialCommand(): String = initialCommand
 
     @JavascriptInterface
     fun input(b64: String) {

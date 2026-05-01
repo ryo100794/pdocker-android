@@ -10,7 +10,7 @@ implements today, (2) what works on the Android APK end-to-end, and
 |---|---|---|
 | **pdockerd** (Python single-file daemon, docker-proot-setup/bin) | 3500 LOC | Engine API 1.43-compatible, ~30 endpoints |
 | **APK** (pdocker-android) | 31 MB | install + foreground service + ubuntu image pull + container run end-to-end on Android 15 |
-| **WebView terminal** | xterm.js 5.3 + JNI pty | bundled docker CLI 29.4 wired with `DOCKER_HOST` |
+| **Workspace UI** | native tabs + xterm.js 5.3 + JNI pty | Compose, Dockerfile, images, containers, and `-it`-style sessions share one console surface |
 
 ## Implementation overview
 
@@ -62,6 +62,10 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - `docker pull ubuntu:latest` → 132 MB image landed under `filesDir/pdocker/{images,layers}/` in 52s
 - `docker create + start + wait + logs` → `hi-from-container` printed via /bin/echo inside ubuntu rootfs
 - xterm.js WebView terminal → spawns sh with `PATH=runtime/docker-bin:...` and `DOCKER_HOST=unix://...` so user can type `docker ps` directly
+- Main UI → tabbed workspace for Overview, Compose, Dockerfile, Images,
+  Containers, and Sessions. Session entries open PTY-backed terminals with
+  `DOCKER_HOST` prewired, which is the app-side equivalent of `docker run -it`
+  / `docker exec -it` until Engine attach TTY is complete.
 - Main UI → "Browse image files" opens a read-only browser for pulled image
   rootfs trees under `filesDir/pdocker/images/*/rootfs`, so users can inspect
   image contents without starting a container or invoking the docker CLI
@@ -137,7 +141,7 @@ pdocker-android/
 │   │                                   POST_NOTIFICATIONS, WAKE_LOCK,
 │   │                                   REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 │   ├── kotlin/io/github/ryo100794/pdocker/
-│   │   ├── MainActivity.kt           — Start/Open terminal/Stop UI + LocalSocket /_ping poll
+│   │   ├── MainActivity.kt           — tabbed workspace + LocalSocket /_ping poll
 │   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image rootfs files
 │   │   ├── PdockerdService.kt        — ForegroundService (dataSync), Chaquopy host
 │   │   ├── PdockerdRuntime.kt        — extracts assets/pdockerd, symlinks
