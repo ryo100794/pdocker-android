@@ -34,13 +34,17 @@ cp "$SUB/bin/pdockerd" "$APP/assets/pdockerd/pdockerd"
 JNI_DIR="$APP/jniLibs/arm64-v8a"
 mkdir -p "$JNI_DIR"
 cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
-cp "$ROOT/vendor/lib/proot" "$JNI_DIR/libproot.so"
-cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
-# proot bootstraps its tracee via a separate loader binary that
-# Termux ships at /data/data/com.termux/files/usr/libexec/proot/loader.
-# Without it, every execve under proot dies with "No such file or
-# directory" (it's the loader that's missing, not the target binary).
-cp "$ROOT/vendor/lib/proot-loader" "$JNI_DIR/libproot-loader.so"
+if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+    cp "$ROOT/vendor/lib/proot" "$JNI_DIR/libproot.so"
+    cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
+    # proot bootstraps its tracee via a separate loader binary that
+    # Termux ships at /data/data/com.termux/files/usr/libexec/proot/loader.
+    # Without it, every execve under proot dies with "No such file or
+    # directory" (it's the loader that's missing, not the target binary).
+    cp "$ROOT/vendor/lib/proot-loader" "$JNI_DIR/libproot-loader.so"
+else
+    rm -f "$JNI_DIR/libproot.so" "$JNI_DIR/libproot-loader.so" "$JNI_DIR/libtalloc.so"
+fi
 # libcow.so is LD_PRELOAD'd inside the *container* rootfs (typically
 # glibc — ubuntu/debian — or musl — alpine). A bionic-targeted shim
 # fails to load there ("libdl.so" vs "libdl.so.2", ld-android-* vs
@@ -57,18 +61,26 @@ cp "$ROOT/vendor/lib/docker" "$JNI_DIR/libdocker.so"
 # loader only looks for "lib*.so" filenames in nativeLibraryDir, so we
 # patchelf both sides to the simple libtalloc.so name. Without this,
 # proot aborts at startup with 'library "libtalloc.so.2" not found'.
-command -v patchelf >/dev/null 2>&1 \
-    || { echo "ABORT: patchelf required (apt install patchelf)" >&2; exit 1; }
-patchelf --replace-needed libtalloc.so.2 libtalloc.so "$JNI_DIR/libproot.so"
-patchelf --set-soname     libtalloc.so                 "$JNI_DIR/libtalloc.so"
+if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+    command -v patchelf >/dev/null 2>&1 \
+        || { echo "ABORT: patchelf required (apt install patchelf)" >&2; exit 1; }
+    patchelf --replace-needed libtalloc.so.2 libtalloc.so "$JNI_DIR/libproot.so"
+    patchelf --set-soname     libtalloc.so                 "$JNI_DIR/libtalloc.so"
+fi
 
-chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libproot.so" \
-           "$JNI_DIR/libtalloc.so" "$JNI_DIR/libproot-loader.so" \
-           "$JNI_DIR/libcow.so" "$JNI_DIR/libdocker.so"
+chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libcow.so" "$JNI_DIR/libdocker.so"
+if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+    chmod 0755 "$JNI_DIR/libproot.so" "$JNI_DIR/libtalloc.so" \
+               "$JNI_DIR/libproot-loader.so"
+fi
 echo "staged crane -> $JNI_DIR/libcrane.so"
-echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
-echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
-echo "staged proot-loader -> $JNI_DIR/libproot-loader.so"
+if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+    echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
+    echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
+    echo "staged proot-loader -> $JNI_DIR/libproot-loader.so"
+else
+    echo "skipped proot/talloc/proot-loader (PDOCKER_WITH_PROOT=0)"
+fi
 echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
 echo "staged docker CLI -> $JNI_DIR/libdocker.so"
 

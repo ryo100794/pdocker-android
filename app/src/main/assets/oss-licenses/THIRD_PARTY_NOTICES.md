@@ -14,5 +14,9 @@ Corresponding source for the shipped PROot binary is reproducible from the
 upstream PROot source plus this repository's `scripts/proot-patches/` and
 `scripts/build-proot.sh`.
 
+PRoot is planned to become an optional compatibility backend. Experimental
+builds can omit the PRoot/talloc payload with `PDOCKER_WITH_PROOT=0`; default
+builds still include it until a replacement runtime is complete.
+
 See `docs/THIRD_PARTY_LICENSES.md` in the source repository for the maintained
 license inventory and distribution notes.

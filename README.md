@@ -23,6 +23,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
   containers; experimental `PDOCKER_USE_COW_BIND=1` uses the self-built
   proot `--cow-bind` backend for write-open copy-up.
+- **Runtime direction**: PRoot is treated as a temporary backend. See
+  [`docs/RUNTIME_STRATEGY.md`](docs/RUNTIME_STRATEGY.md); experimental no-PRoot
+  payloads can be staged with `PDOCKER_WITH_PROOT=0`.
 
 Plan document: [`docker-proot-setup/APK_PLAN.md`](docker-proot-setup/APK_PLAN.md)
 

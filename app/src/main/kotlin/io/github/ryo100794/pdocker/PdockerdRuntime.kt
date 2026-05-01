@@ -63,11 +63,11 @@ nameserver 1.1.1.1
         extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
 
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
-        linkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
-        linkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
+        optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
+        optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
         linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
-        linkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
+        optionalLinkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
 
         writeIfChanged(File(etc, "resolv.conf"), FALLBACK_RESOLV_CONF)
 
@@ -119,5 +119,14 @@ nameserver 1.1.1.1
             link.setExecutable(true, false)
             Log.w(TAG, "symlink failed for $link, copied instead: ${e.message}")
         }
+    }
+
+    private fun optionalLinkTo(target: File, link: File) {
+        if (!target.exists()) {
+            java.nio.file.Files.deleteIfExists(link.toPath())
+            Log.i(TAG, "optional runtime binary absent, skipped $link")
+            return
+        }
+        linkTo(target, link)
     }
 }

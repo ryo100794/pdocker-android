@@ -39,6 +39,9 @@ license texts/notices are preserved.
 - The APK must include `assets/oss-licenses/THIRD_PARTY_NOTICES.md`.
 - Any public binary APK release must publish or link the exact PRoot source,
   `cow_bind` patch, and build instructions used to produce `libproot.so`.
+- PRoot is now an explicit removal target. `PDOCKER_WITH_PROOT=0` can stage an
+  experimental APK without `libproot.so`, `libproot-loader.so`, or
+  `libtalloc.so`; that build is not yet a complete container runtime.
 - Because `libtalloc.so` is LGPL, keep it as a separate shared object and do
   not merge it into a non-replaceable binary.
 - Docker CLI and crane are permissively licensed, but their notices should stay

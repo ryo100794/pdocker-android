@@ -112,14 +112,18 @@ def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
     os.environ["PDOCKER_TMP_DIR"] = tmp_dir
     os.environ["TMPDIR"] = tmp_dir
 
-    os.environ["PDOCKER_RUNNER"] = os.path.join(runtime_dir, "docker-bin", "proot")
+    runner = os.path.join(runtime_dir, "docker-bin", "proot")
+    if os.path.exists(runner):
+        os.environ["PDOCKER_RUNNER"] = runner
     # proot bootstraps every tracee through a tiny static loader binary
     # (Termux ships /usr/libexec/proot/loader). Without PROOT_LOADER set,
     # proot defaults to looking for libexec/proot/loader relative to
     # itself, which our nativeLibraryDir tree doesn't have. Symptom is
     # `execve(target): No such file or directory` (the missing thing is
     # the loader, not target). Bridge points at the bundled copy.
-    os.environ["PROOT_LOADER"] = os.path.join(runtime_dir, "docker-bin", "proot-loader")
+    proot_loader = os.path.join(runtime_dir, "docker-bin", "proot-loader")
+    if os.path.exists(proot_loader):
+        os.environ["PROOT_LOADER"] = proot_loader
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")

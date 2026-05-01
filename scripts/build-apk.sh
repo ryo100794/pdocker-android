@@ -20,10 +20,16 @@ git submodule update --init --recursive
 bash scripts/build-native-termux.sh
 
 # Build the self-contained Android proot binary, including pdocker's
-# minimal --cow-bind extension patch.
-bash scripts/build-proot.sh
+# minimal --cow-bind extension patch. Set PDOCKER_WITH_PROOT=0 to produce
+# an experimental no-PRoot APK payload while the replacement runtime is
+# being developed.
+if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+    bash scripts/build-proot.sh
+else
+    echo "==> skipping proot build (PDOCKER_WITH_PROOT=0)"
+fi
 
-# Stage submodule assets (crane, proot, pdockerd python tree).
+# Stage submodule assets (crane, optional proot, pdockerd python tree).
 bash scripts/copy-native.sh
 
 # Gradle build. Use the checked-in wrapper so the included :app project and
