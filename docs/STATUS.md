@@ -152,12 +152,15 @@ pdocker-android/
 │   ├── AndroidManifest.xml           — INTERNET, ACCESS_NETWORK_STATE,
 │   │                                   FOREGROUND_SERVICE_DATA_SYNC,
 │   │                                   POST_NOTIFICATIONS, WAKE_LOCK,
-│   │                                   REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+│   │                                   REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+│   │                                   RECEIVE_BOOT_COMPLETED
 │   ├── kotlin/io/github/ryo100794/pdocker/
 │   │   ├── MainActivity.kt           — tabbed workspace + LocalSocket /_ping poll
 │   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image rootfs files
 │   │   ├── TextEditorActivity.kt     — Compose/Dockerfile text editor
-│   │   ├── PdockerdService.kt        — ForegroundService (dataSync), Chaquopy host
+│   │   ├── PdockerdService.kt        — resident ForegroundService (dataSync),
+│   │   │                              notification action + task-removal restart
+│   │   ├── PdockerdBootReceiver.kt   — boot / package-replaced daemon restart
 │   │   ├── PdockerdRuntime.kt        — extracts assets/pdockerd, symlinks
 │   │   │                              nativeLibraryDir lib*.so into runtime/
 │   │   ├── TerminalActivity.kt       — WebView host

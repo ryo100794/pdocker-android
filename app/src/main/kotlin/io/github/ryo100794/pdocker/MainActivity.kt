@@ -1,13 +1,18 @@
 package io.github.ryo100794.pdocker
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -17,12 +22,18 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import java.io.File
 import kotlin.concurrent.thread
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private enum class Tab { Overview, Compose, Dockerfiles, Images, Containers, Sessions }
+
+    companion object {
+        private const val REQUEST_POST_NOTIFICATIONS = 100
+    }
 
     private val ui = Handler(Looper.getMainLooper())
     private val tabs = linkedMapOf(
@@ -52,6 +63,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestNotificationPermission()
         seedDefaultProject()
 
         val root = LinearLayout(this).apply {
@@ -129,8 +141,11 @@ class MainActivity : AppCompatActivity() {
         addSection("Runtime")
         addAction("Start pdockerd", "Launch foreground daemon") { startDaemon() }
         addAction("Stop pdockerd", "Stop foreground service") {
-            stopService(Intent(this, PdockerdService::class.java))
+            startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
             status.text = "pdockerd: stopped"
+        }
+        addAction("Keep resident", "Open battery optimization exemption") {
+            requestBatteryOptimizationBypass()
         }
         addAction("Docker console", "Interactive shell with DOCKER_HOST set") {
             openTerminal("Docker console", "sh")
@@ -269,6 +284,29 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         status.text = "pdockerd: starting..."
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED) return
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_POST_NOTIFICATIONS,
+        )
+    }
+
+    private fun requestBatteryOptimizationBypass() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val powerManager = getSystemService(PowerManager::class.java)
+        if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
+            status.text = "pdocker: already excluded from battery optimization"
+            return
+        }
+        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+            data = Uri.parse("package:$packageName")
+        })
     }
 
     private fun openTerminal(title: String, command: String) {

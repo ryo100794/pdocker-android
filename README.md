@@ -5,6 +5,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Daemon**: `pdockerd` (Python, from the submodule) running inside a
   Chaquopy-hosted ForegroundService. Unix socket at
   `filesDir/pdocker/pdockerd.sock`.
+- **Resident mode**: pdockerd stays in the notification area, can be reopened
+  from the notification, restarts after task removal, and starts again after
+  device boot or APK replacement unless explicitly stopped.
 - **Console**: WebView + xterm.js (CJK IME compatible) backed by a
   pty child via JNI (`app/src/main/cpp/pty.c`), with UTF-8 decoding and a
   Japanese-capable monospace font stack.
