@@ -7,11 +7,13 @@ services:
         CODEX_NPM_PACKAGE: "@openai/codex"
     image: pdocker/dev-workspace:latest
     container_name: pdocker-dev
+    gpus: all
     working_dir: /workspace
     environment:
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       CODE_SERVER_PASSWORD: "${CODE_SERVER_PASSWORD:-}"
+      PDOCKER_GPU: "1"
     command: ["/usr/local/bin/start-code-server"]
     volumes:
       - ./workspace:/workspace

@@ -35,6 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tar \
       unzip \
       vim \
+      vulkan-tools \
+      libvulkan1 \
       wget \
       xz-utils \
     && rm -rf /var/lib/apt/lists/*

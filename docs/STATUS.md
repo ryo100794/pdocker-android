@@ -47,6 +47,7 @@ the entire stack is built on user-space replacements:
 | `/containers/{id}/archive` HEAD/GET/PUT | ✓ docker cp both directions |
 | `/containers/{id}/stats` | ✓ /proc walking approximation (no cgroups) |
 | `/networks/*`, `/volumes/*` | ✓ stubs that satisfy compose's create/list/connect flow |
+| `HostConfig.DeviceRequests` / `--gpus` | experimental pdocker extension: Vulkan passthrough + CUDA-compatible API negotiation |
 | `/build` | ✓ legacy builder; BuildKit not supported |
 | `/auth` (registry login) | ✗ |
 | `/swarm/*`, `/services/*`, `/secrets/*`, `/configs/*` | ✗ (Swarm-only) |

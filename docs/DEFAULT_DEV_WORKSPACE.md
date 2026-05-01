@@ -20,7 +20,7 @@ and installs:
 - Continue VS Code extension (`Continue.continue`).
 - OpenAI Codex CLI (`npm install -g @openai/codex`).
 - Common development tools: git, Python, Node/npm, ripgrep, jq, SSH client,
-  vim, nano, and shell utilities.
+  vim, nano, Vulkan tools, and shell utilities.
 - Common IDE extensions for Python, YAML, Docker, formatting, linting, Jupyter,
   and Git inspection. Extension install failures are non-fatal because
   Open VSX / marketplace availability can vary by architecture and date.
@@ -40,6 +40,8 @@ default-project/
 ## Runtime notes
 
 - `compose.yaml` starts code-server on `0.0.0.0:8080`.
+- `compose.yaml` requests `gpus: all`, which maps to pdocker's experimental
+  Vulkan passthrough / CUDA-compatible API negotiation.
 - `OPENAI_API_KEY`, `GITHUB_TOKEN`, and `CODE_SERVER_PASSWORD` are passed
   through from the environment when provided.
 - If `CODE_SERVER_PASSWORD` is empty, code-server starts with `--auth none` for
@@ -54,4 +56,3 @@ default-project/
 - code-server supports command-line extension installation with
   `code-server --install-extension <extension id>`.
 - Continue extension marketplace ID: `Continue.continue`.
-
