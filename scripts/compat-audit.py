@@ -217,12 +217,13 @@ def maybe_run_full(timeout: int) -> list[Check]:
     except subprocess.TimeoutExpired as e:
         stdout = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         stderr = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
-        output = (stdout + "\n" + stderr)[-4000:]
+        output = ANSI_RE.sub("", stdout + "\n" + stderr)[-4000:]
         return [Check("full regression: verify_all.sh", "FAIL",
                       f"timed out after {timeout}s; last output: {output}")]
+    output = ANSI_RE.sub("", r.stdout + "\n" + r.stderr)[-4000:]
     return [Check("full regression: verify_all.sh",
                   "PASS" if r.returncode == 0 else "FAIL",
-                  (r.stdout + "\n" + r.stderr)[-4000:])]
+                  output)]
 
 
 def write_report(checks: list[Check], path: Path) -> None:

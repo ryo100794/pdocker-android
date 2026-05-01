@@ -7,6 +7,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   `filesDir/pdocker/pdockerd.sock`.
 - **Console**: WebView + xterm.js (CJK IME compatible) backed by a
   pty child via JNI (`app/src/main/cpp/pty.c`).
+- **Image files**: read-only in-app browser for pulled image rootfs trees
+  under `filesDir/pdocker/images/*/rootfs`, without invoking the docker CLI.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
   containers; experimental `PDOCKER_USE_COW_BIND=1` uses the self-built
   proot `--cow-bind` backend for write-open copy-up.

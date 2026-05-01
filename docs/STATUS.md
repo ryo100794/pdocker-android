@@ -62,6 +62,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - `docker pull ubuntu:latest` → 132 MB image landed under `filesDir/pdocker/{images,layers}/` in 52s
 - `docker create + start + wait + logs` → `hi-from-container` printed via /bin/echo inside ubuntu rootfs
 - xterm.js WebView terminal → spawns sh with `PATH=runtime/docker-bin:...` and `DOCKER_HOST=unix://...` so user can type `docker ps` directly
+- Main UI → "Browse image files" opens a read-only browser for pulled image
+  rootfs trees under `filesDir/pdocker/images/*/rootfs`, so users can inspect
+  image contents without starting a container or invoking the docker CLI
 
 ### 4. Android-specific workarounds (how we got here)
 
@@ -135,6 +138,7 @@ pdocker-android/
 │   │                                   REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
 │   ├── kotlin/io/github/ryo100794/pdocker/
 │   │   ├── MainActivity.kt           — Start/Open terminal/Stop UI + LocalSocket /_ping poll
+│   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image rootfs files
 │   │   ├── PdockerdService.kt        — ForegroundService (dataSync), Chaquopy host
 │   │   ├── PdockerdRuntime.kt        — extracts assets/pdockerd, symlinks
 │   │   │                              nativeLibraryDir lib*.so into runtime/

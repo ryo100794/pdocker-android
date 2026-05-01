@@ -58,6 +58,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        val imageFilesBtn = Button(this).apply {
+            text = "Browse image files"
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, ImageFilesActivity::class.java))
+            }
+        }
+
         val stopBtn = Button(this).apply {
             text = "Stop pdockerd"
             setOnClickListener {
@@ -69,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(status)
         root.addView(startBtn)
         root.addView(termBtn)
+        root.addView(imageFilesBtn)
         root.addView(stopBtn)
         setContentView(root)
     }

@@ -44,11 +44,23 @@ Backend-only regression remains available in the submodule:
 bash docker-proot-setup/scripts/verify_all.sh
 ```
 
+While a full audit is running, the backend regression daemon usually listens at
+`/tmp/pdockerd-verify.sock`. You can inspect it with the bundled Docker CLI:
+
+```sh
+DOCKER_HOST=unix:///tmp/pdockerd-verify.sock docker-proot-setup/docker-bin/docker ps -a
+DOCKER_HOST=unix:///tmp/pdockerd-verify.sock docker-proot-setup/docker-bin/docker logs <container-id>
+tail -f /tmp/pdockerd-verify.log
+```
+
+Most `docker run --rm` test containers are auto-removed quickly, so `docker logs`
+is most useful for named or long-running containers created by the compose,
+exec, stats, and network parts of the regression.
+
 Latest recorded result: [compat-audit-latest.md](compat-audit-latest.md)
-has 47 PASS and 1 FAIL. The reusable offline/API/APK/license checks pass; the
-full backend regression timed out under a 90 second cap, after proving the
-early pdocker pull/run/write-isolation path. Treat the full regression timeout
-as an open compatibility item, not as a packaging failure.
+has 48 PASS and 0 FAIL. The reusable offline/API/APK/license checks pass, the
+APK payload is present, and the full backend regression completed with 63 PASS
+and 0 FAIL.
 
 ## Current compatibility matrix
 
@@ -114,7 +126,6 @@ Known gaps:
 2. Improve protocol fidelity:
    - Add regression tests for chunked upload bodies and hijacked attach/exec
      across Docker CLI versions.
-   - Stabilize Android `docker run` synchronous attach path.
    - Add PTY plumbing for `docker run -t` and `docker exec -it`.
 
 3. Improve data exchange:
