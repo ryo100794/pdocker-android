@@ -139,10 +139,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         addSection("Inventory")
-        addMetric("Images", imageDirs().size.toString())
-        addMetric("Containers", containerDirs().size.toString())
-        addMetric("Compose projects", composeFiles().size.toString())
-        addMetric("Dockerfiles", dockerfiles().size.toString())
+        addWidget("Images", imageDirs().size.toString(), "Pulled rootfs trees available to browse")
+        addWidget("Containers", containerDirs().size.toString(), "Created container states and logs")
+        addWidget("Compose projects", composeFiles().size.toString(), projectRoot.absolutePath)
+        addWidget("Dockerfiles", dockerfiles().size.toString(), "Build definitions under projects")
     }
 
     private fun renderCompose() {
@@ -160,7 +160,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         files.forEach { file ->
-            addAction("Edit ${file.name}", file.parentFile?.absolutePath.orEmpty()) {
+            addWidget(file.name, "Compose file", file.parentFile?.absolutePath.orEmpty()) {
                 openEditor(file)
             }
             addAction("Up ${file.parentFile?.name ?: file.name}", "docker compose up") {
@@ -185,7 +185,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         files.forEach { file ->
-            addAction("Edit ${file.parentFile?.name ?: file.name}", file.absolutePath) {
+            addWidget(file.parentFile?.name ?: file.name, "Dockerfile", file.absolutePath) {
                 openEditor(file)
             }
             addAction("Build ${file.parentFile?.name ?: file.name}", file.absolutePath) {
@@ -209,8 +209,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         images.forEach { image ->
-            addAction(image.name, summarizeRootfs(File(image, "rootfs"))) {
-                openTerminal("Run ${image.name}", "docker run --rm ${image.name.replace('_', '/')} sh")
+            addWidget(image.name, "Image rootfs", summarizeRootfs(File(image, "rootfs"))) {
+                startActivity(Intent(this, ImageFilesActivity::class.java))
             }
         }
     }
@@ -230,7 +230,7 @@ class MainActivity : AppCompatActivity() {
             val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
             val image = state?.optString("Image")?.ifBlank { "unknown image" } ?: "unknown image"
             val statusText = state?.optString("Status")?.ifBlank { "unknown status" } ?: "unknown status"
-            addAction(name, "$image, $statusText") {
+            addWidget(name, statusText, "$image\n${containerLogPreview(dir)}") {
                 openTerminal("container $name", "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh")
             }
         }
@@ -339,6 +339,40 @@ class MainActivity : AppCompatActivity() {
         addAction(label, value) {}
     }
 
+    private fun addWidget(title: String, value: String, detail: String, onClick: (() -> Unit)? = null) {
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18, 18, 18, 18)
+            if (onClick != null) {
+                isClickable = true
+                setOnClickListener { onClick() }
+            }
+            addView(TextView(this@MainActivity).apply {
+                text = title
+                textSize = 13f
+                alpha = 0.72f
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = value
+                textSize = 20f
+                typeface = Typeface.DEFAULT_BOLD
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = detail
+                textSize = 12f
+                alpha = 0.78f
+                maxLines = 3
+                ellipsize = TextUtils.TruncateAt.END
+            })
+            content.addView(this)
+            addDivider()
+        }
+    }
+
     private fun addMessage(text: String) {
         content.addView(TextView(this).apply {
             this.text = text
@@ -385,6 +419,18 @@ class MainActivity : AppCompatActivity() {
     private fun summarizeRootfs(rootfs: File): String {
         val count = rootfs.list()?.size ?: 0
         return "$count top-level entries"
+    }
+
+    private fun containerLogPreview(dir: File): String {
+        val candidates = listOf(
+            File(pdockerHome, "logs/${dir.name}.log"),
+            File(dir, "log"),
+            File(dir, "logs.txt"),
+        )
+        val log = candidates.firstOrNull { it.isFile } ?: return "No log preview"
+        return runCatching {
+            log.readLines().takeLast(3).joinToString("\n").ifBlank { "Log is empty" }
+        }.getOrDefault("Log unavailable")
     }
 
     private fun shellQuote(s: String): String =

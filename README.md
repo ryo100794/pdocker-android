@@ -11,6 +11,11 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Workspace UI**: top-level tabs for Compose, Dockerfile, images,
   containers, and PTY-backed sessions, so normal UI use does not require
   typing the bundled `docker` command directly.
+- **Widgets first**: image/container/project tabs show state, counts, paths,
+  and log previews in-app; terminal actions are explicit tools, not the main
+  display surface.
+- **Terminal tabs**: one terminal screen can keep multiple PTY sessions alive
+  and switch between them with tabs.
 - **Editor**: in-app text editor for Compose files and Dockerfiles under
   `filesDir/pdocker/projects`.
 - **Image files**: read-only in-app browser for pulled image rootfs trees

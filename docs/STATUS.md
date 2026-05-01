@@ -10,7 +10,7 @@ implements today, (2) what works on the Android APK end-to-end, and
 |---|---|---|
 | **pdockerd** (Python single-file daemon, docker-proot-setup/bin) | 3500 LOC | Engine API 1.43-compatible, ~30 endpoints |
 | **APK** (pdocker-android) | 31 MB | install + foreground service + ubuntu image pull + container run end-to-end on Android 15 |
-| **Workspace UI** | native tabs + xterm.js 5.3 + JNI pty + editor | Compose, Dockerfile, images, containers, and `-it`-style sessions share one console surface |
+| **Workspace UI** | native widgets + xterm.js 5.3 + JNI pty tabs + editor | Compose, Dockerfile, images, containers, and `-it`-style sessions share one console surface |
 
 ## Implementation overview
 
@@ -66,9 +66,12 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   monospace font stack, disables IME autocorrect/capitalization, and reports
   resize changes from both window and visual viewport.
 - Main UI → tabbed workspace for Overview, Compose, Dockerfile, Images,
-  Containers, and Sessions. Session entries open PTY-backed terminals with
-  `DOCKER_HOST` prewired, which is the app-side equivalent of `docker run -it`
-  / `docker exec -it` until Engine attach TTY is complete.
+  Containers, and Sessions. Tabs show widget-style state, counts, paths, and
+  log previews in the native UI instead of immediately dropping into a console.
+- Terminal UI → one screen can host multiple PTY-backed sessions and switch
+  between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
+  equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is
+  complete.
 - Main UI → Compose and Dockerfile tabs can create/edit project files through
   the in-app text editor under `filesDir/pdocker/projects`.
 - Main UI → "Browse image files" opens a read-only browser for pulled image

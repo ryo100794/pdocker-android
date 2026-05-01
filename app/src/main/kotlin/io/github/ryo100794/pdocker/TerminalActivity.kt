@@ -1,34 +1,108 @@
 package io.github.ryo100794.pdocker
 
 import android.os.Bundle
+import android.view.View
 import android.webkit.WebView
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * WebView host for xterm.js. Picked over Termux TerminalView because
- * Termux's custom view drops CJK IME composition events.
+ * Multi-session WebView host for xterm.js.
+ *
+ * Each tab owns one WebView and one PTY bridge, so switching tabs keeps shell
+ * state alive instead of launching a separate terminal-only screen per action.
  */
 class TerminalActivity : AppCompatActivity() {
-    private lateinit var webView: WebView
-    private lateinit var bridge: Bridge
+    private data class Session(
+        val title: String,
+        val command: String,
+        val webView: WebView,
+        val bridge: Bridge,
+    )
+
+    private val sessions = mutableListOf<Session>()
+    private lateinit var tabRow: LinearLayout
+    private lateinit var terminalHost: FrameLayout
+    private var current = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        webView = WebView(this).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
-        val command = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
-        title = intent.getStringExtra(EXTRA_TITLE) ?: "Terminal"
-        bridge = Bridge(this, webView, command)
-        webView.addJavascriptInterface(bridge, "PdockerBridge")
-        webView.loadUrl("file:///android_asset/xterm/index.html")
-        setContentView(webView)
+        tabRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        terminalHost = FrameLayout(this)
+
+        root.addView(HorizontalScrollView(this).apply { addView(tabRow) })
+        root.addView(terminalHost, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f,
+        ))
+        setContentView(root)
+
+        val initialTitle = intent.getStringExtra(EXTRA_TITLE) ?: "Shell"
+        val initialCommand = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
+        title = "Terminal"
+        addSession(initialTitle, initialCommand)
     }
 
     override fun onDestroy() {
-        bridge.close()
+        sessions.forEach { it.bridge.close() }
+        sessions.clear()
         super.onDestroy()
+    }
+
+    private fun addSession(label: String, command: String) {
+        val webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            visibility = View.GONE
+        }
+        val bridge = Bridge(this, webView, command)
+        webView.addJavascriptInterface(bridge, "PdockerBridge")
+        webView.loadUrl("file:///android_asset/xterm/index.html")
+        terminalHost.addView(webView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+        ))
+        sessions += Session(label, command, webView, bridge)
+        switchTo(sessions.lastIndex)
+        renderTabs()
+    }
+
+    private fun switchTo(index: Int) {
+        if (index !in sessions.indices) return
+        sessions.forEachIndexed { i, session ->
+            session.webView.visibility = if (i == index) View.VISIBLE else View.GONE
+        }
+        current = index
+        title = sessions[index].title
+        renderTabs()
+    }
+
+    private fun renderTabs() {
+        if (!::tabRow.isInitialized) return
+        tabRow.removeAllViews()
+        sessions.forEachIndexed { index, session ->
+            tabRow.addView(Button(this).apply {
+                text = session.title
+                isAllCaps = false
+                alpha = if (index == current) 1f else 0.72f
+                setOnClickListener { switchTo(index) }
+            })
+        }
+        tabRow.addView(Button(this).apply {
+            text = "+"
+            isAllCaps = false
+            setOnClickListener { addSession("Shell ${sessions.size + 1}", "sh") }
+        })
     }
 
     companion object {
