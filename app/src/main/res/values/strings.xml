@@ -80,6 +80,12 @@
     <string name="message_no_containers">No containers yet.</string>
     <string name="unknown_image">unknown image</string>
     <string name="unknown_status">unknown status</string>
+    <string name="container_ip_fmt">IP: %1$s</string>
+    <string name="container_ports_fmt">Ports: %1$s</string>
+    <string name="container_ports_none">none</string>
+    <string name="container_port_binding_fmt">%1$s:%2$s-&gt;%3$s</string>
+    <string name="container_port_exposed_fmt">%1$s exposed</string>
+    <string name="container_hook_plan_fmt">port hook plan: %1$d</string>
     <string name="log_no_preview">No log preview</string>
     <string name="log_empty">Log is empty</string>
     <string name="log_unavailable">Log unavailable</string>

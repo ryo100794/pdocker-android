@@ -80,6 +80,12 @@
     <string name="message_no_containers">コンテナはまだありません。</string>
     <string name="unknown_image">不明なイメージ</string>
     <string name="unknown_status">不明な状態</string>
+    <string name="container_ip_fmt">IP: %1$s</string>
+    <string name="container_ports_fmt">ポート: %1$s</string>
+    <string name="container_ports_none">なし</string>
+    <string name="container_port_binding_fmt">%1$s:%2$s-&gt;%3$s</string>
+    <string name="container_port_exposed_fmt">%1$s 公開予定</string>
+    <string name="container_hook_plan_fmt">ポート hook 計画: %1$d</string>
     <string name="log_no_preview">ログプレビューなし</string>
     <string name="log_empty">ログは空です</string>
     <string name="log_unavailable">ログを取得できません</string>

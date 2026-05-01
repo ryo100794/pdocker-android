@@ -26,6 +26,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.File
 import kotlin.concurrent.thread
+import org.json.JSONArray
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -254,7 +255,7 @@ class MainActivity : AppCompatActivity() {
             val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
             val statusText = state?.optString("Status")?.ifBlank { getString(R.string.unknown_status) } ?: getString(R.string.unknown_status)
-            addWidget(name, statusText, "$image\n${containerLogPreview(dir)}") {
+            addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
                 openTerminal(getString(R.string.terminal_container_fmt, name), "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh")
             }
         }
@@ -464,6 +465,56 @@ class MainActivity : AppCompatActivity() {
 
     private fun readState(dir: File): JSONObject? =
         runCatching { JSONObject(File(dir, "state.json").readText()) }.getOrNull()
+
+    private fun containerNetworkSummary(state: JSONObject?): String {
+        val dockerNetwork = state?.optJSONObject("NetworkSettings")
+        val pdockerNetwork = state?.optJSONObject("PdockerNetwork")
+        val bridgeNetwork = dockerNetwork
+            ?.optJSONObject("Networks")
+            ?.optJSONObject("bridge")
+        val ip = listOf(
+            pdockerNetwork?.optString("IPAddress"),
+            dockerNetwork?.optString("IPAddress"),
+            bridgeNetwork?.optString("IPAddress"),
+        ).firstOrNull { !it.isNullOrBlank() }.orEmpty()
+        val ports = pdockerNetwork?.optJSONObject("Ports")
+            ?: dockerNetwork?.optJSONObject("Ports")
+        val rewriteCount = pdockerNetwork?.optJSONArray("PortRewrite")?.length() ?: 0
+        val lines = mutableListOf(
+            getString(R.string.container_ip_fmt, ip.ifBlank { "-" }),
+            getString(R.string.container_ports_fmt, summarizePorts(ports)),
+        )
+        if (rewriteCount > 0) {
+            lines += getString(R.string.container_hook_plan_fmt, rewriteCount)
+        }
+        return lines.joinToString("\n")
+    }
+
+    private fun summarizePorts(ports: JSONObject?): String {
+        if (ports == null || ports.length() == 0) {
+            return getString(R.string.container_ports_none)
+        }
+        val keys = mutableListOf<String>()
+        val iter = ports.keys()
+        while (iter.hasNext()) keys += iter.next()
+        return keys.sorted().flatMap { key ->
+            val value = ports.opt(key)
+            if (value is JSONArray && value.length() > 0) {
+                (0 until value.length()).mapNotNull { i ->
+                    value.optJSONObject(i)?.let { binding ->
+                        getString(
+                            R.string.container_port_binding_fmt,
+                            binding.optString("HostIp").ifBlank { "127.0.0.1" },
+                            binding.optString("HostPort").ifBlank { "?" },
+                            key,
+                        )
+                    }
+                }
+            } else {
+                listOf(getString(R.string.container_port_exposed_fmt, key))
+            }
+        }.joinToString(", ")
+    }
 
     private fun summarizeRootfs(rootfs: File): String {
         val count = rootfs.list()?.size ?: 0

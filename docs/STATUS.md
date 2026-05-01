@@ -156,6 +156,7 @@ pdocker-android/
 │   │                                   RECEIVE_BOOT_COMPLETED
 │   ├── kotlin/io/github/ryo100794/pdocker/
 │   │   ├── MainActivity.kt           — tabbed workspace + LocalSocket /_ping poll
+│   │   │                              container cards show IP/ports/hook plan
 │   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image rootfs files
 │   │   ├── TextEditorActivity.kt     — Compose/Dockerfile text editor
 │   │   ├── PdockerdService.kt        — resident ForegroundService (dataSync),

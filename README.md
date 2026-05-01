@@ -19,6 +19,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Widgets first**: image/container/project tabs show state, counts, paths,
   and log previews in-app; terminal actions are explicit tools, not the main
   display surface.
+- **Network visibility**: container cards show the synthetic container IP,
+  exposed/published ports, and planned port-hook rewrite count from pdockerd.
 - **Terminal tabs**: one terminal screen can keep multiple PTY sessions alive
   and switch between them with tabs.
 - **Editor**: in-app text editor for Compose files and Dockerfiles under
