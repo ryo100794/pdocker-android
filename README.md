@@ -14,6 +14,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Workspace UI**: top-level tabs for Compose, Dockerfile, images,
   containers, and PTY-backed sessions, so normal UI use does not require
   typing the bundled `docker` command directly.
+- **Localization**: Android string resources cover the main UI in English and
+  Japanese (`values/` and `values-ja/`), following the device language.
 - **Widgets first**: image/container/project tabs show state, counts, paths,
   and log previews in-app; terminal actions are explicit tools, not the main
   display surface.

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">pdocker</string>
+    <string name="pdockerd_notification_channel">pdockerd</string>
+    <string name="pdockerd_notification_title">pdockerd</string>
+    <string name="pdockerd_notification_text">Docker daemon (PRoot, port 2375)</string>
+    <string name="action_stop">Stop</string>
+
+    <string name="tab_overview">Overview</string>
+    <string name="tab_compose">Compose</string>
+    <string name="tab_dockerfile">Dockerfile</string>
+    <string name="tab_images">Images</string>
+    <string name="tab_containers">Containers</string>
+    <string name="tab_sessions">Sessions</string>
+
+    <string name="status_unknown">pdockerd: unknown</string>
+    <string name="status_stopped">pdockerd: stopped</string>
+    <string name="status_starting">pdockerd: starting...</string>
+    <string name="status_battery_ignored">pdocker: already excluded from battery optimization</string>
+    <string name="status_socket_absent">pdockerd: socket absent</string>
+    <string name="status_running">running</string>
+    <string name="status_unexpected_response">socket up, unexpected response</string>
+    <string name="status_ping_failed">socket up, ping failed: %1$s</string>
+    <string name="status_pdocker_fmt">pdockerd: %1$s</string>
+
+    <string name="section_runtime">Runtime</string>
+    <string name="action_start_pdockerd">Start pdockerd</string>
+    <string name="detail_start_pdockerd">Launch foreground daemon</string>
+    <string name="action_stop_pdockerd">Stop pdockerd</string>
+    <string name="detail_stop_pdockerd">Stop foreground service</string>
+    <string name="action_keep_resident">Keep resident</string>
+    <string name="detail_keep_resident">Open battery optimization exemption</string>
+    <string name="action_docker_console">Docker console</string>
+    <string name="detail_docker_console">Interactive shell with DOCKER_HOST set</string>
+    <string name="action_default_dev_workspace">Default dev workspace</string>
+    <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
+    <string name="section_inventory">Inventory</string>
+    <string name="widget_images">Images</string>
+    <string name="detail_images_inventory">Pulled rootfs trees available to browse</string>
+    <string name="widget_containers">Containers</string>
+    <string name="detail_containers_inventory">Created container states and logs</string>
+    <string name="widget_compose_projects">Compose projects</string>
+    <string name="widget_dockerfiles">Dockerfiles</string>
+    <string name="detail_dockerfiles_inventory">Build definitions under projects</string>
+
+    <string name="section_compose">Compose</string>
+    <string name="action_new_compose">New compose.yaml</string>
+    <string name="detail_new_compose">Create or edit default Compose project</string>
+    <string name="action_default_dev_compose">Default dev compose</string>
+    <string name="detail_default_dev_compose">code-server, Continue, Codex CLI</string>
+    <string name="action_compose_shell">Compose shell</string>
+    <string name="detail_open_at_fmt">Open at %1$s</string>
+    <string name="message_no_compose_fmt">No compose files under %1$s.</string>
+    <string name="detail_compose_file">Compose file</string>
+    <string name="action_up_fmt">Up %1$s</string>
+    <string name="detail_compose_up">docker compose up</string>
+
+    <string name="section_dockerfile">Dockerfile</string>
+    <string name="action_new_dockerfile">New Dockerfile</string>
+    <string name="detail_new_dockerfile">Create or edit default build file</string>
+    <string name="action_default_dev_image">Default dev image</string>
+    <string name="detail_default_dev_image">code-server + extensions + @openai/codex</string>
+    <string name="action_build_shell">Build shell</string>
+    <string name="detail_build_shell">Open project directory for docker build</string>
+    <string name="message_no_dockerfile_fmt">No Dockerfile found under %1$s.</string>
+    <string name="action_build_fmt">Build %1$s</string>
+
+    <string name="section_images">Images</string>
+    <string name="action_pull_image">Pull image</string>
+    <string name="detail_pull_image">Open docker pull shell</string>
+    <string name="action_browse_image_files">Browse image files</string>
+    <string name="detail_browse_image_files">Inspect pulled rootfs trees</string>
+    <string name="message_no_pulled_images">No pulled images yet.</string>
+    <string name="detail_image_rootfs">Image rootfs</string>
+    <string name="summary_rootfs_fmt">%1$d top-level entries</string>
+
+    <string name="section_containers">Containers</string>
+    <string name="action_docker_ps">docker ps</string>
+    <string name="detail_docker_ps">Show current containers</string>
+    <string name="message_no_containers">No containers yet.</string>
+    <string name="unknown_image">unknown image</string>
+    <string name="unknown_status">unknown status</string>
+    <string name="log_no_preview">No log preview</string>
+    <string name="log_empty">Log is empty</string>
+    <string name="log_unavailable">Log unavailable</string>
+
+    <string name="section_sessions">Sessions</string>
+    <string name="action_shell">Shell</string>
+    <string name="detail_shell">Plain app shell</string>
+    <string name="action_docker_it">Docker -it equivalent</string>
+    <string name="detail_docker_it">PTY-backed docker exec/run console</string>
+    <string name="action_compose_session">Compose session</string>
+    <string name="detail_compose_session">Run compose commands in projects directory</string>
+    <string name="action_text_editor">Text editor</string>
+    <string name="detail_text_editor">Edit default Dockerfile</string>
+
+    <string name="terminal_title">Terminal</string>
+    <string name="terminal_shell">Shell</string>
+    <string name="terminal_shell_numbered">Shell %1$d</string>
+    <string name="terminal_compose_up">compose up</string>
+    <string name="terminal_docker_build">docker build</string>
+    <string name="terminal_docker_ps">docker ps</string>
+    <string name="terminal_container_fmt">container %1$s</string>
+    <string name="terminal_docker_interactive">Docker interactive</string>
+
+    <string name="button_back">Back</string>
+    <string name="button_refresh">Refresh</string>
+    <string name="title_image_files">Image files</string>
+    <string name="message_no_images_refresh">No pulled images yet. Pull an image first, then refresh.</string>
+    <string name="message_outside_rootfs">Path is outside the image rootfs.</string>
+    <string name="detail_parent_directory">Parent directory</string>
+    <string name="message_empty_directory">Empty directory</string>
+    <string name="detail_back_to_directory">Back to directory</string>
+    <string name="message_preview_too_large">Preview skipped: file is larger than 64 KiB.</string>
+    <string name="message_cannot_read_file">Cannot read file: %1$s</string>
+    <string name="message_binary_preview_hidden">Binary file preview is not shown.</string>
+    <string name="detail_unreadable">unreadable</string>
+    <string name="detail_symlink_fmt">symlink -&gt; %1$s</string>
+    <string name="detail_directory">directory</string>
+    <string name="detail_file">file</string>
+    <string name="detail_special">special</string>
+    <string name="detail_size_bytes_fmt">, %1$d bytes</string>
+    <string name="detail_modified_fmt">%1$s%2$s, modified %3$s</string>
+    <string name="detail_rootfs_entries_fmt">rootfs, %1$d top-level entries</string>
+
+    <string name="button_save">Save</string>
+    <string name="button_reload">Reload</string>
+    <string name="button_close">Close</string>
+    <string name="editor_file_too_large_fmt">File is too large to edit safely: %1$d bytes</string>
+    <string name="editor_loaded_fmt">Loaded %1$d bytes</string>
+    <string name="editor_saved_fmt">Saved %1$d bytes</string>
+    <string name="editor_path_outside_fmt">editor path must stay under %1$s</string>
+</resources>

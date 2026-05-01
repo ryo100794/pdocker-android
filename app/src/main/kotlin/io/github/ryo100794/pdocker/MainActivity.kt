@@ -36,14 +36,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val ui = Handler(Looper.getMainLooper())
-    private val tabs = linkedMapOf(
-        Tab.Overview to "Overview",
-        Tab.Compose to "Compose",
-        Tab.Dockerfiles to "Dockerfile",
-        Tab.Images to "Images",
-        Tab.Containers to "Containers",
-        Tab.Sessions to "Sessions",
-    )
+    private val tabs = listOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers, Tab.Sessions)
     private val pollTask = object : Runnable {
         override fun run() {
             refreshStatus()
@@ -72,7 +65,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         status = TextView(this).apply {
-            text = "pdockerd: unknown"
+            text = getString(R.string.status_unknown)
             textSize = 14f
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.END
@@ -111,9 +104,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderTabs() {
         tabRow.removeAllViews()
-        tabs.forEach { (tab, label) ->
+        tabs.forEach { tab ->
             tabRow.addView(Button(this).apply {
-                text = label
+                text = tabLabel(tab)
                 isAllCaps = false
                 alpha = if (tab == currentTab) 1f else 0.72f
                 setOnClickListener {
@@ -137,140 +130,149 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun tabLabel(tab: Tab): String = getString(when (tab) {
+        Tab.Overview -> R.string.tab_overview
+        Tab.Compose -> R.string.tab_compose
+        Tab.Dockerfiles -> R.string.tab_dockerfile
+        Tab.Images -> R.string.tab_images
+        Tab.Containers -> R.string.tab_containers
+        Tab.Sessions -> R.string.tab_sessions
+    })
+
     private fun renderOverview() {
-        addSection("Runtime")
-        addAction("Start pdockerd", "Launch foreground daemon") { startDaemon() }
-        addAction("Stop pdockerd", "Stop foreground service") {
+        addSection(getString(R.string.section_runtime))
+        addAction(getString(R.string.action_start_pdockerd), getString(R.string.detail_start_pdockerd)) { startDaemon() }
+        addAction(getString(R.string.action_stop_pdockerd), getString(R.string.detail_stop_pdockerd)) {
             startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
-            status.text = "pdockerd: stopped"
+            status.text = getString(R.string.status_stopped)
         }
-        addAction("Keep resident", "Open battery optimization exemption") {
+        addAction(getString(R.string.action_keep_resident), getString(R.string.detail_keep_resident)) {
             requestBatteryOptimizationBypass()
         }
-        addAction("Docker console", "Interactive shell with DOCKER_HOST set") {
-            openTerminal("Docker console", "sh")
+        addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
+            openTerminal(getString(R.string.action_docker_console), "sh")
         }
-        addAction("Default dev workspace", "VS Code Server + Continue + Codex") {
+        addAction(getString(R.string.action_default_dev_workspace), getString(R.string.detail_default_dev_workspace)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
 
-        addSection("Inventory")
-        addWidget("Images", imageDirs().size.toString(), "Pulled rootfs trees available to browse")
-        addWidget("Containers", containerDirs().size.toString(), "Created container states and logs")
-        addWidget("Compose projects", composeFiles().size.toString(), projectRoot.absolutePath)
-        addWidget("Dockerfiles", dockerfiles().size.toString(), "Build definitions under projects")
+        addSection(getString(R.string.section_inventory))
+        addWidget(getString(R.string.widget_images), imageDirs().size.toString(), getString(R.string.detail_images_inventory))
+        addWidget(getString(R.string.widget_containers), containerDirs().size.toString(), getString(R.string.detail_containers_inventory))
+        addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
+        addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
     }
 
     private fun renderCompose() {
-        addSection("Compose")
-        addAction("New compose.yaml", "Create or edit default Compose project") {
+        addSection(getString(R.string.section_compose))
+        addAction(getString(R.string.action_new_compose), getString(R.string.detail_new_compose)) {
             openEditor(File(projectRoot, "default/compose.yaml"))
         }
-        addAction("Default dev compose", "code-server, Continue, Codex CLI") {
+        addAction(getString(R.string.action_default_dev_compose), getString(R.string.detail_default_dev_compose)) {
             openEditor(File(projectRoot, "default/compose.yaml"))
         }
-        addAction("Compose shell", "Open at ${projectRoot.absolutePath}") {
+        addAction(getString(R.string.action_compose_shell), getString(R.string.detail_open_at_fmt, projectRoot.absolutePath)) {
             projectRoot.mkdirs()
-            openTerminal("Compose", "cd ${shellQuote(projectRoot.absolutePath)} && sh")
+            openTerminal(getString(R.string.section_compose), "cd ${shellQuote(projectRoot.absolutePath)} && sh")
         }
         val files = composeFiles()
         if (files.isEmpty()) {
-            addMessage("No compose files under ${projectRoot.absolutePath}.")
+            addMessage(getString(R.string.message_no_compose_fmt, projectRoot.absolutePath))
             return
         }
         files.forEach { file ->
-            addWidget(file.name, "Compose file", file.parentFile?.absolutePath.orEmpty()) {
+            addWidget(file.name, getString(R.string.detail_compose_file), file.parentFile?.absolutePath.orEmpty()) {
                 openEditor(file)
             }
-            addAction("Up ${file.parentFile?.name ?: file.name}", "docker compose up") {
+            addAction(getString(R.string.action_up_fmt, file.parentFile?.name ?: file.name), getString(R.string.detail_compose_up)) {
                 val dir = file.parentFile ?: projectRoot
-                openTerminal("compose up", "cd ${shellQuote(dir.absolutePath)} && docker compose up")
+                openTerminal(getString(R.string.terminal_compose_up), "cd ${shellQuote(dir.absolutePath)} && docker compose up")
             }
         }
     }
 
     private fun renderDockerfiles() {
-        addSection("Dockerfile")
-        addAction("New Dockerfile", "Create or edit default build file") {
+        addSection(getString(R.string.section_dockerfile))
+        addAction(getString(R.string.action_new_dockerfile), getString(R.string.detail_new_dockerfile)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
-        addAction("Default dev image", "code-server + extensions + @openai/codex") {
+        addAction(getString(R.string.action_default_dev_image), getString(R.string.detail_default_dev_image)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
-        addAction("Build shell", "Open project directory for docker build") {
+        addAction(getString(R.string.action_build_shell), getString(R.string.detail_build_shell)) {
             projectRoot.mkdirs()
-            openTerminal("Docker build", "cd ${shellQuote(projectRoot.absolutePath)} && sh")
+            openTerminal(getString(R.string.terminal_docker_build), "cd ${shellQuote(projectRoot.absolutePath)} && sh")
         }
         val files = dockerfiles()
         if (files.isEmpty()) {
-            addMessage("No Dockerfile found under ${projectRoot.absolutePath}.")
+            addMessage(getString(R.string.message_no_dockerfile_fmt, projectRoot.absolutePath))
             return
         }
         files.forEach { file ->
-            addWidget(file.parentFile?.name ?: file.name, "Dockerfile", file.absolutePath) {
+            addWidget(file.parentFile?.name ?: file.name, getString(R.string.section_dockerfile), file.absolutePath) {
                 openEditor(file)
             }
-            addAction("Build ${file.parentFile?.name ?: file.name}", file.absolutePath) {
+            addAction(getString(R.string.action_build_fmt, file.parentFile?.name ?: file.name), file.absolutePath) {
                 val dir = file.parentFile ?: projectRoot
-                openTerminal("docker build", "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest .")
+                openTerminal(getString(R.string.terminal_docker_build), "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest .")
             }
         }
     }
 
     private fun renderImages() {
-        addSection("Images")
-        addAction("Pull image", "Open docker pull shell") {
-            openTerminal("Pull image", "docker pull ubuntu:22.04")
+        addSection(getString(R.string.section_images))
+        addAction(getString(R.string.action_pull_image), getString(R.string.detail_pull_image)) {
+            openTerminal(getString(R.string.action_pull_image), "docker pull ubuntu:22.04")
         }
-        addAction("Browse image files", "Inspect pulled rootfs trees") {
+        addAction(getString(R.string.action_browse_image_files), getString(R.string.detail_browse_image_files)) {
             startActivity(Intent(this, ImageFilesActivity::class.java))
         }
         val images = imageDirs()
         if (images.isEmpty()) {
-            addMessage("No pulled images yet.")
+            addMessage(getString(R.string.message_no_pulled_images))
             return
         }
         images.forEach { image ->
-            addWidget(image.name, "Image rootfs", summarizeRootfs(File(image, "rootfs"))) {
+            addWidget(image.name, getString(R.string.detail_image_rootfs), summarizeRootfs(File(image, "rootfs"))) {
                 startActivity(Intent(this, ImageFilesActivity::class.java))
             }
         }
     }
 
     private fun renderContainers() {
-        addSection("Containers")
-        addAction("docker ps", "Show current containers") {
-            openTerminal("docker ps", "docker ps -a")
+        addSection(getString(R.string.section_containers))
+        addAction(getString(R.string.action_docker_ps), getString(R.string.detail_docker_ps)) {
+            openTerminal(getString(R.string.terminal_docker_ps), "docker ps -a")
         }
         val containers = containerDirs()
         if (containers.isEmpty()) {
-            addMessage("No containers yet.")
+            addMessage(getString(R.string.message_no_containers))
             return
         }
         containers.forEach { dir ->
             val state = readState(dir)
             val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
-            val image = state?.optString("Image")?.ifBlank { "unknown image" } ?: "unknown image"
-            val statusText = state?.optString("Status")?.ifBlank { "unknown status" } ?: "unknown status"
+            val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
+            val statusText = state?.optString("Status")?.ifBlank { getString(R.string.unknown_status) } ?: getString(R.string.unknown_status)
             addWidget(name, statusText, "$image\n${containerLogPreview(dir)}") {
-                openTerminal("container $name", "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh")
+                openTerminal(getString(R.string.terminal_container_fmt, name), "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh")
             }
         }
     }
 
     private fun renderSessions() {
-        addSection("Sessions")
-        addAction("Shell", "Plain app shell") {
-            openTerminal("Shell", "sh")
+        addSection(getString(R.string.section_sessions))
+        addAction(getString(R.string.action_shell), getString(R.string.detail_shell)) {
+            openTerminal(getString(R.string.terminal_shell), "sh")
         }
-        addAction("Docker -it equivalent", "PTY-backed docker exec/run console") {
-            openTerminal("Docker interactive", "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
+        addAction(getString(R.string.action_docker_it), getString(R.string.detail_docker_it)) {
+            openTerminal(getString(R.string.terminal_docker_interactive), "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
         }
-        addAction("Compose session", "Run compose commands in projects directory") {
+        addAction(getString(R.string.action_compose_session), getString(R.string.detail_compose_session)) {
             projectRoot.mkdirs()
-            openTerminal("Compose session", "cd ${shellQuote(projectRoot.absolutePath)} && docker compose ps; sh")
+            openTerminal(getString(R.string.action_compose_session), "cd ${shellQuote(projectRoot.absolutePath)} && docker compose ps; sh")
         }
-        addAction("Text editor", "Edit default Dockerfile") {
+        addAction(getString(R.string.action_text_editor), getString(R.string.detail_text_editor)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
     }
@@ -283,7 +285,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
-        status.text = "pdockerd: starting..."
+        status.text = getString(R.string.status_starting)
     }
 
     private fun requestNotificationPermission() {
@@ -301,7 +303,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         val powerManager = getSystemService(PowerManager::class.java)
         if (powerManager.isIgnoringBatteryOptimizations(packageName)) {
-            status.text = "pdocker: already excluded from battery optimization"
+            status.text = getString(R.string.status_battery_ignored)
             return
         }
         startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
@@ -327,7 +329,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStatus() {
         val sock = File(pdockerHome, "pdockerd.sock")
         if (!sock.exists()) {
-            status.text = "pdockerd: socket absent"
+            status.text = getString(R.string.status_socket_absent)
             return
         }
         thread(isDaemon = true, name = "pdockerd-ping") {
@@ -341,11 +343,11 @@ class MainActivity : AppCompatActivity() {
                     )
                     ls.outputStream.flush()
                     val resp = ls.inputStream.readBytes().toString(Charsets.US_ASCII)
-                    if ("200 OK" in resp && resp.trimEnd().endsWith("OK")) "running"
-                    else "socket up, unexpected response"
+                    if ("200 OK" in resp && resp.trimEnd().endsWith("OK")) getString(R.string.status_running)
+                    else getString(R.string.status_unexpected_response)
                 }
-            }.getOrElse { "socket up, ping failed: ${it.message}" }
-            ui.post { status.text = "pdockerd: $msg" }
+            }.getOrElse { getString(R.string.status_ping_failed, it.message.orEmpty()) }
+            ui.post { status.text = getString(R.string.status_pdocker_fmt, msg) }
         }
     }
 
@@ -465,7 +467,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun summarizeRootfs(rootfs: File): String {
         val count = rootfs.list()?.size ?: 0
-        return "$count top-level entries"
+        return getString(R.string.summary_rootfs_fmt, count)
     }
 
     private fun containerLogPreview(dir: File): String {
@@ -474,10 +476,10 @@ class MainActivity : AppCompatActivity() {
             File(dir, "log"),
             File(dir, "logs.txt"),
         )
-        val log = candidates.firstOrNull { it.isFile } ?: return "No log preview"
+        val log = candidates.firstOrNull { it.isFile } ?: return getString(R.string.log_no_preview)
         return runCatching {
-            log.readLines().takeLast(3).joinToString("\n").ifBlank { "Log is empty" }
-        }.getOrDefault("Log unavailable")
+            log.readLines().takeLast(3).joinToString("\n").ifBlank { getString(R.string.log_empty) }
+        }.getOrDefault(getString(R.string.log_unavailable))
     }
 
     private fun shellQuote(s: String): String =

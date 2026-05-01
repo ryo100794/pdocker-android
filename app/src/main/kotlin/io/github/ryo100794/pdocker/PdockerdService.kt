@@ -78,7 +78,7 @@ class PdockerdService : Service() {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (nm.getNotificationChannel(channelId) == null) {
                 nm.createNotificationChannel(
-                    NotificationChannel(channelId, "pdockerd",
+                    NotificationChannel(channelId, getString(R.string.pdockerd_notification_channel),
                         NotificationManager.IMPORTANCE_LOW)
                 )
             }
@@ -97,12 +97,12 @@ class PdockerdService : Service() {
             pendingFlags,
         )
         val notif: Notification = Notification.Builder(this, channelId)
-            .setContentTitle("pdockerd")
-            .setContentText("Docker daemon (PRoot, port 2375)")
+            .setContentTitle(getString(R.string.pdockerd_notification_title))
+            .setContentText(getString(R.string.pdockerd_notification_text))
             .setSmallIcon(android.R.drawable.ic_menu_manage)
             .setContentIntent(openIntent)
             .setOngoing(true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, getString(R.string.action_stop), stopIntent)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIF_ID, notif,

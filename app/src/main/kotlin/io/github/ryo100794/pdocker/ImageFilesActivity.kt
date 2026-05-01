@@ -46,18 +46,18 @@ class ImageFilesActivity : AppCompatActivity() {
         }
 
         val back = Button(this).apply {
-            text = "Back"
+            text = getString(R.string.button_back)
             setOnClickListener { navigateBack() }
         }
         val refresh = Button(this).apply {
-            text = "Refresh"
+            text = getString(R.string.button_refresh)
             setOnClickListener { render() }
         }
         toolbar.addView(back)
         toolbar.addView(refresh)
 
         title = TextView(this).apply {
-            text = "Image files"
+            text = getString(R.string.title_image_files)
             textSize = 20f
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.END
@@ -103,7 +103,7 @@ class ImageFilesActivity : AppCompatActivity() {
     }
 
     private fun renderImages() {
-        title.text = "Image files"
+        title.text = getString(R.string.title_image_files)
         path.text = imageRoot.absolutePath
         val images = imageRoot.listFiles()
             ?.filter { File(it, "rootfs").isDirectory }
@@ -111,7 +111,7 @@ class ImageFilesActivity : AppCompatActivity() {
             .orEmpty()
 
         if (images.isEmpty()) {
-            addMessage("No pulled images yet. Pull an image first, then refresh.")
+            addMessage(getString(R.string.message_no_images_refresh))
             return
         }
 
@@ -132,7 +132,7 @@ class ImageFilesActivity : AppCompatActivity() {
         val rootfs = File(image, "rootfs").canonicalFile
         val safeDir = runCatching { dir.canonicalFile }.getOrNull()
         if (safeDir == null || !safeDir.isInside(rootfs)) {
-            addMessage("Path is outside the image rootfs.")
+            addMessage(getString(R.string.message_outside_rootfs))
             currentDir = rootfs
             return
         }
@@ -144,7 +144,7 @@ class ImageFilesActivity : AppCompatActivity() {
 
         val parent = safeDir.parentFile
         if (parent != null && parent.isInside(rootfs)) {
-            addRow("..", "Parent directory") {
+            addRow("..", getString(R.string.detail_parent_directory)) {
                 currentDir = parent
                 render()
             }
@@ -154,7 +154,7 @@ class ImageFilesActivity : AppCompatActivity() {
             compareBy<File> { !isDirectoryEntry(it) }.thenBy { it.name.lowercase() }
         ).orEmpty()
         if (entries.isEmpty()) {
-            addMessage("Empty directory")
+            addMessage(getString(R.string.message_empty_directory))
             return
         }
 
@@ -176,28 +176,28 @@ class ImageFilesActivity : AppCompatActivity() {
         body.removeAllViews()
         val safeFile = runCatching { file.canonicalFile }.getOrNull()
         if (safeFile == null || !safeFile.isInside(rootfs)) {
-            addMessage("Path is outside the image rootfs.")
+            addMessage(getString(R.string.message_outside_rootfs))
             return
         }
         title.text = file.name
         path.text = "/" + rootfs.toPath().relativize(safeFile.toPath()).toString()
             .replace(File.separatorChar, '/')
 
-        addRow("..", "Back to directory") { render() }
+        addRow("..", getString(R.string.detail_back_to_directory)) { render() }
         addMessage(describe(file))
 
         val maxPreview = 64 * 1024
         if (file.length() > maxPreview) {
-            addMessage("Preview skipped: file is larger than 64 KiB.")
+            addMessage(getString(R.string.message_preview_too_large))
             return
         }
 
         val bytes = runCatching { file.readBytes() }.getOrElse {
-            addMessage("Cannot read file: ${it.message}")
+            addMessage(getString(R.string.message_cannot_read_file, it.message.orEmpty()))
             return
         }
         if (bytes.any { it == 0.toByte() }) {
-            addMessage("Binary file preview is not shown.")
+            addMessage(getString(R.string.message_binary_preview_hidden))
             return
         }
         TextView(this).apply {
@@ -273,22 +273,22 @@ class ImageFilesActivity : AppCompatActivity() {
     private fun describe(file: File): String {
         if (Files.isSymbolicLink(file.toPath())) {
             val target = runCatching { Files.readSymbolicLink(file.toPath()).toString() }
-                .getOrDefault("unreadable")
-            return "symlink -> $target"
+                .getOrDefault(getString(R.string.detail_unreadable))
+            return getString(R.string.detail_symlink_fmt, target)
         }
         val type = when {
-            isDirectoryEntry(file) -> "directory"
-            isRegularFileEntry(file) -> "file"
-            else -> "special"
+            isDirectoryEntry(file) -> getString(R.string.detail_directory)
+            isRegularFileEntry(file) -> getString(R.string.detail_file)
+            else -> getString(R.string.detail_special)
         }
-        val size = if (isRegularFileEntry(file)) ", ${file.length()} bytes" else ""
+        val size = if (isRegularFileEntry(file)) getString(R.string.detail_size_bytes_fmt, file.length()) else ""
         val modified = DateFormat.getDateTimeInstance().format(Date(file.lastModified()))
-        return "$type$size, modified $modified"
+        return getString(R.string.detail_modified_fmt, type, size, modified)
     }
 
     private fun summarizeDir(dir: File): String {
         val count = dir.list()?.size ?: 0
-        return "rootfs, $count top-level entries"
+        return getString(R.string.detail_rootfs_entries_fmt, count)
     }
 
     private fun File.isInside(root: File): Boolean {

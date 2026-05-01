@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">pdocker</string>
+    <string name="pdockerd_notification_channel">pdockerd</string>
+    <string name="pdockerd_notification_title">pdockerd</string>
+    <string name="pdockerd_notification_text">Docker デーモン (PRoot, port 2375)</string>
+    <string name="action_stop">停止</string>
+
+    <string name="tab_overview">概要</string>
+    <string name="tab_compose">Compose</string>
+    <string name="tab_dockerfile">Dockerfile</string>
+    <string name="tab_images">イメージ</string>
+    <string name="tab_containers">コンテナ</string>
+    <string name="tab_sessions">セッション</string>
+
+    <string name="status_unknown">pdockerd: 不明</string>
+    <string name="status_stopped">pdockerd: 停止済み</string>
+    <string name="status_starting">pdockerd: 起動中...</string>
+    <string name="status_battery_ignored">pdocker: すでに電池最適化の対象外です</string>
+    <string name="status_socket_absent">pdockerd: ソケットなし</string>
+    <string name="status_running">実行中</string>
+    <string name="status_unexpected_response">ソケットは有効、応答が想定外です</string>
+    <string name="status_ping_failed">ソケットは有効、ping 失敗: %1$s</string>
+    <string name="status_pdocker_fmt">pdockerd: %1$s</string>
+
+    <string name="section_runtime">ランタイム</string>
+    <string name="action_start_pdockerd">pdockerd を起動</string>
+    <string name="detail_start_pdockerd">前面デーモンを起動</string>
+    <string name="action_stop_pdockerd">pdockerd を停止</string>
+    <string name="detail_stop_pdockerd">前面サービスを停止</string>
+    <string name="action_keep_resident">常駐を維持</string>
+    <string name="detail_keep_resident">電池最適化除外を開く</string>
+    <string name="action_docker_console">Docker コンソール</string>
+    <string name="detail_docker_console">DOCKER_HOST 設定済みの対話シェル</string>
+    <string name="action_default_dev_workspace">標準開発ワークスペース</string>
+    <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
+    <string name="section_inventory">インベントリ</string>
+    <string name="widget_images">イメージ</string>
+    <string name="detail_images_inventory">参照できる pull 済み rootfs ツリー</string>
+    <string name="widget_containers">コンテナ</string>
+    <string name="detail_containers_inventory">作成済みコンテナの状態とログ</string>
+    <string name="widget_compose_projects">Compose プロジェクト</string>
+    <string name="widget_dockerfiles">Dockerfile</string>
+    <string name="detail_dockerfiles_inventory">projects 配下のビルド定義</string>
+
+    <string name="section_compose">Compose</string>
+    <string name="action_new_compose">新規 compose.yaml</string>
+    <string name="detail_new_compose">標準 Compose プロジェクトを作成または編集</string>
+    <string name="action_default_dev_compose">標準開発 Compose</string>
+    <string name="detail_default_dev_compose">code-server, Continue, Codex CLI</string>
+    <string name="action_compose_shell">Compose シェル</string>
+    <string name="detail_open_at_fmt">%1$s で開く</string>
+    <string name="message_no_compose_fmt">%1$s に Compose ファイルがありません。</string>
+    <string name="detail_compose_file">Compose ファイル</string>
+    <string name="action_up_fmt">%1$s を Up</string>
+    <string name="detail_compose_up">docker compose up</string>
+
+    <string name="section_dockerfile">Dockerfile</string>
+    <string name="action_new_dockerfile">新規 Dockerfile</string>
+    <string name="detail_new_dockerfile">標準ビルドファイルを作成または編集</string>
+    <string name="action_default_dev_image">標準開発イメージ</string>
+    <string name="detail_default_dev_image">code-server + extensions + @openai/codex</string>
+    <string name="action_build_shell">ビルドシェル</string>
+    <string name="detail_build_shell">docker build 用のプロジェクトディレクトリを開く</string>
+    <string name="message_no_dockerfile_fmt">%1$s に Dockerfile がありません。</string>
+    <string name="action_build_fmt">%1$s をビルド</string>
+
+    <string name="section_images">イメージ</string>
+    <string name="action_pull_image">イメージを pull</string>
+    <string name="detail_pull_image">docker pull 用シェルを開く</string>
+    <string name="action_browse_image_files">イメージ内ファイルを参照</string>
+    <string name="detail_browse_image_files">pull 済み rootfs ツリーを確認</string>
+    <string name="message_no_pulled_images">pull 済みイメージはまだありません。</string>
+    <string name="detail_image_rootfs">イメージ rootfs</string>
+    <string name="summary_rootfs_fmt">トップレベル %1$d 件</string>
+
+    <string name="section_containers">コンテナ</string>
+    <string name="action_docker_ps">docker ps</string>
+    <string name="detail_docker_ps">現在のコンテナを表示</string>
+    <string name="message_no_containers">コンテナはまだありません。</string>
+    <string name="unknown_image">不明なイメージ</string>
+    <string name="unknown_status">不明な状態</string>
+    <string name="log_no_preview">ログプレビューなし</string>
+    <string name="log_empty">ログは空です</string>
+    <string name="log_unavailable">ログを取得できません</string>
+
+    <string name="section_sessions">セッション</string>
+    <string name="action_shell">シェル</string>
+    <string name="detail_shell">通常のアプリシェル</string>
+    <string name="action_docker_it">Docker -it 相当</string>
+    <string name="detail_docker_it">PTY ベースの docker exec/run コンソール</string>
+    <string name="action_compose_session">Compose セッション</string>
+    <string name="detail_compose_session">projects ディレクトリで compose コマンドを実行</string>
+    <string name="action_text_editor">テキストエディタ</string>
+    <string name="detail_text_editor">標準 Dockerfile を編集</string>
+
+    <string name="terminal_title">ターミナル</string>
+    <string name="terminal_shell">シェル</string>
+    <string name="terminal_shell_numbered">シェル %1$d</string>
+    <string name="terminal_compose_up">compose up</string>
+    <string name="terminal_docker_build">docker build</string>
+    <string name="terminal_docker_ps">docker ps</string>
+    <string name="terminal_container_fmt">コンテナ %1$s</string>
+    <string name="terminal_docker_interactive">Docker 対話セッション</string>
+
+    <string name="button_back">戻る</string>
+    <string name="button_refresh">更新</string>
+    <string name="title_image_files">イメージ内ファイル</string>
+    <string name="message_no_images_refresh">pull 済みイメージはまだありません。先にイメージを pull してから更新してください。</string>
+    <string name="message_outside_rootfs">パスがイメージ rootfs の外にあります。</string>
+    <string name="detail_parent_directory">親ディレクトリ</string>
+    <string name="message_empty_directory">空のディレクトリ</string>
+    <string name="detail_back_to_directory">ディレクトリに戻る</string>
+    <string name="message_preview_too_large">ファイルが 64 KiB を超えるためプレビューを省略しました。</string>
+    <string name="message_cannot_read_file">ファイルを読めません: %1$s</string>
+    <string name="message_binary_preview_hidden">バイナリファイルのプレビューは表示しません。</string>
+    <string name="detail_unreadable">読み取り不可</string>
+    <string name="detail_symlink_fmt">シンボリックリンク -&gt; %1$s</string>
+    <string name="detail_directory">ディレクトリ</string>
+    <string name="detail_file">ファイル</string>
+    <string name="detail_special">特殊ファイル</string>
+    <string name="detail_size_bytes_fmt">, %1$d bytes</string>
+    <string name="detail_modified_fmt">%1$s%2$s, 更新 %3$s</string>
+    <string name="detail_rootfs_entries_fmt">rootfs, トップレベル %1$d 件</string>
+
+    <string name="button_save">保存</string>
+    <string name="button_reload">再読み込み</string>
+    <string name="button_close">閉じる</string>
+    <string name="editor_file_too_large_fmt">安全に編集するにはファイルが大きすぎます: %1$d bytes</string>
+    <string name="editor_loaded_fmt">%1$d bytes 読み込みました</string>
+    <string name="editor_saved_fmt">%1$d bytes 保存しました</string>
+    <string name="editor_path_outside_fmt">エディタのパスは %1$s 配下に限定されています</string>
+</resources>

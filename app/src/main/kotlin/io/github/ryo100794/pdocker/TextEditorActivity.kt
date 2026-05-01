@@ -30,17 +30,17 @@ class TextEditorActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         toolbar.addView(Button(this).apply {
-            text = "Save"
+            text = getString(R.string.button_save)
             isAllCaps = false
             setOnClickListener { save() }
         })
         toolbar.addView(Button(this).apply {
-            text = "Reload"
+            text = getString(R.string.button_reload)
             isAllCaps = false
             setOnClickListener { load() }
         })
         toolbar.addView(Button(this).apply {
-            text = "Close"
+            text = getString(R.string.button_close)
             isAllCaps = false
             setOnClickListener { finish() }
         })
@@ -92,18 +92,18 @@ class TextEditorActivity : AppCompatActivity() {
         val size = target.length()
         if (size > MAX_EDIT_BYTES) {
             editor.setText("")
-            message.text = "File is too large to edit safely: $size bytes"
+            message.text = getString(R.string.editor_file_too_large_fmt, size)
             return
         }
         editor.setText(target.readText())
         editor.setSelection(editor.text.length)
-        message.text = "Loaded ${target.length()} bytes"
+        message.text = getString(R.string.editor_loaded_fmt, target.length())
     }
 
     private fun save() {
         target.parentFile?.mkdirs()
         target.writeText(editor.text.toString())
-        message.text = "Saved ${target.length()} bytes"
+        message.text = getString(R.string.editor_saved_fmt, target.length())
     }
 
     private fun resolveProjectFile(requested: String): File {
@@ -115,7 +115,7 @@ class TextEditorActivity : AppCompatActivity() {
         }
         val canonical = candidate.canonicalFile
         require(canonical.toPath().startsWith(projects.toPath())) {
-            "editor path must stay under ${projects.absolutePath}"
+            getString(R.string.editor_path_outside_fmt, projects.absolutePath)
         }
         return canonical
     }

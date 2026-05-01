@@ -169,6 +169,7 @@ pdocker-android/
 │   ├── cpp/
 │   │   ├── pty.c                     — forkpty + TIOCSWINSZ + fd table
 │   │   └── CMakeLists.txt            — unused (we build via build-native-termux.sh)
+│   ├── res/values*/strings.xml       — English / Japanese UI localization
 │   ├── jniLibs/arm64-v8a/             — auto-generated, .gitignored
 │   │   ├── libcow.so                 — host-glibc CoW shim (loaded inside container)
 │   │   ├── libcrane.so               — crane 0.20.3 (static Go)

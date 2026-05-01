@@ -49,9 +49,9 @@ class TerminalActivity : AppCompatActivity() {
         ))
         setContentView(root)
 
-        val initialTitle = intent.getStringExtra(EXTRA_TITLE) ?: "Shell"
+        val initialTitle = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.terminal_shell)
         val initialCommand = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
-        title = "Terminal"
+        title = getString(R.string.terminal_title)
         addSession(initialTitle, initialCommand)
 
         onBackPressedDispatcher.addCallback(this) {
@@ -62,7 +62,7 @@ class TerminalActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val label = intent.getStringExtra(EXTRA_TITLE) ?: "Shell ${sessions.size + 1}"
+        val label = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.terminal_shell_numbered, sessions.size + 1)
         val command = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
         if (sessions.none { it.title == label && it.command == command }) {
             addSession(label, command)
@@ -119,7 +119,7 @@ class TerminalActivity : AppCompatActivity() {
         tabRow.addView(Button(this).apply {
             text = "+"
             isAllCaps = false
-            setOnClickListener { addSession("Shell ${sessions.size + 1}", "sh") }
+            setOnClickListener { addSession(getString(R.string.terminal_shell_numbered, sessions.size + 1), "sh") }
         })
     }
 
