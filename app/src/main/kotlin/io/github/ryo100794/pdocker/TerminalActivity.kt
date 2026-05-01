@@ -1,5 +1,6 @@
 package io.github.ryo100794.pdocker
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebView
@@ -8,6 +9,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.addCallback
 
 /**
  * Multi-session WebView host for xterm.js.
@@ -51,6 +53,22 @@ class TerminalActivity : AppCompatActivity() {
         val initialCommand = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
         title = "Terminal"
         addSession(initialTitle, initialCommand)
+
+        onBackPressedDispatcher.addCallback(this) {
+            showWorkspace()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val label = intent.getStringExtra(EXTRA_TITLE) ?: "Shell ${sessions.size + 1}"
+        val command = intent.getStringExtra(EXTRA_COMMAND) ?: "sh"
+        if (sessions.none { it.title == label && it.command == command }) {
+            addSession(label, command)
+        } else {
+            switchTo(sessions.indexOfFirst { it.title == label && it.command == command })
+        }
     }
 
     override fun onDestroy() {
@@ -102,6 +120,13 @@ class TerminalActivity : AppCompatActivity() {
             text = "+"
             isAllCaps = false
             setOnClickListener { addSession("Shell ${sessions.size + 1}", "sh") }
+        })
+    }
+
+    private fun showWorkspace() {
+        startActivity(Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         })
     }
 

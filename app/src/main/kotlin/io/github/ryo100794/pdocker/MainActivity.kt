@@ -273,6 +273,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun openTerminal(title: String, command: String) {
         startActivity(Intent(this, TerminalActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(TerminalActivity.EXTRA_TITLE, title)
             putExtra(TerminalActivity.EXTRA_COMMAND, command)
         })

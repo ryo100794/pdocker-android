@@ -72,7 +72,8 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
   between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
   equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is
-  complete.
+  complete. Back navigation returns to the workspace without closing the
+  terminal Activity, so live PTY tabs remain available when reopened.
 - Main UI → Compose and Dockerfile tabs can create/edit project files through
   the in-app text editor under `filesDir/pdocker/projects`.
 - First launch seeds `filesDir/pdocker/projects/default` from
