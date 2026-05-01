@@ -19,11 +19,16 @@ git submodule update --init --recursive
 # on aarch64 hosts). Output goes directly to app/src/main/jniLibs/arm64-v8a/.
 bash scripts/build-native-termux.sh
 
+# Build the self-contained Android proot binary, including pdocker's
+# minimal --cow-bind extension patch.
+bash scripts/build-proot.sh
+
 # Stage submodule assets (crane, proot, pdockerd python tree).
 bash scripts/copy-native.sh
 
-# Gradle build.
-gradle :app:assembleDebug
+# Gradle build. Use the checked-in wrapper so the included :app project and
+# Android Gradle Plugin versions are resolved consistently.
+./gradlew :app:assembleDebug --no-daemon
 
 APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 if [[ -f "$APK" ]]; then

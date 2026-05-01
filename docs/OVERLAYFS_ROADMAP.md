@@ -1,14 +1,15 @@
 # Real overlayfs roadmap
 
 Status of the "replace LD_PRELOAD libcow with kernel-equivalent
-overlayfs semantics" effort. As of v0.5.2 + Phase 1 complete (commit
-`1b0bb98`).
+overlayfs semantics" effort. As of v0.5.2 + Phase 2 minimal proot
+extension.
 
 **Phase status:**
 - Phase 1 (own proot build) — **DONE**
 - Phase 2a (pdockerd cow_bind client gate) — **DONE in docker-proot-setup**
-- Phase 2b (proot cow_bind extension) — design fixed, implementation next
-- Phase 3 (retire libcow) — pending Phase 2 verification
+- Phase 2b (proot cow_bind extension) — **MINIMAL DONE**
+- Phase 2c (whiteouts + rename/metadata syscall coverage) — next
+- Phase 3 (retire libcow) — pending full Phase 2 verification
 
 ## Why the current approach is incomplete
 
@@ -95,13 +96,12 @@ Key choices baked in:
 - [vendor/lib/proot-loader](../vendor/lib/proot-loader) — 2032 byte static aarch64 stub
 - `NEEDED libtalloc.so + libdl.so + libc.so`, no RUNPATH leak
 
-## Phase 2: cow_bind extension (next)
+## Phase 2: cow_bind extension (minimal landed)
 
-Now that proot is ours, add a new extension under
-`src/extension/cow_bind/cow_bind.c`, modeled on
-`extension/link2symlink/link2symlink.c` (which intercepts
-`link()`/`symlink()` and rewrites them at the syscall layer — exactly
-the same shape we need).
+The first proot-side `cow_bind` implementation now lives as a patch at
+[scripts/proot-patches/proot-cow-bind.patch](../scripts/proot-patches/proot-cow-bind.patch).
+[scripts/build-proot.sh](../scripts/build-proot.sh) applies it to upstream
+proot before building `vendor/lib/proot`.
 
 ### CLI surface
 
@@ -113,9 +113,9 @@ proot --cow-bind upper:lower:guest_path ...
 - `upper` (host abs path): writable layer, e.g. `containers/<id>/upper`
 - `guest_path` (guest abs path): mount point inside the tracee view
 
-INITIALIZATION parses the triple, calls `bind_path(lower, guest_path)`
+INITIALIZATION parses the triple, calls `new_binding(lower, guest_path)`
 to expose the read-only layer at the guest mount point, and stashes
-`(upper, lower)` in `extension->config` for the syscall hooks.
+`(upper, lower, guest_path)` in `extension->config` for the syscall hooks.
 
 ### Extension API plumbing (proot codebase touch points)
 
@@ -126,11 +126,21 @@ to expose the read-only layer at the guest mount point, and stashes
 - `src/cli/proot.h` — add a `--cow-bind` option entry
 - `src/GNUmakefile` — add `extension/cow_bind/cow_bind.o` to `OBJECTS`
 
-### Syscalls hooked (FILTER_SYSEXIT mask in INITIALIZATION)
+### Syscalls hooked in the minimal patch
 
 Write-class (need copy-up + path rewrite):
 - `PR_open`, `PR_openat` (when flags include `O_WRONLY | O_RDWR | O_TRUNC | O_CREAT`)
 - `PR_creat`
+
+Read-class:
+- `TRANSLATED_PATH` redirects a lower path to the upper path when an upper copy already exists
+
+This is enough to prove the critical static-binary fix: writes no longer
+depend on `LD_PRELOAD`.
+
+### Remaining syscall coverage
+
+Write-class still needed before libcow can be retired:
 - `PR_truncate`, `PR_truncate64` (`PR_ftruncate*` use fd, no copy-up — covered by the open-time redirect)
 - `PR_chmod`, `PR_fchmodat`
 - `PR_chown`, `PR_lchown`, `PR_fchownat`, `PR_chown32`, `PR_lchown32`
@@ -139,9 +149,6 @@ Write-class (need copy-up + path rewrite):
 - `PR_unlink`, `PR_unlinkat` (whiteout in upper)
 - `PR_rename`, `PR_renameat`, `PR_renameat2` (copy-up source if in lower, target always in upper)
 - `PR_mkdir`, `PR_mkdirat`, `PR_symlink`, `PR_symlinkat`, `PR_link`, `PR_linkat` (always create in upper)
-
-Read-class (need read redirect from upper if upper has a copy):
-- `PR_open`/`PR_openat` (read-only flags) — TRANSLATED_PATH callback
 
 ### Per-syscall logic
 
@@ -189,7 +196,9 @@ file marker because `mknod(S_IFCHR)` fails in app sandbox.
 - Per-container disk = `containers/<id>/upper` only; image rootfs
   shared read-only across containers
 
-Remaining Phase 2 work is the proot extension itself (`src/extension/cow_bind/`).
+The minimal extension is now present; remaining Phase 2 work is expanding it
+from write-open copy-up to full overlayfs-like whiteout/rename/metadata
+semantics.
 
 ## Phase 3 (after Phase 2 lands): retire libcow
 
@@ -205,9 +214,10 @@ Remaining Phase 2 work is the proot extension itself (`src/extension/cow_bind/`)
 ## Files of interest right now
 
 - `/tmp/proot-src/` — upstream proot @ `5f780cb` (cloned in this session)
-- `/tmp/android-clang.sh` — multi-word CC wrapper for make
-- `/tmp/proot-include/talloc.h` — copied from Termux to avoid include leakage
-- `/root/tl/pdocker-android/vendor/lib/{libtalloc.so.2, proot, proot-loader}` — the Termux-derived blobs we currently bundle, will be replaced once Phase 1 lands
+- `/tmp/proot-src/.android-clang.sh` — multi-word CC wrapper for make
+- `/tmp/proot-src/.proot-include/talloc.h` — copied from Termux to avoid include leakage
+- `/root/tl/pdocker-android/scripts/proot-patches/proot-cow-bind.patch` — reproducible proot patch
+- `/root/tl/pdocker-android/vendor/lib/{libtalloc.so.2, proot, proot-loader}` — current Android-native runtime payload
 - `/root/tl/docker-proot-setup/src/overlay/libcow.c` — what we're aiming to retire after Phase 3
 
 ## Why this is worth the effort

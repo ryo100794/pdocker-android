@@ -28,13 +28,13 @@ cp "$SUB/bin/pdockerd" "$APP/assets/pdockerd/pdockerd"
 # nativeLibraryDir — the only location an app is allowed to execve
 # from on API 29+ (files in /data/data/<pkg>/files/ have exec_no_trans
 # SELinux denial). The names must start with "lib" and end with ".so"
-# or AGP drops them during packaging. crane is static Go + proot is a
-# Termux-built aarch64 ELF, so both run on Android without bionic
-# repackaging.
+# or AGP drops them during packaging. crane is static Go; proot is the
+# self-built bionic binary staged by scripts/build-proot.sh so it can carry
+# pdocker-specific extensions such as --cow-bind.
 JNI_DIR="$APP/jniLibs/arm64-v8a"
 mkdir -p "$JNI_DIR"
 cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
-cp "$SUB/docker-bin/proot" "$JNI_DIR/libproot.so"
+cp "$ROOT/vendor/lib/proot" "$JNI_DIR/libproot.so"
 cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
 # proot bootstraps its tracee via a separate loader binary that
 # Termux ships at /data/data/com.termux/files/usr/libexec/proot/loader.

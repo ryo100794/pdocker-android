@@ -15,6 +15,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKDIR="${WORKDIR:-/tmp/proot-src}"
 PROOT_REPO="${PROOT_REPO:-https://github.com/proot-me/proot}"
 PROOT_REF="${PROOT_REF:-master}"
+PROOT_COW_BIND_PATCH="$ROOT/scripts/proot-patches/proot-cow-bind.patch"
 
 CLANG="${TERMUX_CLANG:-/data/data/com.termux/files/usr/bin/clang-21}"
 NDK="${ANDROID_NDK_HOME:-/root/android-ndk-r26d}"
@@ -29,6 +30,11 @@ TERMUX_USR="${TERMUX_USR:-/data/data/com.termux/files/usr}"
 mkdir -p "$WORKDIR"
 if [[ ! -d "$WORKDIR/.git" ]]; then
     git clone --depth=1 --branch "$PROOT_REF" "$PROOT_REPO" "$WORKDIR"
+fi
+
+if [[ -f "$PROOT_COW_BIND_PATCH" ]] \
+   && ! grep -q 'cow_bind_callback' "$WORKDIR/src/extension/extension.h"; then
+    git -C "$WORKDIR" apply "$PROOT_COW_BIND_PATCH"
 fi
 
 # Isolate just talloc.h. The full $TERMUX_USR/include tree leaks Termux
