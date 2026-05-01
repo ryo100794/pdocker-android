@@ -74,6 +74,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   complete.
 - Main UI → Compose and Dockerfile tabs can create/edit project files through
   the in-app text editor under `filesDir/pdocker/projects`.
+- First launch seeds `filesDir/pdocker/projects/default` from
+  `assets/default-project/`, providing a Dockerfile/Compose workspace with
+  code-server, Continue, OpenAI Codex CLI, and common dev tools.
 - Main UI → "Browse image files" opens a read-only browser for pulled image
   rootfs trees under `filesDir/pdocker/images/*/rootfs`, so users can inspect
   image contents without starting a container or invoking the docker CLI

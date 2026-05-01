@@ -1,0 +1,13 @@
+{
+  "telemetry.telemetryLevel": "off",
+  "workbench.startupEditor": "none",
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "terminal.integrated.profiles.linux": {
+    "bash": {
+      "path": "/bin/bash"
+    }
+  },
+  "files.autoSave": "afterDelay",
+  "editor.formatOnSave": true,
+  "continue.telemetryEnabled": false
+}

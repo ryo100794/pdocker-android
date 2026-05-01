@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        seedDefaultProject()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -134,7 +135,7 @@ class MainActivity : AppCompatActivity() {
         addAction("Docker console", "Interactive shell with DOCKER_HOST set") {
             openTerminal("Docker console", "sh")
         }
-        addAction("Project editor", "Edit Compose and Dockerfile text") {
+        addAction("Default dev workspace", "VS Code Server + Continue + Codex") {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
 
@@ -148,6 +149,9 @@ class MainActivity : AppCompatActivity() {
     private fun renderCompose() {
         addSection("Compose")
         addAction("New compose.yaml", "Create or edit default Compose project") {
+            openEditor(File(projectRoot, "default/compose.yaml"))
+        }
+        addAction("Default dev compose", "code-server, Continue, Codex CLI") {
             openEditor(File(projectRoot, "default/compose.yaml"))
         }
         addAction("Compose shell", "Open at ${projectRoot.absolutePath}") {
@@ -173,6 +177,9 @@ class MainActivity : AppCompatActivity() {
     private fun renderDockerfiles() {
         addSection("Dockerfile")
         addAction("New Dockerfile", "Create or edit default build file") {
+            openEditor(File(projectRoot, "default/Dockerfile"))
+        }
+        addAction("Default dev image", "code-server + extensions + @openai/codex") {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
         addAction("Build shell", "Open project directory for docker build") {
@@ -435,4 +442,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun shellQuote(s: String): String =
         "'" + s.replace("'", "'\"'\"'") + "'"
+
+    private fun seedDefaultProject() {
+        val stamp = File(projectRoot, "default/.pdocker-template-version")
+        if (stamp.exists()) return
+        copyAssetTree("default-project", File(projectRoot, "default"))
+        stamp.parentFile?.mkdirs()
+        stamp.writeText("1\n")
+    }
+
+    private fun copyAssetTree(assetPath: String, dest: File) {
+        val children = assets.list(assetPath).orEmpty()
+        if (children.isEmpty()) {
+            if (!dest.exists()) {
+                dest.parentFile?.mkdirs()
+                assets.open(assetPath).use { input ->
+                    dest.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+            return
+        }
+        dest.mkdirs()
+        children.forEach { child ->
+            copyAssetTree("$assetPath/$child", File(dest, child))
+        }
+    }
 }

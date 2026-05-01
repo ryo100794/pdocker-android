@@ -1,0 +1,13 @@
+name: pdocker
+version: 1.0.0
+schema: v1
+models:
+  - name: OpenAI
+    provider: openai
+    model: gpt-5.4
+    apiKey: ${OPENAI_API_KEY}
+context:
+  - provider: code
+  - provider: docs
+  - provider: diff
+  - provider: terminal

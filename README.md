@@ -18,6 +18,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   and switch between them with tabs.
 - **Editor**: in-app text editor for Compose files and Dockerfiles under
   `filesDir/pdocker/projects`.
+- **Default dev workspace**: first launch seeds a Dockerfile/Compose project
+  for code-server, Continue, OpenAI Codex CLI, and common development tools.
 - **Image files**: read-only in-app browser for pulled image rootfs trees
   under `filesDir/pdocker/images/*/rootfs`, without invoking the docker CLI.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
@@ -32,6 +34,7 @@ Plan document: [`docker-proot-setup/APK_PLAN.md`](docker-proot-setup/APK_PLAN.md
 Compatibility and compliance records:
 
 - [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)
+- [`docs/DEFAULT_DEV_WORKSPACE.md`](docs/DEFAULT_DEV_WORKSPACE.md)
 - [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
 - `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
 
