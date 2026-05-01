@@ -69,6 +69,10 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - Main UI → tabbed workspace for Overview, Compose, Dockerfile, Images,
   Containers, and Sessions. Tabs show widget-style state, counts, paths, and
   log previews in the native UI instead of immediately dropping into a console.
+- Main UI action wiring → Docker-backed actions start pdockerd before opening
+  the PTY tool tab and append an interactive shell after one-shot commands, so
+  `docker ps`, `docker pull`, `docker build`, and `compose up` results remain
+  visible and usable instead of ending on a dead terminal.
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
   between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
   equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is
@@ -81,7 +85,11 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   code-server, Continue, OpenAI Codex CLI, and common dev tools.
 - Main UI → "Browse image files" opens a read-only browser for pulled image
   rootfs trees under `filesDir/pdocker/images/*/rootfs`, so users can inspect
-  image contents without starting a container or invoking the docker CLI
+  image contents without starting a container or invoking the docker CLI.
+  Selecting an image card deep-links directly into that image's rootfs.
+- Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
+  the expected native menu/action wiring for persistent Docker terminals,
+  image deep-links, editor tab identity, terminal key palette, and editor tools.
 
 ### 4. Android-specific workarounds (how we got here)
 

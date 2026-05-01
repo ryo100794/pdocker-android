@@ -31,6 +31,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Widgets first**: image/container/project tabs show state, counts, paths,
   and log previews in-app; terminal actions are explicit tools, not the main
   display surface.
+- **Persistent command actions**: UI actions such as `docker ps`, `docker pull`,
+  `docker build`, and `docker compose up` start pdockerd, run in PTY-backed
+  lower tabs, and leave an interactive shell open when the command exits.
 - **Network visibility**: container cards show the synthetic container IP,
   exposed/published ports, and planned port-hook rewrite count from pdockerd.
 - **Terminal tabs**: one terminal screen can keep multiple PTY sessions alive
@@ -62,6 +65,7 @@ Compatibility and compliance records:
 - [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
 - `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
 - `python3 scripts/verify-project-library.py`
+- `python3 scripts/verify-ui-actions.py`
 
 ## Build (from Termux+PRoot Ubuntu aarch64)
 

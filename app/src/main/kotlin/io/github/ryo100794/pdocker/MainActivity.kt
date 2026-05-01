@@ -42,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         val kind: ToolKind,
         val view: View,
         val bridge: Bridge? = null,
+        val key: String = title,
     )
 
     private data class ProjectTemplate(
@@ -268,6 +269,7 @@ class MainActivity : AppCompatActivity() {
             requestBatteryOptimizationBypass()
         }
         addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
+            startDaemon()
             openTerminal(getString(R.string.action_docker_console), "sh")
         }
         addAction(getString(R.string.action_default_dev_workspace), getString(R.string.detail_default_dev_workspace)) {
@@ -332,8 +334,8 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_compose_up_template_fmt, template.name), getString(R.string.detail_compose_up)) {
                 installTemplate(template)
-                openTerminal(
-                    getString(R.string.terminal_compose_up),
+                openDockerTerminal(
+                    getString(R.string.terminal_compose_up_fmt, template.projectDir),
                     "cd ${shellQuote(target.absolutePath)} && docker compose up",
                 )
             }
@@ -363,7 +365,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_up_fmt, file.parentFile?.name ?: file.name), getString(R.string.detail_compose_up)) {
                 val dir = file.parentFile ?: projectRoot
-                openTerminal(getString(R.string.terminal_compose_up), "cd ${shellQuote(dir.absolutePath)} && docker compose up")
+                openDockerTerminal(getString(R.string.terminal_compose_up_fmt, dir.name), "cd ${shellQuote(dir.absolutePath)} && docker compose up")
             }
         }
     }
@@ -391,7 +393,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_build_fmt, file.parentFile?.name ?: file.name), file.absolutePath) {
                 val dir = file.parentFile ?: projectRoot
-                openTerminal(getString(R.string.terminal_docker_build), "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest .")
+                openDockerTerminal(getString(R.string.terminal_docker_build_fmt, dir.name), "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest .")
             }
         }
     }
@@ -399,10 +401,10 @@ class MainActivity : AppCompatActivity() {
     private fun renderImages() {
         addSection(getString(R.string.section_images))
         addAction(getString(R.string.action_pull_image), getString(R.string.detail_pull_image)) {
-            openTerminal(getString(R.string.action_pull_image), "docker pull ubuntu:22.04")
+            openDockerTerminal(getString(R.string.action_pull_image), "docker pull ubuntu:22.04")
         }
         addAction(getString(R.string.action_browse_image_files), getString(R.string.detail_browse_image_files)) {
-            startActivity(Intent(this, ImageFilesActivity::class.java))
+            openImageFiles()
         }
         val images = imageDirs()
         if (images.isEmpty()) {
@@ -411,7 +413,7 @@ class MainActivity : AppCompatActivity() {
         }
         images.forEach { image ->
             addWidget(image.name, getString(R.string.detail_image_rootfs), summarizeRootfs(File(image, "rootfs"))) {
-                startActivity(Intent(this, ImageFilesActivity::class.java))
+                openImageFiles(image)
             }
         }
     }
@@ -419,7 +421,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderContainers() {
         addSection(getString(R.string.section_containers))
         addAction(getString(R.string.action_docker_ps), getString(R.string.detail_docker_ps)) {
-            openTerminal(getString(R.string.terminal_docker_ps), "docker ps -a")
+            openDockerTerminal(getString(R.string.terminal_docker_ps), "docker ps -a")
         }
         val containers = containerDirs()
         if (containers.isEmpty()) {
@@ -432,7 +434,7 @@ class MainActivity : AppCompatActivity() {
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
             val statusText = state?.optString("Status")?.ifBlank { getString(R.string.unknown_status) } ?: getString(R.string.unknown_status)
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
-                openTerminal(
+                openDockerTerminal(
                     getString(R.string.terminal_container_fmt, name),
                     "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh",
                     name,
@@ -447,11 +449,11 @@ class MainActivity : AppCompatActivity() {
             openTerminal(getString(R.string.terminal_shell), "sh")
         }
         addAction(getString(R.string.action_docker_it), getString(R.string.detail_docker_it)) {
-            openTerminal(getString(R.string.terminal_docker_interactive), "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
+            openDockerTerminal(getString(R.string.terminal_docker_interactive), "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
         }
         addAction(getString(R.string.action_compose_session), getString(R.string.detail_compose_session)) {
             projectRoot.mkdirs()
-            openTerminal(getString(R.string.action_compose_session), "cd ${shellQuote(projectRoot.absolutePath)} && docker compose ps; sh")
+            openDockerTerminal(getString(R.string.action_compose_session), "cd ${shellQuote(projectRoot.absolutePath)} && docker compose ps")
         }
         addAction(getString(R.string.action_text_editor), getString(R.string.detail_text_editor)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
@@ -500,8 +502,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openTerminal(title: String, command: String, group: String = workspaceGroup()) {
+        val key = "$title\n$command"
         val existing = toolTabs.indexOfFirst {
-            it.kind == ToolKind.Terminal && it.group == group && it.title == title
+            it.kind == ToolKind.Terminal && it.group == group && it.key == key
         }
         if (existing >= 0) {
             switchTool(existing)
@@ -509,21 +512,27 @@ class MainActivity : AppCompatActivity() {
         }
         val view = terminalView(command)
         val bridge = view.getTag(R.id.pdocker_bridge_tag) as Bridge
-        toolTabs += ToolTab(group, title, ToolKind.Terminal, view, bridge)
+        toolTabs += ToolTab(group, title, ToolKind.Terminal, view, bridge, key)
         switchTool(toolTabs.lastIndex)
+    }
+
+    private fun openDockerTerminal(title: String, command: String, group: String = workspaceGroup()) {
+        startDaemon()
+        openTerminal(title, stayAfterCommand(command), group)
     }
 
     private fun openEditor(file: File, group: String = workspaceGroup()) {
         val target = resolveProjectFile(file)
-        val title = target.name
+        val title = editorTitle(target)
+        val key = target.absolutePath
         val existing = toolTabs.indexOfFirst {
-            it.kind == ToolKind.Editor && it.group == group && it.title == title
+            it.kind == ToolKind.Editor && it.group == group && it.key == key
         }
         if (existing >= 0) {
             switchTool(existing)
             return
         }
-        toolTabs += ToolTab(group, title, ToolKind.Editor, editorView(target))
+        toolTabs += ToolTab(group, title, ToolKind.Editor, editorView(target), key = key)
         switchTool(toolTabs.lastIndex)
     }
 
@@ -544,8 +553,14 @@ class MainActivity : AppCompatActivity() {
             ))
         }
         val bridge = findBridge(view)
-        toolTabs += ToolTab(group, title, ToolKind.Split, view, bridge)
+        toolTabs += ToolTab(group, title, ToolKind.Split, view, bridge, "$title\n$command\n${target.absolutePath}")
         switchTool(toolTabs.lastIndex)
+    }
+
+    private fun openImageFiles(image: File? = null) {
+        startActivity(Intent(this, ImageFilesActivity::class.java).apply {
+            image?.let { putExtra(ImageFilesActivity.EXTRA_IMAGE_NAME, it.name) }
+        })
     }
 
     private fun terminalView(command: String): View {
@@ -666,6 +681,14 @@ class MainActivity : AppCompatActivity() {
                 "FROM ubuntu:22.04\nCMD [\"/bin/bash\", \"-lc\", \"echo hello from Dockerfile\"]\n"
             else -> ""
         }
+
+    private fun editorTitle(file: File): String {
+        val parent = file.parentFile?.name.orEmpty()
+        return if (parent.isBlank() || parent == "default") file.name else "$parent/${file.name}"
+    }
+
+    private fun stayAfterCommand(command: String): String =
+        "$command; status=\$?; printf '\\n[pdocker] command exited: %s\\n' \"\$status\"; exec sh"
 
     private fun refreshStatus() {
         val sock = File(pdockerHome, "pdockerd.sock")

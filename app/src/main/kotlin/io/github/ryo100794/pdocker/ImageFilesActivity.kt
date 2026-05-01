@@ -85,6 +85,17 @@ class ImageFilesActivity : AppCompatActivity() {
         ))
         setContentView(root)
 
+        intent.getStringExtra(EXTRA_IMAGE_NAME)
+            ?.takeIf { it.isNotBlank() && it.indexOf(File.separatorChar) < 0 }
+            ?.let { name ->
+                val image = File(imageRoot, name)
+                val rootfs = File(image, "rootfs")
+                if (rootfs.isDirectory) {
+                    currentImage = image
+                    currentDir = rootfs
+                }
+            }
+
         render()
     }
 
@@ -302,4 +313,8 @@ class ImageFilesActivity : AppCompatActivity() {
 
     private fun isRegularFileEntry(file: File): Boolean =
         Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
+
+    companion object {
+        const val EXTRA_IMAGE_NAME = "io.github.ryo100794.pdocker.extra.IMAGE_NAME"
+    }
 }

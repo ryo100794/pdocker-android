@@ -220,6 +220,15 @@ def check_project_library() -> list[Check]:
     return [Check("project library templates", "PASS" if r.returncode == 0 else "FAIL", output)]
 
 
+def check_ui_actions() -> list[Check]:
+    script = ROOT / "scripts" / "verify-ui-actions.py"
+    if not script.exists():
+        return [Check("ui actions", "FAIL", "scripts/verify-ui-actions.py missing")]
+    r = run([sys.executable, str(script)], cwd=ROOT, timeout=30)
+    output = (r.stdout + r.stderr)[-2000:]
+    return [Check("native UI action wiring", "PASS" if r.returncode == 0 else "FAIL", output)]
+
+
 def maybe_run_full(timeout: int) -> list[Check]:
     script = BACKEND / "scripts" / "verify_all.sh"
     if not script.exists():
@@ -277,6 +286,7 @@ def main() -> int:
     checks += check_apk_payload()
     checks += check_license_inventory()
     checks += check_project_library()
+    checks += check_ui_actions()
     if args.full:
         checks += maybe_run_full(args.full_timeout)
 

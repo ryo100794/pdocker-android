@@ -127,7 +127,9 @@
     <string name="terminal_shell">Shell</string>
     <string name="terminal_shell_numbered">Shell %1$d</string>
     <string name="terminal_compose_up">compose up</string>
+    <string name="terminal_compose_up_fmt">compose up: %1$s</string>
     <string name="terminal_docker_build">docker build</string>
+    <string name="terminal_docker_build_fmt">docker build: %1$s</string>
     <string name="terminal_docker_ps">docker ps</string>
     <string name="terminal_container_fmt">container %1$s</string>
     <string name="terminal_docker_interactive">Docker interactive</string>

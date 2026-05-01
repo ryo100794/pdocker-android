@@ -19,6 +19,12 @@ Fast offline audit:
 python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
 ```
 
+Native UI action wiring only:
+
+```sh
+python3 scripts/verify-ui-actions.py
+```
+
 Full backend regression, including public image pulls and container runs:
 
 ```sh
