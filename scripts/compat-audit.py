@@ -177,9 +177,6 @@ def check_apk_payload() -> list[Check]:
     with zipfile.ZipFile(APK) as zf:
         names = set(zf.namelist())
         required = [
-            "lib/arm64-v8a/libproot.so",
-            "lib/arm64-v8a/libproot-loader.so",
-            "lib/arm64-v8a/libtalloc.so",
             "lib/arm64-v8a/libcrane.so",
             "lib/arm64-v8a/libdocker.so",
             "lib/arm64-v8a/libdocker-compose.so",
@@ -194,10 +191,25 @@ def check_apk_payload() -> list[Check]:
         ]
         for name in required:
             checks.append(Check(f"apk payload: {name}", "PASS" if name in names else "FAIL"))
+        proot_payload = [
+            "lib/arm64-v8a/libproot.so",
+            "lib/arm64-v8a/libproot-loader.so",
+            "lib/arm64-v8a/libtalloc.so",
+        ]
+        has_proot = any(name in names for name in proot_payload)
+        for name in proot_payload:
+            if has_proot:
+                checks.append(Check(f"legacy apk payload: {name}", "PASS" if name in names else "FAIL"))
+            else:
+                checks.append(Check(f"no-proot apk payload omits: {name}", "PASS" if name not in names else "FAIL"))
         if "lib/arm64-v8a/libproot.so" in names:
             data = zf.read("lib/arm64-v8a/libproot.so")
             checks.append(Check("apk payload: proot advertises --cow-bind",
                                 "PASS" if b"--cow-bind" in data else "FAIL"))
+        else:
+            pdockerd_bridge = (ROOT / "app/src/main/python/pdockerd_bridge.py").read_text()
+            checks.append(Check("no-proot runtime selector",
+                                "PASS" if 'PDOCKER_RUNTIME_BACKEND", "no-proot"' in pdockerd_bridge else "FAIL"))
     return checks
 
 

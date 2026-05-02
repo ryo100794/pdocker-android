@@ -34,7 +34,7 @@ cp "$SUB/bin/pdockerd" "$APP/assets/pdockerd/pdockerd"
 JNI_DIR="$APP/jniLibs/arm64-v8a"
 mkdir -p "$JNI_DIR"
 cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
-if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
     cp "$ROOT/vendor/lib/proot" "$JNI_DIR/libproot.so"
     cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
     # proot bootstraps its tracee via a separate loader binary that
@@ -62,7 +62,7 @@ cp "$ROOT/vendor/lib/docker-compose" "$JNI_DIR/libdocker-compose.so"
 # loader only looks for "lib*.so" filenames in nativeLibraryDir, so we
 # patchelf both sides to the simple libtalloc.so name. Without this,
 # proot aborts at startup with 'library "libtalloc.so.2" not found'.
-if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
     command -v patchelf >/dev/null 2>&1 \
         || { echo "ABORT: patchelf required (apt install patchelf)" >&2; exit 1; }
     patchelf --replace-needed libtalloc.so.2 libtalloc.so "$JNI_DIR/libproot.so"
@@ -71,12 +71,12 @@ fi
 
 chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libcow.so" "$JNI_DIR/libdocker.so" \
            "$JNI_DIR/libdocker-compose.so"
-if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
     chmod 0755 "$JNI_DIR/libproot.so" "$JNI_DIR/libtalloc.so" \
                "$JNI_DIR/libproot-loader.so"
 fi
 echo "staged crane -> $JNI_DIR/libcrane.so"
-if [[ "${PDOCKER_WITH_PROOT:-1}" != "0" ]]; then
+if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
     echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
     echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
     echo "staged proot-loader -> $JNI_DIR/libproot-loader.so"

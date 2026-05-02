@@ -16,11 +16,11 @@ import java.io.File
  *   │   ├── crane          (-> nativeLibraryDir/libcrane.so)
  *   │   ├── docker         (-> nativeLibraryDir/libdocker.so)
  *   │   ├── cli-plugins/docker-compose (-> nativeLibraryDir/libdocker-compose.so)
- *   │   └── proot          (-> nativeLibraryDir/libproot.so)
+ *   │   └── proot          (optional legacy PRoot payload)
  *   ├── etc/resolv.conf    (DNS nameservers; crane reads via proot bind)
  *   └── lib/
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
- *       └── libtalloc.so   (-> nativeLibraryDir/libtalloc.so, proot dep)
+ *       └── libtalloc.so   (optional legacy PRoot dependency)
  *
  * pdockerd derives _PROJECT_DIR = dirname(dirname(__file__)), so running
  * runtime/bin/pdockerd makes it find everything via the expected relative
@@ -68,6 +68,7 @@ nameserver 1.1.1.1
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
         optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
         optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
+        java.nio.file.Files.deleteIfExists(File(dockerBin, "pl").toPath())
         linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
         optionalLinkTo(
             File(nativeDir, "libdocker-compose.so"),

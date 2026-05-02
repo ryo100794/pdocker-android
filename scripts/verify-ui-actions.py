@@ -63,6 +63,7 @@ def main() -> int:
     runtime_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdRuntime.kt").read_text()
     require("runtime installs docker compose plugin", "cli-plugins" in runtime_src and "libdocker-compose.so" in runtime_src)
     require("runtime removes stale docker-compose shim", "docker-compose" in runtime_src)
+    require("runtime selects no-proot when proot absent", 'PDOCKER_RUNTIME_BACKEND", "no-proot"' in pdockerd_bridge_src)
     require("terminal points docker config at compose plugin dir", "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin" in bridge_src)
     require("docker actions use absolute compose plugin config", 'File(filesDir, "pdocker-runtime/docker-bin").absolutePath' in main_src and 'DOCKER_CONFIG=$dockerConfig' in main_src)
     require("one-shot docker commands leave an interactive shell", "status=\\$?" in main_src and "exec sh" in main_src)

@@ -71,7 +71,8 @@ Observed failure:
 The APK can now be staged without PRoot payloads:
 
 ```sh
-PDOCKER_WITH_PROOT=0 bash scripts/build-apk.sh
+PDOCKER_WITH_PROOT=0 bash scripts/build-apk.sh  # default no-PRoot payload
+PDOCKER_WITH_PROOT=1 bash scripts/build-apk.sh  # legacy diagnostic payload
 ```
 
 This is an experimental packaging mode. Without a replacement runtime,
