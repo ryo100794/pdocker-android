@@ -564,15 +564,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun openDockerTerminal(title: String, command: String, group: String = workspaceGroup()) {
         startDaemon()
+        val normalizedCommand = normalizeDockerCommand(command)
         val id = "job-" + System.currentTimeMillis().toString(36)
-        val wrapped = stayAfterCommand(dockerCommand(command), id)
+        val wrapped = stayAfterCommand(dockerCommand(normalizedCommand), id)
         val launchCommand = terminalSessionCommand(title, group, wrapped)
         val key = "$title\n$launchCommand"
         val job = DockerJob(
             id = id,
             title = title,
             detail = group,
-            command = command,
+            command = normalizedCommand,
             group = group,
             toolKey = key,
             status = getString(R.string.job_running),
@@ -793,18 +794,26 @@ class MainActivity : AppCompatActivity() {
         return "$command; status=\$?; printf '\\n[pdocker] command exited: %s\\n' \"\$status\"$marker; exec sh"
     }
 
-    private fun dockerCommand(command: String): String =
-        listOf(
+    private fun dockerCommand(command: String): String {
+        val normalized = normalizeDockerCommand(command)
+        val quoted = shellQuote(normalized)
+        return listOf(
             "export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false",
             "i=0; until docker version >/dev/null 2>&1; do i=\$((i+1)); if [ \"\$i\" -ge 30 ]; then echo '[pdocker] pdockerd did not become ready within 30s'; break; fi; printf '[pdocker] waiting for pdockerd... %s/30\\n' \"\$i\"; sleep 1; done",
-            command,
+            "if printf '%s\\n' $quoted | grep -q 'docker compose' && ! docker compose version >/dev/null 2>&1; then echo '[pdocker] docker compose is unavailable in the bundled docker CLI'; false; else $normalized; fi",
         ).joinToString("; ")
+    }
 
     private fun dockerBuildCommand(dir: File): String =
         "cd ${shellQuote(dir.absolutePath)} && docker build -t local/${dir.name}:latest ."
 
     private fun composeUpCommand(dir: File): String =
-        "cd ${shellQuote(dir.absolutePath)} && docker compose up -d --build && docker compose ps && docker compose logs --tail=80"
+        "cd ${shellQuote(dir.absolutePath)} && docker compose up --detach --build && docker compose ps && docker compose logs --tail=80"
+
+    private fun normalizeDockerCommand(command: String): String =
+        command.replace(Regex("(^|[;&|]\\s*)docker-compose(?=\\s)")) {
+            "${it.groupValues[1]}docker compose"
+        }
 
     private fun renderDockerJobs(filter: ((DockerJob) -> Boolean)? = null) {
         val jobs = dockerJobs.filter { filter?.invoke(it) ?: true }
@@ -938,11 +947,12 @@ class MainActivity : AppCompatActivity() {
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val lines = obj.optJSONArray("output") ?: JSONArray()
+            val command = normalizeDockerCommand(obj.optString("command"))
             dockerJobs += DockerJob(
                 id = obj.optString("id"),
                 title = obj.optString("title"),
                 detail = obj.optString("detail"),
-                command = obj.optString("command"),
+                command = command,
                 group = obj.optString("group"),
                 toolKey = obj.optString("toolKey"),
                 status = obj.optString("status"),

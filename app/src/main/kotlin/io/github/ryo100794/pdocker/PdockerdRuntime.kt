@@ -66,6 +66,11 @@ nameserver 1.1.1.1
         optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
         optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
         linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
+        // A symlink named docker-compose pointing at the Docker CLI does not
+        // enter Compose mode; it produces "unknown shorthand flag: 'd' in -d"
+        // for `docker-compose up -d`. Keep only the supported v2 form:
+        // `docker compose ...`.
+        java.nio.file.Files.deleteIfExists(File(dockerBin, "docker-compose").toPath())
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
         optionalLinkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
 
