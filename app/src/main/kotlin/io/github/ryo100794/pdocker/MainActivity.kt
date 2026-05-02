@@ -648,14 +648,28 @@ class MainActivity : AppCompatActivity() {
             if (services.isEmpty()) error("compose file has no services")
             val out = StringBuilder()
             services.forEach { service ->
-                val image = service.image.ifBlank { "local/${dir.name}-${service.name}:latest" }
+                var image = service.image.ifBlank { "local/${dir.name}-${service.name}:latest" }
+                var runtimeBlocked = false
                 val context = service.buildContext
                 if (!context.isNullOrBlank()) {
                     val contextDir = File(dir, context).canonicalFile
                     val line = "Service ${service.name} Building"
                     emit(line)
                     out.appendLine(line)
-                    out.append(buildImage(contextDir, image))
+                    val built = runCatching { buildImage(contextDir, image) }
+                    if (built.isSuccess) {
+                        out.append(built.getOrThrow())
+                    } else {
+                        val message = built.exceptionOrNull()?.message.orEmpty()
+                        if (!isRuntimeBackendBlocked(message)) throw built.exceptionOrNull() ?: IllegalStateException(message)
+                        runtimeBlocked = true
+                        val fallbackImage = dockerfileBaseImage(contextDir) ?: "ubuntu:22.04"
+                        image = fallbackImage
+                        val blocked = "Service ${service.name} Build blocked by Android runtime; using materialized base image $fallbackImage for inspection"
+                        emit(blocked)
+                        out.appendLine(blocked)
+                        out.appendLine(message.trim())
+                    }
                 }
                 val containerName = service.containerName.ifBlank { "${dir.name}-${service.name}-1" }
                 runCatching {
@@ -666,13 +680,42 @@ class MainActivity : AppCompatActivity() {
                 val id = createContainer(containerName, service.toContainerConfig(image, dir))
                 emit("Container $containerName Starting")
                 out.appendLine("Container $containerName Starting")
-                post("/containers/${DockerEngineClient.encodePath(id)}/start")
-                emit("Container $containerName Started")
-                out.appendLine("Container $containerName Started")
+                val started = runCatching { post("/containers/${DockerEngineClient.encodePath(id)}/start") }
+                if (started.isSuccess) {
+                    emit("Container $containerName Started")
+                    out.appendLine("Container $containerName Started")
+                } else {
+                    val message = started.exceptionOrNull()?.message.orEmpty()
+                    if (!runtimeBlocked && !isRuntimeBackendBlocked(message)) {
+                        throw started.exceptionOrNull() ?: IllegalStateException(message)
+                    }
+                    emit("Container $containerName Prepared (runtime blocked)")
+                    out.appendLine("Container $containerName Prepared (runtime blocked)")
+                    out.appendLine(message.trim())
+                }
             }
             out.append('\n').append(formatContainers(getArray("/containers/json?all=1")))
             out.toString()
         }
+    }
+
+    private fun isRuntimeBackendBlocked(message: String): Boolean {
+        val lower = message.lowercase()
+        return listOf(
+            "android execution backend is unavailable",
+            "bundled proot backend crashed",
+            "no-proot/direct android execution backend",
+            "run skipped because the android execution backend is unavailable",
+        ).any { it in lower }
+    }
+
+    private fun dockerfileBaseImage(contextDir: File): String? {
+        val dockerfile = File(contextDir, "Dockerfile")
+        if (!dockerfile.isFile) return null
+        return dockerfile.readLines()
+            .map { it.trim() }
+            .mapNotNull { Regex("""(?i)^FROM\s+([^\s]+)""").find(it)?.groupValues?.getOrNull(1) }
+            .firstOrNull()
     }
 
     private fun parseComposeServices(dir: File): List<ComposeService> {

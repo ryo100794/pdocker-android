@@ -84,6 +84,7 @@ def main() -> int:
     require("image pull uses engine api", "pullImage(\"ubuntu:22.04\")" in main_src and "/images/create?fromImage=" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
     require("dockerfile builds use engine api", "runImageBuild" in main_src and "buildImage(dir" in main_src and "/build?t=" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
     require("compose up uses in-app orchestrator", "runComposeUp" in main_src and "parseComposeServices" in main_src and "/containers/create" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
+    require("compose up records android runtime blocker", "isRuntimeBackendBlocked" in main_src and "Prepared (runtime blocked)" in main_src and "dockerfileBaseImage" in main_src)
     require("android runtime preflight is enabled", "PDOCKER_RUNTIME_PREFLIGHT" in pdockerd_bridge_src)
     require("debug smoke can start daemon through activity", "ACTION_SMOKE_START" in main_src and "FLAG_DEBUGGABLE" in main_src and ".PdockerdService" not in android_smoke_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
