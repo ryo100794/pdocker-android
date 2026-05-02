@@ -754,9 +754,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun composeValue(value: String): String {
         var out = value.trim().trim('"', '\'')
-        out = Regex("\\$\\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)}").replace(out) { it.groupValues[1] }
-        out = Regex("\\$\\{[A-Za-z_][A-Za-z0-9_]*-([^}]*)}").replace(out) { it.groupValues[1] }
-        out = Regex("\\$\\{[A-Za-z_][A-Za-z0-9_]*}").replace(out, "")
+        out = Regex("""\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)\}""").replace(out) { it.groupValues[1] }
+        out = Regex("""\$\{[A-Za-z_][A-Za-z0-9_]*-([^}]*)\}""").replace(out) { it.groupValues[1] }
+        out = Regex("""\$\{[A-Za-z_][A-Za-z0-9_]*\}""").replace(out, "")
         return out
     }
 
