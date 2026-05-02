@@ -16,15 +16,24 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.text.DateFormat
 import java.util.Date
+import org.json.JSONObject
 
 /**
- * Read-only browser for pulled image and container rootfs trees.
+ * Browser for pulled image and container rootfs trees.
  *
  * This intentionally bypasses the docker CLI. The UI is inside the same app
  * sandbox as pdockerd, so files can be inspected directly without starting a
- * temporary container or round-tripping through docker cp.
+ * temporary container or round-tripping through docker cp. Container writable
+ * layers can also hand files to the editor.
  */
 class ImageFilesActivity : AppCompatActivity() {
+    private data class BrowserRoot(
+        val label: String,
+        val root: File,
+        val writable: Boolean,
+        val overlayTarget: File? = null,
+    )
+
     private lateinit var title: TextView
     private lateinit var path: TextView
     private lateinit var body: LinearLayout
@@ -35,6 +44,9 @@ class ImageFilesActivity : AppCompatActivity() {
     private var currentRoot: File? = null
     private var currentTitle: String? = null
     private var currentDir: File? = null
+    private var currentWritable = false
+    private var currentOverlayTarget: File? = null
+    private var availableRoots: List<BrowserRoot> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,10 +112,9 @@ class ImageFilesActivity : AppCompatActivity() {
             }
             selectedContainer != null -> {
                 val container = File(containerRoot, selectedContainer)
-                val containerFsRoot = listOf(File(container, "rootfs"), File(container, "upper"))
-                    .firstOrNull { it.isDirectory }
-                if (containerFsRoot != null) {
-                    selectRoot(getString(R.string.title_container_files_fmt, container.name.take(12)), containerFsRoot)
+                availableRoots = containerBrowserRoots(container)
+                if (availableRoots.isNotEmpty()) {
+                    selectRoot(availableRoots.first())
                 }
             }
         }
@@ -164,6 +175,8 @@ class ImageFilesActivity : AppCompatActivity() {
             .replace(File.separatorChar, '/')
             .trim('/')
 
+        renderRootSwitcher(rootfs)
+
         val parent = safeDir.parentFile
         if (parent != null && parent.isInside(rootfs)) {
             addRow("..", getString(R.string.detail_parent_directory)) {
@@ -209,6 +222,18 @@ class ImageFilesActivity : AppCompatActivity() {
         addMessage(describe(file))
         addRow(getString(R.string.action_copy_file_to_project), getString(R.string.detail_copy_file_to_project)) {
             copyFileToProject(rootfs, safeFile)
+        }
+        if (currentWritable) {
+            addRow(getString(R.string.action_edit_container_file), getString(R.string.detail_edit_container_file)) {
+                openWritableFile(rootfs, safeFile)
+            }
+        } else {
+            val overlayTarget = currentOverlayTarget
+            if (overlayTarget != null) {
+                addRow(getString(R.string.action_edit_container_overlay), getString(R.string.detail_edit_container_overlay)) {
+                    copyToOverlayAndOpen(rootfs, safeFile, overlayTarget)
+                }
+            }
         }
 
         val maxPreview = 64 * 1024
@@ -283,6 +308,51 @@ class ImageFilesActivity : AppCompatActivity() {
         render()
     }
 
+    private fun renderRootSwitcher(activeRoot: File) {
+        if (availableRoots.size <= 1) return
+        availableRoots.forEach { browserRoot ->
+            val root = runCatching { browserRoot.root.canonicalFile }.getOrNull() ?: return@forEach
+            if (root == activeRoot) return@forEach
+            val detail = if (browserRoot.writable) {
+                getString(R.string.detail_writable_container_root)
+            } else {
+                getString(R.string.detail_readonly_container_root)
+            }
+            addRow(browserRoot.label, detail) {
+                selectRoot(browserRoot)
+                render()
+            }
+        }
+    }
+
+    private fun openWritableFile(rootfs: File, file: File) {
+        startActivity(Intent(this, TextEditorActivity::class.java).apply {
+            putExtra(TextEditorActivity.EXTRA_PATH, file.absolutePath)
+            putExtra(TextEditorActivity.EXTRA_ROOT_PATH, rootfs.absolutePath)
+        })
+    }
+
+    private fun copyToOverlayAndOpen(rootfs: File, file: File, overlayRoot: File) {
+        val rel = rootfs.toPath().relativize(file.canonicalFile.toPath()).toString()
+            .replace(File.separatorChar, '/')
+            .trim('/')
+        val target = File(overlayRoot, rel).canonicalFile
+        val writableRoot = overlayRoot.apply { mkdirs() }.canonicalFile
+        if (!target.toPath().startsWith(writableRoot.toPath())) {
+            addMessage(getString(R.string.message_outside_rootfs))
+            return
+        }
+        runCatching {
+            target.parentFile?.mkdirs()
+            file.copyTo(target, overwrite = true)
+        }.onFailure {
+            addMessage(getString(R.string.message_cannot_copy_file, it.message.orEmpty()))
+            return
+        }
+        addMessage(getString(R.string.message_copied_to_container_overlay_fmt, target.absolutePath))
+        openWritableFile(writableRoot, target)
+    }
+
     private fun addRow(label: String, detail: String, onClick: () -> Unit) {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -353,6 +423,48 @@ class ImageFilesActivity : AppCompatActivity() {
         currentRoot = root
         currentTitle = label
         currentDir = root
+        currentWritable = false
+        currentOverlayTarget = null
+    }
+
+    private fun selectRoot(browserRoot: BrowserRoot) {
+        if (!browserRoot.root.isDirectory) return
+        currentRoot = browserRoot.root
+        currentTitle = browserRoot.label
+        currentDir = browserRoot.root
+        currentWritable = browserRoot.writable
+        currentOverlayTarget = browserRoot.overlayTarget
+    }
+
+    private fun containerBrowserRoots(container: File): List<BrowserRoot> {
+        val title = getString(R.string.title_container_files_fmt, container.name.take(12))
+        val state = runCatching { JSONObject(File(container, "state.json").readText()) }.getOrNull()
+        val storage = state?.optJSONObject("Storage")
+        val upper = storage?.optString("UpperDir")?.takeIf { it.isNotBlank() }?.let { File(it) }
+            ?: File(container, "upper").takeIf { it.isDirectory }
+        val lower = storage?.optString("LowerDir")?.takeIf { it.isNotBlank() }?.let { File(it) }
+        val rootfs = storage?.optString("Rootfs")?.takeIf { it.isNotBlank() }?.let { File(it) }
+            ?: File(container, "rootfs")
+        val roots = mutableListOf<BrowserRoot>()
+        if (rootfs.isDirectory) {
+            roots += BrowserRoot(title, rootfs, writable = true)
+        }
+        if (lower?.isDirectory == true) {
+            roots += BrowserRoot(
+                getString(R.string.title_container_lower_files_fmt, container.name.take(12)),
+                lower,
+                writable = false,
+                overlayTarget = upper?.takeIf { it.isDirectory },
+            )
+        }
+        if (upper?.isDirectory == true) {
+            roots += BrowserRoot(
+                getString(R.string.title_container_upper_files_fmt, container.name.take(12)),
+                upper,
+                writable = true,
+            )
+        }
+        return roots.distinctBy { runCatching { it.root.canonicalPath }.getOrDefault(it.root.absolutePath) }
     }
 
     private fun File.isInside(root: File): Boolean {

@@ -58,10 +58,11 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   for code-server, Continue, OpenAI Codex CLI, and common development tools.
 - **GPU extensions**: experimental Docker-compatible `--gpus` handling for
   Vulkan passthrough and a future CUDA-compatible API layer.
-- **Image/container files**: read-only in-app browser for pulled image rootfs
-  trees and created container rootfs/upperdir trees, without invoking the
-  docker CLI. Files can be copied into `projects/imports/` and opened in the
-  editor when they are small text files.
+- **Image/container files**: in-app browser for pulled image rootfs trees and
+  created container rootfs/upperdir trees, without invoking the docker CLI.
+  Files can be copied into `projects/imports/`; container writable layers can
+  be edited directly, and read-only lower-layer files can be copied into the
+  writable overlay before editing.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
   containers; experimental `PDOCKER_USE_COW_BIND=1` uses the self-built
   proot `--cow-bind` backend for write-open copy-up.

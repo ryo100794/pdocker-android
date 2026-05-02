@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/MainActivity.kt"
 IMAGE = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/ImageFilesActivity.kt"
 EDITOR = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/CodeEditorView.kt"
+EDITOR_ACTIVITY = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/TextEditorActivity.kt"
 XTERM = ROOT / "app/src/main/assets/xterm/index.html"
 STRINGS = [
     ROOT / "app/src/main/res/values/strings.xml",
@@ -41,6 +42,7 @@ def main() -> int:
     main_src = MAIN.read_text()
     image_src = IMAGE.read_text()
     editor_src = EDITOR.read_text()
+    editor_activity_src = EDITOR_ACTIVITY.read_text()
     xterm_src = XTERM.read_text()
     string_src = "\n".join(path.read_text() for path in STRINGS)
 
@@ -73,6 +75,7 @@ def main() -> int:
     require("generic image browser action remains available", "openImageFiles()" in main_src)
     require("container rows deep-link to container files", "openContainerFiles(dir)" in main_src and "action_browse_container_files_fmt" in string_src)
     require("image/container files copy into editable projects", "copyFileToProject" in image_src and "TextEditorActivity.EXTRA_PATH" in image_src)
+    require("container files expose writable overlay editing", "containerBrowserRoots" in image_src and "copyToOverlayAndOpen" in image_src and "EXTRA_ROOT_PATH" in editor_activity_src)
 
     require("editor tabs are keyed by canonical file path", "val key = target.absolutePath" in main_src)
     require("same-name editors get parent-qualified titles", "private fun editorTitle" in main_src)

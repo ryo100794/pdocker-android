@@ -13,14 +13,21 @@ class TextEditorActivity : AppCompatActivity() {
 
     private fun resolveProjectFile(requested: String): File {
         val projects = File(filesDir, "pdocker/projects").apply { mkdirs() }.canonicalFile
+        val pdockerHome = File(filesDir, "pdocker").canonicalFile
+        val requestedRoot = intent.getStringExtra(EXTRA_ROOT_PATH)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it).canonicalFile }
+        val allowedRoot = requestedRoot?.takeIf {
+            it.toPath().startsWith(pdockerHome.toPath())
+        } ?: projects
         val candidate = if (requested.isBlank()) {
             File(projects, "default/Dockerfile")
         } else {
             File(requested)
         }
         val canonical = candidate.canonicalFile
-        require(canonical.toPath().startsWith(projects.toPath())) {
-            getString(R.string.editor_path_outside_fmt, projects.absolutePath)
+        require(canonical.toPath().startsWith(allowedRoot.toPath())) {
+            getString(R.string.editor_path_outside_fmt, allowedRoot.absolutePath)
         }
         return canonical
     }
@@ -36,6 +43,7 @@ class TextEditorActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_PATH = "io.github.ryo100794.pdocker.extra.EDITOR_PATH"
+        const val EXTRA_ROOT_PATH = "io.github.ryo100794.pdocker.extra.EDITOR_ROOT_PATH"
         private const val MAX_EDIT_BYTES = 512 * 1024
     }
 }

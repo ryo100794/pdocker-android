@@ -100,14 +100,13 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - Existing generated project templates are migrated from the former
   `8080`/`8081` service ports to `18080`/`18081` during app startup or template
   installation.
-- Main UI → "Browse image files" opens a read-only browser for pulled image
-  rootfs trees under `filesDir/pdocker/images/*/rootfs`, and container cards
-  can open created container `rootfs`/`upper` trees. Users can inspect
-  image/container contents without starting a temporary container or invoking
-  the docker CLI. Selecting an image or container card deep-links directly into
-  that filesystem. Individual files can be copied into
-  `filesDir/pdocker/projects/imports/`; small text files open in the editor
-  after copy.
+- Main UI → "Browse image files" opens a browser for pulled image rootfs trees
+  under `filesDir/pdocker/images/*/rootfs`, and container cards can open
+  created container `rootfs`/`upper` trees. Users can inspect image/container
+  contents without starting a temporary container or invoking the docker CLI.
+  Individual files can be copied into `filesDir/pdocker/projects/imports/`;
+  writable container layers can be edited directly, and read-only lower-layer
+  files can be copied into the container's writable overlay before editing.
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.
@@ -191,7 +190,7 @@ pdocker-android/
 │   │   │                              Dockerfile, status/control; lower pane
 │   │   │                              for grouped console/editor tabs; container
 │   │   │                              cards show IP/ports/hook plan
-│   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image and container rootfs files
+│   │   ├── ImageFilesActivity.kt     — browser/editor handoff for image and container rootfs files
 │   │   ├── TextEditorActivity.kt     — Compose/Dockerfile code editor host
 │   │   ├── CodeEditorView.kt         — line numbers, visible whitespace,
 │   │   │                              highlighting, search/replace,
