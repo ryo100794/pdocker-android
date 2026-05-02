@@ -177,3 +177,18 @@ passthrough can be tested with commands such as:
 vulkaninfo --summary
 env | grep -E 'PDOCKER|CUDA|NVIDIA|VK_'
 ```
+
+## llama.cpp profile diagnostics
+
+The bundled `llama.cpp GPU workspace` template now records the first practical
+diagnostic layer before the benchmark runner exists. Its
+`scripts/pdocker-gpu-profile.sh` writes both:
+
+- `profiles/pdocker-gpu.env` for the llama-server startup arguments
+- `profiles/pdocker-gpu-diagnostics.json` for UI/log inspection
+
+The JSON diagnostic captures the selected backend, the recommendation reason,
+thread/context/GPU-layer choices, memory size, and the CUDA/Vulkan signals that
+were visible in the container. This is not a performance validation yet; it is
+the visible bridge between Docker-compatible `gpus: all` negotiation and the
+future benchmark gate above.

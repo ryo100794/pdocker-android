@@ -2,8 +2,9 @@
 set -euo pipefail
 
 profile="${LLAMA_GPU_PROFILE:-/profiles/pdocker-gpu.env}"
-if [[ ! -f "$profile" ]]; then
-  pdocker-gpu-profile "$profile" >/dev/null || true
+diagnostics="${LLAMA_GPU_DIAGNOSTICS:-/profiles/pdocker-gpu-diagnostics.json}"
+if [[ ! -f "$profile" || ! -f "$diagnostics" ]]; then
+  LLAMA_GPU_DIAGNOSTICS="$diagnostics" pdocker-gpu-profile "$profile" >/dev/null || true
 fi
 if [[ -f "$profile" ]]; then
   # shellcheck disable=SC1090
@@ -47,6 +48,8 @@ Place a GGUF model at ./models/model.gguf or set LLAMA_ARG_MODEL.
 Optionally set LLAMA_MODEL_URL to download a GGUF at startup.
 Current GPU profile:
 $(cat "$profile" 2>/dev/null || true)
+Current GPU diagnostics:
+$(cat "$diagnostics" 2>/dev/null || true)
 EOF
   cat > "$status_dir/index.html" <<EOF
 <!doctype html>
@@ -58,6 +61,7 @@ EOF
 <p>Expected model path: <code>$model</code></p>
 <p>Place a model at <code>models/model.gguf</code>, set <code>LLAMA_ARG_MODEL</code>, or set <code>LLAMA_MODEL_URL</code> and compose up again. The default template downloads <code>Qwen/Qwen3-8B-GGUF</code>.</p>
 <pre>$(cat "$profile" 2>/dev/null || true)</pre>
+<pre>$(cat "$diagnostics" 2>/dev/null || true)</pre>
 </body>
 </html>
 EOF
@@ -67,12 +71,18 @@ Missing model: $model
 Port: $port
 Profile:
 $(cat "$profile" 2>/dev/null || true)
+Diagnostics:
+$(cat "$diagnostics" 2>/dev/null || true)
 EOF
   echo "llama.cpp status page: http://0.0.0.0:$port"
   exec python3 -u -m http.server "$port" --bind 0.0.0.0 --directory "$status_dir"
 fi
 
 echo "llama.cpp backend=${LLAMA_GPU_BACKEND:-unknown} ngl=$ngl threads=$threads ctx=$ctx port=$port log=$log_file"
+if [[ -f "$diagnostics" ]]; then
+  echo "llama.cpp gpu diagnostics:"
+  cat "$diagnostics"
+fi
 exec stdbuf -oL -eL "$server" \
   --host 0.0.0.0 \
   --port "$port" \

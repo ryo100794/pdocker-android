@@ -375,7 +375,7 @@ class MainActivity : AppCompatActivity() {
                     installTemplate(template)
                     openTerminal(
                         getString(R.string.terminal_gpu_profile),
-                        "cd ${shellQuote(target.absolutePath)} && bash scripts/pdocker-gpu-profile.sh profiles/pdocker-gpu.env; printf '\\n'; cat profiles/pdocker-gpu.env; sh",
+                        "cd ${shellQuote(target.absolutePath)} && LLAMA_GPU_DIAGNOSTICS=profiles/pdocker-gpu-diagnostics.json bash scripts/pdocker-gpu-profile.sh profiles/pdocker-gpu.env; printf '\\n'; cat profiles/pdocker-gpu.env; printf '\\n'; cat profiles/pdocker-gpu-diagnostics.json; sh",
                     )
                 }
             }

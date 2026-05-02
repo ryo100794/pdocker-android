@@ -75,7 +75,7 @@
     <string name="action_open_template_compose_fmt">%1$s compose を開く</string>
     <string name="action_open_template_dockerfile_fmt">%1$s Dockerfile を開く</string>
     <string name="action_gpu_profile_fmt">%1$s GPU profile 最適化</string>
-    <string name="detail_gpu_profile">現在のランタイム情報から profiles/pdocker-gpu.env を生成</string>
+    <string name="detail_gpu_profile">現在のランタイム情報から GPU profile と診断を生成</string>
     <string name="action_compose_up_template_fmt">%1$s compose up</string>
 
     <string name="section_compose">Compose</string>

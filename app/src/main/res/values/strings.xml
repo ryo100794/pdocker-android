@@ -75,7 +75,7 @@
     <string name="action_open_template_compose_fmt">Open %1$s compose</string>
     <string name="action_open_template_dockerfile_fmt">Open %1$s Dockerfile</string>
     <string name="action_gpu_profile_fmt">Optimize %1$s GPU profile</string>
-    <string name="detail_gpu_profile">Generate profiles/pdocker-gpu.env from current runtime hints</string>
+    <string name="detail_gpu_profile">Generate GPU profile and diagnostics from current runtime hints</string>
     <string name="action_compose_up_template_fmt">Compose up %1$s</string>
 
     <string name="section_compose">Compose</string>

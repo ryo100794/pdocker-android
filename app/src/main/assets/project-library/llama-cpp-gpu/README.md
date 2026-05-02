@@ -7,8 +7,8 @@ It includes:
 - `llama-server` built from `ggml-org/llama.cpp`.
 - Vulkan-oriented build flags (`GGML_VULKAN=ON`) for Android GPU passthrough.
 - CPU fallback with OpenMP/OpenBLAS packages available.
-- `scripts/pdocker-gpu-profile.sh`, which writes a local GPU profile based on
-  the runtime environment.
+- `scripts/pdocker-gpu-profile.sh`, which writes a local GPU profile and
+  JSON diagnostics based on the runtime environment.
 - `models/` and `workspace/` bind directories for GGUF models and experiments.
 
 Usage from pdocker:
@@ -34,6 +34,13 @@ has a visible running state.
 The entrypoint adds `--jinja` by default because the bundled Qwen3 GGUF uses a
 chat template. Override `LLAMA_EXTRA_ARGS` if you need different llama-server
 options.
+
+The GPU profile action writes:
+
+- `profiles/pdocker-gpu.env`, sourced by `start-llama-server.sh`
+- `profiles/pdocker-gpu-diagnostics.json`, with the selected backend,
+  recommendation reason, memory/thread/context choices, and CUDA/Vulkan signal
+  booleans
 
 All startup, download, status-page, and `llama-server` output is written to
 stdout/stderr so `docker logs pdocker-llama-cpp` can show it. The same stream is
