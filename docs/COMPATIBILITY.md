@@ -86,7 +86,7 @@ suite and should be recorded separately when it is run to completion.
 | Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. |
 | Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
 | Volumes/binds | Partial | Named volumes map to host directories; bind mounts use PRoot. No kernel mount propagation or tmpfs semantics. |
-| Dockerfile build | Partial | Legacy builder supports common instructions. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
+| Dockerfile build | Partial | Legacy builder supports common instructions and a practical `.dockerignore` subset. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
 | Compose | Partial | Basic up/down flows work when they stay inside the supported network/build/container subset. |
 | Events | Partial | `/events` now persists Docker-style JSONL lifecycle events and live-streams new events with basic `since`, `until`, and filter handling. It covers container/image/network/volume/build events, but does not yet reproduce every daemon-internal event emitted by Moby. |
 | APK data exchange | Good | APK includes pdockerd, Docker CLI, crane, proot, proot-loader, libcow, talloc, xterm assets, and license notice asset. |
@@ -121,8 +121,8 @@ Known gaps:
 
 - Complete OCI image layout/index fidelity, multi-platform manifest lists, zstd
   layers, and private registry credential flow.
-- Full Dockerfile frontend behavior, BuildKit features, `.dockerignore` parity,
-  and multi-stage/cross-platform build behavior.
+- Full Dockerfile frontend behavior, BuildKit features, complete
+  `.dockerignore` parity, and multi-stage/cross-platform build behavior.
 - Full overlayfs semantics for deletions, rename, metadata operations, and
   merged directory listings in cow_bind mode.
 

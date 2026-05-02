@@ -48,7 +48,7 @@ the entire stack is built on user-space replacements:
 | `/containers/{id}/stats` | ✓ /proc walking approximation (no cgroups) |
 | `/networks/*`, `/volumes/*` | ✓ stubs that satisfy compose's create/list/connect flow |
 | `HostConfig.DeviceRequests` / `--gpus` | experimental pdocker extension: Vulkan passthrough + CUDA-compatible API negotiation |
-| `/build` | ✓ legacy builder; BuildKit not supported |
+| `/build` | ✓ legacy builder with common instructions and basic `.dockerignore`; BuildKit not supported |
 | `/auth` (registry login) | ✗ |
 | `/swarm/*`, `/services/*`, `/secrets/*`, `/configs/*` | ✗ (Swarm-only) |
 | `/system/df` | partial via `/info` |

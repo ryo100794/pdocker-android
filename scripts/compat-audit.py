@@ -92,6 +92,7 @@ def check_static_api() -> list[Check]:
         "network list/create/connect/disconnect/inspect/delete": r'/networks',
         "volume list/create/prune/inspect/delete": r'/volumes',
         "build": r'path == "/build"',
+        "build dockerignore": r'apply_dockerignore',
         "events": r'path == "/events"',
     }
     checks = []
