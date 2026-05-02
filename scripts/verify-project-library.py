@@ -65,6 +65,8 @@ def main() -> int:
         "start sources profile": "source \"$profile\"" in start,
         "start passes gpu layers": "--n-gpu-layers" in start,
         "llama default port offset": "18081:18081" in llama_compose and "18081" in start,
+        "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start,
+        "llama missing-model status page": "python3 -m http.server" in start and "waiting for a GGUF model" in start,
     }
     for name, passed in expectations.items():
         if not passed:

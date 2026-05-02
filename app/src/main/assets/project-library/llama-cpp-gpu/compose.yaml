@@ -17,6 +17,7 @@ services:
       LLAMA_ARG_THREADS: "${LLAMA_ARG_THREADS:-}"
       LLAMA_ARG_N_GPU_LAYERS: "${LLAMA_ARG_N_GPU_LAYERS:-}"
       LLAMA_EXTRA_ARGS: "${LLAMA_EXTRA_ARGS:-}"
+      LLAMA_MODEL_URL: "${LLAMA_MODEL_URL:-}"
     command: ["/usr/local/bin/start-llama-server"]
     ports:
       - "18081:18081"

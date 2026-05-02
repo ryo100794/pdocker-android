@@ -19,6 +19,11 @@ Usage from pdocker:
 4. Put a GGUF model under `models/model.gguf`.
 5. Run compose up.
 
+If no GGUF model is present, the container still opens a small status page on
+port `18081` so the workspace has a visible running state. Set
+`LLAMA_MODEL_URL` to a direct GGUF download URL if you want the entrypoint to
+download the model before starting `llama-server`.
+
 The compose file requests Docker-compatible `gpus: all`. pdockerd maps that to
 its Vulkan passthrough / CUDA-compatible negotiation state where available.
 The default llama-server port is `18081`, offset from common development ports
