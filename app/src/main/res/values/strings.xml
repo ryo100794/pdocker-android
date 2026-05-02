@@ -161,6 +161,10 @@
     <string name="detail_parent_directory">Parent directory</string>
     <string name="message_empty_directory">Empty directory</string>
     <string name="detail_back_to_directory">Back to directory</string>
+    <string name="action_copy_file_to_project">Copy to project</string>
+    <string name="detail_copy_file_to_project">Copy into projects/imports and open editable text files</string>
+    <string name="message_copied_to_project_fmt">Copied to %1$s</string>
+    <string name="message_cannot_copy_file">Cannot copy file: %1$s</string>
     <string name="message_preview_too_large">Preview skipped: file is larger than 64 KiB.</string>
     <string name="message_cannot_read_file">Cannot read file: %1$s</string>
     <string name="message_binary_preview_hidden">Binary file preview is not shown.</string>

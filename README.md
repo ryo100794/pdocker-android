@@ -57,7 +57,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   Vulkan passthrough and a future CUDA-compatible API layer.
 - **Image/container files**: read-only in-app browser for pulled image rootfs
   trees and created container rootfs/upperdir trees, without invoking the
-  docker CLI.
+  docker CLI. Files can be copied into `projects/imports/` and opened in the
+  editor when they are small text files.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
   containers; experimental `PDOCKER_USE_COW_BIND=1` uses the self-built
   proot `--cow-bind` backend for write-open copy-up.

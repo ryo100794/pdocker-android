@@ -161,6 +161,10 @@
     <string name="detail_parent_directory">親ディレクトリ</string>
     <string name="message_empty_directory">空のディレクトリ</string>
     <string name="detail_back_to_directory">ディレクトリに戻る</string>
+    <string name="action_copy_file_to_project">プロジェクトへコピー</string>
+    <string name="detail_copy_file_to_project">projects/imports にコピーし、編集可能なテキストは開く</string>
+    <string name="message_copied_to_project_fmt">%1$s にコピーしました</string>
+    <string name="message_cannot_copy_file">ファイルをコピーできません: %1$s</string>
     <string name="message_preview_too_large">ファイルが 64 KiB を超えるためプレビューを省略しました。</string>
     <string name="message_cannot_read_file">ファイルを読めません: %1$s</string>
     <string name="message_binary_preview_hidden">バイナリファイルのプレビューは表示しません。</string>

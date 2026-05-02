@@ -100,7 +100,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   can open created container `rootfs`/`upper` trees. Users can inspect
   image/container contents without starting a temporary container or invoking
   the docker CLI. Selecting an image or container card deep-links directly into
-  that filesystem.
+  that filesystem. Individual files can be copied into
+  `filesDir/pdocker/projects/imports/`; small text files open in the editor
+  after copy.
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.

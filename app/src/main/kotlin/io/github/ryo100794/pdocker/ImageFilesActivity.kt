@@ -1,5 +1,6 @@
 package io.github.ryo100794.pdocker
 
+import android.content.Intent
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.Gravity
@@ -30,6 +31,7 @@ class ImageFilesActivity : AppCompatActivity() {
 
     private val imageRoot: File by lazy { File(filesDir, "pdocker/images") }
     private val containerRoot: File by lazy { File(filesDir, "pdocker/containers") }
+    private val projectRoot: File by lazy { File(filesDir, "pdocker/projects") }
     private var currentRoot: File? = null
     private var currentTitle: String? = null
     private var currentDir: File? = null
@@ -205,6 +207,9 @@ class ImageFilesActivity : AppCompatActivity() {
 
         addRow("..", getString(R.string.detail_back_to_directory)) { render() }
         addMessage(describe(file))
+        addRow(getString(R.string.action_copy_file_to_project), getString(R.string.detail_copy_file_to_project)) {
+            copyFileToProject(rootfs, safeFile)
+        }
 
         val maxPreview = 64 * 1024
         if (file.length() > maxPreview) {
@@ -226,6 +231,37 @@ class ImageFilesActivity : AppCompatActivity() {
             setTextIsSelectable(true)
             setPadding(0, 16, 0, 16)
             body.addView(this)
+        }
+    }
+
+    private fun copyFileToProject(rootfs: File, file: File) {
+        val rel = rootfs.toPath().relativize(file.canonicalFile.toPath()).toString()
+            .replace(File.separatorChar, '/')
+            .trim('/')
+            .ifBlank { file.name }
+        val sourceLabel = (currentTitle ?: "rootfs")
+            .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+            .trim('_')
+            .ifBlank { "rootfs" }
+        val target = File(projectRoot, "imports/$sourceLabel/$rel").canonicalFile
+        val projects = projectRoot.apply { mkdirs() }.canonicalFile
+        if (!target.toPath().startsWith(projects.toPath())) {
+            addMessage(getString(R.string.message_outside_rootfs))
+            return
+        }
+        runCatching {
+            target.parentFile?.mkdirs()
+            file.copyTo(target, overwrite = true)
+        }.onFailure {
+            addMessage(getString(R.string.message_cannot_copy_file, it.message.orEmpty()))
+            return
+        }
+        addMessage(getString(R.string.message_copied_to_project_fmt, target.absolutePath))
+        val bytes = runCatching { target.readBytes() }.getOrNull()
+        if (target.length() <= 512 * 1024 && bytes?.any { it == 0.toByte() } == false) {
+            startActivity(Intent(this, TextEditorActivity::class.java).apply {
+                putExtra(TextEditorActivity.EXTRA_PATH, target.absolutePath)
+            })
         }
     }
 

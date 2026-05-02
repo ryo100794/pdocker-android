@@ -65,6 +65,7 @@ def main() -> int:
     require("image rows deep-link to selected image", "openImageFiles(image)" in main_src)
     require("generic image browser action remains available", "openImageFiles()" in main_src)
     require("container rows deep-link to container files", "openContainerFiles(dir)" in main_src and "action_browse_container_files_fmt" in string_src)
+    require("image/container files copy into editable projects", "copyFileToProject" in image_src and "TextEditorActivity.EXTRA_PATH" in image_src)
 
     require("editor tabs are keyed by canonical file path", "val key = target.absolutePath" in main_src)
     require("same-name editors get parent-qualified titles", "private fun editorTitle" in main_src)
