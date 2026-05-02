@@ -665,10 +665,9 @@ class MainActivity : AppCompatActivity() {
                         runtimeBlocked = true
                         val fallbackImage = dockerfileBaseImage(contextDir) ?: "ubuntu:22.04"
                         image = fallbackImage
-                        val blocked = "Service ${service.name} Build blocked by Android runtime; using materialized base image $fallbackImage for inspection"
+                        val blocked = "Service ${service.name} Build blocked by current PRoot runtime; using materialized base image $fallbackImage for inspection"
                         emit(blocked)
                         out.appendLine(blocked)
-                        out.appendLine(message.trim())
                     }
                 }
                 val containerName = service.containerName.ifBlank { "${dir.name}-${service.name}-1" }
@@ -679,7 +678,7 @@ class MainActivity : AppCompatActivity() {
                 out.appendLine("Container $containerName Creating")
                 val id = createContainer(containerName, service.toContainerConfig(image, dir))
                 if (runtimeBlocked) {
-                    val prepared = "Container $containerName Prepared for inspection (Android runtime unavailable)"
+                    val prepared = "Container $containerName Prepared for inspection (PRoot runtime unavailable)"
                     emit(prepared)
                     out.appendLine(prepared)
                     return@forEach
