@@ -37,9 +37,24 @@ scripts/android-device-smoke.sh --no-install
 Result on 2026-05-02:
 
 - quick smoke passes: daemon starts, Engine API responds, Docker CLI can talk to
-  `pdockerd`.
+  `pdockerd`, and the staged native `pdocker-direct` helper passes its probe.
 - full smoke fails at the first Dockerfile `RUN`, after image layer
-  materialization, because the PRoot backend cannot start the rootfs process.
+  materialization, because the no-PRoot direct helper currently advertises
+  `process-exec=0`. This is intentional until filesystem/syscall mediation can
+  run rootfs processes without exposing the Android host filesystem.
+
+Focused direct helper probe:
+
+```sh
+adb shell "run-as io.github.ryo100794.pdocker sh -c 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe'"
+```
+
+Observed output:
+
+```text
+pdocker-direct-executor:1
+process-exec=0
+```
 
 Focused direct runner probe:
 

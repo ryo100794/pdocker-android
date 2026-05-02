@@ -182,6 +182,7 @@ def check_apk_payload() -> list[Check]:
             "lib/arm64-v8a/libdocker-compose.so",
             "lib/arm64-v8a/libcow.so",
             "lib/arm64-v8a/libpdockerpty.so",
+            "lib/arm64-v8a/libpdockerdirect.so",
             "assets/pdockerd/pdockerd",
             "assets/project-library/library.json",
             "assets/project-library/llama-cpp-gpu/compose.yaml",

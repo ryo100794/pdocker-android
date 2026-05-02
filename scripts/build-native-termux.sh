@@ -12,6 +12,7 @@
 # Produces:
 #   app/src/main/jniLibs/arm64-v8a/libcow.so
 #   app/src/main/jniLibs/arm64-v8a/libpdockerpty.so
+#   app/src/main/jniLibs/arm64-v8a/libpdockerdirect.so
 #
 # These are packaged as-is by the gradle build — the APK's
 # externalNativeBuild (CMake) block has been removed.
@@ -61,6 +62,16 @@ COMMON_FLAGS=(
     -shared
 )
 
+EXEC_FLAGS=(
+    --target="$TARGET"
+    --sysroot="$SYSROOT"
+    -fPIE -pie -O2
+    -Wall -Wextra -Wno-unused-parameter -Wno-unused-function
+    -U_FORTIFY_SOURCE
+    -fuse-ld=lld
+    --unwindlib=none
+)
+
 echo "==> Termux clang: $CLANG"
 "$CLANG" --version | head -1
 echo "==> target: $TARGET, sysroot: $SYSROOT"
@@ -87,6 +98,17 @@ echo "==> building libpdockerpty.so"
     -llog
 strip_rpath "$JNI_DIR/libpdockerpty.so"
 file "$JNI_DIR/libpdockerpty.so" | head -1
+
+# ---- libpdockerdirect.so ----
+# Android packaging only extracts native files named lib*.so, but this
+# one is intentionally an executable PIE renamed to .so. Kotlin symlinks
+# it as docker-bin/pdocker-direct and pdockerd probes it via execve.
+echo "==> building libpdockerdirect.so"
+"$CLANG" "${EXEC_FLAGS[@]}" \
+    -o "$JNI_DIR/libpdockerdirect.so" \
+    "$ROOT/app/src/main/cpp/pdocker_direct_exec.c"
+strip_rpath "$JNI_DIR/libpdockerdirect.so"
+file "$JNI_DIR/libpdockerdirect.so" | head -1
 
 echo
 echo "==> JNI .so ready:"

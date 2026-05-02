@@ -14,6 +14,7 @@ import java.io.File
  *   ├── bin/pdockerd
  *   ├── docker-bin/
  *   │   ├── crane          (-> nativeLibraryDir/libcrane.so)
+ *   │   ├── pdocker-direct (-> nativeLibraryDir/libpdockerdirect.so)
  *   │   ├── docker         (-> nativeLibraryDir/libdocker.so)
  *   │   ├── cli-plugins/docker-compose (-> nativeLibraryDir/libdocker-compose.so)
  *   │   └── proot          (optional legacy PRoot payload)
@@ -66,6 +67,7 @@ nameserver 1.1.1.1
         extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
 
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
+        optionalLinkTo(File(nativeDir, "libpdockerdirect.so"), File(dockerBin, "pdocker-direct"))
         optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
         optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
         java.nio.file.Files.deleteIfExists(File(dockerBin, "pl").toPath())

@@ -111,6 +111,10 @@ wait_for_socket
 echo "[pdocker smoke] docker version"
 docker_cmd 'docker version'
 
+echo "[pdocker smoke] direct executor probe"
+run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "pdocker-direct-executor:1"'
+run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "process-exec=0"'
+
 if [[ "$GPU_BENCH" -eq 1 ]]; then
   run_gpu_bench
 fi

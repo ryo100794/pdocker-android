@@ -119,6 +119,9 @@ def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
         os.environ["PDOCKER_RUNNER"] = runner
     else:
         os.environ.setdefault("PDOCKER_RUNTIME_BACKEND", "no-proot")
+        direct_executor = os.path.join(runtime_dir, "docker-bin", "pdocker-direct")
+        if os.path.exists(direct_executor):
+            os.environ["PDOCKER_DIRECT_EXECUTOR"] = direct_executor
     # proot bootstraps every tracee through a tiny static loader binary
     # (Termux ships /usr/libexec/proot/loader). Without PROOT_LOADER set,
     # proot defaults to looking for libexec/proot/loader relative to

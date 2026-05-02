@@ -87,11 +87,14 @@ has 55 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
 design checks pass, including native Docker job-card wiring, bundled Docker
 Compose plugin packaging, and the APK payload.
 
-Latest Android Wi-Fi ADB quick smoke on `100.95.153.249:45033` passes:
-`docker version` negotiates with pdockerd API 1.43 and `docker compose version`
-reports v2.35.1. The full Android smoke is intentionally recorded as failing
-today: Dockerfile `RUN` hits the PRoot execution backend (`Bad address` /
-signal 11) before the tiny image can be built.
+Latest Android Wi-Fi ADB quick smoke on `10.10.246.77:45033` passes:
+`docker version` negotiates with pdockerd API 1.43 and the staged native
+`pdocker-direct` helper reports `pdocker-direct-executor:1` with
+`process-exec=0`. The full Android smoke is intentionally recorded as failing
+today: Dockerfile `RUN` stops after base layer materialization because the
+direct helper does not advertise `process-exec=1` yet. This keeps Compose and
+Dockerfile behavior honest instead of routing commands through the Android host
+shell or a fake listener.
 
 Recent focused backend smoke checks also passed for a small Dockerfile build, a
 multi-step RUN/COPY/RUN Dockerfile build, and `docker compose up -d --build` /

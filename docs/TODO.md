@@ -15,6 +15,8 @@ llama-server.
 Temporary behavior:
 
 - `PDOCKER_RUNTIME_BACKEND=no-proot` is metadata/edit/browse mode only.
+- The APK stages a native `pdocker-direct` helper and sets
+  `PDOCKER_DIRECT_EXECUTOR`, but its probe advertises `process-exec=0`.
 - Direct backend start/exec fails with an explicit error instead of starting a
   fake listener.
 - Dockerfile `RUN` fails in direct mode instead of recording a fake layer.
@@ -24,12 +26,15 @@ Temporary behavior:
 Real implementation needed:
 
 1. Add a direct executor boundary for `start`, `exec`, `wait`, `stop`, `logs`,
-   attach, PTY, environment, workdir, and signal handling: **started**.
+   attach, PTY, environment, workdir, and signal handling: **started, process
+   execution still blocked**.
    - `PDOCKER_DIRECT_EXECUTOR` is now the explicit helper entry point.
    - The helper must pass `--pdocker-direct-probe` by printing
      `pdocker-direct-executor:1`.
-   - Without a passing helper, pdockerd refuses process execution instead of
-     falling back to `/system/bin/sh`.
+   - The helper must also print `process-exec=1` before pdockerd will route
+     `RUN`, `docker run`, `docker exec`, or Compose services to it.
+   - Without a passing helper and capability, pdockerd refuses process
+     execution instead of falling back to `/system/bin/sh`.
 2. Prototype APK-owned native `fork/exec` helper with stdout/stderr capture.
 3. Add rootfs path mediation so process paths resolve inside the image rootfs,
    not the Android host filesystem.
@@ -281,7 +286,11 @@ Heavy tests, run before major runtime changes:
 
 - `bash scripts/verify-heavy.sh --backend-quick`
 - `bash scripts/verify-heavy.sh --backend-full`
-- Android Wi-Fi ADB smoke on the current device
+- `bash scripts/android-device-smoke.sh --quick --no-install` for current
+  device Engine/helper smoke.
+- `bash scripts/android-device-smoke.sh --no-install` as the full Android
+  runtime smoke. It is expected to fail at Dockerfile `RUN` until
+  `pdocker-direct` advertises `process-exec=1`.
 - GPU benchmark scenarios after GPU/runtime changes
 
 Never mark a temporary workaround as complete unless the acceptance check for

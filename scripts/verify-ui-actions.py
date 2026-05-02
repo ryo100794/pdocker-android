@@ -66,6 +66,7 @@ def main() -> int:
     require("legacy docker-compose commands are normalized", "normalizeDockerCommand" in main_src and "docker-compose" in main_src and "docker compose" in main_src)
     runtime_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdRuntime.kt").read_text()
     require("runtime installs docker compose plugin", "cli-plugins" in runtime_src and "libdocker-compose.so" in runtime_src)
+    require("runtime installs direct executor helper", "libpdockerdirect.so" in runtime_src and "pdocker-direct" in runtime_src and "PDOCKER_DIRECT_EXECUTOR" in pdockerd_bridge_src)
     require("runtime removes stale docker-compose shim", "docker-compose" in runtime_src)
     require("runtime selects no-proot when proot absent", 'PDOCKER_RUNTIME_BACKEND", "no-proot"' in pdockerd_bridge_src)
     require("terminal points docker config at compose plugin dir", "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin" in bridge_src)

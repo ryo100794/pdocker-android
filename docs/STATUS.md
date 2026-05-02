@@ -121,7 +121,7 @@ What's been confirmed working on the current Android 15 test device:
 | Files in app data have `exec_no_trans` SELinux deny | crane/proot/libcow shipped via jniLibs/arm64-v8a/lib*.so so they extract to `nativeLibraryDir` (the only exec-allowed location in app sandbox) |
 | proot `libtalloc.so.2` SONAME doesn't fit `lib*.so` jniLibs filter | patchelf `--replace-needed` on proot + `--set-soname` on libtalloc to use the bare `libtalloc.so` form |
 | proot fails execve "No such file or directory" without its loader | bundle Termux's `proot/loader` (18 KB static aarch64) and set `PROOT_LOADER` |
-| Android 15 rejects PRoot tracee memory rewrite during exec | recorded as the P0 runtime blocker; quick Engine smoke passes, full Dockerfile/Compose runtime smoke fails until the no-PRoot backend exists |
+| Android 15 rejects PRoot tracee memory rewrite during exec | no-PRoot runtime is selected by default; APK now stages `pdocker-direct`, but it advertises `process-exec=0`, so quick Engine/helper smoke passes and full Dockerfile/Compose runtime smoke fails honestly until syscall/filesystem mediation lands |
 | bionic-built libcow.so won't load inside ubuntu (libdl.so vs libdl.so.2) | ship the host-glibc libcow build instead — pdockerd just `shutil.copy`s it into the container, container's own ld.so does the loading |
 | proot cow_bind rollout | bundled self-built proot now advertises `--cow-bind`; `PDOCKER_USE_COW_BIND=1` switches pdockerd to lower/upper storage, with current syscall coverage limited to write-open copy-up |
 

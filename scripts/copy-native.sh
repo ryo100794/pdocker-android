@@ -88,10 +88,10 @@ echo "staged docker CLI -> $JNI_DIR/libdocker.so"
 echo "staged docker compose plugin -> $JNI_DIR/libdocker-compose.so"
 
 # --- jniLibs sanity ---
-# libpdockerpty.so is built natively by scripts/build-native-termux.sh
-# (the Kotlin/JNI pty bridge for the WebView terminal — no glibc/bionic
-# concern because it runs in the Android process).
-for lib in libpdockerpty.so; do
+# libpdockerpty.so and libpdockerdirect.so are built natively by
+# scripts/build-native-termux.sh. The direct helper is an executable PIE
+# intentionally named lib*.so so Android extracts it to nativeLibraryDir.
+for lib in libpdockerpty.so libpdockerdirect.so; do
     p="$APP/jniLibs/arm64-v8a/$lib"
     if [[ ! -f "$p" ]]; then
         echo "warn: $p missing — run scripts/build-native-termux.sh first" >&2
