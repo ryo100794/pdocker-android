@@ -26,6 +26,8 @@
     <string name="status_library_failed">library load failed: %1$s</string>
     <string name="status_library_installed_fmt">installed template: %1$s</string>
     <string name="status_library_install_report_fmt">installed template: %1$s, copied %2$d, kept %3$d, version %4$d</string>
+    <string name="status_gpu_bench_running">android-gpu-bench: running</string>
+    <string name="status_gpu_bench_done">android-gpu-bench: complete</string>
 
     <string name="section_runtime">Runtime</string>
     <string name="section_workspace">Workspace</string>
@@ -36,6 +38,8 @@
     <string name="detail_stop_pdockerd">Stop foreground service</string>
     <string name="action_keep_resident">Keep resident</string>
     <string name="detail_keep_resident">Open battery optimization exemption</string>
+    <string name="action_run_gpu_bench">Run GPU benchmark</string>
+    <string name="detail_run_gpu_bench">Write CPU reference JSONL/CSV benchmark results</string>
     <string name="action_docker_console">Docker console</string>
     <string name="detail_docker_console">Diagnostic Docker CLI console</string>
     <string name="action_host_shell">Host shell</string>

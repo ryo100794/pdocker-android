@@ -567,6 +567,9 @@ class MainActivity : AppCompatActivity() {
         addAction(getString(R.string.action_keep_resident), getString(R.string.detail_keep_resident)) {
             requestBatteryOptimizationBypass()
         }
+        addAction(getString(R.string.action_run_gpu_bench), getString(R.string.detail_run_gpu_bench)) {
+            runAndroidGpuBench()
+        }
         addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
             startDaemon()
             openDockerTerminal(getString(R.string.action_docker_console), "docker ps -a; printf '\\nUse docker commands for diagnostics.\\n'")
@@ -597,6 +600,20 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         status.text = getString(R.string.status_starting)
+    }
+
+    private fun runAndroidGpuBench() {
+        val title = getString(R.string.action_run_gpu_bench)
+        val group = getString(R.string.section_diagnostics)
+        status.text = getString(R.string.status_gpu_bench_running)
+        thread(isDaemon = true, name = "android-gpu-bench") {
+            val output = runCatching { AndroidGpuBench.run(this) }
+                .getOrElse { getString(R.string.engine_operation_failed_fmt, it.message.orEmpty()) }
+            ui.post {
+                status.text = getString(R.string.status_gpu_bench_done)
+                openTextTool(group, title, output)
+            }
+        }
     }
 
     private fun waitForEngine(timeoutMs: Long = 30_000): Boolean {

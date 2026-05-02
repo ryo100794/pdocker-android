@@ -78,6 +78,8 @@ def main() -> int:
     require("docker jobs recover after missing terminal", "markInterruptedJob" in main_src and "else openJobLog(job)" in main_src and "job_status_interrupted_fmt" in string_src)
     require("container console avoids host shell fallback", "openDockerInteractiveTerminal" in main_src and "container console exited" in main_src)
     require("host shell is diagnostic-only", "private fun renderDiagnostics" in main_src and "action_host_shell" in main_src and "Tab.Overview -> renderOverview()" in main_src)
+    bench_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/AndroidGpuBench.kt").read_text()
+    require("android gpu bench writes cpu reference artifacts", "AndroidGpuBench.run" in main_src and "android-gpu-bench" in bench_src and "vector_add" in bench_src and "saxpy" in bench_src and "matmul_fp32" in bench_src and "compile_ms" in bench_src and "action_run_gpu_bench" in string_src)
     require("container cards surface network warnings", "containerWarningSummary" in main_src and "container_warning_ports_metadata" in string_src)
     require("container cards open known service ports", "containerServiceUrls" in main_src and "18080/tcp" in main_src and "18081/tcp" in main_src)
     require("container cards expose lifecycle actions", "action_container_start_fmt" in string_src and "/start" in main_src and "/stop" in main_src and "logs(dir.name" in main_src)
