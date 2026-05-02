@@ -110,6 +110,7 @@
     <string name="container_warning_ports_metadata">syscall rewrite 実装まではポート公開はメタデータのみ</string>
     <string name="container_warning_network_stub">ネットワークは host-network stub</string>
     <string name="action_browse_container_files_fmt">ファイルを表示: %1$s</string>
+    <string name="action_open_service_fmt">%1$s を開く</string>
     <string name="log_no_preview">ログプレビューなし</string>
     <string name="log_empty">ログは空です</string>
     <string name="log_unavailable">ログを取得できません</string>

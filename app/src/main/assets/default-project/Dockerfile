@@ -66,7 +66,7 @@ COPY continue/config.yaml /workspace/.continue/config.yaml
 RUN chmod +x /usr/local/bin/start-code-server
 
 WORKDIR /workspace
-EXPOSE 8080
+EXPOSE 18080
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["/usr/local/bin/start-code-server"]

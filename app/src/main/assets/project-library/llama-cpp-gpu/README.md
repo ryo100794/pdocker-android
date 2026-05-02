@@ -21,3 +21,5 @@ Usage from pdocker:
 
 The compose file requests Docker-compatible `gpus: all`. pdockerd maps that to
 its Vulkan passthrough / CUDA-compatible negotiation state where available.
+The default llama-server port is `18081`, offset from common development ports
+to reduce collisions with Android/Termux services.

@@ -468,6 +468,11 @@ class MainActivity : AppCompatActivity() {
             addAction(getString(R.string.action_browse_container_files_fmt, name), dir.name) {
                 openContainerFiles(dir)
             }
+            containerServiceUrls(state).forEach { (label, url) ->
+                addAction(getString(R.string.action_open_service_fmt, label), url) {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            }
         }
     }
 
@@ -535,8 +540,10 @@ class MainActivity : AppCompatActivity() {
         command: String,
         group: String = workspaceGroup(),
         onOutput: ((ByteArray) -> Unit)? = null,
+        contextualize: Boolean = true,
     ) {
-        val key = "$title\n$command"
+        val launchCommand = if (contextualize) terminalSessionCommand(title, group, command) else command
+        val key = "$title\n$launchCommand"
         val existing = toolTabs.indexOfFirst {
             it.kind == ToolKind.Terminal && it.group == group && it.key == key
         }
@@ -544,7 +551,7 @@ class MainActivity : AppCompatActivity() {
             switchTool(existing)
             return
         }
-        val view = terminalView(command, onOutput)
+        val view = terminalView(launchCommand, onOutput)
         val bridge = view.getTag(R.id.pdocker_bridge_tag) as Bridge
         toolTabs += ToolTab(group, title, ToolKind.Terminal, view, bridge, key)
         switchTool(toolTabs.lastIndex)
@@ -554,7 +561,8 @@ class MainActivity : AppCompatActivity() {
         startDaemon()
         val id = "job-" + System.currentTimeMillis().toString(36)
         val wrapped = stayAfterCommand(dockerCommand(command), id)
-        val key = "$title\n$wrapped"
+        val launchCommand = terminalSessionCommand(title, group, wrapped)
+        val key = "$title\n$launchCommand"
         val job = DockerJob(
             id = id,
             title = title,
@@ -567,9 +575,13 @@ class MainActivity : AppCompatActivity() {
         dockerJobs.add(0, job)
         trimDockerJobs()
         saveDockerJobs()
-        openTerminal(title, wrapped, group) { bytes ->
-            handleDockerJobOutput(job.id, bytes)
-        }
+        openTerminal(
+            title,
+            launchCommand,
+            group,
+            onOutput = { bytes -> handleDockerJobOutput(job.id, bytes) },
+            contextualize = false,
+        )
         renderContent()
     }
 
@@ -635,6 +647,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun editorView(file: File): View {
         return CodeEditorView(this, file, MAX_INLINE_EDIT_BYTES, ::defaultEditorContent)
+    }
+
+    private fun terminalSessionCommand(title: String, group: String, command: String): String {
+        val label = "$group / $title"
+        val prompt = "[pdocker:$label] \\w $ "
+        return listOf(
+            "export PDOCKER_TERMINAL_TITLE=${shellQuote(title)}",
+            "export PDOCKER_TERMINAL_GROUP=${shellQuote(group)}",
+            "export PS1=${shellQuote(prompt)}",
+            "printf '\\n[pdocker terminal] %s\\n[pdocker group] %s\\n\\n' ${shellQuote(title)} ${shellQuote(group)}",
+            command,
+        ).joinToString("; ")
     }
 
     private fun switchTool(index: Int) {
@@ -1180,6 +1204,45 @@ class MainActivity : AppCompatActivity() {
         }
         return getString(R.string.container_warnings_fmt, text)
     }
+
+    private fun containerServiceUrls(state: JSONObject?): List<Pair<String, String>> {
+        val dockerNetwork = state?.optJSONObject("NetworkSettings")
+        val pdockerNetwork = state?.optJSONObject("PdockerNetwork")
+        val ports = pdockerNetwork?.optJSONObject("Ports")
+            ?: dockerNetwork?.optJSONObject("Ports")
+            ?: return emptyList()
+        val labels = mapOf(
+            "18080/tcp" to "VS Code",
+            "18081/tcp" to "llama.cpp",
+        )
+        val urls = mutableListOf<Pair<String, String>>()
+        val iter = ports.keys()
+        while (iter.hasNext()) {
+            val key = iter.next()
+            val value = ports.opt(key)
+            val label = labels[key] ?: key
+            if (value is JSONArray && value.length() > 0) {
+                for (i in 0 until value.length()) {
+                    val binding = value.optJSONObject(i) ?: continue
+                    val host = browserHost(binding.optString("HostIp"))
+                    val port = binding.optString("HostPort")
+                    if (port.isBlank()) continue
+                    urls += label to "http://$host:$port/"
+                }
+            } else {
+                _splitPortKey(key)?.let { port ->
+                    urls += label to "http://127.0.0.1:$port/"
+                }
+            }
+        }
+        return urls.distinctBy { it.second }
+    }
+
+    private fun browserHost(host: String): String =
+        if (host.isBlank() || host == "0.0.0.0" || host == "::") "127.0.0.1" else host
+
+    private fun _splitPortKey(key: String): Int? =
+        key.substringBefore('/').toIntOrNull()?.takeIf { it in 1..65535 }
 
     private fun summarizePorts(ports: JSONObject?): String {
         if (ports == null || ports.length() == 0) {

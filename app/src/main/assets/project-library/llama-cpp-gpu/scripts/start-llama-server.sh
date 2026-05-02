@@ -11,7 +11,7 @@ if [[ -f "$profile" ]]; then
 fi
 
 model="${LLAMA_ARG_MODEL:-/models/model.gguf}"
-port="${LLAMA_ARG_PORT:-8081}"
+port="${LLAMA_ARG_PORT:-18081}"
 ctx="${LLAMA_ARG_CTX:-4096}"
 threads="${LLAMA_ARG_THREADS:-$(nproc 2>/dev/null || echo 4)}"
 ngl="${LLAMA_ARG_N_GPU_LAYERS:-0}"

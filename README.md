@@ -45,7 +45,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Network visibility**: container cards show the synthetic container IP,
   exposed/published ports, metadata-only port-publishing warnings, and planned
   port-hook rewrite count from pdockerd, so unsupported networking is visible
-  in the app instead of being hidden behind Docker-looking metadata.
+  in the app instead of being hidden behind Docker-looking metadata. Known
+  services such as VS Code (`18080`) and llama.cpp (`18081`) get local browser
+  actions.
 - **Terminal tabs**: one terminal screen can keep multiple PTY sessions alive
   and switch between them with tabs.
 - **Editor**: in-app code editor for Compose files and Dockerfiles under

@@ -18,6 +18,5 @@ Run from the pdocker UI:
 4. Open logs or shell from the `Containers` tab.
 
 The app's current runtime uses host-style networking, so the code-server process
-binds to `0.0.0.0:8080` inside the container. On Android, the UI should expose
-this through an in-app web view or a local browser link once service widgets are
-wired.
+binds to `0.0.0.0:18080` inside the container by default. Container cards expose
+the local browser URL when this service is present.

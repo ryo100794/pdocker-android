@@ -12,13 +12,14 @@ if [[ -n "${CODE_SERVER_PASSWORD:-}" ]]; then
 else
   AUTH_MODE=none
 fi
+port="${CODE_SERVER_PORT:-18080}"
 
-echo "code-server: http://0.0.0.0:8080"
+echo "code-server: http://0.0.0.0:$port"
 echo "codex: $(command -v codex || true)"
 echo "continue config: /workspace/.continue/config.yaml"
 
 exec code-server \
-  --bind-addr 0.0.0.0:8080 \
+  --bind-addr "0.0.0.0:$port" \
   --auth "$AUTH_MODE" \
   --user-data-dir "${CODE_SERVER_USER_DATA_DIR:-/workspace/.vscode-server/data}" \
   --extensions-dir "${CODE_SERVER_EXTENSIONS_DIR:-/workspace/.vscode-server/extensions}" \

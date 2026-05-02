@@ -41,7 +41,7 @@ def main() -> int:
     dev_root = ASSETS / dev["assetPath"]
     dev_compose = read(dev_root / dev["compose"])
     dev_dockerfile = read(dev_root / dev["dockerfile"])
-    for token in ("code-server", "Continue.continue", "@openai/codex", "gpus: all"):
+    for token in ("code-server", "Continue.continue", "@openai/codex", "gpus: all", "18080:18080"):
         if token not in dev_compose + dev_dockerfile:
             fail(f"dev-workspace missing {token}")
     ok("dev-workspace includes code-server, Continue, Codex, and GPU request")
@@ -64,6 +64,7 @@ def main() -> int:
         "profile CPU fallback": re.search(r'backend="cpu"', profile) is not None,
         "start sources profile": "source \"$profile\"" in start,
         "start passes gpu layers": "--n-gpu-layers" in start,
+        "llama default port offset": "18081:18081" in llama_compose and "18081" in start,
     }
     for name, passed in expectations.items():
         if not passed:

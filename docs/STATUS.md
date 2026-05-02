@@ -131,7 +131,9 @@ What mainline docker has that pdockerd doesn't:
 
 #### Networking
 - ✗ **Bridge networks with real IPs**: each container's IP = host's 127.0.0.1 (host network always). Means you can't simulate multi-container topologies where each container wants its own port 80.
-- ✗ **iptables port forwarding** (`-p 8080:80`): no kernel hooks. `docker run -p` is silently ignored — container processes bind on the host (uid permitting).
+- ✗ **iptables port forwarding** (`-p 18080:18080`): no kernel hooks. pdocker
+  records Docker-compatible port metadata and warns that syscall rewrite is not
+  active yet; container processes currently bind on the host (uid permitting).
 - ✗ **DNS aliases via libnetwork**: we synthesize `/etc/hosts` for compose-network members, but no proper DNS server.
 - ✗ **macvlan / ipvlan / overlay / Swarm networking**.
 

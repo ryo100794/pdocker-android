@@ -110,6 +110,7 @@
     <string name="container_warning_ports_metadata">port publishing is metadata-only until syscall rewrite lands</string>
     <string name="container_warning_network_stub">network is a host-network stub</string>
     <string name="action_browse_container_files_fmt">Browse files: %1$s</string>
+    <string name="action_open_service_fmt">Open %1$s</string>
     <string name="log_no_preview">No log preview</string>
     <string name="log_empty">Log is empty</string>
     <string name="log_unavailable">Log unavailable</string>

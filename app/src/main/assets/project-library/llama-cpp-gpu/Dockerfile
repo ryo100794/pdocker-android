@@ -44,6 +44,6 @@ RUN chmod +x /usr/local/bin/pdocker-gpu-profile /usr/local/bin/start-llama-serve
     && mkdir -p /models /workspace /profiles
 
 WORKDIR /workspace
-EXPOSE 8081
+EXPOSE 18081
 
 CMD ["/usr/local/bin/start-llama-server"]

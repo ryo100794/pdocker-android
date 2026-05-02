@@ -39,7 +39,8 @@ default-project/
 
 ## Runtime notes
 
-- `compose.yaml` starts code-server on `0.0.0.0:8080`.
+- `compose.yaml` starts code-server on `0.0.0.0:18080`, offset from common
+  Android/Termux development ports.
 - `compose.yaml` requests `gpus: all`, which maps to pdocker's experimental
   Vulkan passthrough / CUDA-compatible API negotiation.
 - `OPENAI_API_KEY`, `GITHUB_TOKEN`, and `CODE_SERVER_PASSWORD` are passed
@@ -47,8 +48,8 @@ default-project/
 - If `CODE_SERVER_PASSWORD` is empty, code-server starts with `--auth none` for
   local-only development convenience. Set `CODE_SERVER_PASSWORD` before exposing
   the service outside the device.
-- pdocker's current networking model is host-style, so the UI still needs a
-  service widget/webview affordance to expose the code-server URL cleanly.
+- pdocker's current networking model is host-style. Container cards expose
+  known service URLs such as `http://127.0.0.1:18080/`.
 
 ## Source references
 

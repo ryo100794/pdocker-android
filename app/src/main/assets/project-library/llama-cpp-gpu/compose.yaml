@@ -13,13 +13,13 @@ services:
       PDOCKER_GPU_AUTO: "1"
       LLAMA_ARG_MODEL: "${LLAMA_ARG_MODEL:-/models/model.gguf}"
       LLAMA_ARG_CTX: "${LLAMA_ARG_CTX:-4096}"
-      LLAMA_ARG_PORT: "${LLAMA_ARG_PORT:-8081}"
+      LLAMA_ARG_PORT: "${LLAMA_ARG_PORT:-18081}"
       LLAMA_ARG_THREADS: "${LLAMA_ARG_THREADS:-}"
       LLAMA_ARG_N_GPU_LAYERS: "${LLAMA_ARG_N_GPU_LAYERS:-}"
       LLAMA_EXTRA_ARGS: "${LLAMA_EXTRA_ARGS:-}"
     command: ["/usr/local/bin/start-llama-server"]
     ports:
-      - "8081:8081"
+      - "18081:18081"
     volumes:
       - ./models:/models
       - ./workspace:/workspace
