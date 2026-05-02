@@ -841,8 +841,9 @@ class MainActivity : AppCompatActivity() {
     private fun dockerCommand(command: String): String {
         val normalized = normalizeDockerCommand(command)
         val quoted = shellQuote(normalized)
+        val dockerConfig = shellQuote(File(filesDir, "pdocker-runtime/docker-bin").absolutePath)
         return listOf(
-            "export DOCKER_CONFIG=\"\$HOME/pdocker-runtime/docker-bin\" DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false",
+            "export DOCKER_CONFIG=$dockerConfig DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false",
             "i=0; until docker version >/dev/null 2>&1; do i=\$((i+1)); if [ \"\$i\" -ge 30 ]; then echo '[pdocker] pdockerd did not become ready within 30s'; break; fi; printf '[pdocker] waiting for pdockerd... %s/30\\n' \"\$i\"; sleep 1; done",
             "if printf '%s\\n' $quoted | grep -q 'docker compose' && ! docker compose version >/dev/null 2>&1; then echo '[pdocker] docker compose is unavailable in the bundled docker CLI'; false; else $normalized; fi",
         ).joinToString("; ")
