@@ -99,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         val dockerfiles: List<File>,
         val editable: List<File>,
         val services: List<ComposeService>,
+        val serviceUrls: List<Pair<String, String>>,
         val containerCount: Int,
         val jobSummary: String,
     )
@@ -1660,6 +1661,7 @@ class MainActivity : AppCompatActivity() {
                     project.containerCount,
                 ),
                 getString(R.string.project_dashboard_services_fmt, serviceText),
+                getString(R.string.project_dashboard_urls_fmt, project.serviceUrls.joinToString(", ") { it.first }.ifBlank { "-" }),
                 getString(R.string.project_dashboard_jobs_fmt, project.jobSummary),
             ).joinToString("\n")
             addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail) {
@@ -1685,6 +1687,11 @@ class MainActivity : AppCompatActivity() {
             if (project.dockerfiles.isNotEmpty()) {
                 addAction(getString(R.string.action_build_fmt, project.dir.name), project.dir.absolutePath) {
                     runImageBuild(project.dir, getString(R.string.terminal_docker_build_fmt, project.dir.name))
+                }
+            }
+            project.serviceUrls.forEach { (label, url) ->
+                addAction(getString(R.string.action_open_service_fmt, label), url) {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 }
             }
             project.editable
@@ -1721,6 +1728,7 @@ class MainActivity : AppCompatActivity() {
                 dockerfiles = dockerfiles,
                 editable = editable,
                 services = services,
+                serviceUrls = projectServiceUrls(services),
                 containerCount = projectContainerCount(dir.name),
                 jobSummary = projectJobSummary(dir.name),
             )
@@ -1773,6 +1781,26 @@ class MainActivity : AppCompatActivity() {
         return jobs.groupingBy { it.status }.eachCount()
             .entries
             .joinToString(", ") { "${it.key}:${it.value}" }
+    }
+
+    private fun projectServiceUrls(services: List<ComposeService>): List<Pair<String, String>> =
+        services.flatMap { service ->
+            service.ports.mapNotNull { port ->
+                val hostPort = composeHostPort(port) ?: return@mapNotNull null
+                val label = when (hostPort) {
+                    18080 -> "VS Code"
+                    18081 -> "llama.cpp"
+                    else -> "${service.name}:$hostPort"
+                }
+                label to "http://127.0.0.1:$hostPort/"
+            }
+        }.distinctBy { it.second }
+
+    private fun composeHostPort(port: String): Int? {
+        val cleaned = port.trim().trim('"', '\'')
+        val withoutProtocol = cleaned.substringBefore('/')
+        val parts = withoutProtocol.split(':').filter { it.isNotBlank() }
+        return parts.firstOrNull { it.toIntOrNull() in 1..65535 }?.toIntOrNull()
     }
 
     private fun renderProjectFileShortcuts() {

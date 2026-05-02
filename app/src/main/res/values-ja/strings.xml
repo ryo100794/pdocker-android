@@ -54,6 +54,7 @@
     <string name="section_project_dashboard">プロジェクトダッシュボード</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$d</string>
     <string name="project_dashboard_services_fmt">サービス: %1$s</string>
+    <string name="project_dashboard_urls_fmt">URL: %1$s</string>
     <string name="project_dashboard_jobs_fmt">ジョブ: %1$s</string>
     <string name="action_open_project_compose_fmt">%1$s compose を開く</string>
     <string name="action_open_project_dockerfile_fmt">%1$s Dockerfile を開く</string>
