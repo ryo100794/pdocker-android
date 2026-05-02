@@ -52,6 +52,11 @@ def main() -> int:
     require("terminal exports legacy builder env", "DOCKER_BUILDKIT=0" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt").read_text())
     require("compose up action is detached and builds first", "docker compose up -d --build" in main_src)
     require("one-shot docker commands leave an interactive shell", "status=\\$?" in main_src and "exec sh" in main_src)
+    require("docker actions create native job cards", "private data class DockerJob" in main_src and "renderDockerJobs" in main_src)
+    require("docker jobs persist state to json", "jobs.json" in main_src and "saveDockerJobs()" in main_src)
+    require("docker jobs capture terminal output", "onOutput: ((ByteArray) -> Unit)?" in main_src and "handleDockerJobOutput" in main_src)
+    require("docker jobs record exit markers", "__PDOCKER_JOB_EXIT" in main_src and "job_status_failed_fmt" in string_src)
+    require("docker jobs expose retry actions", "action_retry_job_fmt" in main_src and "openDockerTerminal(job.title, job.command, job.group)" in main_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)
     require("image rows deep-link to selected image", "openImageFiles(image)" in main_src)

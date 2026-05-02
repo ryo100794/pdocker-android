@@ -58,9 +58,25 @@ class MainActivity : AppCompatActivity() {
         val features: List<String>,
     )
 
+    private data class DockerJob(
+        val id: String,
+        val title: String,
+        val detail: String,
+        val command: String,
+        val group: String,
+        val toolKey: String,
+        var status: String,
+        var exitCode: Int? = null,
+        var startedAt: Long = System.currentTimeMillis(),
+        var endedAt: Long? = null,
+        var output: MutableList<String> = mutableListOf(),
+    )
+
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 100
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
+        private const val MAX_JOB_HISTORY = 20
+        private const val MAX_JOB_LINES = 8
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -84,6 +100,8 @@ class MainActivity : AppCompatActivity() {
     private val toolTabs = mutableListOf<ToolTab>()
     private var currentTool = -1
     private var currentToolGroup: String? = null
+    private val dockerJobs = mutableListOf<DockerJob>()
+    private val dockerJobBuffers = mutableMapOf<String, String>()
     private var upperWeight = 0.56f
     private var lowerWeight = 0.44f
     private var splitDragStartY = 0f
@@ -98,6 +116,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         requestNotificationPermission()
         seedDefaultProject()
+        loadDockerJobs()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -281,6 +300,7 @@ class MainActivity : AppCompatActivity() {
         addWidget(getString(R.string.widget_containers), containerDirs().size.toString(), getString(R.string.detail_containers_inventory))
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
+        renderDockerJobs()
     }
 
     private fun renderLibrary() {
@@ -344,6 +364,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCompose() {
         addSection(getString(R.string.section_compose))
+        renderDockerJobs { it.command.contains("docker compose ") }
         addAction(getString(R.string.action_new_compose), getString(R.string.detail_new_compose)) {
             openEditor(File(projectRoot, "default/compose.yaml"))
         }
@@ -372,6 +393,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderDockerfiles() {
         addSection(getString(R.string.section_dockerfile))
+        renderDockerJobs { it.command.contains("docker build ") }
         addAction(getString(R.string.action_new_dockerfile), getString(R.string.detail_new_dockerfile)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
@@ -501,7 +523,12 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun openTerminal(title: String, command: String, group: String = workspaceGroup()) {
+    private fun openTerminal(
+        title: String,
+        command: String,
+        group: String = workspaceGroup(),
+        onOutput: ((ByteArray) -> Unit)? = null,
+    ) {
         val key = "$title\n$command"
         val existing = toolTabs.indexOfFirst {
             it.kind == ToolKind.Terminal && it.group == group && it.key == key
@@ -510,7 +537,7 @@ class MainActivity : AppCompatActivity() {
             switchTool(existing)
             return
         }
-        val view = terminalView(command)
+        val view = terminalView(command, onOutput)
         val bridge = view.getTag(R.id.pdocker_bridge_tag) as Bridge
         toolTabs += ToolTab(group, title, ToolKind.Terminal, view, bridge, key)
         switchTool(toolTabs.lastIndex)
@@ -518,7 +545,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun openDockerTerminal(title: String, command: String, group: String = workspaceGroup()) {
         startDaemon()
-        openTerminal(title, stayAfterCommand(dockerCommand(command)), group)
+        val id = "job-" + System.currentTimeMillis().toString(36)
+        val wrapped = stayAfterCommand(dockerCommand(command), id)
+        val key = "$title\n$wrapped"
+        val job = DockerJob(
+            id = id,
+            title = title,
+            detail = group,
+            command = command,
+            group = group,
+            toolKey = key,
+            status = getString(R.string.job_running),
+        )
+        dockerJobs.add(0, job)
+        trimDockerJobs()
+        saveDockerJobs()
+        openTerminal(title, wrapped, group) { bytes ->
+            handleDockerJobOutput(job.id, bytes)
+        }
+        renderContent()
     }
 
     private fun openEditor(file: File, group: String = workspaceGroup()) {
@@ -563,12 +608,12 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun terminalView(command: String): View {
+    private fun terminalView(command: String, onOutput: ((ByteArray) -> Unit)? = null): View {
         val webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
         }
-        val bridge = Bridge(this, webView, command)
+        val bridge = Bridge(this, webView, command, onOutput)
         webView.addJavascriptInterface(bridge, "PdockerBridge")
         webView.loadUrl("file:///android_asset/xterm/index.html")
         webView.setTag(R.id.pdocker_bridge_tag, bridge)
@@ -687,8 +732,12 @@ class MainActivity : AppCompatActivity() {
         return if (parent.isBlank() || parent == "default") file.name else "$parent/${file.name}"
     }
 
-    private fun stayAfterCommand(command: String): String =
-        "$command; status=\$?; printf '\\n[pdocker] command exited: %s\\n' \"\$status\"; exec sh"
+    private fun stayAfterCommand(command: String, jobId: String? = null): String {
+        val marker = jobId?.let {
+            "; printf '\\n__PDOCKER_JOB_EXIT:${it}:%s__\\n' \"\$status\""
+        }.orEmpty()
+        return "$command; status=\$?; printf '\\n[pdocker] command exited: %s\\n' \"\$status\"$marker; exec sh"
+    }
 
     private fun dockerCommand(command: String): String =
         listOf(
@@ -702,6 +751,130 @@ class MainActivity : AppCompatActivity() {
 
     private fun composeUpCommand(dir: File): String =
         "cd ${shellQuote(dir.absolutePath)} && docker compose up -d --build && docker compose ps && docker compose logs --tail=80"
+
+    private fun renderDockerJobs(filter: ((DockerJob) -> Boolean)? = null) {
+        val jobs = dockerJobs.filter { filter?.invoke(it) ?: true }
+        if (jobs.isEmpty()) return
+        addSection(getString(R.string.section_jobs))
+        jobs.take(5).forEach { job ->
+            val statusText = jobStatusText(job)
+            val detail = listOf(
+                job.detail,
+                job.command,
+                job.output.takeLast(3).joinToString("\n"),
+            ).filter { it.isNotBlank() }.joinToString("\n")
+            addWidget(job.title, statusText, detail) {
+                val index = toolTabs.indexOfFirst { it.key == job.toolKey }
+                if (index >= 0) switchTool(index)
+            }
+            if (job.exitCode != null) {
+                addAction(getString(R.string.action_retry_job_fmt, job.title), job.command) {
+                    openDockerTerminal(job.title, job.command, job.group)
+                }
+            }
+        }
+    }
+
+    private fun jobStatusText(job: DockerJob): String {
+        val elapsed = ((job.endedAt ?: System.currentTimeMillis()) - job.startedAt).coerceAtLeast(0) / 1000
+        return when {
+            job.exitCode == null -> getString(R.string.job_status_running_fmt, elapsed)
+            job.exitCode == 0 -> getString(R.string.job_status_done_fmt, elapsed)
+            else -> getString(R.string.job_status_failed_fmt, job.exitCode ?: -1, elapsed)
+        }
+    }
+
+    private fun handleDockerJobOutput(jobId: String, bytes: ByteArray) {
+        val chunk = bytes.toString(Charsets.UTF_8)
+        ui.post {
+            val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
+            val text = dockerJobBuffers.getOrDefault(jobId, "") + chunk
+            val normalized = text.replace("\r", "")
+            val complete = normalized.endsWith("\n")
+            val rawLines = normalized.split("\n")
+            val lines = if (complete) rawLines else rawLines.dropLast(1)
+            dockerJobBuffers[jobId] = if (complete) "" else rawLines.last().takeLast(4096)
+            lines.map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach { line ->
+                    val marker = Regex("__PDOCKER_JOB_EXIT:${Regex.escape(jobId)}:(\\d+)__").find(line)
+                    if (marker != null) {
+                        job.exitCode = marker.groupValues[1].toIntOrNull()
+                        job.status = if (job.exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
+                        job.endedAt = System.currentTimeMillis()
+                        dockerJobBuffers.remove(jobId)
+                    } else {
+                        job.output += line
+                        while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+                    }
+                }
+            saveDockerJobs()
+            if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles)) {
+                renderContent()
+            }
+        }
+    }
+
+    private fun trimDockerJobs() {
+        while (dockerJobs.size > MAX_JOB_HISTORY) dockerJobs.removeAt(dockerJobs.lastIndex)
+    }
+
+    private fun loadDockerJobs() {
+        val file = File(pdockerHome, "jobs.json")
+        val arr = runCatching { JSONArray(file.readText()) }.getOrNull() ?: return
+        dockerJobs.clear()
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val lines = obj.optJSONArray("output") ?: JSONArray()
+            dockerJobs += DockerJob(
+                id = obj.optString("id"),
+                title = obj.optString("title"),
+                detail = obj.optString("detail"),
+                command = obj.optString("command"),
+                group = obj.optString("group"),
+                toolKey = obj.optString("toolKey"),
+                status = obj.optString("status"),
+                exitCode = if (obj.has("exitCode") && !obj.isNull("exitCode")) obj.optInt("exitCode") else null,
+                startedAt = obj.optLong("startedAt", System.currentTimeMillis()),
+                endedAt = if (obj.has("endedAt") && !obj.isNull("endedAt")) obj.optLong("endedAt") else null,
+                output = (0 until lines.length()).mapNotNull { j ->
+                    lines.optString(j).takeIf { it.isNotBlank() }
+                }.toMutableList(),
+            )
+        }
+        trimDockerJobs()
+    }
+
+    private fun saveDockerJobs() {
+        val arr = JSONArray()
+        dockerJobs.forEach { job ->
+            arr.put(JSONObject().apply {
+                put("id", job.id)
+                put("title", job.title)
+                put("detail", job.detail)
+                put("command", job.command)
+                put("group", job.group)
+                put("toolKey", job.toolKey)
+                put("status", job.status)
+                if (job.exitCode == null) {
+                    put("exitCode", JSONObject.NULL)
+                } else {
+                    put("exitCode", job.exitCode)
+                }
+                put("startedAt", job.startedAt)
+                if (job.endedAt == null) {
+                    put("endedAt", JSONObject.NULL)
+                } else {
+                    put("endedAt", job.endedAt)
+                }
+                put("output", JSONArray().apply { job.output.forEach { put(it) } })
+            })
+        }
+        File(pdockerHome, "jobs.json").apply {
+            parentFile?.mkdirs()
+            writeText(arr.toString(2))
+        }
+    }
 
     private fun refreshStatus() {
         val sock = File(pdockerHome, "pdockerd.sock")

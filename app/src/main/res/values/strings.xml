@@ -38,6 +38,7 @@
     <string name="action_default_dev_workspace">Default dev workspace</string>
     <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
     <string name="section_inventory">Inventory</string>
+    <string name="section_jobs">Jobs</string>
     <string name="widget_images">Images</string>
     <string name="detail_images_inventory">Pulled rootfs trees available to browse</string>
     <string name="widget_containers">Containers</string>
@@ -122,6 +123,13 @@
     <string name="detail_console_editor_split">Stack a shell over the default Dockerfile editor</string>
     <string name="tool_group_workspace">Workspace</string>
     <string name="tool_empty">Open a console, editor, or container session from the upper pane.</string>
+    <string name="job_running">Running</string>
+    <string name="job_done">Done</string>
+    <string name="job_failed">Failed</string>
+    <string name="job_status_running_fmt">Running, %1$ds</string>
+    <string name="job_status_done_fmt">Done, %1$ds</string>
+    <string name="job_status_failed_fmt">Failed (%1$d), %2$ds</string>
+    <string name="action_retry_job_fmt">Retry %1$s</string>
 
     <string name="terminal_title">Terminal</string>
     <string name="terminal_shell">Shell</string>

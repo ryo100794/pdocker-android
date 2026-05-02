@@ -21,6 +21,7 @@ class Bridge(
     private val activity: AppCompatActivity,
     private val webView: WebView,
     private val initialCommand: String = "sh",
+    private val onOutput: ((ByteArray) -> Unit)? = null,
 ) {
     private var fd: Int = -1
     private var reader: Thread? = null
@@ -61,6 +62,7 @@ class Bridge(
             while (alive.get()) {
                 val n = PtyNative.read(fd, buf)
                 if (n <= 0) break
+                onOutput?.invoke(buf.copyOf(n))
                 val b64 = Base64.encodeToString(buf, 0, n, Base64.NO_WRAP)
                 activity.runOnUiThread {
                     webView.evaluateJavascript("window.pdockerRecv('$b64')", null)

@@ -65,7 +65,8 @@ exec, stats, and network parts of the regression.
 
 Latest recorded fast result: [compat-audit-latest.md](compat-audit-latest.md)
 has 53 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
-design checks pass, and the APK payload is present.
+design checks pass, including native Docker job-card wiring, and the APK
+payload is present.
 
 Recent focused backend smoke checks also passed for a small Dockerfile build, a
 multi-step RUN/COPY/RUN Dockerfile build, and `docker compose up -d --build` /

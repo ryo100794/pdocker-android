@@ -38,6 +38,7 @@
     <string name="action_default_dev_workspace">標準開発ワークスペース</string>
     <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
     <string name="section_inventory">インベントリ</string>
+    <string name="section_jobs">ジョブ</string>
     <string name="widget_images">イメージ</string>
     <string name="detail_images_inventory">参照できる pull 済み rootfs ツリー</string>
     <string name="widget_containers">コンテナ</string>
@@ -122,6 +123,13 @@
     <string name="detail_console_editor_split">シェルを上、標準 Dockerfile エディタを下に重ねる</string>
     <string name="tool_group_workspace">Workspace</string>
     <string name="tool_empty">上段からコンソール、エディタ、コンテナセッションを開いてください。</string>
+    <string name="job_running">実行中</string>
+    <string name="job_done">完了</string>
+    <string name="job_failed">失敗</string>
+    <string name="job_status_running_fmt">実行中, %1$d秒</string>
+    <string name="job_status_done_fmt">完了, %1$d秒</string>
+    <string name="job_status_failed_fmt">失敗 (%1$d), %2$d秒</string>
+    <string name="action_retry_job_fmt">%1$s を再実行</string>
 
     <string name="terminal_title">ターミナル</string>
     <string name="terminal_shell">シェル</string>

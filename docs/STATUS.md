@@ -75,6 +75,11 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   interactive shell after one-shot commands. Compose actions run
   `docker compose up -d --build` followed by `ps` and recent logs, so the UI
   does not stay pinned to foreground logs.
+- Main UI job tracking → Docker-backed actions also create native upper-pane
+  job cards backed by `filesDir/pdocker/jobs.json`. The cards show
+  running/done/failed status, elapsed time, command context, and recent output
+  captured from the PTY stream, so build/compose progress remains visible when
+  the lower terminal tab is not selected.
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
   between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
   equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is
