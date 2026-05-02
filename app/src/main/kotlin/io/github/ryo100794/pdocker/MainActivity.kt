@@ -102,6 +102,9 @@ class MainActivity : AppCompatActivity() {
         val editable: List<File>,
         val services: List<ComposeService>,
         val serviceUrls: List<Pair<String, String>>,
+        val modelSummary: String,
+        val gpuProfileSummary: String,
+        val gpuDiagnostics: File?,
         val containerCount: Int,
         val jobSummary: String,
     )
@@ -1591,7 +1594,7 @@ class MainActivity : AppCompatActivity() {
         addAction(label, value) {}
     }
 
-    private fun addWidget(title: String, value: String, detail: String, onClick: (() -> Unit)? = null) {
+    private fun addWidget(title: String, value: String, detail: String, detailLines: Int = 3, onClick: (() -> Unit)? = null) {
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(18, 18, 18, 18)
@@ -1617,7 +1620,7 @@ class MainActivity : AppCompatActivity() {
                 text = detail
                 textSize = 12f
                 alpha = 0.78f
-                maxLines = 3
+                maxLines = detailLines
                 ellipsize = TextUtils.TruncateAt.END
             })
             content.addView(this)
@@ -1685,9 +1688,11 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.project_dashboard_dependencies_fmt, projectDependencySummary(project.services)),
                 getString(R.string.project_dashboard_health_fmt, projectHealthSummary(project.services)),
                 getString(R.string.project_dashboard_urls_fmt, project.serviceUrls.joinToString(", ") { it.first }.ifBlank { "-" }),
+                getString(R.string.project_dashboard_models_fmt, project.modelSummary),
+                getString(R.string.project_dashboard_gpu_fmt, project.gpuProfileSummary),
                 getString(R.string.project_dashboard_jobs_fmt, project.jobSummary),
             ).joinToString("\n")
-            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail) {
+            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail, detailLines = 8) {
                 openProjectPrimaryFile(project)
             }
             project.compose.take(2).forEach { file ->
@@ -1715,6 +1720,11 @@ class MainActivity : AppCompatActivity() {
             project.serviceUrls.forEach { (label, url) ->
                 addAction(getString(R.string.action_open_service_fmt, label), url) {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            }
+            project.gpuDiagnostics?.takeIf { it.isFile }?.let { file ->
+                addAction(getString(R.string.action_open_gpu_diagnostics), relativeProjectPath(project.dir, file)) {
+                    openEditor(file)
                 }
             }
             project.editable
@@ -1752,6 +1762,9 @@ class MainActivity : AppCompatActivity() {
                 editable = editable,
                 services = services,
                 serviceUrls = projectServiceUrls(services),
+                modelSummary = projectModelSummary(dir),
+                gpuProfileSummary = projectGpuProfileSummary(dir),
+                gpuDiagnostics = File(dir, "profiles/pdocker-gpu-diagnostics.json").takeIf { it.isFile },
                 containerCount = projectContainerCount(dir.name),
                 jobSummary = projectJobSummary(dir.name),
             )
@@ -1836,6 +1849,53 @@ class MainActivity : AppCompatActivity() {
         val withoutProtocol = cleaned.substringBefore('/')
         val parts = withoutProtocol.split(':').filter { it.isNotBlank() }
         return parts.firstOrNull { it.toIntOrNull() in 1..65535 }?.toIntOrNull()
+    }
+
+    private fun projectModelSummary(project: File): String {
+        val modelDir = File(project, "models")
+        val models = modelDir.walkSafe()
+            .filter { it.isFile && it.name.endsWith(".gguf", ignoreCase = true) }
+        val partials = modelDir.walkSafe()
+            .filter { it.isFile && it.name.endsWith(".gguf.part", ignoreCase = true) }
+        return when {
+            models.isNotEmpty() -> "${models.size} GGUF / ${formatBytes(models.sumOf { it.length() })}"
+            partials.isNotEmpty() -> "partial ${partials.size} / ${formatBytes(partials.sumOf { it.length() })}"
+            else -> "-"
+        }
+    }
+
+    private fun projectGpuProfileSummary(project: File): String {
+        val diagnostics = File(project, "profiles/pdocker-gpu-diagnostics.json")
+        if (diagnostics.isFile) {
+            val obj = runCatching { JSONObject(diagnostics.readText()) }.getOrNull()
+            if (obj != null) {
+                val backend = obj.optString("backend", "unknown").ifBlank { "unknown" }
+                val reason = obj.optString("reason", "").ifBlank { "diagnostics ready" }
+                return "$backend: $reason"
+            }
+            return getString(R.string.project_dashboard_gpu_invalid)
+        }
+        val env = File(project, "profiles/pdocker-gpu.env")
+        if (env.isFile) {
+            val backend = env.readLines()
+                .firstOrNull { it.startsWith("LLAMA_GPU_BACKEND=") }
+                ?.substringAfter("=")
+                ?.ifBlank { "unknown" }
+                ?: "unknown"
+            return "$backend: env profile"
+        }
+        return "-"
+    }
+
+    private fun formatBytes(bytes: Long): String {
+        val units = arrayOf("B", "KiB", "MiB", "GiB")
+        var value = bytes.toDouble()
+        var unit = 0
+        while (value >= 1024.0 && unit < units.lastIndex) {
+            value /= 1024.0
+            unit += 1
+        }
+        return if (unit == 0) "${bytes} ${units[unit]}" else String.format("%.1f %s", value, units[unit])
     }
 
     private fun renderProjectFileShortcuts() {

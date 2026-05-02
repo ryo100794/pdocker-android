@@ -57,6 +57,9 @@
     <string name="project_dashboard_dependencies_fmt">依存: %1$s</string>
     <string name="project_dashboard_health_fmt">ヘルスチェック: %1$s</string>
     <string name="project_dashboard_urls_fmt">URL: %1$s</string>
+    <string name="project_dashboard_models_fmt">モデル: %1$s</string>
+    <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
+    <string name="project_dashboard_gpu_invalid">診断JSONが不正</string>
     <string name="project_dashboard_jobs_fmt">ジョブ: %1$s</string>
     <string name="action_open_project_compose_fmt">%1$s compose を開く</string>
     <string name="action_open_project_dockerfile_fmt">%1$s Dockerfile を開く</string>
@@ -131,6 +134,7 @@
     <string name="action_container_logs_fmt">ログ: %1$s</string>
     <string name="action_browse_container_files_fmt">ファイルを表示: %1$s</string>
     <string name="action_open_service_fmt">%1$s を開く</string>
+    <string name="action_open_gpu_diagnostics">GPU診断を開く</string>
     <string name="log_no_preview">ログプレビューなし</string>
     <string name="log_empty">ログは空です</string>
     <string name="log_unavailable">ログを取得できません</string>

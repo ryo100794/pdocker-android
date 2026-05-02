@@ -113,6 +113,7 @@ def main() -> int:
     require("project dashboard exposes known service URLs", "projectServiceUrls" in main_src and "composeHostPort" in main_src and "project_dashboard_urls_fmt" in string_src and "llama.cpp" in main_src)
     require("project dashboard surfaces compose dependencies", "dependsOn" in main_src and "projectDependencySummary" in main_src and "project_dashboard_dependencies_fmt" in string_src)
     require("project dashboard surfaces compose healthchecks", "hasHealthcheck" in main_src and "projectHealthSummary" in main_src and "project_dashboard_health_fmt" in string_src)
+    require("project dashboard surfaces llama model and gpu diagnostics", "projectModelSummary" in main_src and "projectGpuProfileSummary" in main_src and "pdocker-gpu-diagnostics.json" in main_src and "project_dashboard_models_fmt" in string_src and "action_open_gpu_diagnostics" in string_src)
 
     require("terminal font remains 12pt", "fontSize: 12" in xterm_src)
     require("terminal shortcut key palette is present", 'id="keybar"' in xterm_src and 'data-toggle="ctrl"' in xterm_src)
