@@ -54,6 +54,8 @@
     <string name="section_project_dashboard">Project dashboard</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, files %3$d, containers %4$d</string>
     <string name="project_dashboard_services_fmt">Services: %1$s</string>
+    <string name="project_dashboard_dependencies_fmt">Depends: %1$s</string>
+    <string name="project_dashboard_health_fmt">Healthcheck: %1$s</string>
     <string name="project_dashboard_urls_fmt">URLs: %1$s</string>
     <string name="project_dashboard_jobs_fmt">Jobs: %1$s</string>
     <string name="action_open_project_compose_fmt">Open %1$s compose</string>

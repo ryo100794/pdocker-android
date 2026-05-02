@@ -90,7 +90,9 @@ class MainActivity : AppCompatActivity() {
         val environment: MutableMap<String, String> = mutableMapOf(),
         val ports: MutableList<String> = mutableListOf(),
         val volumes: MutableList<String> = mutableListOf(),
+        val dependsOn: MutableList<String> = mutableListOf(),
         var gpus: String = "",
+        var hasHealthcheck: Boolean = false,
     )
 
     private data class ProjectSummary(
@@ -789,6 +791,8 @@ class MainActivity : AppCompatActivity() {
                     "command" -> svc.command = composeCommand(value)
                     "gpus" -> svc.gpus = composeValue(value)
                     "build" -> if (value.isNotBlank()) svc.buildContext = composeValue(value)
+                    "depends_on" -> if (value.isNotBlank()) svc.dependsOn += composeStringList(value)
+                    "healthcheck" -> svc.hasHealthcheck = true
                 }
                 return@forEach
             }
@@ -802,6 +806,10 @@ class MainActivity : AppCompatActivity() {
                     "environment" -> parseComposeMapOrList(trimmed)?.let { (k, v) -> svc.environment[k] = v }
                     "ports" -> parseComposeListValue(trimmed)?.let { svc.ports += it }
                     "volumes" -> parseComposeListValue(trimmed)?.let { svc.volumes += it }
+                    "depends_on" -> {
+                        parseComposeListValue(trimmed)?.let { svc.dependsOn += it }
+                        parseComposeMapOrList(trimmed)?.first?.let { svc.dependsOn += it }
+                    }
                 }
             }
         }
@@ -862,6 +870,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun parseComposeListValue(line: String): String? =
         line.takeIf { it.trimStart().startsWith("-") }?.trim()?.removePrefix("-")?.trim()?.let(::composeValue)
+
+    private fun composeStringList(value: String): List<String> {
+        val cleaned = composeValue(value)
+        if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+            return runCatching {
+                val arr = JSONArray(cleaned)
+                (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { item -> item.isNotBlank() } }
+            }.getOrElse {
+                cleaned.trim('[', ']').split(',').map { composeValue(it) }.filter { it.isNotBlank() }
+            }
+        }
+        return cleaned.split(',').map { composeValue(it) }.filter { it.isNotBlank() }
+    }
 
     private fun composeCommand(value: String): List<String> {
         val cleaned = composeValue(value)
@@ -1661,6 +1682,8 @@ class MainActivity : AppCompatActivity() {
                     project.containerCount,
                 ),
                 getString(R.string.project_dashboard_services_fmt, serviceText),
+                getString(R.string.project_dashboard_dependencies_fmt, projectDependencySummary(project.services)),
+                getString(R.string.project_dashboard_health_fmt, projectHealthSummary(project.services)),
                 getString(R.string.project_dashboard_urls_fmt, project.serviceUrls.joinToString(", ") { it.first }.ifBlank { "-" }),
                 getString(R.string.project_dashboard_jobs_fmt, project.jobSummary),
             ).joinToString("\n")
@@ -1781,6 +1804,18 @@ class MainActivity : AppCompatActivity() {
         return jobs.groupingBy { it.status }.eachCount()
             .entries
             .joinToString(", ") { "${it.key}:${it.value}" }
+    }
+
+    private fun projectDependencySummary(services: List<ComposeService>): String {
+        val edges = services.flatMap { service ->
+            service.dependsOn.distinct().map { dep -> "${service.name} -> $dep" }
+        }
+        return edges.take(4).joinToString(", ").ifBlank { "-" }
+    }
+
+    private fun projectHealthSummary(services: List<ComposeService>): String {
+        val health = services.filter { it.hasHealthcheck }.map { it.name }.distinct()
+        return health.take(4).joinToString(", ").ifBlank { "-" }
     }
 
     private fun projectServiceUrls(services: List<ComposeService>): List<Pair<String, String>> =
