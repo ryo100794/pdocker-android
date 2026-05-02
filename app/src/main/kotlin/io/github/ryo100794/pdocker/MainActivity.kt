@@ -114,6 +114,7 @@ class MainActivity : AppCompatActivity() {
     private val imageRoot: File by lazy { File(pdockerHome, "images") }
     private val containerRoot: File by lazy { File(pdockerHome, "containers") }
     private val projectRoot: File by lazy { File(pdockerHome, "projects") }
+    private val engine: DockerEngineClient by lazy { DockerEngineClient(File(pdockerHome, "pdockerd.sock")) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -428,7 +429,9 @@ class MainActivity : AppCompatActivity() {
     private fun renderContainers() {
         addSection(getString(R.string.section_containers))
         addAction(getString(R.string.action_docker_ps), getString(R.string.detail_docker_ps)) {
-            openDockerTerminal(getString(R.string.terminal_docker_ps), "docker ps -a")
+            runEngineAction(getString(R.string.terminal_docker_ps), workspaceGroup()) {
+                formatContainers(getArray("/containers/json?all=1"))
+            }
         }
         val containers = containerDirs()
         if (containers.isEmpty()) {
@@ -451,32 +454,28 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             addAction(getString(R.string.action_container_start_fmt, name), dir.name) {
-                openDockerTerminal(
-                    getString(R.string.terminal_container_start_fmt, name),
-                    "docker start ${shellQuote(dir.name)} && docker ps --filter id=${shellQuote(dir.name)}",
-                    name,
-                )
+                runContainerAction(name, getString(R.string.terminal_container_start_fmt, name)) {
+                    post("/containers/${DockerEngineClient.encodePath(dir.name)}/start")
+                    formatContainers(getArray("/containers/json?all=1"))
+                }
             }
             addAction(getString(R.string.action_container_stop_fmt, name), dir.name) {
-                openDockerTerminal(
-                    getString(R.string.terminal_container_stop_fmt, name),
-                    "docker stop ${shellQuote(dir.name)} && docker ps -a --filter id=${shellQuote(dir.name)}",
-                    name,
-                )
+                runContainerAction(name, getString(R.string.terminal_container_stop_fmt, name)) {
+                    post("/containers/${DockerEngineClient.encodePath(dir.name)}/stop?t=10")
+                    formatContainers(getArray("/containers/json?all=1"))
+                }
             }
             addAction(getString(R.string.action_container_restart_fmt, name), dir.name) {
-                openDockerTerminal(
-                    getString(R.string.terminal_container_restart_fmt, name),
-                    "docker stop ${shellQuote(dir.name)} || true; docker start ${shellQuote(dir.name)}; docker ps --filter id=${shellQuote(dir.name)}",
-                    name,
-                )
+                runContainerAction(name, getString(R.string.terminal_container_restart_fmt, name)) {
+                    runCatching { post("/containers/${DockerEngineClient.encodePath(dir.name)}/stop?t=10") }
+                    post("/containers/${DockerEngineClient.encodePath(dir.name)}/start")
+                    formatContainers(getArray("/containers/json?all=1"))
+                }
             }
             addAction(getString(R.string.action_container_logs_fmt, name), dir.name) {
-                openDockerTerminal(
-                    getString(R.string.terminal_container_logs_fmt, name),
-                    "docker logs --tail 200 ${shellQuote(dir.name)}",
-                    name,
-                )
+                runContainerAction(name, getString(R.string.terminal_container_logs_fmt, name)) {
+                    logs(dir.name, 200).ifBlank { "(no logs)" }
+                }
             }
             addAction(getString(R.string.action_browse_container_files_fmt, name), dir.name) {
                 openContainerFiles(dir)
@@ -552,6 +551,79 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         status.text = getString(R.string.status_starting)
+    }
+
+    private fun waitForEngine(timeoutMs: Long = 30_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            runCatching {
+                val resp = engine.request("GET", "/_ping")
+                if (resp.status == 200 && resp.text.trim() == "OK") return true
+            }
+            Thread.sleep(300)
+        }
+        return false
+    }
+
+    private fun runContainerAction(group: String, title: String, block: DockerEngineClient.() -> String) {
+        runEngineAction(title, group, block)
+    }
+
+    private fun runEngineAction(title: String, group: String, block: DockerEngineClient.() -> String) {
+        startDaemon()
+        status.text = getString(R.string.status_starting)
+        thread(isDaemon = true, name = "engine-action") {
+            val output = runCatching {
+                if (!waitForEngine()) error(getString(R.string.status_socket_absent))
+                engine.block()
+            }.getOrElse { "Engine API error: ${it.message.orEmpty()}" }
+            ui.post {
+                openTextTool(group, title, output)
+                renderContent()
+                refreshStatus()
+            }
+        }
+    }
+
+    private fun formatContainers(containers: JSONArray): String {
+        if (containers.length() == 0) return "CONTAINER ID   IMAGE   STATUS   PORTS   NAMES\n"
+        val lines = mutableListOf("CONTAINER ID   IMAGE                 STATUS       PORTS                 NAMES")
+        for (i in 0 until containers.length()) {
+            val obj = containers.optJSONObject(i) ?: continue
+            val names = obj.optJSONArray("Names")
+            val name = names?.optString(0).orEmpty().trim('/').ifBlank { obj.optString("Id").take(12) }
+            val line = listOf(
+                obj.optString("Id").take(12).padEnd(14),
+                obj.optString("Image").take(20).padEnd(21),
+                obj.optString("Status").take(12).padEnd(13),
+                obj.optString("Ports").take(21).padEnd(22),
+                name,
+            ).joinToString("")
+            lines += line
+        }
+        return lines.joinToString("\n")
+    }
+
+    private fun openTextTool(group: String, title: String, text: String) {
+        val key = "engine:$group:$title"
+        val existing = toolTabs.indexOfFirst { it.key == key }
+        if (existing >= 0) {
+            val tab = toolTabs[existing]
+            ((tab.view as? ScrollView)?.getChildAt(0) as? TextView)?.text = text
+            switchTool(existing)
+            return
+        }
+        val view = ScrollView(this).apply {
+            addView(TextView(this@MainActivity).apply {
+                this.text = text
+                textSize = 12f
+                typeface = Typeface.MONOSPACE
+                setTextIsSelectable(true)
+                setPadding(18, 18, 18, 18)
+            })
+        }
+        toolTabs += ToolTab(group, title, ToolKind.Editor, view, key = key)
+        switchTool(toolTabs.lastIndex)
     }
 
     private fun handleAutomationIntent(intent: Intent?) {
