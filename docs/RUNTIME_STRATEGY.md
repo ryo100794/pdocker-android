@@ -78,14 +78,31 @@ This is an experimental packaging mode. Without a replacement runtime,
 container start/exec will not be feature-complete on Android. It exists so the
 APK distribution shape can be tested while the backend replacement lands.
 
+## Runtime backend switch
+
+`pdockerd` now has an explicit runtime backend selector:
+
+```sh
+PDOCKER_RUNTIME_BACKEND=auto      # default: PRoot when available, else chroot
+PDOCKER_RUNTIME_BACKEND=proot     # require PRoot
+PDOCKER_RUNTIME_BACKEND=chroot    # Linux host fallback
+PDOCKER_RUNTIME_BACKEND=no-proot  # Android direct backend placeholder
+```
+
+The `no-proot` backend is intentionally visible before process execution is
+complete. With it selected, `/info` reports `Driver=pdocker-direct` and runtime
+operations return a clear "not implemented yet" diagnostic instead of silently
+falling back to PRoot. This lets the APK and tests exercise the PRoot-free
+packaging shape while image pull, image browsing, Compose/Dockerfile editing,
+and metadata workflows continue to use the Engine API.
+
 ## Replacement plan
 
 1. **Runtime backend boundary**
-   - Add a backend contract around `start`, `exec`, `stop`, `logs`, `archive`,
-     and `mounts`.
+   - Backend selector and neutral driver reporting: **started**.
+   - Add a fuller backend contract around `start`, `exec`, `stop`, `logs`,
+     `archive`, and `mounts`.
    - Keep `proot` as one backend, not the daemon's identity.
-   - Rename public reporting from `proot-cow` to a neutral runtime/driver once
-     a second backend exists.
 
 2. **No-PRoot rootfs executor**
    - Use app-owned process spawning plus explicit filesystem mediation where
