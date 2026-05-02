@@ -10,6 +10,14 @@ if [[ -f "$profile" ]]; then
   source "$profile"
 fi
 
+log_file="${LLAMA_LOG_FILE:-/workspace/logs/llama-server.log}"
+if [[ -n "$log_file" ]]; then
+  mkdir -p "$(dirname "$log_file")" /var/log/pdocker
+  touch "$log_file"
+  ln -sf "$log_file" /var/log/pdocker/llama-server.log
+  exec > >(tee -a "$log_file") 2>&1
+fi
+
 model="${LLAMA_ARG_MODEL:-/models/model.gguf}"
 model_url="${LLAMA_MODEL_URL:-}"
 port="${LLAMA_ARG_PORT:-18081}"
@@ -61,11 +69,11 @@ Profile:
 $(cat "$profile" 2>/dev/null || true)
 EOF
   echo "llama.cpp status page: http://0.0.0.0:$port"
-  exec python3 -m http.server "$port" --bind 0.0.0.0 --directory "$status_dir"
+  exec python3 -u -m http.server "$port" --bind 0.0.0.0 --directory "$status_dir"
 fi
 
-echo "llama.cpp backend=${LLAMA_GPU_BACKEND:-unknown} ngl=$ngl threads=$threads ctx=$ctx port=$port"
-exec "$server" \
+echo "llama.cpp backend=${LLAMA_GPU_BACKEND:-unknown} ngl=$ngl threads=$threads ctx=$ctx port=$port log=$log_file"
+exec stdbuf -oL -eL "$server" \
   --host 0.0.0.0 \
   --port "$port" \
   --model "$model" \

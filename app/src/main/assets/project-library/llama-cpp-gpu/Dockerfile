@@ -41,7 +41,7 @@ RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /opt/llama.cpp \
 COPY scripts/pdocker-gpu-profile.sh /usr/local/bin/pdocker-gpu-profile
 COPY scripts/start-llama-server.sh /usr/local/bin/start-llama-server
 RUN chmod +x /usr/local/bin/pdocker-gpu-profile /usr/local/bin/start-llama-server \
-    && mkdir -p /models /workspace /profiles
+    && mkdir -p /models /workspace /workspace/logs /profiles /var/log/pdocker
 
 WORKDIR /workspace
 EXPOSE 18081

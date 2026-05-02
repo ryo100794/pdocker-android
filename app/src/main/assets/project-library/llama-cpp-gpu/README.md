@@ -35,6 +35,11 @@ The entrypoint adds `--jinja` by default because the gpt-oss GGUF uses a chat
 template. Override `LLAMA_EXTRA_ARGS` if you need different llama-server
 options.
 
+All startup, download, status-page, and `llama-server` output is written to
+stdout/stderr so `docker logs pdocker-llama-cpp` can show it. The same stream is
+also copied to `/workspace/logs/llama-server.log`; override `LLAMA_LOG_FILE` to
+change or disable that extra file.
+
 OpenAI gpt-oss weights are available under the Apache 2.0 license. This
 template downloads the model at runtime; it is not bundled into the APK.
 

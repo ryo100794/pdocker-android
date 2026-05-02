@@ -59,6 +59,7 @@ def main() -> int:
         "Dockerfile llama.cpp source": "ggml-org/llama.cpp" in llama_dockerfile,
         "Dockerfile Vulkan build": "-DGGML_VULKAN=ON" in llama_dockerfile,
         "Dockerfile OpenBLAS build": "-DGGML_BLAS=ON" in llama_dockerfile,
+        "Dockerfile log directory": "/workspace/logs" in llama_dockerfile and "/var/log/pdocker" in llama_dockerfile,
         "profile Vulkan detection": "PDOCKER_VULKAN_PASSTHROUGH" in profile,
         "profile CUDA compat detection": "PDOCKER_CUDA_COMPAT" in profile,
         "profile CPU fallback": re.search(r'backend="cpu"', profile) is not None,
@@ -68,7 +69,8 @@ def main() -> int:
         "llama default gpt-oss model": "ggml-org/gpt-oss-20b-GGUF" in llama_compose and "gpt-oss-20b-mxfp4.gguf" in llama_compose,
         "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start and "-C -" in start,
         "llama default chat template": "--jinja" in start,
-        "llama missing-model status page": "python3 -m http.server" in start and "waiting for a GGUF model" in start,
+        "llama docker logs stream": "LLAMA_LOG_FILE" in llama_compose and "tee -a \"$log_file\"" in start and "stdbuf -oL -eL" in start,
+        "llama missing-model status page": "http.server" in start and "waiting for a GGUF model" in start,
     }
     for name, passed in expectations.items():
         if not passed:
