@@ -150,13 +150,18 @@ Latest quick smoke on Sony SOG15, 2026-05-02, using the Android-side
 
 | Kernel | CPU scalar total | GLES 3.1 total | CPU/GLES |
 |---|---:|---:|---:|
-| `vector_add` n=262144 | 22.21 ms | 23.70 ms | 0.94x |
-| `saxpy` n=262144 | 25.76 ms | 4.99 ms | 5.16x |
-| `matmul_fp32` 64x64 | 26.78 ms | 1.02 ms | 26.31x |
+| `vector_add_cold` n=262144 local_size=256 | 25.41 ms | 12.13 ms | 2.09x |
+| `vector_add` stream n=262144 local_size=128 | 25.41 ms | 3.25 ms | 7.82x |
+| `saxpy` n=262144 | 29.94 ms | 4.20 ms | 7.12x |
+| `matmul_fp32` 64x64 | 33.00 ms | 1.14 ms | 28.91x |
 
 This confirms that the benchmark can observe GPU speedup on this device for
-workloads with enough arithmetic intensity. `vector_add` remains CPU-favored
-at this size because compile/upload/synchronization overhead dominates.
+workloads with enough arithmetic intensity. `vector_add_cold` measures the
+one-shot path including shader compilation, upload, dispatch, and download.
+The tuned `vector_add` stream path reuses the compiled kernel, selects the
+fastest tested workgroup size, and still includes upload/dispatch/download
+time. On the latest SOG15 smoke run the selected workgroup size is 128 and the
+stream path is about 7.82x faster than the CPU scalar baseline.
 
 Benchmark outputs should be JSON Lines and CSV under:
 

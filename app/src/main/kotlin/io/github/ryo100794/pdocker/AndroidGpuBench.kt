@@ -248,31 +248,38 @@ object AndroidGpuBench {
         }
 
         fun runAll(): List<BenchResult> =
-            listOf(vectorAdd(VECTOR_N), saxpy(VECTOR_N), matmul(MATMUL_N))
+            vectorAdd(VECTOR_N) + listOf(saxpy(VECTOR_N), matmul(MATMUL_N))
 
-        private fun vectorAdd(n: Int): BenchResult {
+        private fun vectorAdd(n: Int): List<BenchResult> {
             val (a, b) = vectorInputs(n)
-            val out = runVectorKernel(
+            val cold = runVectorKernel(
                 kernel = "vector_add",
                 n = n,
                 srcA = a,
                 srcB = b,
-                shader = """
-                    #version 310 es
-                    layout(local_size_x = 256) in;
-                    layout(std430, binding = 0) readonly buffer A { float a[]; };
-                    layout(std430, binding = 1) readonly buffer B { float b[]; };
-                    layout(std430, binding = 2) writeonly buffer O { float o[]; };
-                    uniform int n;
-                    void main() {
-                      uint i = gl_GlobalInvocationID.x;
-                      if (i < uint(n)) { o[i] = a[i] + b[i]; }
-                    }
-                """.trimIndent(),
+                localSize = 256,
+                shader = vectorAddShader(256),
             )
-            var maxErr = 0.0
-            for (i in 0 until n) maxErr = maxOf(maxErr, kotlin.math.abs(out.values[i] - (a[i] + b[i])).toDouble())
-            return gpuResult("vector_add", "n=$n", out, maxErr)
+            val coldResult = gpuResult("vector_add_cold", "n=$n local_size=256", cold, vectorAddError(n, a, b, cold.values))
+            val tuned = listOf(64, 128, 256)
+                .map { localSize ->
+                    localSize to runVectorKernelStream(
+                        kernel = "vector_add",
+                        n = n,
+                        srcA = a,
+                        srcB = b,
+                        localSize = localSize,
+                        shader = vectorAddShader(localSize),
+                    )
+                }
+                .minBy { it.second.totalMs }
+            val tunedResult = gpuResult(
+                "vector_add",
+                "n=$n local_size=${tuned.first} stream",
+                tuned.second,
+                vectorAddError(n, a, b, tuned.second.values),
+            )
+            return listOf(coldResult, tunedResult)
         }
 
         private fun saxpy(n: Int): BenchResult {
@@ -283,6 +290,7 @@ object AndroidGpuBench {
                 n = n,
                 srcA = x,
                 srcB = y,
+                localSize = 256,
                 alpha = alpha,
                 shader = """
                     #version 310 es
@@ -301,6 +309,28 @@ object AndroidGpuBench {
             var maxErr = 0.0
             for (i in 0 until n) maxErr = maxOf(maxErr, kotlin.math.abs(out.values[i] - (alpha * x[i] + y[i])).toDouble())
             return gpuResult("saxpy", "n=$n", out, maxErr)
+        }
+
+        private fun vectorAddShader(localSize: Int): String =
+            """
+                #version 310 es
+                layout(local_size_x = $localSize) in;
+                layout(std430, binding = 0) readonly buffer A { float a[]; };
+                layout(std430, binding = 1) readonly buffer B { float b[]; };
+                layout(std430, binding = 2) writeonly buffer O { float o[]; };
+                uniform int n;
+                void main() {
+                  uint i = gl_GlobalInvocationID.x;
+                  if (i < uint(n)) { o[i] = a[i] + b[i]; }
+                }
+            """.trimIndent()
+
+        private fun vectorAddError(n: Int, a: FloatArray, b: FloatArray, out: FloatArray): Double {
+            var maxErr = 0.0
+            for (i in 0 until n) {
+                maxErr = maxOf(maxErr, kotlin.math.abs(out[i] - (a[i] + b[i])).toDouble())
+            }
+            return maxErr
         }
 
         private fun matmul(n: Int): BenchResult {
@@ -346,6 +376,7 @@ object AndroidGpuBench {
             n: Int,
             srcA: FloatArray,
             srcB: FloatArray,
+            localSize: Int,
             alpha: Float? = null,
             shader: String,
         ): GpuRun {
@@ -364,7 +395,7 @@ object AndroidGpuBench {
             GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "n"), n)
             if (alpha != null) GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "alpha"), alpha)
             val dispatchMs = elapsedMs {
-                GLES31.glDispatchCompute((n + 255) / 256, 1, 1)
+                GLES31.glDispatchCompute((n + localSize - 1) / localSize, 1, 1)
                 GLES31.glMemoryBarrier(GLES31.GL_SHADER_STORAGE_BARRIER_BIT)
                 GLES20.glFinish()
             }
@@ -375,6 +406,41 @@ object AndroidGpuBench {
             GLES20.glDeleteProgram(program)
             checkGl("$kernel complete")
             return GpuRun(out, compileMs, uploadMs, dispatchMs, downloadMs)
+        }
+
+        private fun runVectorKernelStream(
+            kernel: String,
+            n: Int,
+            srcA: FloatArray,
+            srcB: FloatArray,
+            localSize: Int,
+            alpha: Float? = null,
+            shader: String,
+        ): GpuRun {
+            val program = createProgram(shader)
+            val buffers = IntArray(3)
+            GLES20.glGenBuffers(3, buffers, 0)
+            val uploadStart = System.nanoTime()
+            uploadBuffer(buffers[0], 0, srcA)
+            uploadBuffer(buffers[1], 1, srcB)
+            uploadBuffer(buffers[2], 2, FloatArray(n))
+            GLES20.glFinish()
+            val uploadMs = sinceMs(uploadStart)
+            GLES20.glUseProgram(program)
+            GLES20.glUniform1i(GLES20.glGetUniformLocation(program, "n"), n)
+            if (alpha != null) GLES20.glUniform1f(GLES20.glGetUniformLocation(program, "alpha"), alpha)
+            val dispatchMs = elapsedMs {
+                GLES31.glDispatchCompute((n + localSize - 1) / localSize, 1, 1)
+                GLES31.glMemoryBarrier(GLES31.GL_SHADER_STORAGE_BARRIER_BIT)
+                GLES20.glFinish()
+            }
+            val downloadStart = System.nanoTime()
+            val out = downloadBuffer(buffers[2], n)
+            val downloadMs = sinceMs(downloadStart)
+            GLES20.glDeleteBuffers(3, buffers, 0)
+            GLES20.glDeleteProgram(program)
+            checkGl("$kernel stream complete")
+            return GpuRun(out, 0.0, uploadMs, dispatchMs, downloadMs)
         }
 
         private fun runMatmulKernel(n: Int, a: FloatArray, b: FloatArray): GpuRun {
