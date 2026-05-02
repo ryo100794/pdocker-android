@@ -91,6 +91,8 @@ def main() -> int:
     require("debug smoke can start daemon through activity", "ACTION_SMOKE_START" in main_src and "FLAG_DEBUGGABLE" in main_src and ".PdockerdService" not in android_smoke_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
     require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
+    require("template install reports copied and kept files", "copyAssetTreeMissing" in main_src and "TemplateInstallReport" in main_src and "status_library_install_report_fmt" in string_src)
+    require("template install records version stamp", ".pdocker-template-id" in main_src and ".pdocker-template-version" in main_src and "obj.optInt(\"version\", libraryVersion)" in main_src)
     require("android device smoke script exists", "docker compose up --detach --build" in android_smoke_src and "run-as" in android_smoke_src and "docker version" in android_smoke_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)
@@ -105,6 +107,9 @@ def main() -> int:
     require("editor tabs are keyed by canonical file path", "val key = target.absolutePath" in main_src)
     require("same-name editors get parent-qualified titles", "private fun editorTitle" in main_src)
     require("project files are surfaced as editor shortcuts", "renderProjectFileShortcuts" in main_src and "section_project_files" in string_src)
+    require("project dashboard summarizes compose/dockerfile/files", "renderProjectDashboard" in main_src and "private data class ProjectSummary" in main_src and "section_project_dashboard" in string_src)
+    require("project dashboard opens primary files and actions", "openProjectPrimaryFile" in main_src and "action_open_project_compose_fmt" in string_src and "action_open_project_dockerfile_fmt" in string_src)
+    require("project dashboard tracks services jobs containers", "projectContainerCount" in main_src and "projectJobSummary" in main_src and "parseComposeServices" in main_src)
 
     require("terminal font remains 12pt", "fontSize: 12" in xterm_src)
     require("terminal shortcut key palette is present", 'id="keybar"' in xterm_src and 'data-toggle="ctrl"' in xterm_src)

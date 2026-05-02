@@ -56,7 +56,13 @@ class MainActivity : AppCompatActivity() {
         val compose: String,
         val dockerfile: String,
         val gpu: String,
+        val version: Int,
         val features: List<String>,
+    )
+
+    private data class TemplateInstallReport(
+        var copied: Int = 0,
+        var kept: Int = 0,
     )
 
     private data class DockerJob(
@@ -85,6 +91,16 @@ class MainActivity : AppCompatActivity() {
         val ports: MutableList<String> = mutableListOf(),
         val volumes: MutableList<String> = mutableListOf(),
         var gpus: String = "",
+    )
+
+    private data class ProjectSummary(
+        val dir: File,
+        val compose: List<File>,
+        val dockerfiles: List<File>,
+        val editable: List<File>,
+        val services: List<ComposeService>,
+        val containerCount: Int,
+        val jobSummary: String,
     )
 
     companion object {
@@ -311,6 +327,7 @@ class MainActivity : AppCompatActivity() {
         addWidget(getString(R.string.widget_containers), containerDirs().size.toString(), getString(R.string.detail_containers_inventory))
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
+        renderProjectDashboard()
         renderDockerJobs()
     }
 
@@ -1623,6 +1640,141 @@ class MainActivity : AppCompatActivity() {
             .filter { it.isFile && it.name == "Dockerfile" }
             .sortedBy { it.absolutePath }
 
+    private fun renderProjectDashboard() {
+        val projects = projectSummaries()
+        if (projects.isEmpty()) return
+        addSection(getString(R.string.section_project_dashboard))
+        projects.take(8).forEach { project ->
+            val serviceText = project.services
+                .map { it.name }
+                .distinct()
+                .take(4)
+                .joinToString(", ")
+                .ifBlank { "-" }
+            val detail = listOf(
+                getString(
+                    R.string.project_dashboard_counts_fmt,
+                    project.compose.size,
+                    project.dockerfiles.size,
+                    project.editable.size,
+                    project.containerCount,
+                ),
+                getString(R.string.project_dashboard_services_fmt, serviceText),
+                getString(R.string.project_dashboard_jobs_fmt, project.jobSummary),
+            ).joinToString("\n")
+            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail) {
+                openProjectPrimaryFile(project)
+            }
+            project.compose.take(2).forEach { file ->
+                addAction(
+                    getString(R.string.action_open_project_compose_fmt, project.dir.name),
+                    relativeProjectPath(project.dir, file),
+                ) { openEditor(file) }
+            }
+            project.dockerfiles.take(2).forEach { file ->
+                addAction(
+                    getString(R.string.action_open_project_dockerfile_fmt, project.dir.name),
+                    relativeProjectPath(project.dir, file),
+                ) { openEditor(file) }
+            }
+            if (project.compose.isNotEmpty()) {
+                addAction(getString(R.string.action_up_fmt, project.dir.name), getString(R.string.detail_compose_up)) {
+                    runComposeUp(project.dir, getString(R.string.terminal_compose_up_fmt, project.dir.name))
+                }
+            }
+            if (project.dockerfiles.isNotEmpty()) {
+                addAction(getString(R.string.action_build_fmt, project.dir.name), project.dir.absolutePath) {
+                    runImageBuild(project.dir, getString(R.string.terminal_docker_build_fmt, project.dir.name))
+                }
+            }
+            project.editable
+                .filterNot { it in project.compose || it in project.dockerfiles }
+                .take(4)
+                .forEach { file ->
+                    addAction(
+                        getString(R.string.action_open_project_file_fmt, relativeProjectPath(project.dir, file)),
+                        getString(R.string.detail_project_file),
+                    ) { openEditor(file) }
+                }
+        }
+    }
+
+    private fun projectSummaries(): List<ProjectSummary> =
+        projectDirs().map { dir ->
+            val files = dir.walkSafe().filter { it.isFile }
+            val compose = files
+                .filter { it.name in setOf("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml") }
+                .sortedBy { it.absolutePath }
+            val dockerfiles = files
+                .filter { it.name == "Dockerfile" }
+                .sortedBy { it.absolutePath }
+            val editable = files
+                .filter { it.length() <= MAX_INLINE_EDIT_BYTES && isProjectTextFile(it) }
+                .sortedWith(compareBy<File> { projectFileRank(it) }.thenBy { it.absolutePath })
+            val services = compose
+                .mapNotNull { it.parentFile }
+                .distinctBy { it.absolutePath }
+                .flatMap { parseComposeServices(it) }
+            ProjectSummary(
+                dir = dir,
+                compose = compose,
+                dockerfiles = dockerfiles,
+                editable = editable,
+                services = services,
+                containerCount = projectContainerCount(dir.name),
+                jobSummary = projectJobSummary(dir.name),
+            )
+        }.sortedWith(compareBy<ProjectSummary> {
+            if (it.compose.isNotEmpty() || it.dockerfiles.isNotEmpty()) 0 else 1
+        }.thenBy { it.dir.name })
+
+    private fun projectDirs(): List<File> =
+        projectRoot.listFiles()
+            ?.filter { it.isDirectory && it.name !in setOf(".git", "node_modules") }
+            ?.sortedBy { it.name }
+            .orEmpty()
+
+    private fun openProjectPrimaryFile(project: ProjectSummary) {
+        val target = project.compose.firstOrNull()
+            ?: project.dockerfiles.firstOrNull()
+            ?: project.editable.firstOrNull()
+        if (target != null) {
+            openEditor(target)
+        }
+    }
+
+    private fun relativeProjectPath(project: File, file: File): String =
+        runCatching { project.toPath().relativize(file.toPath()).toString() }.getOrDefault(file.name)
+
+    private fun isProjectTextFile(file: File): Boolean {
+        val name = file.name
+        val ext = name.substringAfterLast('.', "")
+        return name in setOf("Dockerfile", "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml", "README.md") ||
+            ext in setOf("yaml", "yml", "json", "sh", "env", "md", "txt", "toml", "conf", "properties", "gradle", "kt", "py", "js", "ts", "css", "html")
+    }
+
+    private fun projectFileRank(file: File): Int = when (file.name) {
+        "compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml" -> 0
+        "Dockerfile" -> 1
+        "README.md" -> 2
+        else -> 3
+    }
+
+    private fun projectContainerCount(projectName: String): Int =
+        containerDirs().count { dir ->
+            val state = readState(dir)
+            val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
+            name == projectName || name.startsWith("$projectName-")
+        }
+
+    private fun projectJobSummary(projectName: String): String {
+        val jobs = dockerJobs.filter { it.group == projectName || projectName in it.command }
+        if (jobs.isEmpty()) return "-"
+        return jobs.groupingBy { it.status }.eachCount()
+            .entries
+            .joinToString(", ") { "${it.key}:${it.value}" }
+    }
+
     private fun renderProjectFileShortcuts() {
         val files = projectRoot.walkSafe()
             .filter { it.isFile && it.length() <= MAX_INLINE_EDIT_BYTES }
@@ -1641,6 +1793,7 @@ class MainActivity : AppCompatActivity() {
         runCatching {
             val root = JSONObject(assets.open("project-library/library.json").bufferedReader().use { it.readText() })
             val arr = root.optJSONArray("templates") ?: JSONArray()
+            val libraryVersion = root.optInt("version", 1)
             (0 until arr.length()).mapNotNull { i ->
                 arr.optJSONObject(i)?.let { obj ->
                     val features = obj.optJSONArray("features") ?: JSONArray()
@@ -1654,6 +1807,7 @@ class MainActivity : AppCompatActivity() {
                         compose = obj.optString("compose", "compose.yaml"),
                         dockerfile = obj.optString("dockerfile", "Dockerfile"),
                         gpu = obj.optString("gpu", "none"),
+                        version = obj.optInt("version", libraryVersion),
                         features = (0 until features.length()).mapNotNull { j -> features.optString(j).takeIf { it.isNotBlank() } },
                     )
                 }
@@ -1665,9 +1819,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun installTemplate(template: ProjectTemplate) {
         val target = File(projectRoot, template.projectDir)
-        copyAssetTree(template.assetPath, target)
+        val report = copyAssetTreeMissing(template.assetPath, target)
+        File(target, ".pdocker-template-id").writeText(template.id + "\n")
+        File(target, ".pdocker-template-version").writeText(template.version.toString() + "\n")
         migrateProjectPorts(target)
-        status.text = getString(R.string.status_library_installed_fmt, template.name)
+        status.text = getString(
+            R.string.status_library_install_report_fmt,
+            template.name,
+            report.copied,
+            report.kept,
+            template.version,
+        )
+    }
+
+    private fun copyAssetTreeMissing(assetPath: String, dest: File): TemplateInstallReport {
+        val report = TemplateInstallReport()
+        fun copyNode(src: String, target: File) {
+            val children = assets.list(src).orEmpty()
+            if (children.isEmpty()) {
+                if (target.exists()) {
+                    report.kept += 1
+                    return
+                }
+                target.parentFile?.mkdirs()
+                assets.open(src).use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                report.copied += 1
+                return
+            }
+            target.mkdirs()
+            children.forEach { child -> copyNode("$src/$child", File(target, child)) }
+        }
+        copyNode(assetPath.trim('/'), dest)
+        return report
     }
 
     private fun File.walkSafe(): List<File> =

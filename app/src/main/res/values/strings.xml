@@ -25,6 +25,7 @@
     <string name="status_pdocker_fmt">pdockerd: %1$s</string>
     <string name="status_library_failed">library load failed: %1$s</string>
     <string name="status_library_installed_fmt">installed template: %1$s</string>
+    <string name="status_library_install_report_fmt">installed template: %1$s, copied %2$d, kept %3$d, version %4$d</string>
 
     <string name="section_runtime">Runtime</string>
     <string name="section_workspace">Workspace</string>
@@ -50,6 +51,13 @@
     <string name="widget_compose_projects">Compose projects</string>
     <string name="widget_dockerfiles">Dockerfiles</string>
     <string name="detail_dockerfiles_inventory">Build definitions under projects</string>
+    <string name="section_project_dashboard">Project dashboard</string>
+    <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, files %3$d, containers %4$d</string>
+    <string name="project_dashboard_services_fmt">Services: %1$s</string>
+    <string name="project_dashboard_jobs_fmt">Jobs: %1$s</string>
+    <string name="action_open_project_compose_fmt">Open %1$s compose</string>
+    <string name="action_open_project_dockerfile_fmt">Open %1$s Dockerfile</string>
+    <string name="action_open_project_file_fmt">Open %1$s</string>
 
     <string name="section_project_library">Project Library</string>
     <string name="action_library_shell">Library shell</string>

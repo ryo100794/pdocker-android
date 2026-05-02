@@ -25,6 +25,7 @@
     <string name="status_pdocker_fmt">pdockerd: %1$s</string>
     <string name="status_library_failed">ライブラリの読み込みに失敗: %1$s</string>
     <string name="status_library_installed_fmt">テンプレートを展開しました: %1$s</string>
+    <string name="status_library_install_report_fmt">テンプレートを展開しました: %1$s, コピー %2$d, 既存保持 %3$d, version %4$d</string>
 
     <string name="section_runtime">ランタイム</string>
     <string name="section_workspace">ワークスペース</string>
@@ -50,6 +51,13 @@
     <string name="widget_compose_projects">Compose プロジェクト</string>
     <string name="widget_dockerfiles">Dockerfile</string>
     <string name="detail_dockerfiles_inventory">projects 配下のビルド定義</string>
+    <string name="section_project_dashboard">プロジェクトダッシュボード</string>
+    <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$d</string>
+    <string name="project_dashboard_services_fmt">サービス: %1$s</string>
+    <string name="project_dashboard_jobs_fmt">ジョブ: %1$s</string>
+    <string name="action_open_project_compose_fmt">%1$s compose を開く</string>
+    <string name="action_open_project_dockerfile_fmt">%1$s Dockerfile を開く</string>
+    <string name="action_open_project_file_fmt">%1$s を開く</string>
 
     <string name="section_project_library">プロジェクトライブラリ</string>
     <string name="action_library_shell">ライブラリシェル</string>
