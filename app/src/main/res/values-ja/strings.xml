@@ -167,6 +167,7 @@
     <string name="terminal_container_restart_fmt">再起動: %1$s</string>
     <string name="terminal_container_logs_fmt">ログ: %1$s</string>
     <string name="terminal_docker_interactive">Docker 対話セッション</string>
+    <string name="toast_copied">コピーしました</string>
     <string name="terminal_gpu_profile">GPU profile</string>
     <string name="terminal_job_log_fmt">ログ: %1$s</string>
 

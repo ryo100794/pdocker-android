@@ -330,6 +330,10 @@
   const copySelection = () => {
     const text = term.getSelection();
     if (!text) return;
+    if (window.PdockerBridge && PdockerBridge.copyToClipboard) {
+      PdockerBridge.copyToClipboard(toB64(enc.encode(text)));
+      return;
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).catch(() => {});
     } else {
@@ -426,12 +430,18 @@
   selectionMenu.addEventListener('click', (event) => {
     const btn = event.target.closest('button');
     if (!btn) return;
+    event.stopPropagation();
     event.preventDefault();
     const action = btn.dataset.selectionAction;
     if (action === 'all') selectAllTerminal();
     if (action === 'copy') copySelection();
     if (action === 'clear') stopSelection();
     focusTerm();
+  });
+  ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach((name) => {
+    selectionMenu.addEventListener(name, (event) => {
+      event.stopPropagation();
+    }, { passive: false });
   });
 
   window.pdockerRecv = (b64) => {
@@ -469,6 +479,7 @@
       return;
     }
     if (event.touches.length !== 1) return;
+    if (selectionMenu.contains(event.target)) return;
     const touch = event.touches[0];
     const cell = cellFromTouch(touch);
     touchScroll = { x: touch.clientX, y: touch.clientY };

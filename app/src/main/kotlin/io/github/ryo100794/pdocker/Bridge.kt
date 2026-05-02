@@ -1,8 +1,12 @@
 package io.github.ryo100794.pdocker
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -87,6 +91,19 @@ class Bridge(
     fun resize(rows: Int, cols: Int) {
         if (!alive.get() || fd < 0) return
         PtyNative.resize(fd, rows, cols)
+    }
+
+    @JavascriptInterface
+    fun copyToClipboard(b64: String) {
+        val text = runCatching {
+            String(Base64.decode(b64, Base64.DEFAULT), Charsets.UTF_8)
+        }.getOrDefault("")
+        if (text.isEmpty()) return
+        activity.runOnUiThread {
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("pdocker terminal", text))
+            Toast.makeText(activity, activity.getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun close() {

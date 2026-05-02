@@ -101,6 +101,8 @@ def main() -> int:
     require("terminal touch scroll remains available", "term.scrollLines" in xterm_src and "touchScroll" in xterm_src)
     require("terminal shows touch selection markers", "selection-handle" in xterm_src and "term.select(" in xterm_src and "data-toggle=\"select\"" in xterm_src)
     require("terminal select-all is wired", "data-select-all=\"1\"" in xterm_src and "selectAllTerminal" in xterm_src and "term.selectAll()" in xterm_src)
+    require("terminal selection menu touch does not steal button clicks", "selectionMenu.contains(event.target)" in xterm_src and "event.stopPropagation()" in xterm_src)
+    require("terminal copy uses android clipboard bridge", "copyToClipboard" in bridge_src and "PdockerBridge.copyToClipboard" in xterm_src)
     require("terminal selection handles drag independently", "roleForVisualHandle" in xterm_src and "nearestSelectionHandle" in xterm_src and "pointer-events: auto" in xterm_src)
 
     require("code editor exposes whitespace", "VisibleWhitespaceTransformation" in editor_src)
