@@ -32,6 +32,11 @@ Temporary behavior:
   Android-blocked startup syscalls.
 - `faccessat2` currently returns a permissive success result. Replace this with
   host-side path probing and accurate errno mapping.
+- Temporary `/bin` -> `/usr/bin` and related `/sbin`/`/lib` path fallback was
+  added in `pdocker-direct` only to prove the syscall broker path, then removed.
+  Correct behavior is to preserve Docker/OCI rootfs symlinks during layer
+  materialization. Any future path fallback of this kind is forbidden unless it
+  is explicitly modeled as real symlink resolution from the image rootfs.
 - Direct backend start/exec fails with an explicit error instead of starting a
   fake listener.
 - Dockerfile `RUN` fails in direct mode instead of recording a fake layer.
@@ -57,9 +62,12 @@ Real implementation needed:
 4. Complete rootfs path mediation so process paths resolve inside the image
    rootfs, not the Android host filesystem, including symlink and errno
    behavior.
-5. Add bind mount/path rewrite support for project volumes and named volumes.
-6. Add Engine-level TTY plumbing for `docker run -t` and `docker exec -it`.
-7. Add process supervision that survives UI navigation and reports honest exit
+5. Keep merged-usr symlinks (`/bin`, `/sbin`, `/lib`, `/lib64`) as image data.
+   Do not flatten them into directories and do not paper over a broken rootfs
+   by redirecting hard-coded paths to `/usr/...`.
+6. Add bind mount/path rewrite support for project volumes and named volumes.
+7. Add Engine-level TTY plumbing for `docker run -t` and `docker exec -it`.
+8. Add process supervision that survives UI navigation and reports honest exit
    codes.
 
 Acceptance:

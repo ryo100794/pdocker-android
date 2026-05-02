@@ -192,6 +192,14 @@ This proves the scratch broker can now:
 - run a standard `ubuntu:22.04` Dockerfile `RUN`;
 - run a tiny `docker compose up --build -d` service and capture its logs.
 
+Important correction: the first passing smoke briefly used an incorrect
+`pdocker-direct` fallback that redirected missing `/bin/*` paths to `/usr/bin/*`
+after `pdockerd` had flattened merged-usr symlinks into real directories. That
+is not Docker-compatible behavior. The correct implementation is to preserve
+the image rootfs exactly enough that `/bin -> usr/bin` remains a symlink, and
+to let the rootfs loader/path mediation resolve the standard path. The fallback
+was removed; the materializer must keep merged-usr symlinks intact.
+
 The compatibility proof is currently for the SDK28 compat flavor on SOG15
 (Android 16 / SDK 36). API29+ targetSdk direct execution remains unproved.
 The broker still needs exact errno semantics for path probes, TTY/attach,

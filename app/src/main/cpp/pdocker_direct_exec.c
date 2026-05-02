@@ -269,34 +269,6 @@ static int should_rewrite_path(const char *rootfs, const char *path) {
     return 1;
 }
 
-static void resolve_rootfs_absolute(const char *rootfs, const char *path, char *out, size_t out_size) {
-    if (snprintf(out, out_size, "%s%s", rootfs, path) >= (int)out_size) return;
-    if (access(out, F_OK) == 0) return;
-    const char *fallback_prefix = NULL;
-    size_t prefix_len = 0;
-    if (strncmp(path, "/bin/", 5) == 0) {
-        fallback_prefix = "/usr/bin/";
-        prefix_len = 5;
-    } else if (strncmp(path, "/sbin/", 6) == 0) {
-        fallback_prefix = "/usr/sbin/";
-        prefix_len = 6;
-    } else if (strncmp(path, "/lib/", 5) == 0) {
-        fallback_prefix = "/usr/lib/";
-        prefix_len = 5;
-    } else if (strncmp(path, "/lib64/", 7) == 0) {
-        fallback_prefix = "/usr/lib64/";
-        prefix_len = 7;
-    }
-    if (!fallback_prefix) return;
-    char fallback[PATH_MAX];
-    if (snprintf(fallback, sizeof(fallback), "%s%s%s", rootfs, fallback_prefix, path + prefix_len) >= (int)sizeof(fallback)) {
-        return;
-    }
-    if (access(fallback, F_OK) == 0) {
-        snprintf(out, out_size, "%s", fallback);
-    }
-}
-
 static int rewrite_path_arg(pid_t pid, struct user_pt_regs *regs, int arg_index,
                             const char *rootfs, const char *context) {
     char original[PATH_MAX];
@@ -335,7 +307,11 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs,
     if (strncmp(original, rootfs, strlen(rootfs)) == 0) {
         snprintf(target, sizeof(target), "%s", original);
     } else if (should_rewrite_path(rootfs, original)) {
-        resolve_rootfs_absolute(rootfs, original, target, sizeof(target));
+        if (snprintf(target, sizeof(target), "%s%s", rootfs, original) >= (int)sizeof(target)) {
+            fprintf(stderr, "pdocker-direct-trace: pid=%d execve target too long: %s\n",
+                    (int)pid, original);
+            return 0;
+        }
     } else {
         return 0;
     }
@@ -766,7 +742,11 @@ loader_found:
     char target[PATH_MAX];
     const char *cmd0 = argv[command_index];
     if (cmd0[0] == '/') {
-        resolve_rootfs_absolute(rootfs, cmd0, target, sizeof(target));
+        if (snprintf(target, sizeof(target), "%s%s", rootfs, cmd0) >= (int)sizeof(target)) {
+            fprintf(stderr, "pdocker-direct-executor: command path too long\n");
+            free(env_items);
+            return 126;
+        }
     } else {
         if (snprintf(target, sizeof(target), "%s/%s", cwd, cmd0) >= (int)sizeof(target)) {
             fprintf(stderr, "pdocker-direct-executor: command path too long\n");
