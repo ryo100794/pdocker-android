@@ -6,10 +6,11 @@ PKG="${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}"
 APK="${PDOCKER_APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}"
 PROJECT="device-smoke"
 MODE="full"
+GPU_BENCH=0
 
 usage() {
   cat <<EOF
-Usage: $0 [--quick] [--no-install]
+Usage: $0 [--quick] [--gpu-bench] [--no-install]
 
 Runs a repeatable pdocker Android device smoke through adb + run-as.
 
@@ -20,6 +21,7 @@ Environment:
 
 Modes:
   --quick       only install/start pdockerd and run docker version
+  --gpu-bench   also run debug-only android-gpu-bench and verify artifacts
   --no-install  skip adb install; useful when the same debug APK is present
 EOF
 }
@@ -29,6 +31,7 @@ INSTALL=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) MODE="quick" ;;
+    --gpu-bench) GPU_BENCH=1 ;;
     --no-install) INSTALL=0 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -65,6 +68,25 @@ docker_cmd() {
   run_as "cd files && export PATH=\"\$PWD/pdocker-runtime/docker-bin:\$PATH\" DOCKER_CONFIG=\"\$PWD/pdocker-runtime/docker-bin\" DOCKER_HOST=\"unix://\$PWD/pdocker/pdockerd.sock\" DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false && $cmd"
 }
 
+run_gpu_bench() {
+  local bench_dir="files/pdocker/bench"
+  echo "[pdocker smoke] android-gpu-bench"
+  run_as "rm -rf '$bench_dir' && mkdir -p '$bench_dir'" >/dev/null 2>&1 || true
+  run_adb shell am broadcast \
+    -n "$PKG/.PdockerdDebugReceiver" \
+    -a "$PKG.action.SMOKE_GPU_BENCH" >/dev/null
+  local i
+  for i in $(seq 1 20); do
+    if run_as "ls '$bench_dir'/android-gpu-bench-*.jsonl >/dev/null 2>&1 && ls '$bench_dir'/android-gpu-bench-*.csv >/dev/null 2>&1"; then
+      run_as "tail -n 3 '$bench_dir'/android-gpu-bench-*.jsonl"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "android-gpu-bench artifacts did not appear in $bench_dir" >&2
+  return 1
+}
+
 echo "[pdocker smoke] device: $(run_adb get-serialno)"
 
 if [[ "$INSTALL" -eq 1 ]]; then
@@ -88,6 +110,10 @@ wait_for_socket
 
 echo "[pdocker smoke] docker version"
 docker_cmd 'docker version'
+
+if [[ "$GPU_BENCH" -eq 1 ]]; then
+  run_gpu_bench
+fi
 
 if [[ "$MODE" == "quick" ]]; then
   echo "[pdocker smoke] quick mode passed"

@@ -118,6 +118,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_JOB_HISTORY = 20
         private const val MAX_JOB_LINES = 200
         private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
+        private const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -971,10 +972,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleAutomationIntent(intent: Intent?) {
-        if (intent?.action != ACTION_SMOKE_START) return
+        val action = intent?.action ?: return
         val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         if (!debuggable) return
-        startDaemon()
+        when (action) {
+            ACTION_SMOKE_START -> startDaemon()
+            ACTION_SMOKE_GPU_BENCH -> runAndroidGpuBench()
+        }
     }
 
     private fun requestNotificationPermission() {

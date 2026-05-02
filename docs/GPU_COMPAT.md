@@ -113,9 +113,11 @@ library is visible inside the container. A backend must validate against a CPU
 reference implementation before its speedup is accepted.
 
 The Android UI diagnostics now include a first-pass `android-gpu-bench` action
-which writes CPU scalar reference results as JSON Lines and CSV under the app
-external files `bench/` directory. This is the baseline artifact format for
-later Vulkan and cuVK runs, not a claim that GPU acceleration is available yet.
+which writes CPU scalar reference results as JSON Lines and CSV under
+`files/pdocker/bench/` and mirrors them to the app external files `bench/`
+directory when Android storage policy allows it. This is the baseline artifact
+format for later Vulkan and cuVK runs, not a claim that GPU acceleration is
+available yet.
 
 Initial benchmark kernels:
 

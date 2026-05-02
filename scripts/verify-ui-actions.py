@@ -50,6 +50,8 @@ def main() -> int:
     bridge_src = BRIDGE.read_text()
     pdockerd_bridge_src = PDOCKERD_BRIDGE.read_text()
     android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
+    manifest_src = (ROOT / "app/src/main/AndroidManifest.xml").read_text()
+    debug_receiver_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdDebugReceiver.kt").read_text()
     string_src = "\n".join(path.read_text() for path in STRINGS)
 
     docker_action_count = main_src.count("openDockerTerminal(") - 1
@@ -91,6 +93,7 @@ def main() -> int:
     require("engine job output is deduplicated", "appendUniqueLines" in main_src and "existing.add" in main_src)
     require("android runtime preflight is enabled", "PDOCKER_RUNTIME_PREFLIGHT" in pdockerd_bridge_src)
     require("debug smoke can start daemon through activity", "ACTION_SMOKE_START" in main_src and "FLAG_DEBUGGABLE" in main_src and ".PdockerdService" not in android_smoke_src)
+    require("debug smoke can run gpu bench", "ACTION_SMOKE_GPU_BENCH" in main_src and "PdockerdDebugReceiver" in manifest_src and "AndroidGpuBench.run" in debug_receiver_src and "am broadcast" in android_smoke_src and "android-gpu-bench-*.jsonl" in android_smoke_src and 'android:launchMode="singleTop"' in manifest_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
     require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
     require("template install reports copied and kept files", "copyAssetTreeMissing" in main_src and "TemplateInstallReport" in main_src and "status_library_install_report_fmt" in string_src)

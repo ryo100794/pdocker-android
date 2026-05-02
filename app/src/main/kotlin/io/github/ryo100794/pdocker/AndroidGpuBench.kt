@@ -54,28 +54,45 @@ object AndroidGpuBench {
     }
 
     fun run(context: Context): String {
-        val dir = File(context.getExternalFilesDir(null), "bench").apply { mkdirs() }
+        val externalDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "bench")
+        val internalDir = File(context.filesDir, "pdocker/bench")
         val stamp = System.currentTimeMillis()
-        val jsonl = File(dir, "android-gpu-bench-$stamp.jsonl")
-        val csv = File(dir, "android-gpu-bench-$stamp.csv")
         val results = listOf(
             vectorAdd(262_144),
             saxpy(262_144),
             matmul(64),
         )
+        val written = mutableListOf<Pair<File, File>>()
+        val warnings = mutableListOf<String>()
+        written += writeResults(internalDir, stamp, results)
+        if (externalDir.absolutePath != internalDir.absolutePath) {
+            runCatching { writeResults(externalDir, stamp, results) }
+                .onSuccess { written += it }
+                .onFailure { warnings += "external bench write skipped: ${it.message.orEmpty()}" }
+        }
+        return buildString {
+            appendLine("android-gpu-bench first pass")
+            written.forEach { (jsonl, csv) ->
+                appendLine("JSONL: ${jsonl.absolutePath}")
+                appendLine("CSV: ${csv.absolutePath}")
+            }
+            warnings.forEach { appendLine(it) }
+            results.forEach {
+                appendLine("${it.backend} ${it.kernel} ${it.problemSize}: total=${"%.3f".format(it.totalMs)}ms valid=${it.valid}")
+            }
+        }
+    }
+
+    private fun writeResults(dir: File, stamp: Long, results: List<BenchResult>): Pair<File, File> {
+        dir.mkdirs()
+        val jsonl = File(dir, "android-gpu-bench-$stamp.jsonl")
+        val csv = File(dir, "android-gpu-bench-$stamp.csv")
         jsonl.writeText(results.joinToString("\n") { it.toJson().toString() } + "\n")
         csv.writeText(
             "backend,kernel,problem_size,compile_ms,upload_ms,dispatch_ms,download_ms,total_ms,max_abs_error,valid\n" +
                 results.joinToString("\n") { it.toCsv() } + "\n",
         )
-        return buildString {
-            appendLine("android-gpu-bench first pass")
-            appendLine("JSONL: ${jsonl.absolutePath}")
-            appendLine("CSV: ${csv.absolutePath}")
-            results.forEach {
-                appendLine("${it.backend} ${it.kernel} ${it.problemSize}: total=${"%.3f".format(it.totalMs)}ms valid=${it.valid}")
-            }
-        }
+        return jsonl to csv
     }
 
     private fun vectorAdd(n: Int): BenchResult {
