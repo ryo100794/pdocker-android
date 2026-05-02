@@ -4,6 +4,9 @@ Snapshot at v0.5.2. This document covers (1) what pdockerd actually
 implements today, (2) what works on the Android APK end-to-end, and
 (3) the known gaps vs upstream Docker Engine.
 
+For the active unfinished-work list, especially temporary accommodations that
+must become real implementations later, see [`docs/TODO.md`](TODO.md).
+
 ## At a glance
 
 | layer | size | status |
