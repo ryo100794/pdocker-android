@@ -27,6 +27,8 @@
     <string name="status_library_installed_fmt">テンプレートを展開しました: %1$s</string>
 
     <string name="section_runtime">ランタイム</string>
+    <string name="section_workspace">ワークスペース</string>
+    <string name="section_diagnostics">診断</string>
     <string name="action_start_pdockerd">pdockerd を起動</string>
     <string name="detail_start_pdockerd">前面デーモンを起動</string>
     <string name="action_stop_pdockerd">pdockerd を停止</string>
@@ -34,7 +36,9 @@
     <string name="action_keep_resident">常駐を維持</string>
     <string name="detail_keep_resident">電池最適化除外を開く</string>
     <string name="action_docker_console">Docker コンソール</string>
-    <string name="detail_docker_console">DOCKER_HOST 設定済みの対話シェル</string>
+    <string name="detail_docker_console">診断用 Docker CLI コンソール</string>
+    <string name="action_host_shell">ホストシェル</string>
+    <string name="detail_host_shell">診断用アプリホストシェル、コンテナではありません</string>
     <string name="action_default_dev_workspace">標準開発ワークスペース</string>
     <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
     <string name="section_inventory">インベントリ</string>
@@ -144,6 +148,7 @@
 
     <string name="terminal_title">ターミナル</string>
     <string name="terminal_shell">シェル</string>
+    <string name="terminal_host_shell">ホストシェル</string>
     <string name="terminal_shell_numbered">シェル %1$d</string>
     <string name="terminal_compose_up">compose up</string>
     <string name="terminal_compose_up_fmt">compose up: %1$s</string>

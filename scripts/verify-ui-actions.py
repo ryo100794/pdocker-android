@@ -59,6 +59,7 @@ def main() -> int:
     require("docker jobs expose retry actions", "action_retry_job_fmt" in main_src and "openDockerTerminal(job.title, job.command, job.group)" in main_src)
     require("docker jobs expose stop and log actions", "stopDockerJob(job.id)" in main_src and "openJobLog(job)" in main_src)
     require("container console avoids host shell fallback", "openDockerInteractiveTerminal" in main_src and "container console exited" in main_src)
+    require("host shell is diagnostic-only", "private fun renderDiagnostics" in main_src and "action_host_shell" in main_src and "Tab.Overview -> renderOverview()" in main_src)
     require("container cards surface network warnings", "containerWarningSummary" in main_src and "container_warning_ports_metadata" in string_src)
     require("container cards open known service ports", "containerServiceUrls" in main_src and "18080/tcp" in main_src and "18081/tcp" in main_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)

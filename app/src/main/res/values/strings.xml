@@ -27,6 +27,8 @@
     <string name="status_library_installed_fmt">installed template: %1$s</string>
 
     <string name="section_runtime">Runtime</string>
+    <string name="section_workspace">Workspace</string>
+    <string name="section_diagnostics">Diagnostics</string>
     <string name="action_start_pdockerd">Start pdockerd</string>
     <string name="detail_start_pdockerd">Launch foreground daemon</string>
     <string name="action_stop_pdockerd">Stop pdockerd</string>
@@ -34,7 +36,9 @@
     <string name="action_keep_resident">Keep resident</string>
     <string name="detail_keep_resident">Open battery optimization exemption</string>
     <string name="action_docker_console">Docker console</string>
-    <string name="detail_docker_console">Interactive shell with DOCKER_HOST set</string>
+    <string name="detail_docker_console">Diagnostic Docker CLI console</string>
+    <string name="action_host_shell">Host shell</string>
+    <string name="detail_host_shell">Diagnostic app host shell, not a container</string>
     <string name="action_default_dev_workspace">Default dev workspace</string>
     <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
     <string name="section_inventory">Inventory</string>
@@ -144,6 +148,7 @@
 
     <string name="terminal_title">Terminal</string>
     <string name="terminal_shell">Shell</string>
+    <string name="terminal_host_shell">Host shell</string>
     <string name="terminal_shell_numbered">Shell %1$d</string>
     <string name="terminal_compose_up">compose up</string>
     <string name="terminal_compose_up_fmt">compose up: %1$s</string>

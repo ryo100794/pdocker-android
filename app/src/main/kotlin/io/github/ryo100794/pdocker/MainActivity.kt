@@ -278,19 +278,7 @@ class MainActivity : AppCompatActivity() {
     })
 
     private fun renderOverview() {
-        addSection(getString(R.string.section_runtime))
-        addAction(getString(R.string.action_start_pdockerd), getString(R.string.detail_start_pdockerd)) { startDaemon() }
-        addAction(getString(R.string.action_stop_pdockerd), getString(R.string.detail_stop_pdockerd)) {
-            startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
-            status.text = getString(R.string.status_stopped)
-        }
-        addAction(getString(R.string.action_keep_resident), getString(R.string.detail_keep_resident)) {
-            requestBatteryOptimizationBypass()
-        }
-        addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
-            startDaemon()
-            openTerminal(getString(R.string.action_docker_console), "sh")
-        }
+        addSection(getString(R.string.section_workspace))
         addAction(getString(R.string.action_default_dev_workspace), getString(R.string.detail_default_dev_workspace)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
@@ -305,10 +293,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderLibrary() {
         addSection(getString(R.string.section_project_library))
-        addAction(getString(R.string.action_library_shell), getString(R.string.detail_library_shell)) {
-            projectRoot.mkdirs()
-            openTerminal(getString(R.string.action_library_shell), "cd ${shellQuote(projectRoot.absolutePath)} && find . -maxdepth 2 -name compose.yaml -o -name Dockerfile; sh")
-        }
         val templates = projectTemplates()
         if (templates.isEmpty()) {
             addMessage(getString(R.string.message_library_empty))
@@ -371,10 +355,6 @@ class MainActivity : AppCompatActivity() {
         addAction(getString(R.string.action_default_dev_compose), getString(R.string.detail_default_dev_compose)) {
             openEditor(File(projectRoot, "default/compose.yaml"))
         }
-        addAction(getString(R.string.action_compose_shell), getString(R.string.detail_open_at_fmt, projectRoot.absolutePath)) {
-            projectRoot.mkdirs()
-            openTerminal(getString(R.string.section_compose), "cd ${shellQuote(projectRoot.absolutePath)} && sh")
-        }
         val files = composeFiles()
         if (files.isEmpty()) {
             addMessage(getString(R.string.message_no_compose_fmt, projectRoot.absolutePath))
@@ -399,10 +379,6 @@ class MainActivity : AppCompatActivity() {
         }
         addAction(getString(R.string.action_default_dev_image), getString(R.string.detail_default_dev_image)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
-        }
-        addAction(getString(R.string.action_build_shell), getString(R.string.detail_build_shell)) {
-            projectRoot.mkdirs()
-            openTerminal(getString(R.string.terminal_docker_build), "cd ${shellQuote(projectRoot.absolutePath)} && sh")
         }
         val files = dockerfiles()
         if (files.isEmpty()) {
@@ -478,9 +454,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSessions() {
         addSection(getString(R.string.section_sessions))
-        addAction(getString(R.string.action_shell), getString(R.string.detail_shell)) {
-            openTerminal(getString(R.string.terminal_shell), "sh")
-        }
         addAction(getString(R.string.action_docker_it), getString(R.string.detail_docker_it)) {
             openDockerTerminal(getString(R.string.terminal_docker_interactive), "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
         }
@@ -499,6 +472,38 @@ class MainActivity : AppCompatActivity() {
             )
         }
         renderProjectFileShortcuts()
+        renderDiagnostics()
+    }
+
+    private fun renderDiagnostics() {
+        addSection(getString(R.string.section_diagnostics))
+        addAction(getString(R.string.action_start_pdockerd), getString(R.string.detail_start_pdockerd)) { startDaemon() }
+        addAction(getString(R.string.action_stop_pdockerd), getString(R.string.detail_stop_pdockerd)) {
+            startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
+            status.text = getString(R.string.status_stopped)
+        }
+        addAction(getString(R.string.action_keep_resident), getString(R.string.detail_keep_resident)) {
+            requestBatteryOptimizationBypass()
+        }
+        addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
+            startDaemon()
+            openDockerTerminal(getString(R.string.action_docker_console), "docker ps -a; printf '\\nUse docker commands for diagnostics.\\n'")
+        }
+        addAction(getString(R.string.action_host_shell), getString(R.string.detail_host_shell)) {
+            openTerminal(getString(R.string.terminal_host_shell), "sh")
+        }
+        addAction(getString(R.string.action_library_shell), getString(R.string.detail_library_shell)) {
+            projectRoot.mkdirs()
+            openTerminal(getString(R.string.action_library_shell), "cd ${shellQuote(projectRoot.absolutePath)} && find . -maxdepth 2 -name compose.yaml -o -name Dockerfile; sh")
+        }
+        addAction(getString(R.string.action_compose_shell), getString(R.string.detail_open_at_fmt, projectRoot.absolutePath)) {
+            projectRoot.mkdirs()
+            openTerminal(getString(R.string.section_compose), "cd ${shellQuote(projectRoot.absolutePath)} && sh")
+        }
+        addAction(getString(R.string.action_build_shell), getString(R.string.detail_build_shell)) {
+            projectRoot.mkdirs()
+            openTerminal(getString(R.string.terminal_docker_build), "cd ${shellQuote(projectRoot.absolutePath)} && sh")
+        }
     }
 
     private fun startDaemon() {
