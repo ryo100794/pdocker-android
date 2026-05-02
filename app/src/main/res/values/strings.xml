@@ -125,6 +125,8 @@
     <string name="detail_text_editor">Edit default Dockerfile</string>
     <string name="action_console_editor_split">Console + editor</string>
     <string name="detail_console_editor_split">Stack a shell over the default Dockerfile editor</string>
+    <string name="section_project_files">Project files</string>
+    <string name="detail_project_file">Editable project file</string>
     <string name="tool_group_workspace">Workspace</string>
     <string name="tool_empty">Open a console, editor, or container session from the upper pane.</string>
     <string name="job_running">Running</string>
@@ -185,6 +187,16 @@
     <string name="editor_tab_width_fmt">Tab %1$d</string>
     <string name="editor_indent">Indent</string>
     <string name="editor_outdent">Outdent</string>
+    <string name="editor_find_hint">Find</string>
+    <string name="editor_replace_hint">Replace</string>
+    <string name="editor_find_next">Next</string>
+    <string name="editor_replace_one">Replace</string>
+    <string name="editor_replace_all">All</string>
+    <string name="editor_find_empty">Enter search text.</string>
+    <string name="editor_find_no_match_fmt">No match: %1$s</string>
+    <string name="editor_find_match_fmt">Match at character %1$d</string>
+    <string name="editor_replaced_one">Replaced one match.</string>
+    <string name="editor_replaced_all_fmt">Replaced %1$d matches.</string>
     <string name="editor_file_too_large_fmt">File is too large to edit safely: %1$d bytes</string>
     <string name="editor_loaded_fmt">Loaded %1$d bytes</string>
     <string name="editor_saved_fmt">Saved %1$d bytes</string>

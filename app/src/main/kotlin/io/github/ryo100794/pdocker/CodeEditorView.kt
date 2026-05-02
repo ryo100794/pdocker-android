@@ -27,6 +27,8 @@ class CodeEditorView(
     private val message: TextView
     private val lineNumbers: TextView
     private val editor: EditText
+    private val searchField: EditText
+    private val replaceField: EditText
     private var spacesMode = true
     private var tabWidth = 4
     private var highlighting = false
@@ -49,6 +51,8 @@ class CodeEditorView(
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.MIDDLE
         }
+        searchField = smallField(context.getString(R.string.editor_find_hint))
+        replaceField = smallField(context.getString(R.string.editor_replace_hint))
         lineNumbers = TextView(context).apply {
             typeface = Typeface.MONOSPACE
             textSize = 14f
@@ -78,6 +82,7 @@ class CodeEditorView(
         }
 
         addView(toolPalette(pathView))
+        addView(searchPalette())
         addView(message)
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -102,6 +107,27 @@ class CodeEditorView(
             addToolButton(context.getString(R.string.editor_indent)) { indentSelection() }
             addToolButton(context.getString(R.string.editor_outdent)) { outdentSelection() }
             addView(pathView, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        }
+
+    private fun searchPalette(): LinearLayout =
+        LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(searchField, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+            addToolButton(context.getString(R.string.editor_find_next)) { findNext() }
+            addView(replaceField, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+            addToolButton(context.getString(R.string.editor_replace_one)) { replaceCurrent() }
+            addToolButton(context.getString(R.string.editor_replace_all)) { replaceAllMatches() }
+        }
+
+    private fun smallField(hintText: String): EditText =
+        EditText(context).apply {
+            hint = hintText
+            setSingleLine(true)
+            textSize = 12f
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            minWidth = 0
+            setPadding(10, 0, 10, 0)
         }
 
     private fun LinearLayout.addToolButton(label: String, action: () -> Unit) {
@@ -212,6 +238,62 @@ class CodeEditorView(
         val parent = getChildAt(0) as? LinearLayout ?: return
         (parent.getChildAt(2) as? Button)?.text = modeLabel()
         (parent.getChildAt(3) as? Button)?.text = widthLabel()
+    }
+
+    private fun findNext() {
+        val query = searchField.text.toString()
+        if (query.isEmpty()) {
+            message.text = context.getString(R.string.editor_find_empty)
+            return
+        }
+        val src = editor.text.toString()
+        val start = maxOf(editor.selectionEnd, 0).coerceAtMost(src.length)
+        val first = src.indexOf(query, start, ignoreCase = true)
+        val index = if (first >= 0) first else src.indexOf(query, 0, ignoreCase = true)
+        if (index < 0) {
+            message.text = context.getString(R.string.editor_find_no_match_fmt, query)
+            return
+        }
+        editor.requestFocus()
+        editor.setSelection(index, index + query.length)
+        message.text = context.getString(R.string.editor_find_match_fmt, index + 1)
+    }
+
+    private fun replaceCurrent() {
+        val query = searchField.text.toString()
+        if (query.isEmpty()) {
+            message.text = context.getString(R.string.editor_find_empty)
+            return
+        }
+        val start = minOf(editor.selectionStart, editor.selectionEnd).coerceAtLeast(0)
+        val end = maxOf(editor.selectionStart, editor.selectionEnd).coerceAtLeast(0)
+        val selected = editor.text.substring(start, end)
+        if (!selected.equals(query, ignoreCase = true)) {
+            findNext()
+            return
+        }
+        val replacement = replaceField.text.toString()
+        editor.text.replace(start, end, replacement)
+        editor.setSelection(start, (start + replacement.length).coerceAtMost(editor.text.length))
+        message.text = context.getString(R.string.editor_replaced_one)
+    }
+
+    private fun replaceAllMatches() {
+        val query = searchField.text.toString()
+        if (query.isEmpty()) {
+            message.text = context.getString(R.string.editor_find_empty)
+            return
+        }
+        val replacement = replaceField.text.toString()
+        val src = editor.text.toString()
+        val regex = Regex(Regex.escape(query), RegexOption.IGNORE_CASE)
+        val count = regex.findAll(src).count()
+        if (count == 0) {
+            message.text = context.getString(R.string.editor_find_no_match_fmt, query)
+            return
+        }
+        replaceAllText(regex.replace(src, replacement))
+        message.text = context.getString(R.string.editor_replaced_all_fmt, count)
     }
 
     private fun modeLabel(): String =

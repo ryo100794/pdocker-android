@@ -493,6 +493,7 @@ class MainActivity : AppCompatActivity() {
                 File(projectRoot, "default/Dockerfile"),
             )
         }
+        renderProjectFileShortcuts()
     }
 
     private fun startDaemon() {
@@ -1078,6 +1079,20 @@ class MainActivity : AppCompatActivity() {
         projectRoot.walkSafe()
             .filter { it.isFile && it.name == "Dockerfile" }
             .sortedBy { it.absolutePath }
+
+    private fun renderProjectFileShortcuts() {
+        val files = projectRoot.walkSafe()
+            .filter { it.isFile && it.length() <= MAX_INLINE_EDIT_BYTES }
+            .sortedByDescending { it.lastModified() }
+            .take(8)
+        if (files.isEmpty()) return
+        addSection(getString(R.string.section_project_files))
+        files.forEach { file ->
+            addWidget(editorTitle(file), getString(R.string.detail_project_file), file.absolutePath) {
+                openEditor(file)
+            }
+        }
+    }
 
     private fun projectTemplates(): List<ProjectTemplate> =
         runCatching {

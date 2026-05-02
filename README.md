@@ -15,7 +15,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   paging, common Ctrl chords, and shell punctuation.
 - **Workspace UI**: top-level tabs for Compose, Dockerfile, images,
   containers, and PTY-backed sessions, so normal UI use does not require
-  typing the bundled `docker` command directly.
+  typing the bundled `docker` command directly. Sessions also surface recent
+  editable project/imported files as editor shortcuts.
 - **Resizable split workspace**: the main screen has a draggable upper/lower
   split. The upper pane stays on Compose/Dockerfile/container status and
   control; the lower pane keeps grouped multi-tabs for consoles and editors.
@@ -50,7 +51,7 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Editor**: in-app code editor for Compose files and Dockerfiles under
   `filesDir/pdocker/projects`, with line numbers, visible spaces/tabs/full-width
   spaces, lightweight syntax highlighting, tab-width controls, space/tab
-  conversion, and selected-line indent/outdent.
+  conversion, selected-line indent/outdent, and search/replace.
 - **Default dev workspace**: first launch seeds a Dockerfile/Compose project
   for code-server, Continue, OpenAI Codex CLI, and common development tools.
 - **GPU extensions**: experimental Docker-compatible `--gpus` handling for

@@ -69,12 +69,14 @@ def main() -> int:
 
     require("editor tabs are keyed by canonical file path", "val key = target.absolutePath" in main_src)
     require("same-name editors get parent-qualified titles", "private fun editorTitle" in main_src)
+    require("project files are surfaced as editor shortcuts", "renderProjectFileShortcuts" in main_src and "section_project_files" in string_src)
 
     require("terminal font remains 12pt", "fontSize: 12" in xterm_src)
     require("terminal shortcut key palette is present", 'id="keybar"' in xterm_src and 'data-toggle="ctrl"' in xterm_src)
 
     require("code editor exposes whitespace", "VisibleWhitespaceTransformation" in editor_src)
     require("code editor keeps indent/outdent actions", "indentSelection()" in editor_src and "outdentSelection()" in editor_src)
+    require("code editor supports search and replace", "findNext()" in editor_src and "replaceAllMatches()" in editor_src)
 
     require("localized terminal title formats exist", "terminal_compose_up_fmt" in string_src and "terminal_docker_build_fmt" in string_src)
     return 0

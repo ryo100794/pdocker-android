@@ -92,6 +92,8 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   terminal Activity, so live PTY tabs remain available when reopened.
 - Main UI → Compose and Dockerfile tabs can create/edit project files through
   the in-app text editor under `filesDir/pdocker/projects`.
+- Main UI → Sessions lists recent editable project/imported files as native
+  widgets that open lower-pane editor tabs.
 - First launch seeds `filesDir/pdocker/projects/default` from
   `assets/default-project/`, providing a Dockerfile/Compose workspace with
   code-server, Continue, OpenAI Codex CLI, and common dev tools.
@@ -187,8 +189,9 @@ pdocker-android/
 │   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image and container rootfs files
 │   │   ├── TextEditorActivity.kt     — Compose/Dockerfile code editor host
 │   │   ├── CodeEditorView.kt         — line numbers, visible whitespace,
-│   │   │                              highlighting, tab/space conversion,
-│   │   │                              selected-line indent/outdent
+│   │   │                              highlighting, search/replace,
+│   │   │                              tab/space conversion, selected-line
+│   │   │                              indent/outdent
 │   │   ├── PdockerdService.kt        — resident ForegroundService (dataSync),
 │   │   │                              notification action + task-removal restart
 │   │   ├── PdockerdBootReceiver.kt   — boot / package-replaced daemon restart

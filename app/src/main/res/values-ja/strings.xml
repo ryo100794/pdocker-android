@@ -125,6 +125,8 @@
     <string name="detail_text_editor">標準 Dockerfile を編集</string>
     <string name="action_console_editor_split">コンソール + エディタ</string>
     <string name="detail_console_editor_split">シェルを上、標準 Dockerfile エディタを下に重ねる</string>
+    <string name="section_project_files">プロジェクトファイル</string>
+    <string name="detail_project_file">編集可能なプロジェクトファイル</string>
     <string name="tool_group_workspace">Workspace</string>
     <string name="tool_empty">上段からコンソール、エディタ、コンテナセッションを開いてください。</string>
     <string name="job_running">実行中</string>
@@ -185,6 +187,16 @@
     <string name="editor_tab_width_fmt">Tab %1$d</string>
     <string name="editor_indent">インデント+</string>
     <string name="editor_outdent">インデント-</string>
+    <string name="editor_find_hint">検索</string>
+    <string name="editor_replace_hint">置換</string>
+    <string name="editor_find_next">次へ</string>
+    <string name="editor_replace_one">置換</string>
+    <string name="editor_replace_all">全置換</string>
+    <string name="editor_find_empty">検索文字列を入力してください。</string>
+    <string name="editor_find_no_match_fmt">一致なし: %1$s</string>
+    <string name="editor_find_match_fmt">文字位置 %1$d に一致</string>
+    <string name="editor_replaced_one">1 件置換しました。</string>
+    <string name="editor_replaced_all_fmt">%1$d 件置換しました。</string>
     <string name="editor_file_too_large_fmt">安全に編集するにはファイルが大きすぎます: %1$d bytes</string>
     <string name="editor_loaded_fmt">%1$d bytes 読み込みました</string>
     <string name="editor_saved_fmt">%1$d bytes 保存しました</string>
