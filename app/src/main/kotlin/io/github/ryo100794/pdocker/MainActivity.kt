@@ -74,6 +74,19 @@ class MainActivity : AppCompatActivity() {
         var output: MutableList<String> = mutableListOf(),
     )
 
+    private data class ComposeService(
+        val name: String,
+        var image: String = "",
+        var containerName: String = "",
+        var buildContext: String? = null,
+        var workingDir: String = "",
+        var command: List<String> = emptyList(),
+        val environment: MutableMap<String, String> = mutableMapOf(),
+        val ports: MutableList<String> = mutableListOf(),
+        val volumes: MutableList<String> = mutableListOf(),
+        var gpus: String = "",
+    )
+
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 100
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
@@ -348,10 +361,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_compose_up_template_fmt, template.name), getString(R.string.detail_compose_up)) {
                 installTemplate(template)
-                openDockerTerminal(
-                    getString(R.string.terminal_compose_up_fmt, template.projectDir),
-                    composeUpCommand(target),
-                )
+                runComposeUp(target, getString(R.string.terminal_compose_up_fmt, template.projectDir))
             }
         }
     }
@@ -376,7 +386,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_up_fmt, file.parentFile?.name ?: file.name), getString(R.string.detail_compose_up)) {
                 val dir = file.parentFile ?: projectRoot
-                openDockerTerminal(getString(R.string.terminal_compose_up_fmt, dir.name), composeUpCommand(dir))
+                runComposeUp(dir, getString(R.string.terminal_compose_up_fmt, dir.name))
             }
         }
     }
@@ -401,7 +411,7 @@ class MainActivity : AppCompatActivity() {
             }
             addAction(getString(R.string.action_build_fmt, file.parentFile?.name ?: file.name), file.absolutePath) {
                 val dir = file.parentFile ?: projectRoot
-                openDockerTerminal(getString(R.string.terminal_docker_build_fmt, dir.name), dockerBuildCommand(dir))
+                runImageBuild(dir, getString(R.string.terminal_docker_build_fmt, dir.name))
             }
         }
     }
@@ -583,6 +593,171 @@ class MainActivity : AppCompatActivity() {
                 refreshStatus()
             }
         }
+    }
+
+    private fun runImageBuild(dir: File, title: String) {
+        runEngineAction(title, workspaceGroup()) {
+            buildImage(dir, "local/${dir.name}:latest")
+        }
+    }
+
+    private fun runComposeUp(dir: File, title: String) {
+        runEngineAction(title, dir.name) {
+            val services = parseComposeServices(dir)
+            if (services.isEmpty()) error("compose file has no services")
+            val out = StringBuilder()
+            services.forEach { service ->
+                val image = service.image.ifBlank { "local/${dir.name}-${service.name}:latest" }
+                val context = service.buildContext
+                if (!context.isNullOrBlank()) {
+                    val contextDir = File(dir, context).canonicalFile
+                    out.append("Service ${service.name} Building\n")
+                    out.append(buildImage(contextDir, image))
+                }
+                val containerName = service.containerName.ifBlank { "${dir.name}-${service.name}-1" }
+                runCatching {
+                    request("DELETE", "/containers/${DockerEngineClient.encodePath(containerName)}?force=1")
+                }
+                out.append("Container $containerName Creating\n")
+                val id = createContainer(containerName, service.toContainerConfig(image, dir))
+                out.append("Container $containerName Starting\n")
+                post("/containers/${DockerEngineClient.encodePath(id)}/start")
+                out.append("Container $containerName Started\n")
+            }
+            out.append('\n').append(formatContainers(getArray("/containers/json?all=1")))
+            out.toString()
+        }
+    }
+
+    private fun parseComposeServices(dir: File): List<ComposeService> {
+        val file = listOf("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")
+            .map { File(dir, it) }
+            .firstOrNull { it.isFile }
+            ?: return emptyList()
+        val services = mutableListOf<ComposeService>()
+        var inServices = false
+        var current: ComposeService? = null
+        var blockKey: String? = null
+        file.readLines().forEach { raw ->
+            val line = raw.substringBefore('#').trimEnd()
+            if (line.isBlank()) return@forEach
+            val indent = raw.takeWhile { it == ' ' }.length
+            val trimmed = line.trim()
+            if (indent == 0) {
+                inServices = trimmed == "services:"
+                current = null
+                blockKey = null
+                return@forEach
+            }
+            if (!inServices) return@forEach
+            if (indent == 2 && trimmed.endsWith(":")) {
+                current = ComposeService(trimmed.removeSuffix(":")).also { services += it }
+                blockKey = null
+                return@forEach
+            }
+            val svc = current ?: return@forEach
+            if (indent == 4) {
+                val key = trimmed.substringBefore(':')
+                val value = trimmed.substringAfter(':', "").trim()
+                blockKey = if (value.isBlank()) key else null
+                when (key) {
+                    "image" -> svc.image = composeValue(value)
+                    "container_name" -> svc.containerName = composeValue(value)
+                    "working_dir" -> svc.workingDir = composeValue(value)
+                    "command" -> svc.command = composeCommand(value)
+                    "gpus" -> svc.gpus = composeValue(value)
+                    "build" -> if (value.isNotBlank()) svc.buildContext = composeValue(value)
+                }
+                return@forEach
+            }
+            if (indent >= 6) {
+                when (blockKey) {
+                    "build" -> {
+                        val key = trimmed.substringBefore(':')
+                        val value = trimmed.substringAfter(':', "").trim()
+                        if (key == "context") svc.buildContext = composeValue(value)
+                    }
+                    "environment" -> parseComposeMapOrList(trimmed)?.let { (k, v) -> svc.environment[k] = v }
+                    "ports" -> parseComposeListValue(trimmed)?.let { svc.ports += it }
+                    "volumes" -> parseComposeListValue(trimmed)?.let { svc.volumes += it }
+                }
+            }
+        }
+        return services
+    }
+
+    private fun ComposeService.toContainerConfig(imageName: String, projectDir: File): JSONObject {
+        val exposedPorts = JSONObject()
+        val portBindings = JSONObject()
+        ports.forEach { spec ->
+            val parts = spec.split(":")
+            val container = (parts.getOrNull(1) ?: parts.firstOrNull()).orEmpty()
+            if (container.isNotBlank()) {
+                val key = if (container.contains("/")) container else "$container/tcp"
+                exposedPorts.put(key, JSONObject())
+                if (parts.size >= 2) {
+                    portBindings.put(key, JSONArray().put(JSONObject().put("HostPort", parts[0])))
+                }
+            }
+        }
+        val binds = JSONArray()
+        volumes.forEach { spec ->
+            val parts = spec.split(":")
+            if (parts.size >= 2) {
+                val host = File(projectDir, parts[0]).absolutePath
+                val guest = parts[1]
+                val mode = parts.getOrNull(2)?.let { ":$it" }.orEmpty()
+                binds.put("$host:$guest$mode")
+            }
+        }
+        val hostConfig = JSONObject()
+            .put("Binds", binds)
+            .put("PortBindings", portBindings)
+        if (gpus.isNotBlank() && gpus != "null") {
+            hostConfig.put("DeviceRequests", JSONArray().put(JSONObject().put("Driver", "pdocker-gpu").put("Count", -1)))
+        }
+        return JSONObject()
+            .put("Image", imageName)
+            .put("Cmd", JSONArray(command))
+            .put("WorkingDir", workingDir)
+            .put("Env", JSONArray(environment.map { (k, v) -> "$k=$v" }))
+            .put("ExposedPorts", exposedPorts)
+            .put("HostConfig", hostConfig)
+    }
+
+    private fun parseComposeMapOrList(line: String): Pair<String, String>? {
+        val item = line.removePrefix("-").trim()
+        if ("=" in item) {
+            val k = item.substringBefore('=')
+            return k to composeValue(item.substringAfter('='))
+        }
+        if (":" in item) {
+            val k = item.substringBefore(':').trim()
+            return k to composeValue(item.substringAfter(':').trim())
+        }
+        return null
+    }
+
+    private fun parseComposeListValue(line: String): String? =
+        line.takeIf { it.trimStart().startsWith("-") }?.trim()?.removePrefix("-")?.trim()?.let(::composeValue)
+
+    private fun composeCommand(value: String): List<String> {
+        val cleaned = composeValue(value)
+        if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+            return runCatching {
+                val arr = JSONArray(cleaned)
+                (0 until arr.length()).map { arr.getString(it) }
+            }.getOrElse { emptyList() }
+        }
+        return if (cleaned.isBlank()) emptyList() else listOf("/bin/sh", "-lc", cleaned)
+    }
+
+    private fun composeValue(value: String): String {
+        var out = value.trim().trim('"', '\'')
+        out = Regex("\\$\\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)}").replace(out) { it.groupValues[1] }
+        out = Regex("\\$\\{[A-Za-z_][A-Za-z0-9_]*-([^}]*)}").replace(out) { it.groupValues[1] }
+        out = Regex("\\$\\{[A-Za-z_][A-Za-z0-9_]*}").replace(out, "")
+        return out
     }
 
     private fun formatContainers(containers: JSONArray): String {

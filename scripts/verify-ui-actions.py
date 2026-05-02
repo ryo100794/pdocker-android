@@ -51,7 +51,7 @@ def main() -> int:
     string_src = "\n".join(path.read_text() for path in STRINGS)
 
     docker_action_count = main_src.count("openDockerTerminal(") - 1
-    require("docker actions use persistent terminal helper", docker_action_count >= 7)
+    require("diagnostic docker terminal remains available", docker_action_count >= 2)
     require("docker terminal starts pdockerd first", "private fun openDockerTerminal" in main_src and "startDaemon()" in main_src)
     require("docker actions wait for daemon readiness", "waiting for pdockerd" in main_src and "docker version >/dev/null" in main_src)
     require("docker build uses legacy builder env", "DOCKER_BUILDKIT=0" in main_src and "COMPOSE_DOCKER_CLI_BUILD=0" in main_src)
@@ -78,6 +78,8 @@ def main() -> int:
     require("container cards open known service ports", "containerServiceUrls" in main_src and "18080/tcp" in main_src and "18081/tcp" in main_src)
     require("container cards expose lifecycle actions", "action_container_start_fmt" in string_src and "/start" in main_src and "/stop" in main_src and "logs(dir.name" in main_src)
     require("container lifecycle avoids docker cli shell", "DockerEngineClient" in main_src and "runContainerAction" in main_src)
+    require("dockerfile builds use engine api", "runImageBuild" in main_src and "buildImage(dir" in main_src and "/build?t=" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
+    require("compose up uses in-app orchestrator", "runComposeUp" in main_src and "parseComposeServices" in main_src and "/containers/create" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
     require("debug smoke can start daemon through activity", "ACTION_SMOKE_START" in main_src and "FLAG_DEBUGGABLE" in main_src and ".PdockerdService" not in android_smoke_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
     require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
