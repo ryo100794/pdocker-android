@@ -808,6 +808,8 @@ class MainActivity : AppCompatActivity() {
             "android execution backend is unavailable",
             "bundled proot backend crashed",
             "no-proot/direct android execution backend",
+            "cannot execute container processes yet",
+            "will not start a fake listener",
             "runtime preflight failed before running",
             "run skipped because the android execution backend is unavailable",
         ).any { it in lower }

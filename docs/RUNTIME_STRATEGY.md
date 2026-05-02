@@ -87,7 +87,7 @@ APK distribution shape can be tested while the backend replacement lands.
 PDOCKER_RUNTIME_BACKEND=auto      # default: PRoot when available, else chroot
 PDOCKER_RUNTIME_BACKEND=proot     # require PRoot
 PDOCKER_RUNTIME_BACKEND=chroot    # Linux host fallback
-PDOCKER_RUNTIME_BACKEND=no-proot  # Android direct backend placeholder
+PDOCKER_RUNTIME_BACKEND=no-proot  # Android direct backend metadata mode
 ```
 
 The `no-proot` backend is intentionally visible before process execution is
@@ -96,6 +96,11 @@ operations return a clear "not implemented yet" diagnostic instead of silently
 falling back to PRoot. This lets the APK and tests exercise the PRoot-free
 packaging shape while image pull, image browsing, Compose/Dockerfile editing,
 and metadata workflows continue to use the Engine API.
+
+Important: `no-proot` must not bind service ports or report a service as
+running unless the requested container process is actually executing. Earlier
+smoke-test placeholders were useful for UI plumbing, but they are not Docker
+compatibility and should stay out of product behavior.
 
 ## Replacement plan
 
