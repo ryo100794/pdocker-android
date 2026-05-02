@@ -625,7 +625,7 @@ class MainActivity : AppCompatActivity() {
             val finalOutput = result.getOrElse {
                 getString(R.string.engine_operation_failed_fmt, it.message.orEmpty())
             }
-            if (finalOutput.isNotBlank()) output.append(finalOutput)
+            appendUniqueLines(output, finalOutput)
             ui.post {
                 finishEngineJob(job.id, exitCode, output.toString())
                 openTextTool(group, title, output.toString())
@@ -678,6 +678,12 @@ class MainActivity : AppCompatActivity() {
                 emit("Container $containerName Creating")
                 out.appendLine("Container $containerName Creating")
                 val id = createContainer(containerName, service.toContainerConfig(image, dir))
+                if (runtimeBlocked) {
+                    val prepared = "Container $containerName Prepared for inspection (Android runtime unavailable)"
+                    emit(prepared)
+                    out.appendLine(prepared)
+                    return@forEach
+                }
                 emit("Container $containerName Starting")
                 out.appendLine("Container $containerName Starting")
                 val started = runCatching { post("/containers/${DockerEngineClient.encodePath(id)}/start") }
@@ -686,17 +692,26 @@ class MainActivity : AppCompatActivity() {
                     out.appendLine("Container $containerName Started")
                 } else {
                     val message = started.exceptionOrNull()?.message.orEmpty()
-                    if (!runtimeBlocked && !isRuntimeBackendBlocked(message)) {
+                    if (!isRuntimeBackendBlocked(message)) {
                         throw started.exceptionOrNull() ?: IllegalStateException(message)
                     }
                     emit("Container $containerName Prepared (runtime blocked)")
                     out.appendLine("Container $containerName Prepared (runtime blocked)")
-                    out.appendLine(message.trim())
                 }
             }
             out.append('\n').append(formatContainers(getArray("/containers/json?all=1")))
             out.toString()
         }
+    }
+
+    private fun appendUniqueLines(output: StringBuilder, text: String) {
+        val existing = output.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toMutableSet()
+        text.lineSequence()
+            .map { it.trimEnd() }
+            .filter { it.isNotBlank() }
+            .forEach { line ->
+                if (existing.add(line.trim())) output.appendLine(line)
+            }
     }
 
     private fun isRuntimeBackendBlocked(message: String): Boolean {
@@ -705,6 +720,7 @@ class MainActivity : AppCompatActivity() {
             "android execution backend is unavailable",
             "bundled proot backend crashed",
             "no-proot/direct android execution backend",
+            "runtime preflight failed before running",
             "run skipped because the android execution backend is unavailable",
         ).any { it in lower }
     }
