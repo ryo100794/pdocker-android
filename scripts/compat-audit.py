@@ -92,6 +92,7 @@ def check_static_api() -> list[Check]:
         "network list/create/connect/disconnect/inspect/delete": r'/networks',
         "volume list/create/prune/inspect/delete": r'/volumes',
         "build": r'path == "/build"',
+        "events": r'path == "/events"',
     }
     checks = []
     for name, pattern in expected.items():
@@ -99,7 +100,7 @@ def check_static_api() -> list[Check]:
         checks.append(Check(f"static api: {name}", "PASS" if ok else "FAIL", pattern))
     for token in ("application/vnd.docker.raw-stream", "X-Docker-Container-Path-Stat",
                   "Api-Version", "application/x-tar", "PdockerWarnings",
-                  "not active yet"):
+                  "timeNano", "record_event", "not active yet"):
         checks.append(Check(f"protocol token: {token}", "PASS" if token in src else "FAIL"))
     return checks
 
@@ -139,6 +140,7 @@ def check_protocol_smoke() -> list[Check]:
             ("GET", "/images/json", 200),
             ("GET", "/volumes", 200),
             ("GET", "/networks", 200),
+            ("GET", "/events?since=0&until=0", 200),
             ("GET", "/v1.43/version", 200),
         ]
         for method, path, want in probes:

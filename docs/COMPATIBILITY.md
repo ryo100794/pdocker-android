@@ -88,7 +88,7 @@ suite and should be recorded separately when it is run to completion.
 | Volumes/binds | Partial | Named volumes map to host directories; bind mounts use PRoot. No kernel mount propagation or tmpfs semantics. |
 | Dockerfile build | Partial | Legacy builder supports common instructions. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
 | Compose | Partial | Basic up/down flows work when they stay inside the supported network/build/container subset. |
-| Events | Minimal | Endpoint exists, but fidelity to Docker event streams is intentionally small. |
+| Events | Partial | `/events` now persists Docker-style JSONL lifecycle events and live-streams new events with basic `since`, `until`, and filter handling. It covers container/image/network/volume/build events, but does not yet reproduce every daemon-internal event emitted by Moby. |
 | APK data exchange | Good | APK includes pdockerd, Docker CLI, crane, proot, proot-loader, libcow, talloc, xterm assets, and license notice asset. |
 
 ## Protocol coverage
@@ -103,6 +103,8 @@ The audit checks these protocol details directly or statically:
 - `X-Docker-Container-Path-Stat` for `docker cp` stat behavior.
 - Docker CLI `docker version` negotiation when the bundled CLI is executable
   on the current host.
+- Docker event JSON objects over `/events`, including `Type`, `Action`,
+  `Actor`, `time`, `timeNano`, `since`/`until`, and common filters.
 
 ## Definition and data exchange coverage
 
