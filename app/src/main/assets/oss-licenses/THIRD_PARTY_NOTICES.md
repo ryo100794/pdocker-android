@@ -5,6 +5,7 @@ pdocker-android bundles or depends on the following third-party components:
 - PROot: GPL-2.0-or-later, https://github.com/proot-me/proot
 - talloc: LGPL-3.0-or-later, https://www.samba.org/talloc/
 - Docker CLI: Apache-2.0, https://github.com/docker/cli
+- Docker Compose: Apache-2.0, https://github.com/docker/compose
 - go-containerregistry / crane: Apache-2.0, https://github.com/google/go-containerregistry
 - xterm.js and xterm-addon-fit: MIT, https://github.com/xtermjs/xterm.js
 - Chaquopy: open-source builds with license restrictions removed since 12.0.1, https://chaquo.com/chaquopy/license/

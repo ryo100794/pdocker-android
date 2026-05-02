@@ -2,6 +2,7 @@ package io.github.ryo100794.pdocker
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.net.LocalSocket
@@ -78,6 +79,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
         private const val MAX_JOB_HISTORY = 20
         private const val MAX_JOB_LINES = 200
+        private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -183,6 +185,12 @@ class MainActivity : AppCompatActivity() {
         renderTabs()
         renderContent()
         renderToolChrome()
+        handleAutomationIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleAutomationIntent(intent)
     }
 
     override fun onResume() {
@@ -546,6 +554,13 @@ class MainActivity : AppCompatActivity() {
         status.text = getString(R.string.status_starting)
     }
 
+    private fun handleAutomationIntent(intent: Intent?) {
+        if (intent?.action != ACTION_SMOKE_START) return
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!debuggable) return
+        startDaemon()
+    }
+
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
@@ -827,7 +842,7 @@ class MainActivity : AppCompatActivity() {
         val normalized = normalizeDockerCommand(command)
         val quoted = shellQuote(normalized)
         return listOf(
-            "export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false",
+            "export DOCKER_CONFIG=\"\$HOME/pdocker-runtime/docker-bin\" DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false",
             "i=0; until docker version >/dev/null 2>&1; do i=\$((i+1)); if [ \"\$i\" -ge 30 ]; then echo '[pdocker] pdockerd did not become ready within 30s'; break; fi; printf '[pdocker] waiting for pdockerd... %s/30\\n' \"\$i\"; sleep 1; done",
             "if printf '%s\\n' $quoted | grep -q 'docker compose' && ! docker compose version >/dev/null 2>&1; then echo '[pdocker] docker compose is unavailable in the bundled docker CLI'; false; else $normalized; fi",
         ).joinToString("; ")

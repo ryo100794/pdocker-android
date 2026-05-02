@@ -51,8 +51,9 @@ class Bridge(
             "BUILDKIT_PROGRESS=plain",
             "COMPOSE_PROGRESS=plain",
             "COMPOSE_MENU=false",
-            // Some CLIs honor this; harmless if not.
-            "DOCKER_CONFIG=${activity.filesDir}/.docker"
+            // Docker Compose is a CLI plugin; point Docker at the runtime
+            // plugin dir so `docker compose ...` works on Android too.
+            "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin"
         )
         fd = PtyNative.open(shell, argv, env)
         if (fd < 0) return

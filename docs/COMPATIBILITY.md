@@ -65,8 +65,14 @@ exec, stats, and network parts of the regression.
 
 Latest recorded fast result: [compat-audit-latest.md](compat-audit-latest.md)
 has 55 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
-design checks pass, including native Docker job-card wiring, and the APK
-payload is present.
+design checks pass, including native Docker job-card wiring, bundled Docker
+Compose plugin packaging, and the APK payload.
+
+Latest Android Wi-Fi ADB quick smoke on `100.95.153.249:45033` passes:
+`docker version` negotiates with pdockerd API 1.43 and `docker compose version`
+reports v2.35.1. The full Android smoke is intentionally recorded as failing
+today: Dockerfile `RUN` hits the PRoot execution backend (`Bad address` /
+signal 11) before the tiny image can be built.
 
 Recent focused backend smoke checks also passed for a small Dockerfile build, a
 multi-step RUN/COPY/RUN Dockerfile build, and `docker compose up -d --build` /
@@ -86,8 +92,8 @@ suite and should be recorded separately when it is run to completion.
 | Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. |
 | Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
 | Volumes/binds | Partial | Named volumes map to host directories; bind mounts use PRoot. No kernel mount propagation or tmpfs semantics. |
-| Dockerfile build | Partial | Legacy builder supports common instructions and a practical `.dockerignore` subset. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
-| Compose | Partial | Basic up/down flows work when they stay inside the supported network/build/container subset. |
+| Dockerfile build | Partial | Legacy builder supports common instructions and a practical `.dockerignore` subset on the backend host. On Android, `RUN` is currently blocked by the PRoot exec failure. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
+| Compose | Partial | Compose v2.35.1 is bundled in the APK and `docker compose version` works on Android. Basic up/down flows work when the build/runtime path stays inside the supported subset; Android compose with a built service is currently blocked by the same PRoot exec failure. |
 | Events | Partial | `/events` now persists Docker-style JSONL lifecycle events and live-streams new events with basic `since`, `until`, and filter handling. It covers container/image/network/volume/build events, but does not yet reproduce every daemon-internal event emitted by Moby. |
 | APK data exchange | Good | APK includes pdockerd, Docker CLI, crane, proot, proot-loader, libcow, talloc, xterm assets, and license notice asset. |
 
@@ -123,6 +129,8 @@ Known gaps:
   layers, and private registry credential flow.
 - Full Dockerfile frontend behavior, BuildKit features, complete
   `.dockerignore` parity, and multi-stage/cross-platform build behavior.
+- Android execution backend parity: repair/replace PRoot so container binaries
+  exec reliably on-device, then promote full ADB smoke to required pass.
 - Full overlayfs semantics for deletions, rename, metadata operations, and
   merged directory listings in cow_bind mode.
 

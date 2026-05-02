@@ -92,6 +92,7 @@ $ADB logcat -d --pid=$($ADB shell pidof $PKG) \
 ```sh
 # これは app UID — OK
 $ADB shell run-as $PKG ls -la files/pdocker-runtime/docker-bin
+$ADB shell run-as $PKG ls -la files/pdocker-runtime/docker-bin/cli-plugins
 # これは shell UID に落ちる — 失敗する
 $ADB shell run-as $PKG sh -c 'cd files && ls'
 ```

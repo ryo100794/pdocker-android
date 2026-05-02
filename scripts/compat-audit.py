@@ -182,6 +182,7 @@ def check_apk_payload() -> list[Check]:
             "lib/arm64-v8a/libtalloc.so",
             "lib/arm64-v8a/libcrane.so",
             "lib/arm64-v8a/libdocker.so",
+            "lib/arm64-v8a/libdocker-compose.so",
             "lib/arm64-v8a/libcow.so",
             "lib/arm64-v8a/libpdockerpty.so",
             "assets/pdockerd/pdockerd",
@@ -207,7 +208,7 @@ def check_license_inventory() -> list[Check]:
     text = LICENSE_DOC.read_text()
     required = [
         "PROot", "GPL-2.0-or-later", "talloc", "LGPL-3.0-or-later",
-        "Docker CLI", "Apache-2.0", "go-containerregistry", "xterm.js",
+        "Docker CLI", "Docker Compose", "Apache-2.0", "go-containerregistry", "xterm.js",
         "MIT", "Chaquopy", "AndroidX", "Kotlin",
     ]
     for token in required:

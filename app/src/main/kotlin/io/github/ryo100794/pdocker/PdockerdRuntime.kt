@@ -14,6 +14,8 @@ import java.io.File
  *   ├── bin/pdockerd
  *   ├── docker-bin/
  *   │   ├── crane          (-> nativeLibraryDir/libcrane.so)
+ *   │   ├── docker         (-> nativeLibraryDir/libdocker.so)
+ *   │   ├── cli-plugins/docker-compose (-> nativeLibraryDir/libdocker-compose.so)
  *   │   └── proot          (-> nativeLibraryDir/libproot.so)
  *   ├── etc/resolv.conf    (DNS nameservers; crane reads via proot bind)
  *   └── lib/
@@ -47,6 +49,7 @@ nameserver 1.1.1.1
         val root = File(ctx.filesDir, "pdocker-runtime")
         val bin = File(root, "bin").apply { mkdirs() }
         val dockerBin = File(root, "docker-bin").apply { mkdirs() }
+        val dockerCliPlugins = File(dockerBin, "cli-plugins").apply { mkdirs() }
         val lib = File(root, "lib").apply { mkdirs() }
         val etc = File(root, "etc").apply { mkdirs() }
         // proot needs a writable temp dir for its "glue rootfs" (fabricated
@@ -66,6 +69,10 @@ nameserver 1.1.1.1
         optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
         optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
         linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
+        optionalLinkTo(
+            File(nativeDir, "libdocker-compose.so"),
+            File(dockerCliPlugins, "docker-compose"),
+        )
         // A symlink named docker-compose pointing at the Docker CLI does not
         // enter Compose mode; it produces "unknown shorthand flag: 'd' in -d"
         // for `docker-compose up -d`. Keep only the supported v2 form:
@@ -89,10 +96,14 @@ nameserver 1.1.1.1
     }
 
     private fun extractAsset(ctx: Context, assetPath: String, dst: File, force: Boolean) {
-        if (!force && dst.exists()) return
-        ctx.assets.open(assetPath).use { input ->
-            dst.outputStream().use { output -> input.copyTo(output) }
+        val assetBytes = ctx.assets.open(assetPath).use { input ->
+            input.readBytes()
         }
+        if (!force && dst.exists()) {
+            val existing = runCatching { dst.readBytes() }.getOrNull()
+            if (existing != null && existing.contentEquals(assetBytes)) return
+        }
+        dst.outputStream().use { output -> output.write(assetBytes) }
         Log.i(TAG, "extracted $assetPath -> $dst (${dst.length()} bytes)")
     }
 

@@ -19,6 +19,7 @@ IMAGE = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/ImageFilesActivi
 EDITOR = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/CodeEditorView.kt"
 EDITOR_ACTIVITY = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/TextEditorActivity.kt"
 XTERM = ROOT / "app/src/main/assets/xterm/index.html"
+BRIDGE = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt"
 ANDROID_SMOKE = ROOT / "scripts/android-device-smoke.sh"
 STRINGS = [
     ROOT / "app/src/main/res/values/strings.xml",
@@ -45,6 +46,7 @@ def main() -> int:
     editor_src = EDITOR.read_text()
     editor_activity_src = EDITOR_ACTIVITY.read_text()
     xterm_src = XTERM.read_text()
+    bridge_src = BRIDGE.read_text()
     android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
     string_src = "\n".join(path.read_text() for path in STRINGS)
 
@@ -53,10 +55,13 @@ def main() -> int:
     require("docker terminal starts pdockerd first", "private fun openDockerTerminal" in main_src and "startDaemon()" in main_src)
     require("docker actions wait for daemon readiness", "waiting for pdockerd" in main_src and "docker version >/dev/null" in main_src)
     require("docker build uses legacy builder env", "DOCKER_BUILDKIT=0" in main_src and "COMPOSE_DOCKER_CLI_BUILD=0" in main_src)
-    require("terminal exports legacy builder env", "DOCKER_BUILDKIT=0" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt").read_text())
+    require("terminal exports legacy builder env", "DOCKER_BUILDKIT=0" in bridge_src)
     require("compose up action is detached and builds first", "docker compose up --detach --build" in main_src)
     require("legacy docker-compose commands are normalized", "normalizeDockerCommand" in main_src and "docker-compose" in main_src and "docker compose" in main_src)
-    require("runtime removes stale docker-compose shim", "docker-compose" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdRuntime.kt").read_text())
+    runtime_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdRuntime.kt").read_text()
+    require("runtime installs docker compose plugin", "cli-plugins" in runtime_src and "libdocker-compose.so" in runtime_src)
+    require("runtime removes stale docker-compose shim", "docker-compose" in runtime_src)
+    require("terminal points docker config at compose plugin dir", "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin" in bridge_src)
     require("one-shot docker commands leave an interactive shell", "status=\\$?" in main_src and "exec sh" in main_src)
     require("docker actions create native job cards", "private data class DockerJob" in main_src and "renderDockerJobs" in main_src)
     require("docker jobs persist state to json", "jobs.json" in main_src and "saveDockerJobs()" in main_src)
@@ -71,6 +76,7 @@ def main() -> int:
     require("container cards surface network warnings", "containerWarningSummary" in main_src and "container_warning_ports_metadata" in string_src)
     require("container cards open known service ports", "containerServiceUrls" in main_src and "18080/tcp" in main_src and "18081/tcp" in main_src)
     require("container cards expose lifecycle actions", "action_container_start_fmt" in string_src and "docker start" in main_src and "docker stop" in main_src and "terminal_container_logs_fmt" in main_src)
+    require("debug smoke can start daemon through activity", "ACTION_SMOKE_START" in main_src and "FLAG_DEBUGGABLE" in main_src and ".PdockerdService" not in android_smoke_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
     require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
     require("android device smoke script exists", "docker compose up --detach --build" in android_smoke_src and "run-as" in android_smoke_src and "docker version" in android_smoke_src)

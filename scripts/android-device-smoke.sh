@@ -40,8 +40,12 @@ run_adb() {
   "$ADB" "$@"
 }
 
+remote_quote() {
+  printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
+}
+
 run_as() {
-  run_adb shell run-as "$PKG" sh -c "$1"
+  run_adb shell "run-as $PKG sh -c $(remote_quote "$1")"
 }
 
 wait_for_socket() {
@@ -58,7 +62,7 @@ wait_for_socket() {
 
 docker_cmd() {
   local cmd="$1"
-  run_as "cd files && export PATH=\"\$PWD/pdocker-runtime/docker-bin:\$PATH\" DOCKER_HOST=\"unix://\$PWD/pdocker/pdockerd.sock\" DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false && $cmd"
+  run_as "cd files && export PATH=\"\$PWD/pdocker-runtime/docker-bin:\$PATH\" DOCKER_CONFIG=\"\$PWD/pdocker-runtime/docker-bin\" DOCKER_HOST=\"unix://\$PWD/pdocker/pdockerd.sock\" DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false && $cmd"
 }
 
 echo "[pdocker smoke] device: $(run_adb get-serialno)"
@@ -73,14 +77,12 @@ if [[ "$INSTALL" -eq 1 ]]; then
   run_adb install -r "$APK" >/dev/null
 fi
 
+run_adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+run_as 'rm -f files/pdocker/pdockerd.sock' >/dev/null 2>&1 || true
 run_adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
-run_adb shell am start -n "$PKG/.MainActivity" >/dev/null
-run_adb shell am start-foreground-service \
-  -n "$PKG/.PdockerdService" \
-  -a "$PKG.action.START" >/dev/null || \
-run_adb shell am startservice \
-  -n "$PKG/.PdockerdService" \
-  -a "$PKG.action.START" >/dev/null
+run_adb shell am start \
+  -n "$PKG/.MainActivity" \
+  -a "$PKG.action.SMOKE_START" >/dev/null
 
 wait_for_socket
 
@@ -93,17 +95,23 @@ if [[ "$MODE" == "quick" ]]; then
 fi
 
 echo "[pdocker smoke] creating tiny project"
-run_as "mkdir -p files/pdocker/projects/$PROJECT && cat > files/pdocker/projects/$PROJECT/Dockerfile <<'EOF'
+TMP_PROJECT="$(mktemp -d)"
+trap 'rm -rf "$TMP_PROJECT"' EXIT
+cat > "$TMP_PROJECT/Dockerfile" <<'EOF'
 FROM ubuntu:22.04
 RUN printf 'pdocker-smoke-build\n' > /pdocker-smoke.txt
-CMD [\"/bin/sh\", \"-lc\", \"cat /pdocker-smoke.txt && sleep 2\"]
+CMD ["/bin/sh", "-lc", "cat /pdocker-smoke.txt && sleep 2"]
 EOF
-cat > files/pdocker/projects/$PROJECT/compose.yaml <<'EOF'
+cat > "$TMP_PROJECT/compose.yaml" <<'EOF'
 services:
   app:
     build: .
-    command: [\"/bin/sh\", \"-lc\", \"cat /pdocker-smoke.txt && sleep 2\"]
-EOF"
+    command: ["/bin/sh", "-lc", "cat /pdocker-smoke.txt && sleep 2"]
+EOF
+REMOTE_PROJECT="/data/local/tmp/pdocker-$PROJECT"
+run_adb shell "rm -rf '$REMOTE_PROJECT' && mkdir -p '$REMOTE_PROJECT'"
+run_adb push "$TMP_PROJECT/." "$REMOTE_PROJECT/" >/dev/null
+run_as "rm -rf files/pdocker/projects/$PROJECT && mkdir -p files/pdocker/projects/$PROJECT && cp -R $REMOTE_PROJECT/. files/pdocker/projects/$PROJECT/"
 
 echo "[pdocker smoke] docker build"
 docker_cmd "cd pdocker/projects/$PROJECT && docker build -t local/pdocker-device-smoke:latest ."

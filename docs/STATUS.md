@@ -77,7 +77,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - Main UI action wiring → Docker-backed actions start pdockerd before opening
   the PTY tool tab, wait for `docker version`, export
   `DOCKER_BUILDKIT=0` / `COMPOSE_DOCKER_CLI_BUILD=0`, and append an
-  interactive shell after one-shot commands. Compose actions run
+  interactive shell after one-shot commands. The APK now ships the Docker
+  Compose v2 plugin as `docker-bin/cli-plugins/docker-compose`, so Compose
+  actions do not depend on host-side plugins. Compose actions run
   `docker compose up -d --build` followed by `ps` and recent logs, so the UI
   does not stay pinned to foreground logs.
 - Main UI job tracking → Docker-backed actions also create native upper-pane
