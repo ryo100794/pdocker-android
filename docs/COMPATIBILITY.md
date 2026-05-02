@@ -47,7 +47,13 @@ python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
 Backend-only regression remains available in the submodule:
 
 ```sh
-bash docker-proot-setup/scripts/verify_all.sh
+bash docker-proot-setup/scripts/verify_all.sh --quick
+```
+
+Long backend regression (overlayfs/compose/deep layers):
+
+```sh
+bash docker-proot-setup/scripts/verify_all.sh --full
 ```
 
 While a full audit is running, the backend regression daemon usually listens at
