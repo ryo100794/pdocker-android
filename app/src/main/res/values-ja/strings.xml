@@ -57,6 +57,8 @@
     <string name="project_dashboard_dependencies_fmt">依存: %1$s</string>
     <string name="project_dashboard_health_fmt">ヘルスチェック: %1$s</string>
     <string name="project_dashboard_urls_fmt">URL: %1$s</string>
+    <string name="project_dashboard_service_health_fmt">サービス疎通: %1$s</string>
+    <string name="service_health_checking">確認中</string>
     <string name="project_dashboard_models_fmt">モデル: %1$s</string>
     <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
     <string name="project_dashboard_gpu_invalid">診断JSONが不正</string>

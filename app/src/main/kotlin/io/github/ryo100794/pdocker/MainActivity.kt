@@ -29,6 +29,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.concurrent.thread
 import org.json.JSONArray
 import org.json.JSONObject
@@ -102,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         val editable: List<File>,
         val services: List<ComposeService>,
         val serviceUrls: List<Pair<String, String>>,
+        val serviceHealth: String,
         val modelSummary: String,
         val gpuProfileSummary: String,
         val gpuDiagnostics: File?,
@@ -140,6 +143,9 @@ class MainActivity : AppCompatActivity() {
     private var currentToolGroup: String? = null
     private val dockerJobs = mutableListOf<DockerJob>()
     private val dockerJobBuffers = mutableMapOf<String, String>()
+    private val serviceHealth = mutableMapOf<String, String>()
+    private val serviceHealthCheckedAt = mutableMapOf<String, Long>()
+    private val serviceHealthInFlight = mutableSetOf<String>()
     private var upperWeight = 0.56f
     private var lowerWeight = 0.44f
     private var splitDragStartY = 0f
@@ -1688,11 +1694,12 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.project_dashboard_dependencies_fmt, projectDependencySummary(project.services)),
                 getString(R.string.project_dashboard_health_fmt, projectHealthSummary(project.services)),
                 getString(R.string.project_dashboard_urls_fmt, project.serviceUrls.joinToString(", ") { it.first }.ifBlank { "-" }),
+                getString(R.string.project_dashboard_service_health_fmt, project.serviceHealth),
                 getString(R.string.project_dashboard_models_fmt, project.modelSummary),
                 getString(R.string.project_dashboard_gpu_fmt, project.gpuProfileSummary),
                 getString(R.string.project_dashboard_jobs_fmt, project.jobSummary),
             ).joinToString("\n")
-            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail, detailLines = 8) {
+            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail, detailLines = 9) {
                 openProjectPrimaryFile(project)
             }
             project.compose.take(2).forEach { file ->
@@ -1755,13 +1762,15 @@ class MainActivity : AppCompatActivity() {
                 .mapNotNull { it.parentFile }
                 .distinctBy { it.absolutePath }
                 .flatMap { parseComposeServices(it) }
+            val serviceUrls = projectServiceUrls(services)
             ProjectSummary(
                 dir = dir,
                 compose = compose,
                 dockerfiles = dockerfiles,
                 editable = editable,
                 services = services,
-                serviceUrls = projectServiceUrls(services),
+                serviceUrls = serviceUrls,
+                serviceHealth = projectServiceHealthSummary(serviceUrls),
                 modelSummary = projectModelSummary(dir),
                 gpuProfileSummary = projectGpuProfileSummary(dir),
                 gpuDiagnostics = File(dir, "profiles/pdocker-gpu-diagnostics.json").takeIf { it.isFile },
@@ -1843,6 +1852,48 @@ class MainActivity : AppCompatActivity() {
                 label to "http://127.0.0.1:$hostPort/"
             }
         }.distinctBy { it.second }
+
+    private fun projectServiceHealthSummary(urls: List<Pair<String, String>>): String {
+        if (urls.isEmpty()) return "-"
+        urls.forEach { (_, url) -> scheduleServiceHealthProbe(url) }
+        return urls.take(4).joinToString(", ") { (label, url) ->
+            "$label:${serviceHealth[url] ?: getString(R.string.service_health_checking)}"
+        }
+    }
+
+    private fun scheduleServiceHealthProbe(url: String) {
+        if (url in serviceHealthInFlight) return
+        val checkedAt = serviceHealthCheckedAt[url] ?: 0L
+        if (url in serviceHealth && System.currentTimeMillis() - checkedAt < 15_000L) return
+        serviceHealthInFlight += url
+        thread(isDaemon = true, name = "pdocker-service-probe") {
+            val result = probeServiceUrl(url)
+            ui.post {
+                serviceHealth[url] = result
+                serviceHealthCheckedAt[url] = System.currentTimeMillis()
+                serviceHealthInFlight -= url
+                if (currentTab == Tab.Overview) renderContent()
+            }
+        }
+    }
+
+    private fun probeServiceUrl(url: String): String =
+        runCatching {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 900
+                readTimeout = 900
+                requestMethod = "GET"
+            }
+            try {
+                val code = conn.responseCode
+                if (code in 200..399) "HTTP $code" else "HTTP $code"
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrElse { err ->
+            val reason = err.message?.take(32)?.ifBlank { err::class.java.simpleName } ?: err::class.java.simpleName
+            "down $reason"
+        }
 
     private fun composeHostPort(port: String): Int? {
         val cleaned = port.trim().trim('"', '\'')

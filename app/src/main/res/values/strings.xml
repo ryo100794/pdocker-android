@@ -57,6 +57,8 @@
     <string name="project_dashboard_dependencies_fmt">Depends: %1$s</string>
     <string name="project_dashboard_health_fmt">Healthcheck: %1$s</string>
     <string name="project_dashboard_urls_fmt">URLs: %1$s</string>
+    <string name="project_dashboard_service_health_fmt">Service health: %1$s</string>
+    <string name="service_health_checking">checking</string>
     <string name="project_dashboard_models_fmt">Models: %1$s</string>
     <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
     <string name="project_dashboard_gpu_invalid">invalid diagnostics</string>
