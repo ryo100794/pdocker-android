@@ -2,8 +2,18 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PKG="${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}"
-APK="${PDOCKER_APK:-$ROOT/app/build/outputs/apk/debug/app-debug.apk}"
+FLAVOR="${PDOCKER_ANDROID_FLAVOR:-modern}"
+if [[ "$FLAVOR" == "compat" ]]; then
+  DEFAULT_PKG="io.github.ryo100794.pdocker.compat"
+  DEFAULT_APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"
+else
+  DEFAULT_PKG="io.github.ryo100794.pdocker"
+  DEFAULT_APK="$ROOT/app/build/outputs/apk/modern/debug/app-modern-debug.apk"
+fi
+PKG="${PDOCKER_PACKAGE:-$DEFAULT_PKG}"
+APK="${PDOCKER_APK:-$DEFAULT_APK}"
+CLASS_PREFIX="io.github.ryo100794.pdocker"
+ACTION_PREFIX="io.github.ryo100794.pdocker"
 PROJECT="device-smoke"
 MODE="full"
 GPU_BENCH=0
@@ -73,8 +83,8 @@ run_gpu_bench() {
   echo "[pdocker smoke] android-gpu-bench"
   run_as "rm -rf '$bench_dir' && mkdir -p '$bench_dir'" >/dev/null 2>&1 || true
   run_adb shell am broadcast \
-    -n "$PKG/.PdockerdDebugReceiver" \
-    -a "$PKG.action.SMOKE_GPU_BENCH" >/dev/null
+    -n "$PKG/$CLASS_PREFIX.PdockerdDebugReceiver" \
+    -a "$ACTION_PREFIX.action.SMOKE_GPU_BENCH" >/dev/null
   local i
   for i in $(seq 1 20); do
     if run_as "ls '$bench_dir'/android-gpu-bench-*.jsonl >/dev/null 2>&1 && ls '$bench_dir'/android-gpu-bench-*.csv >/dev/null 2>&1"; then
@@ -103,8 +113,8 @@ run_adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
 run_as 'rm -f files/pdocker/pdockerd.sock' >/dev/null 2>&1 || true
 run_adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 run_adb shell am start \
-  -n "$PKG/.MainActivity" \
-  -a "$PKG.action.SMOKE_START" >/dev/null
+  -n "$PKG/$CLASS_PREFIX.MainActivity" \
+  -a "$ACTION_PREFIX.action.SMOKE_START" >/dev/null
 
 wait_for_socket
 
@@ -113,7 +123,14 @@ docker_cmd 'docker version'
 
 echo "[pdocker smoke] direct executor probe"
 run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "pdocker-direct-executor:1"'
-run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "process-exec=0"'
+run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -Eq "process-exec=(0|1)"'
+if [[ "$FLAVOR" == "compat" ]]; then
+  echo "[pdocker smoke] compat direct process probe"
+  run_as 'PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC=1 files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "process-exec=1"'
+  run_as '! test -e files/pdocker-runtime/docker-bin/proot'
+else
+  run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "process-exec=0"'
+fi
 
 if [[ "$GPU_BENCH" -eq 1 ]]; then
   run_gpu_bench
@@ -147,7 +164,7 @@ echo "[pdocker smoke] docker build"
 docker_cmd "cd pdocker/projects/$PROJECT && docker build -t local/pdocker-device-smoke:latest ."
 
 echo "[pdocker smoke] compose up/down"
-docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build --remove-orphans && docker compose ps && docker compose logs --tail=50 && docker compose down"
+docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build --remove-orphans && CID=\$(docker compose ps -q app) && test -n \"\$CID\" && for i in \$(seq 1 10); do docker compose logs --tail=80 | grep -q pdocker-smoke-build && break; sleep 1; done && docker compose logs --tail=80 | grep -q pdocker-smoke-build && for i in \$(seq 1 10); do STATE=\$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' \"\$CID\"); echo \"compose container state: \$STATE\"; test \"\$STATE\" = 'exited 0' && break; sleep 1; done && test \"\$STATE\" = 'exited 0' && docker compose ps -a && docker compose down"
 
 echo "[pdocker smoke] checking UI-visible job state path"
 run_as 'ls -l files/pdocker/jobs.json >/dev/null 2>&1 || true; ls -ld files/pdocker/projects/device-smoke files/pdocker-runtime'

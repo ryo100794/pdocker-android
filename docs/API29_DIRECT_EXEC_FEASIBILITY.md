@@ -47,11 +47,11 @@ OCI image/layers/rootfs unchanged
 |---|---|---|
 | APK-shipped executor | `libpdockerdirect.so` is staged through `jniLibs` and linked as `docker-bin/pdocker-direct`. | Proved for helper startup/probe. |
 | Avoid direct rootfs `execve` | `pdocker-direct` calls an executable loader first, then passes the rootfs program as loader input. | Partially proved. It avoids the direct app-data program `execve` path. |
-| Rootfs loader/library path | `pdocker-direct` builds `--library-path` from rootfs lib dirs and can use a bundled `pdocker-ld-linux-aarch64`. | Partially proved under `run-as`; app-domain execution still hits SIGSYS. |
-| Rootfs path mediation | `pdocker-rootfs-shim.so` rewrites absolute paths such as `/etc/passwd` to `$PDOCKER_ROOTFS/etc/passwd` for selected libc calls. | Prototype only. `open/openat/opendir/chdir/getcwd/execve` exist; stat/faccessat coverage is incomplete. |
+| Rootfs loader/library path | `pdocker-direct` builds `--library-path` from rootfs lib dirs and routes child `execve()` calls back through the rootfs dynamic loader. | Proved for SDK28 compat smoke on SOG15. |
+| Rootfs path mediation | `pdocker-direct` rewrites selected syscall path arguments (`openat`, `newfstatat`, `statx`, `execve`, etc.) to the materialized rootfs. | Proved for the tiny build/compose smoke; incomplete for full Docker semantics. |
 | Docker layer/rootfs compatibility | Existing image materialization keeps Docker/OCI rootfs content and layer semantics in `pdockerd`. | Proved for pull/materialize/metadata; not dependent on custom base images. |
 | Process capability gate | `pdockerd` probes `pdocker-direct` and only routes RUN/run/exec when the helper advertises `process-exec=1`. | Proved as a safety mechanism. The helper must not advertise success until app-domain process execution is stable. |
-| Compose/Engine API integration | Compose can build/create metadata through `pdockerd`; runtime start is blocked by process execution readiness. | Partial. Needs a working executor before services can be reported running. |
+| Compose/Engine API integration | Compose can build, create, start, log, and remove a tiny service through `pdockerd` on SDK28 compat. | Proved for the smoke scenario; larger services still need coverage. |
 
 ## Current proof points
 
@@ -79,7 +79,7 @@ Command:
 bash scripts/android-api29-direct-feasibility.sh --no-install
 ```
 
-Result on 2026-05-02:
+Initial result on 2026-05-02:
 
 ```text
 Device: SOG15
@@ -116,6 +116,86 @@ Interpretation:
 - A helper must not advertise `process-exec=1` in a release/default build until
   this app-domain test passes. Experimental builds may enable it only to keep
   probing the SIGSYS boundary.
+
+## SDK28 compat direct test
+
+Command:
+
+```sh
+PDOCKER_ANDROID_FLAVOR=compat bash scripts/build-apk.sh
+PDOCKER_ANDROID_FLAVOR=compat bash scripts/android-device-smoke.sh --no-install
+```
+
+Initial result on 2026-05-02:
+
+```text
+Device: SOG15
+Android: 16 / SDK 36
+Package targetSdk: 28
+SELinux domain: u:r:untrusted_app_27:s0:...
+External PRoot payloads: absent
+Dockerfile RUN: failed with exit code -31
+```
+
+Additional Java-side control:
+
+```text
+PdockerdDebugReceiver -> Java ProcessBuilder -> pdocker-direct -> loader -> rootfs /bin/sh
+rc=159
+```
+
+Interpretation:
+
+- Lowering targetSdk to 28 is not sufficient on this Android 16 device for the
+  current direct-loader approach.
+- The failure is not specific to Chaquopy/Python `subprocess`; Java
+  `ProcessBuilder` from the app domain also dies with SIGSYS.
+- PRoot is not included in the compat APK. The compat flavor remains useful as
+  a build/runtime switch point, but it is not yet a working execution backend.
+
+Follow-up syscall-fetch result:
+
+```text
+pdocker-direct-trace: enter nr=221(execve)
+pdocker-direct-trace: SIGSYS nr=99(set_robust_list)
+pdocker-direct-trace: suppress SIGSYS after emulated nr=99(set_robust_list)
+shell_builtin_ok
+pdocker-direct-trace: child exited rc=0
+```
+
+This proves that the app-domain trace/broker foundation is viable for at least
+the initial glibc loader and shell path. The blocker is no longer "the app
+domain cannot fetch syscalls"; `pdocker-direct` can fetch syscall numbers and
+registers, identify the blocked `set_robust_list`, emulate success, suppress the
+corresponding SIGSYS, and run `/bin/sh -c "echo shell_builtin_ok"` to rc 0.
+
+Follow-up SDK28 compat result on 2026-05-02:
+
+```text
+PDOCKER_ANDROID_FLAVOR=compat bash scripts/android-device-smoke.sh --no-install
+...
+Step: RUN printf 'pdocker-smoke-build\n' > /pdocker-smoke.txt
+Successfully built docker.io/local/pdocker-device-smoke:latest
+...
+Container device-smoke-app-1  Started
+compose container state: exited 0
+[pdocker smoke] passed
+```
+
+This proves the scratch broker can now:
+
+- trace fork/vfork/clone children with per-tracee state;
+- route child `execve("/bin/ls")`-style calls through the rootfs dynamic loader;
+- rewrite common absolute path syscalls into the materialized rootfs;
+- emulate or suppress currently blocked startup syscalls (`set_robust_list`,
+  `rseq`, and a permissive `faccessat2` compatibility response);
+- run a standard `ubuntu:22.04` Dockerfile `RUN`;
+- run a tiny `docker compose up --build -d` service and capture its logs.
+
+The compatibility proof is currently for the SDK28 compat flavor on SOG15
+(Android 16 / SDK 36). API29+ targetSdk direct execution remains unproved.
+The broker still needs exact errno semantics for path probes, TTY/attach,
+signals, bind mounts, port mediation, and broader syscall coverage.
 
 ## Unproved blocker
 

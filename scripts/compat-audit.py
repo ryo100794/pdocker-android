@@ -31,7 +31,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "docker-proot-setup"
 PDOCKERD = BACKEND / "bin" / "pdockerd"
-APK = ROOT / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+FLAVOR = os.environ.get("PDOCKER_ANDROID_FLAVOR", "modern")
+if FLAVOR == "compat":
+    APK = ROOT / "app" / "build" / "outputs" / "apk" / "compat" / "debug" / "app-compat-debug.apk"
+elif FLAVOR == "modern":
+    APK = ROOT / "app" / "build" / "outputs" / "apk" / "modern" / "debug" / "app-modern-debug.apk"
+else:
+    APK = ROOT / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 LICENSE_DOC = ROOT / "docs" / "THIRD_PARTY_LICENSES.md"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -113,6 +119,7 @@ def check_protocol_smoke() -> list[Check]:
     env = os.environ.copy()
     env["PDOCKER_HOME"] = str(tmp / "home")
     env["PDOCKER_TMP_DIR"] = str(tmp / "tmp")
+    env["PDOCKER_RUNTIME_BACKEND"] = "direct"
     proc = subprocess.Popen(
         [sys.executable, str(PDOCKERD), "--socket", str(sock)],
         cwd=BACKEND,
@@ -192,6 +199,12 @@ def check_apk_payload() -> list[Check]:
         ]
         for name in required:
             checks.append(Check(f"apk payload: {name}", "PASS" if name in names else "FAIL"))
+        optional = [
+            "lib/arm64-v8a/libpdocker-rootfs-shim.so",
+            "lib/arm64-v8a/libpdocker-ld-linux-aarch64.so",
+        ]
+        for name in optional:
+            checks.append(Check(f"apk optional direct payload: {name}", "PASS" if name in names else "SKIP"))
         proot_payload = [
             "lib/arm64-v8a/libproot.so",
             "lib/arm64-v8a/libproot-loader.so",
@@ -210,7 +223,7 @@ def check_apk_payload() -> list[Check]:
         else:
             pdockerd_bridge = (ROOT / "app/src/main/python/pdockerd_bridge.py").read_text()
             checks.append(Check("no-proot runtime selector",
-                                "PASS" if 'PDOCKER_RUNTIME_BACKEND", "no-proot"' in pdockerd_bridge else "FAIL"))
+                                "PASS" if "PDOCKER_RUNTIME_BACKEND" in pdockerd_bridge else "FAIL"))
     return checks
 
 

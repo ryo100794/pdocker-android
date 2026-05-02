@@ -24,10 +24,33 @@ android {
         }
     }
 
+    flavorDimensions += "runtime"
+    productFlavors {
+        create("modern") {
+            dimension = "runtime"
+            targetSdk = 34
+            buildConfigField("String", "PDOCKER_RUNTIME_BACKEND", "\"no-proot\"")
+            buildConfigField("Boolean", "PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC", "false")
+            buildConfigField("String", "PDOCKER_RUNTIME_LABEL", "\"API34 direct/metadata\"")
+        }
+        create("compat") {
+            dimension = "runtime"
+            applicationIdSuffix = ".compat"
+            versionNameSuffix = "-compat"
+            targetSdk = 28
+            buildConfigField("String", "PDOCKER_RUNTIME_BACKEND", "\"direct\"")
+            buildConfigField("Boolean", "PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC", "true")
+            buildConfigField("String", "PDOCKER_RUNTIME_LABEL", "\"SDK28 direct compat\"")
+        }
+    }
+
     sourceSets {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
             jniLibs.srcDirs("src/main/jniLibs")
+        }
+        getByName("compat") {
+            jniLibs.srcDirs("src/compat/jniLibs")
         }
     }
 

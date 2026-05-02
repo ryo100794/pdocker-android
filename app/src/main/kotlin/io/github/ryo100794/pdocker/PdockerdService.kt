@@ -127,6 +127,8 @@ class PdockerdService : Service() {
                     sock.absolutePath,
                     home.absolutePath,
                     runtime.absolutePath,
+                    BuildConfig.PDOCKER_RUNTIME_BACKEND,
+                    BuildConfig.PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC,
                 )
             } catch (t: Throwable) {
                 Log.e(TAG, "pdockerd crashed", t)

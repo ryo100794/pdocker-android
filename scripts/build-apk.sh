@@ -8,8 +8,27 @@ cd "$ROOT"
 
 : "${ANDROID_HOME:=$HOME/android-sdk}"
 : "${ANDROID_NDK_HOME:=$HOME/android-ndk-r26d}"
+: "${PDOCKER_ANDROID_FLAVOR:=modern}"
 export ANDROID_HOME ANDROID_NDK_HOME
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+case "$PDOCKER_ANDROID_FLAVOR" in
+    modern)
+        GRADLE_TASK=":app:assembleModernDebug"
+        APK="$ROOT/app/build/outputs/apk/modern/debug/app-modern-debug.apk"
+        : "${PDOCKER_WITH_PROOT:=0}"
+        ;;
+    compat)
+        GRADLE_TASK=":app:assembleCompatDebug"
+        APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"
+        : "${PDOCKER_WITH_PROOT:=0}"
+        ;;
+    *)
+        echo "ABORT: PDOCKER_ANDROID_FLAVOR must be 'modern' or 'compat' (got '$PDOCKER_ANDROID_FLAVOR')" >&2
+        exit 2
+        ;;
+esac
+export PDOCKER_WITH_PROOT
 
 # Ensure submodule is populated.
 git submodule update --init --recursive
@@ -19,25 +38,18 @@ git submodule update --init --recursive
 # on aarch64 hosts). Output goes directly to app/src/main/jniLibs/arm64-v8a/.
 bash scripts/build-native-termux.sh
 
-# Build the self-contained Android proot binary, including pdocker's
-# minimal --cow-bind extension patch. PRoot is now opt-in because it is
-# blocked on current Android devices and carries GPL/talloc payload. Set
-# PDOCKER_WITH_PROOT=1 to produce a legacy diagnostic APK while the
-# replacement runtime is being developed.
-if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
-    bash scripts/build-proot.sh
-else
-    echo "==> skipping proot build (PDOCKER_WITH_PROOT=0)"
-fi
+# External PRoot is not part of the default or compat runtime. The SDK28
+# compatibility APK uses the scratch pdocker-direct executor path so the
+# RuntimeBackend switch remains usable without adding a GPL/PRoot payload.
+echo "==> skipping external proot build (pdocker-direct compat runtime)"
 
 # Stage submodule assets (crane, optional proot, pdockerd python tree).
 bash scripts/copy-native.sh
 
 # Gradle build. Use the checked-in wrapper so the included :app project and
 # Android Gradle Plugin versions are resolved consistently.
-./gradlew :app:assembleDebug --no-daemon
+./gradlew "$GRADLE_TASK" --no-daemon
 
-APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
 if [[ -f "$APK" ]]; then
     echo
     echo "APK: $APK"

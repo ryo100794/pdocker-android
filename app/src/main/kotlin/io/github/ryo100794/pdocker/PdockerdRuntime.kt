@@ -15,12 +15,14 @@ import java.io.File
  *   ├── docker-bin/
  *   │   ├── crane          (-> nativeLibraryDir/libcrane.so)
  *   │   ├── pdocker-direct (-> nativeLibraryDir/libpdockerdirect.so)
+ *   │   ├── pdocker-ld-linux-aarch64 (-> nativeLibraryDir/libpdocker-ld-linux-aarch64.so)
  *   │   ├── docker         (-> nativeLibraryDir/libdocker.so)
  *   │   ├── cli-plugins/docker-compose (-> nativeLibraryDir/libdocker-compose.so)
  *   │   └── proot          (optional legacy PRoot payload)
  *   ├── etc/resolv.conf    (DNS nameservers; crane reads via proot bind)
  *   └── lib/
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
+ *       ├── pdocker-rootfs-shim.so (-> nativeLibraryDir/libpdocker-rootfs-shim.so)
  *       └── libtalloc.so   (optional legacy PRoot dependency)
  *
  * pdockerd derives _PROJECT_DIR = dirname(dirname(__file__)), so running
@@ -68,6 +70,7 @@ nameserver 1.1.1.1
 
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
         optionalLinkTo(File(nativeDir, "libpdockerdirect.so"), File(dockerBin, "pdocker-direct"))
+        optionalLinkTo(File(nativeDir, "libpdocker-ld-linux-aarch64.so"), File(dockerBin, "pdocker-ld-linux-aarch64"))
         optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
         optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
         java.nio.file.Files.deleteIfExists(File(dockerBin, "pl").toPath())
@@ -82,6 +85,7 @@ nameserver 1.1.1.1
         // `docker compose ...`.
         java.nio.file.Files.deleteIfExists(File(dockerBin, "docker-compose").toPath())
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
+        optionalLinkTo(File(nativeDir, "libpdocker-rootfs-shim.so"), File(lib, "pdocker-rootfs-shim.so"))
         optionalLinkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
 
         writeIfChanged(File(etc, "resolv.conf"), FALLBACK_RESOLV_CONF)

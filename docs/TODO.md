@@ -8,9 +8,9 @@ does not become product behavior by accident.
 
 ## P0: Real Android Container Execution
 
-Status: **not implemented**. This is the blocker for `docker run`,
-Dockerfile `RUN`, `docker exec`, Compose services, VS Code server, and
-llama-server.
+Status: **SDK28 compat smoke works for tiny build/compose; production runtime
+incomplete**. This is still the main blocker for VS Code server, llama-server,
+PTY attach, port publishing, and broader Docker compatibility.
 
 Temporary behavior:
 
@@ -22,6 +22,16 @@ Temporary behavior:
   (Android 16 / SDK 36, app targetSdk 34, `untrusted_app`) still failed the real
   app-domain Dockerfile `RUN` path with `exit code -31` even though `run-as`
   controls could execute the helper and rootfs shell.
+- The SDK28 compat flavor is now a separate runtime switch point and does not
+  include PRoot/talloc/proot-loader. On SOG15 it can run the tiny
+  `ubuntu:22.04` build/compose smoke through scratch `pdocker-direct`.
+- The syscall-fetch foundation is now proven in scratch `pdocker-direct`:
+  ptrace can fetch syscall registers in the app domain, trace fork/vfork/clone
+  children, route child `execve()` through the rootfs loader, rewrite common
+  absolute path syscalls into the image rootfs, and emulate/suppress known
+  Android-blocked startup syscalls.
+- `faccessat2` currently returns a permissive success result. Replace this with
+  host-side path probing and accurate errno mapping.
 - Direct backend start/exec fails with an explicit error instead of starting a
   fake listener.
 - Dockerfile `RUN` fails in direct mode instead of recording a fake layer.
@@ -31,8 +41,8 @@ Temporary behavior:
 Real implementation needed:
 
 1. Add a direct executor boundary for `start`, `exec`, `wait`, `stop`, `logs`,
-   attach, PTY, environment, workdir, and signal handling: **started, process
-   execution still blocked**.
+   attach, PTY, environment, workdir, and signal handling: **tiny start/logs
+   smoke works; attach/PTY/signals still incomplete**.
    - `PDOCKER_DIRECT_EXECUTOR` is now the explicit helper entry point.
    - The helper must pass `--pdocker-direct-probe` by printing
      `pdocker-direct-executor:1`.
@@ -40,21 +50,26 @@ Real implementation needed:
      `RUN`, `docker run`, `docker exec`, or Compose services to it.
    - Without a passing helper and capability, pdockerd refuses process
      execution instead of falling back to `/system/bin/sh`.
-2. Prototype APK-owned native `fork/exec` helper with stdout/stderr capture.
-3. Add rootfs path mediation so process paths resolve inside the image rootfs,
-   not the Android host filesystem.
-4. Add bind mount/path rewrite support for project volumes and named volumes.
-5. Add Engine-level TTY plumbing for `docker run -t` and `docker exec -it`.
-6. Add process supervision that survives UI navigation and reports honest exit
+2. Harden APK-owned native `fork/exec` helper stdout/stderr capture and remove
+   remaining noisy diagnostics from normal container logs.
+3. Extend syscall coverage beyond the tiny smoke and replace permissive
+   compatibility answers with accurate return values.
+4. Complete rootfs path mediation so process paths resolve inside the image
+   rootfs, not the Android host filesystem, including symlink and errno
+   behavior.
+5. Add bind mount/path rewrite support for project volumes and named volumes.
+6. Add Engine-level TTY plumbing for `docker run -t` and `docker exec -it`.
+7. Add process supervision that survives UI navigation and reports honest exit
    codes.
 
 Acceptance:
 
 - `docker run --rm ubuntu:22.04 echo hi` prints `hi`.
 - `docker build` with a tiny `RUN echo ok > /marker` creates the marker in the
-  image.
+  image. **Passing in SDK28 compat smoke.**
 - `docker compose up -d` starts a service process, `compose logs` shows its
-  stdout, and `compose down` stops it.
+  stdout, and `compose down` stops it. **Passing for the tiny SDK28 compat
+  smoke.**
 - Opening a container terminal runs inside the container rootfs; `ls /` lists
   container root, not Android host root.
 

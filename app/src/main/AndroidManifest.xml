@@ -67,6 +67,7 @@
             <intent-filter>
                 <action android:name="io.github.ryo100794.pdocker.action.SMOKE_START" />
                 <action android:name="io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH" />
+                <action android:name="io.github.ryo100794.pdocker.action.SMOKE_DIRECT_EXEC" />
             </intent-filter>
         </receiver>
     </application>

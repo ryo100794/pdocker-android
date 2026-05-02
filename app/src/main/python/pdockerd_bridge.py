@@ -99,7 +99,13 @@ def _start_connect_proxy() -> int:
     return server.server_address[1]
 
 
-def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
+def run_daemon(
+    sock_path: str,
+    home: str,
+    runtime_dir: str,
+    runtime_backend: str = "",
+    direct_experimental_process_exec: bool = False,
+) -> None:
     os.environ["PDOCKER_HOME"] = home
     # pdockerd stages blob downloads, layer tars and image save/load tarballs
     # under /tmp by default. Android app sandboxes can't write there, so
@@ -113,6 +119,15 @@ def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
     os.environ["TMPDIR"] = tmp_dir
     os.environ["PROOT_TMP_DIR"] = tmp_dir
     os.environ["PDOCKER_RUNTIME_PREFLIGHT"] = "1"
+
+    if runtime_backend:
+        os.environ["PDOCKER_RUNTIME_BACKEND"] = runtime_backend
+    if direct_experimental_process_exec:
+        os.environ["PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC"] = "1"
+        os.environ["PDOCKER_DIRECT_TRACE_SYSCALLS"] = "1"
+    else:
+        os.environ.pop("PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC", None)
+        os.environ.pop("PDOCKER_DIRECT_TRACE_SYSCALLS", None)
 
     runner = os.path.join(runtime_dir, "docker-bin", "proot")
     if os.path.exists(runner):

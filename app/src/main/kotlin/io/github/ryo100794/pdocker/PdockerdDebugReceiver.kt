@@ -33,11 +33,57 @@ class PdockerdDebugReceiver : BroadcastReceiver() {
                     pending.finish()
                 }
             }
+            ACTION_SMOKE_DIRECT_EXEC -> {
+                val pending = goAsync()
+                thread(isDaemon = true, name = "pdocker-direct-exec-broadcast") {
+                    runCatching { runDirectExecProbe(context.applicationContext) }
+                        .onFailure {
+                            File(context.filesDir, "pdocker/direct-exec-probe.txt").apply {
+                                parentFile?.mkdirs()
+                                writeText("exception\n${it.stackTraceToString()}")
+                            }
+                        }
+                    pending.finish()
+                }
+            }
         }
+    }
+
+    private fun runDirectExecProbe(context: Context) {
+        val runtime = PdockerdRuntime.prepare(context)
+        val home = File(context.filesDir, "pdocker")
+        val rootfs = File(home, "containers").walkTopDown()
+            .firstOrNull { it.isDirectory && it.name == "rootfs" }
+        val out = File(home, "direct-exec-probe.txt").apply { parentFile?.mkdirs() }
+        if (rootfs == null) {
+            out.writeText("rootfs-missing\n")
+            return
+        }
+        val cmd = listOf(
+            File(runtime, "docker-bin/pdocker-direct").absolutePath,
+            "run",
+            "--mode", "debug-receiver",
+            "--rootfs", rootfs.absolutePath,
+            "--workdir", "/",
+            "--env", "HOME=/root",
+            "--", "/bin/sh", "-c", "echo java_process_builder_ok; ls / | head -5",
+        )
+        val env = mapOf(
+            "PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC" to "1",
+            "PDOCKER_DIRECT_TRACE_SYSCALLS" to "1",
+        )
+        val proc = ProcessBuilder(cmd)
+            .redirectErrorStream(true)
+            .apply { environment().putAll(env) }
+            .start()
+        val text = proc.inputStream.bufferedReader().readText()
+        val rc = proc.waitFor()
+        out.writeText("rc=$rc\nrootfs=${rootfs.absolutePath}\n$text")
     }
 
     companion object {
         const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
         const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
+        const val ACTION_SMOKE_DIRECT_EXEC = "io.github.ryo100794.pdocker.action.SMOKE_DIRECT_EXEC"
     }
 }

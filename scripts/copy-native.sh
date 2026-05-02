@@ -23,67 +23,50 @@ fi
 mkdir -p "$APP/assets/pdockerd"
 cp "$SUB/bin/pdockerd" "$APP/assets/pdockerd/pdockerd"
 
-# --- native: crane + proot ---
+# --- native: crane + scratch direct runtime assets ---
 # Package as jniLibs with lib*.so naming so Android extracts them to
 # nativeLibraryDir — the only location an app is allowed to execve
 # from on API 29+ (files in /data/data/<pkg>/files/ have exec_no_trans
 # SELinux denial). The names must start with "lib" and end with ".so"
-# or AGP drops them during packaging. crane is static Go; proot is the
-# self-built bionic binary staged by scripts/build-proot.sh so it can carry
-# pdocker-specific extensions such as --cow-bind.
+# or AGP drops them during packaging. crane is static Go.
 JNI_DIR="$APP/jniLibs/arm64-v8a"
-mkdir -p "$JNI_DIR"
+COMPAT_JNI_DIR="$ROOT/app/src/compat/jniLibs/arm64-v8a"
+mkdir -p "$JNI_DIR" "$COMPAT_JNI_DIR"
 cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
-if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
-    cp "$ROOT/vendor/lib/proot" "$JNI_DIR/libproot.so"
-    cp "$ROOT/vendor/lib/libtalloc.so.2" "$JNI_DIR/libtalloc.so"
-    # proot bootstraps its tracee via a separate loader binary that
-    # Termux ships at /data/data/com.termux/files/usr/libexec/proot/loader.
-    # Without it, every execve under proot dies with "No such file or
-    # directory" (it's the loader that's missing, not the target binary).
-    cp "$ROOT/vendor/lib/proot-loader" "$JNI_DIR/libproot-loader.so"
-else
-    rm -f "$JNI_DIR/libproot.so" "$JNI_DIR/libproot-loader.so" "$JNI_DIR/libtalloc.so"
-fi
+rm -f "$JNI_DIR/libproot.so" "$JNI_DIR/libproot-loader.so" "$JNI_DIR/libtalloc.so" \
+      "$COMPAT_JNI_DIR/libproot.so" "$COMPAT_JNI_DIR/libproot-loader.so" \
+      "$COMPAT_JNI_DIR/libtalloc.so"
 # libcow.so is LD_PRELOAD'd inside the *container* rootfs (typically
 # glibc — ubuntu/debian — or musl — alpine). A bionic-targeted shim
 # fails to load there ("libdl.so" vs "libdl.so.2", ld-android-* vs
 # ld-linux-*). Stage the host-glibc build pdockerd ships in lib/
 # (built on Termux+PRoot Ubuntu = same glibc as ubuntu containers).
 cp "$SUB/lib/libcow.so" "$JNI_DIR/libcow.so"
+if [[ "${PDOCKER_WITH_ROOTFS_SHIM:-0}" != "0" && -f "$SUB/lib/pdocker-rootfs-shim.so" ]]; then
+    cp "$SUB/lib/pdocker-rootfs-shim.so" "$JNI_DIR/libpdocker-rootfs-shim.so"
+else
+    rm -f "$JNI_DIR/libpdocker-rootfs-shim.so"
+fi
+if [[ -n "${PDOCKER_GLIBC_LOADER:-}" && -f "${PDOCKER_GLIBC_LOADER:-}" ]]; then
+    cp "$PDOCKER_GLIBC_LOADER" "$JNI_DIR/libpdocker-ld-linux-aarch64.so"
+else
+    rm -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so"
+fi
 # docker CLI and Compose plugin (Go static) so the WebView terminal can
 # drive pdockerd via DOCKER_HOST=unix://... pdocker/pdockerd.sock without
 # us building a custom client.
 cp "$ROOT/vendor/lib/docker" "$JNI_DIR/libdocker.so"
 cp "$ROOT/vendor/lib/docker-compose" "$JNI_DIR/libdocker-compose.so"
 
-# proot (from Termux packaging) has DT_NEEDED=libtalloc.so.2 and the
-# bundled libtalloc carries SONAME libtalloc.so.2 — Android's JNI lib
-# loader only looks for "lib*.so" filenames in nativeLibraryDir, so we
-# patchelf both sides to the simple libtalloc.so name. Without this,
-# proot aborts at startup with 'library "libtalloc.so.2" not found'.
-if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
-    command -v patchelf >/dev/null 2>&1 \
-        || { echo "ABORT: patchelf required (apt install patchelf)" >&2; exit 1; }
-    patchelf --replace-needed libtalloc.so.2 libtalloc.so "$JNI_DIR/libproot.so"
-    patchelf --set-soname     libtalloc.so                 "$JNI_DIR/libtalloc.so"
-fi
-
 chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libcow.so" "$JNI_DIR/libdocker.so" \
            "$JNI_DIR/libdocker-compose.so"
-if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
-    chmod 0755 "$JNI_DIR/libproot.so" "$JNI_DIR/libtalloc.so" \
-               "$JNI_DIR/libproot-loader.so"
-fi
+[[ -f "$JNI_DIR/libpdocker-rootfs-shim.so" ]] && chmod 0755 "$JNI_DIR/libpdocker-rootfs-shim.so"
+[[ -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so" ]] && chmod 0755 "$JNI_DIR/libpdocker-ld-linux-aarch64.so"
 echo "staged crane -> $JNI_DIR/libcrane.so"
-if [[ "${PDOCKER_WITH_PROOT:-0}" != "0" ]]; then
-    echo "staged proot -> $JNI_DIR/libproot.so (libtalloc.so.2 -> libtalloc.so)"
-    echo "staged libtalloc -> $JNI_DIR/libtalloc.so"
-    echo "staged proot-loader -> $JNI_DIR/libproot-loader.so"
-else
-    echo "skipped proot/talloc/proot-loader (PDOCKER_WITH_PROOT=0)"
-fi
+echo "skipped external proot/talloc/proot-loader payloads"
 echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
+[[ -f "$JNI_DIR/libpdocker-rootfs-shim.so" ]] && echo "staged rootfs shim (glibc) -> $JNI_DIR/libpdocker-rootfs-shim.so"
+[[ -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so" ]] && echo "staged glibc loader -> $JNI_DIR/libpdocker-ld-linux-aarch64.so"
 echo "staged docker CLI -> $JNI_DIR/libdocker.so"
 echo "staged docker compose plugin -> $JNI_DIR/libdocker-compose.so"
 
