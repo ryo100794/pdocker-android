@@ -97,6 +97,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - First launch seeds `filesDir/pdocker/projects/default` from
   `assets/default-project/`, providing a Dockerfile/Compose workspace with
   code-server, Continue, OpenAI Codex CLI, and common dev tools.
+- Existing generated project templates are migrated from the former
+  `8080`/`8081` service ports to `18080`/`18081` during app startup or template
+  installation.
 - Main UI → "Browse image files" opens a read-only browser for pulled image
   rootfs trees under `filesDir/pdocker/images/*/rootfs`, and container cards
   can open created container `rootfs`/`upper` trees. Users can inspect

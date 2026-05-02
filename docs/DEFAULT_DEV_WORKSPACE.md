@@ -10,6 +10,8 @@ filesDir/pdocker/projects/default/
 ```
 
 Existing user-edited files are not overwritten.
+Existing generated templates are migrated from the old `8080`/`8081` service
+ports to `18080`/`18081` when the app starts or a template is installed.
 
 ## Included container stack
 

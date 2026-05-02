@@ -61,6 +61,7 @@ def main() -> int:
     require("container cards surface network warnings", "containerWarningSummary" in main_src and "container_warning_ports_metadata" in string_src)
     require("container cards open known service ports", "containerServiceUrls" in main_src and "18080/tcp" in main_src and "18081/tcp" in main_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
+    require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)
     require("image browser accepts selected container extra", "EXTRA_CONTAINER_ID" in image_src)

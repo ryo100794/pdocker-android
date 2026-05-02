@@ -1147,6 +1147,7 @@ class MainActivity : AppCompatActivity() {
     private fun installTemplate(template: ProjectTemplate) {
         val target = File(projectRoot, template.projectDir)
         copyAssetTree(template.assetPath, target)
+        migrateProjectPorts(target)
         status.text = getString(R.string.status_library_installed_fmt, template.name)
     }
 
@@ -1292,10 +1293,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun seedDefaultProject() {
         val stamp = File(projectRoot, "default/.pdocker-template-version")
-        if (stamp.exists()) return
-        copyAssetTree("default-project", File(projectRoot, "default"))
+        val target = File(projectRoot, "default")
+        if (!stamp.exists()) {
+            copyAssetTree("default-project", target)
+        }
+        migrateProjectPorts(target)
         stamp.parentFile?.mkdirs()
-        stamp.writeText("1\n")
+        stamp.writeText("2\n")
+    }
+
+    private fun migrateProjectPorts(project: File) {
+        val replacements = mapOf(
+            "0.0.0.0:8080" to "0.0.0.0:18080",
+            "8080:8080" to "18080:18080",
+            "CODE_SERVER_PORT:-8080" to "CODE_SERVER_PORT:-18080",
+            "0.0.0.0:8081" to "0.0.0.0:18081",
+            "8081:8081" to "18081:18081",
+            "LLAMA_ARG_PORT:-8081" to "LLAMA_ARG_PORT:-18081",
+        )
+        project.walkSafe()
+            .filter { it.isFile && it.length() <= 512 * 1024 }
+            .forEach { file ->
+                val original = runCatching { file.readText() }.getOrNull() ?: return@forEach
+                val migrated = replacements.entries.fold(original) { text, (from, to) ->
+                    text.replace(from, to)
+                }
+                if (migrated != original) file.writeText(migrated)
+            }
     }
 
     private fun copyAssetTree(assetPath: String, dest: File) {
