@@ -19,6 +19,12 @@ Fast offline audit:
 python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
 ```
 
+Build-time fast gate:
+
+```sh
+bash scripts/verify-fast.sh
+```
+
 Native UI action wiring only:
 
 ```sh
@@ -47,13 +53,20 @@ python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
 Backend-only regression remains available in the submodule:
 
 ```sh
-bash docker-proot-setup/scripts/verify_all.sh --quick
+bash scripts/verify-heavy.sh --backend-quick
 ```
 
 Long backend regression (overlayfs/compose/deep layers):
 
 ```sh
-bash docker-proot-setup/scripts/verify_all.sh --full
+bash scripts/verify-heavy.sh --backend-full
+```
+
+Android device smoke scenarios:
+
+```sh
+bash scripts/verify-heavy.sh --android-quick --no-install
+bash scripts/verify-heavy.sh --android-full --no-install
 ```
 
 While a full audit is running, the backend regression daemon usually listens at

@@ -84,6 +84,8 @@ Compatibility and compliance records:
 - [`docs/REPLAN_2026-05-01.md`](docs/REPLAN_2026-05-01.md)
 - [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
 - `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
+- `bash scripts/verify-fast.sh` for the build-time fast gate
+- `bash scripts/verify-heavy.sh --backend-quick` or `--backend-full` for slower backend regression
 - `python3 scripts/verify-project-library.py`
 - `python3 scripts/verify-ui-actions.py`
 

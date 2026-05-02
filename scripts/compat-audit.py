@@ -7,8 +7,8 @@ The default mode is intentionally offline and repeatable:
   - inspect APK/native payloads for expected exchange/protocol features
   - validate the maintained third-party license inventory
 
-Use --full to chain the heavier docker-proot-setup/scripts/verify_all.sh
-suite, which pulls public images and runs containers.
+Use --backend-quick to chain the shorter backend container smoke, or --full for
+the heavyweight docker-proot-setup/scripts/verify_all.sh regression.
 """
 
 from __future__ import annotations
@@ -266,20 +266,23 @@ def check_gpu_design_doc() -> list[Check]:
                   "missing: " + ", ".join(missing) if missing else "cuVK/Vulkan benchmark scope recorded")]
 
 
-def maybe_run_full(timeout: int) -> list[Check]:
+def maybe_run_backend_regression(profile: str, timeout: int) -> list[Check]:
     script = BACKEND / "scripts" / "verify_all.sh"
     if not script.exists():
-        return [Check("full regression", "FAIL", "verify_all.sh missing")]
+        return [Check(f"backend {profile} regression", "FAIL", "verify_all.sh missing")]
+    if profile not in {"quick", "full"}:
+        return [Check(f"backend {profile} regression", "FAIL", f"unknown profile: {profile}")]
+    label = f"backend {profile} regression: verify_all.sh --{profile}"
     try:
-        r = run(["bash", str(script)], cwd=BACKEND, timeout=timeout)
+        r = run(["bash", str(script), f"--{profile}"], cwd=BACKEND, timeout=timeout)
     except subprocess.TimeoutExpired as e:
         stdout = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
         stderr = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
         output = ANSI_RE.sub("", stdout + "\n" + stderr)[-4000:]
-        return [Check("full regression: verify_all.sh", "FAIL",
+        return [Check(label, "FAIL",
                       f"timed out after {timeout}s; last output: {output}")]
     output = ANSI_RE.sub("", r.stdout + "\n" + r.stderr)[-4000:]
-    return [Check("full regression: verify_all.sh",
+    return [Check(label,
                   "PASS" if r.returncode == 0 else "FAIL",
                   output)]
 
@@ -311,6 +314,10 @@ def write_report(checks: list[Check], path: Path) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--backend-quick", action="store_true",
+                    help="also run shorter backend container/API smoke")
+    ap.add_argument("--backend-quick-timeout", type=int, default=900,
+                    help="timeout in seconds for --backend-quick verify_all.sh --quick")
     ap.add_argument("--full", action="store_true", help="also run heavyweight image/container regression")
     ap.add_argument("--full-timeout", type=int, default=1800,
                     help="timeout in seconds for --full verify_all.sh")
@@ -325,8 +332,10 @@ def main() -> int:
     checks += check_project_library()
     checks += check_ui_actions()
     checks += check_gpu_design_doc()
+    if args.backend_quick:
+        checks += maybe_run_backend_regression("quick", args.backend_quick_timeout)
     if args.full:
-        checks += maybe_run_full(args.full_timeout)
+        checks += maybe_run_backend_regression("full", args.full_timeout)
 
     if args.output:
         write_report(checks, args.output)
