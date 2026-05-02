@@ -2,6 +2,11 @@
 
 Snapshot date: 2026-05-02.
 
+For the API 29+ direct-execution feasibility boundary, see
+[API29_DIRECT_EXEC_FEASIBILITY.md](API29_DIRECT_EXEC_FEASIBILITY.md). That note
+tracks which low-level pieces are proved and which app-domain blockers remain
+unproved.
+
 PRoot is the current execution backend because it gives an unprivileged Android
 app a usable Linux rootfs view without `chroot`, mount namespaces, overlayfs, or
 cgroups. It should not remain the long-term core runtime.
