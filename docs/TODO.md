@@ -24,7 +24,12 @@ Temporary behavior:
 Real implementation needed:
 
 1. Add a direct executor boundary for `start`, `exec`, `wait`, `stop`, `logs`,
-   attach, PTY, environment, workdir, and signal handling.
+   attach, PTY, environment, workdir, and signal handling: **started**.
+   - `PDOCKER_DIRECT_EXECUTOR` is now the explicit helper entry point.
+   - The helper must pass `--pdocker-direct-probe` by printing
+     `pdocker-direct-executor:1`.
+   - Without a passing helper, pdockerd refuses process execution instead of
+     falling back to `/system/bin/sh`.
 2. Prototype APK-owned native `fork/exec` helper with stdout/stderr capture.
 3. Add rootfs path mediation so process paths resolve inside the image rootfs,
    not the Android host filesystem.
