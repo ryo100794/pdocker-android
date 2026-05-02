@@ -65,7 +65,9 @@ def main() -> int:
         "start sources profile": "source \"$profile\"" in start,
         "start passes gpu layers": "--n-gpu-layers" in start,
         "llama default port offset": "18081:18081" in llama_compose and "18081" in start,
-        "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start,
+        "llama default gpt-oss model": "ggml-org/gpt-oss-20b-GGUF" in llama_compose and "gpt-oss-20b-mxfp4.gguf" in llama_compose,
+        "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start and "-C -" in start,
+        "llama default chat template": "--jinja" in start,
         "llama missing-model status page": "python3 -m http.server" in start and "waiting for a GGUF model" in start,
     }
     for name, passed in expectations.items():
