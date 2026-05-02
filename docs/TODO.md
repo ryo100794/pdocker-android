@@ -17,6 +17,11 @@ Temporary behavior:
 - `PDOCKER_RUNTIME_BACKEND=no-proot` is metadata/edit/browse mode only.
 - The APK stages a native `pdocker-direct` helper and sets
   `PDOCKER_DIRECT_EXECUTOR`, but its probe advertises `process-exec=0`.
+- Experimental process execution probes must stay gated. The 2026-05-02
+  `scripts/android-api29-direct-feasibility.sh --no-install` run on SOG15
+  (Android 16 / SDK 36, app targetSdk 34, `untrusted_app`) still failed the real
+  app-domain Dockerfile `RUN` path with `exit code -31` even though `run-as`
+  controls could execute the helper and rootfs shell.
 - Direct backend start/exec fails with an explicit error instead of starting a
   fake listener.
 - Dockerfile `RUN` fails in direct mode instead of recording a fake layer.

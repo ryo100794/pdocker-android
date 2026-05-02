@@ -71,6 +71,52 @@ execution route still fails with SIGSYS (`exit code -31`). That means the
 remaining blocker is not "the rootfs is not an ELF" or "the rootfs cannot be
 read"; it is an app-domain syscall/seccomp/runtime-init issue.
 
+## Latest device test
+
+Command:
+
+```sh
+bash scripts/android-api29-direct-feasibility.sh --no-install
+```
+
+Result on 2026-05-02:
+
+```text
+Device: SOG15
+Android: 16 / SDK 36
+Package targetSdk: 34
+SELinux domain: u:r:untrusted_app:s0:...
+API29_DIRECT_EXEC_FEASIBILITY=FAIL
+```
+
+Observed details:
+
+- Engine metadata path works: `docker version` reaches bundled `pdockerd`.
+- `run-as` controls are intentionally not treated as product proof:
+  - app-data copy of `/system/bin/sh` executes with rc 0;
+  - `pdocker-direct -> bundled loader -> rootfs /bin/sh` executes with rc 0;
+  - rootfs path shim blocks host `/data` lookup (`ls /data` rc 2) while leaving
+    `/proc` visible.
+- Real app-domain Dockerfile execution fails:
+
+```text
+Step: RUN printf 'api29-direct-feasibility\n' > /pdocker-api29.txt
+pdocker-direct-executor: mode=build rootfs=/data/data/.../rootfs workdir=/ env=3 bind=0 argv0=/bin/sh
+
+RUN failed with exit code -31
+ERROR: build failed
+```
+
+Interpretation:
+
+- `run-as` is a misleading control path for this question. It can execute cases
+  that the real app process cannot.
+- The app-domain path is the only product feasibility signal here, and it still
+  fails.
+- A helper must not advertise `process-exec=1` in a release/default build until
+  this app-domain test passes. Experimental builds may enable it only to keep
+  probing the SIGSYS boundary.
+
 ## Unproved blocker
 
 API 29+ full direct execution is not yet proved. The blocking item is:
