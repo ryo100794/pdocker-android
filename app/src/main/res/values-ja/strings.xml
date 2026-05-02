@@ -113,6 +113,10 @@
     <string name="container_warnings_fmt">警告: %1$s</string>
     <string name="container_warning_ports_metadata">syscall rewrite 実装まではポート公開はメタデータのみ</string>
     <string name="container_warning_network_stub">ネットワークは host-network stub</string>
+    <string name="action_container_start_fmt">起動: %1$s</string>
+    <string name="action_container_stop_fmt">停止: %1$s</string>
+    <string name="action_container_restart_fmt">再起動: %1$s</string>
+    <string name="action_container_logs_fmt">ログ: %1$s</string>
     <string name="action_browse_container_files_fmt">ファイルを表示: %1$s</string>
     <string name="action_open_service_fmt">%1$s を開く</string>
     <string name="log_no_preview">ログプレビューなし</string>
@@ -158,6 +162,10 @@
     <string name="terminal_docker_build_fmt">docker build: %1$s</string>
     <string name="terminal_docker_ps">docker ps</string>
     <string name="terminal_container_fmt">コンテナ %1$s</string>
+    <string name="terminal_container_start_fmt">起動: %1$s</string>
+    <string name="terminal_container_stop_fmt">停止: %1$s</string>
+    <string name="terminal_container_restart_fmt">再起動: %1$s</string>
+    <string name="terminal_container_logs_fmt">ログ: %1$s</string>
     <string name="terminal_docker_interactive">Docker 対話セッション</string>
     <string name="terminal_gpu_profile">GPU profile</string>
     <string name="terminal_job_log_fmt">ログ: %1$s</string>

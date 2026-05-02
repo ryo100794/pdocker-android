@@ -442,6 +442,34 @@ class MainActivity : AppCompatActivity() {
                     name,
                 )
             }
+            addAction(getString(R.string.action_container_start_fmt, name), dir.name) {
+                openDockerTerminal(
+                    getString(R.string.terminal_container_start_fmt, name),
+                    "docker start ${shellQuote(dir.name)} && docker ps --filter id=${shellQuote(dir.name)}",
+                    name,
+                )
+            }
+            addAction(getString(R.string.action_container_stop_fmt, name), dir.name) {
+                openDockerTerminal(
+                    getString(R.string.terminal_container_stop_fmt, name),
+                    "docker stop ${shellQuote(dir.name)} && docker ps -a --filter id=${shellQuote(dir.name)}",
+                    name,
+                )
+            }
+            addAction(getString(R.string.action_container_restart_fmt, name), dir.name) {
+                openDockerTerminal(
+                    getString(R.string.terminal_container_restart_fmt, name),
+                    "docker stop ${shellQuote(dir.name)} || true; docker start ${shellQuote(dir.name)}; docker ps --filter id=${shellQuote(dir.name)}",
+                    name,
+                )
+            }
+            addAction(getString(R.string.action_container_logs_fmt, name), dir.name) {
+                openDockerTerminal(
+                    getString(R.string.terminal_container_logs_fmt, name),
+                    "docker logs --tail 200 ${shellQuote(dir.name)}",
+                    name,
+                )
+            }
             addAction(getString(R.string.action_browse_container_files_fmt, name), dir.name) {
                 openContainerFiles(dir)
             }

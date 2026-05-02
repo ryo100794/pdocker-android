@@ -32,6 +32,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Widgets first**: image/container/project tabs show state, counts, paths,
   and log previews in-app; terminal actions are explicit tools, not the main
   display surface.
+- **Container controls**: container cards expose start, stop, restart, logs,
+  file browser, known service URLs, and grouped interactive console actions.
 - **Docker job widgets**: Docker-backed UI actions create persistent job cards
   in the upper pane with running/done/failed status, elapsed time, command
   context, parsed build/compose/pull progress, a small log tail, log tabs, stop

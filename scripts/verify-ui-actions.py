@@ -19,6 +19,7 @@ IMAGE = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/ImageFilesActivi
 EDITOR = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/CodeEditorView.kt"
 EDITOR_ACTIVITY = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/TextEditorActivity.kt"
 XTERM = ROOT / "app/src/main/assets/xterm/index.html"
+ANDROID_SMOKE = ROOT / "scripts/android-device-smoke.sh"
 STRINGS = [
     ROOT / "app/src/main/res/values/strings.xml",
     ROOT / "app/src/main/res/values-ja/strings.xml",
@@ -44,6 +45,7 @@ def main() -> int:
     editor_src = EDITOR.read_text()
     editor_activity_src = EDITOR_ACTIVITY.read_text()
     xterm_src = XTERM.read_text()
+    android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
     string_src = "\n".join(path.read_text() for path in STRINGS)
 
     docker_action_count = main_src.count("openDockerTerminal(") - 1
@@ -68,8 +70,10 @@ def main() -> int:
     require("host shell is diagnostic-only", "private fun renderDiagnostics" in main_src and "action_host_shell" in main_src and "Tab.Overview -> renderOverview()" in main_src)
     require("container cards surface network warnings", "containerWarningSummary" in main_src and "container_warning_ports_metadata" in string_src)
     require("container cards open known service ports", "containerServiceUrls" in main_src and "18080/tcp" in main_src and "18081/tcp" in main_src)
+    require("container cards expose lifecycle actions", "action_container_start_fmt" in string_src and "docker start" in main_src and "docker stop" in main_src and "terminal_container_logs_fmt" in main_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
     require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
+    require("android device smoke script exists", "docker compose up --detach --build" in android_smoke_src and "run-as" in android_smoke_src and "docker version" in android_smoke_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)
     require("image browser accepts selected container extra", "EXTRA_CONTAINER_ID" in image_src)

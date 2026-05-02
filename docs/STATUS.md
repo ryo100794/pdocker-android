@@ -71,7 +71,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   log previews in the native UI instead of immediately dropping into a console.
 - Container widgets show `State.Status`, synthetic IP, Docker-visible ports,
   planned port-hook rewrite count, and pdocker networking warnings such as
-  metadata-only port publishing.
+  metadata-only port publishing. They also expose direct start/stop/restart,
+  log, file-browser, known-service URL, and grouped interactive console
+  actions.
 - Main UI action wiring → Docker-backed actions start pdockerd before opening
   the PTY tool tab, wait for `docker version`, export
   `DOCKER_BUILDKIT=0` / `COMPOSE_DOCKER_CLI_BUILD=0`, and append an

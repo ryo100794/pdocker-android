@@ -113,6 +113,10 @@
     <string name="container_warnings_fmt">Warnings: %1$s</string>
     <string name="container_warning_ports_metadata">port publishing is metadata-only until syscall rewrite lands</string>
     <string name="container_warning_network_stub">network is a host-network stub</string>
+    <string name="action_container_start_fmt">Start: %1$s</string>
+    <string name="action_container_stop_fmt">Stop: %1$s</string>
+    <string name="action_container_restart_fmt">Restart: %1$s</string>
+    <string name="action_container_logs_fmt">Logs: %1$s</string>
     <string name="action_browse_container_files_fmt">Browse files: %1$s</string>
     <string name="action_open_service_fmt">Open %1$s</string>
     <string name="log_no_preview">No log preview</string>
@@ -158,6 +162,10 @@
     <string name="terminal_docker_build_fmt">docker build: %1$s</string>
     <string name="terminal_docker_ps">docker ps</string>
     <string name="terminal_container_fmt">container %1$s</string>
+    <string name="terminal_container_start_fmt">start: %1$s</string>
+    <string name="terminal_container_stop_fmt">stop: %1$s</string>
+    <string name="terminal_container_restart_fmt">restart: %1$s</string>
+    <string name="terminal_container_logs_fmt">logs: %1$s</string>
     <string name="terminal_docker_interactive">Docker interactive</string>
     <string name="terminal_gpu_profile">GPU profile</string>
     <string name="terminal_job_log_fmt">log: %1$s</string>
