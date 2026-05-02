@@ -368,7 +368,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderCompose() {
         addSection(getString(R.string.section_compose))
-        renderDockerJobs { it.command.contains("docker compose ") }
+        renderDockerJobs { it.command.contains("compose up") }
         addAction(getString(R.string.action_new_compose), getString(R.string.detail_new_compose)) {
             openEditor(File(projectRoot, "default/compose.yaml"))
         }
@@ -393,7 +393,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderDockerfiles() {
         addSection(getString(R.string.section_dockerfile))
-        renderDockerJobs { it.command.contains("docker build ") }
+        renderDockerJobs { it.command.contains("docker build") }
         addAction(getString(R.string.action_new_dockerfile), getString(R.string.detail_new_dockerfile)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
@@ -419,7 +419,14 @@ class MainActivity : AppCompatActivity() {
     private fun renderImages() {
         addSection(getString(R.string.section_images))
         addAction(getString(R.string.action_pull_image), getString(R.string.detail_pull_image)) {
-            openDockerTerminal(getString(R.string.action_pull_image), "docker pull ubuntu:22.04")
+            runEngineJob(
+                getString(R.string.action_pull_image),
+                workspaceGroup(),
+                "engine pull ubuntu:22.04",
+            ) { emit ->
+                emit("Image ubuntu:22.04 Pulling")
+                pullImage("ubuntu:22.04")
+            }
         }
         addAction(getString(R.string.action_browse_image_files), getString(R.string.detail_browse_image_files)) {
             openImageFiles()
@@ -580,15 +587,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runEngineAction(title: String, group: String, block: DockerEngineClient.() -> String) {
+        runEngineJob(title, group, "engine action: $title") { _ -> block() }
+    }
+
+    private fun runEngineJob(
+        title: String,
+        group: String,
+        command: String,
+        block: DockerEngineClient.((String) -> Unit) -> String,
+    ) {
         startDaemon()
         status.text = getString(R.string.status_starting)
+        val key = "engine-job:$group:$title:$command"
+        val job = DockerJob(
+            id = "job-" + System.currentTimeMillis().toString(36),
+            title = title,
+            detail = group,
+            command = command,
+            group = group,
+            toolKey = key,
+            status = getString(R.string.job_running),
+        )
+        dockerJobs.add(0, job)
+        trimDockerJobs()
+        saveDockerJobs()
+        renderContent()
         thread(isDaemon = true, name = "engine-action") {
-            val output = runCatching {
+            val output = StringBuilder()
+            val result = runCatching {
                 if (!waitForEngine()) error(getString(R.string.status_socket_absent))
-                engine.block()
-            }.getOrElse { getString(R.string.engine_operation_failed_fmt, it.message.orEmpty()) }
+                engine.block { line ->
+                    output.appendLine(line)
+                    appendEngineJobOutput(job.id, line)
+                }
+            }
+            val exitCode = if (result.isSuccess) 0 else 1
+            val finalOutput = result.getOrElse {
+                getString(R.string.engine_operation_failed_fmt, it.message.orEmpty())
+            }
+            if (finalOutput.isNotBlank()) output.append(finalOutput)
             ui.post {
-                openTextTool(group, title, output)
+                finishEngineJob(job.id, exitCode, output.toString())
+                openTextTool(group, title, output.toString())
                 renderContent()
                 refreshStatus()
             }
@@ -596,13 +636,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runImageBuild(dir: File, title: String) {
-        runEngineAction(title, workspaceGroup()) {
+        runEngineJob(title, workspaceGroup(), "engine docker build: ${dir.absolutePath}") { emit ->
+            emit("Service ${dir.name} Building")
             buildImage(dir, "local/${dir.name}:latest")
         }
     }
 
     private fun runComposeUp(dir: File, title: String) {
-        runEngineAction(title, dir.name) {
+        runEngineJob(title, dir.name, "engine compose up: ${dir.absolutePath}") { emit ->
             val services = parseComposeServices(dir)
             if (services.isEmpty()) error("compose file has no services")
             val out = StringBuilder()
@@ -611,18 +652,23 @@ class MainActivity : AppCompatActivity() {
                 val context = service.buildContext
                 if (!context.isNullOrBlank()) {
                     val contextDir = File(dir, context).canonicalFile
-                    out.append("Service ${service.name} Building\n")
+                    val line = "Service ${service.name} Building"
+                    emit(line)
+                    out.appendLine(line)
                     out.append(buildImage(contextDir, image))
                 }
                 val containerName = service.containerName.ifBlank { "${dir.name}-${service.name}-1" }
                 runCatching {
                     request("DELETE", "/containers/${DockerEngineClient.encodePath(containerName)}?force=1")
                 }
-                out.append("Container $containerName Creating\n")
+                emit("Container $containerName Creating")
+                out.appendLine("Container $containerName Creating")
                 val id = createContainer(containerName, service.toContainerConfig(image, dir))
-                out.append("Container $containerName Starting\n")
+                emit("Container $containerName Starting")
+                out.appendLine("Container $containerName Starting")
                 post("/containers/${DockerEngineClient.encodePath(id)}/start")
-                out.append("Container $containerName Started\n")
+                emit("Container $containerName Started")
+                out.appendLine("Container $containerName Started")
             }
             out.append('\n').append(formatContainers(getArray("/containers/json?all=1")))
             out.toString()
@@ -1236,6 +1282,37 @@ class MainActivity : AppCompatActivity() {
                 renderContent()
             }
         }
+    }
+
+    private fun appendEngineJobOutput(jobId: String, line: String) {
+        ui.post {
+            val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
+            val cleaned = line.trim()
+            if (cleaned.isBlank()) return@post
+            updateDockerJobProgress(job, cleaned)
+            job.output += cleaned
+            while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+            saveDockerJobs()
+            if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
+                renderContent()
+            }
+        }
+    }
+
+    private fun finishEngineJob(jobId: String, exitCode: Int, output: String) {
+        val job = dockerJobs.firstOrNull { it.id == jobId } ?: return
+        job.exitCode = exitCode
+        job.status = if (exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
+        job.progress = if (exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
+        job.endedAt = System.currentTimeMillis()
+        output.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .forEach { line ->
+                if (job.output.lastOrNull() != line) job.output += line
+                while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+            }
+        saveDockerJobs()
     }
 
     private fun updateDockerJobProgress(job: DockerJob, line: String) {

@@ -23,10 +23,11 @@ class DockerEngineClient(private val socket: File) {
         path: String,
         body: ByteArray = ByteArray(0),
         contentType: String = "application/json",
+        timeoutMs: Int = 30_000,
     ): Response {
         LocalSocket().use { ls ->
             ls.connect(LocalSocketAddress(socket.absolutePath, LocalSocketAddress.Namespace.FILESYSTEM))
-            ls.soTimeout = 30_000
+            ls.soTimeout = timeoutMs
             val header = buildString {
                 append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
                 append("Host: pdocker\r\n")
@@ -63,10 +64,16 @@ class DockerEngineClient(private val socket: File) {
         return resp
     }
 
+    fun pullImage(image: String): String {
+        val resp = request("POST", "/images/create?fromImage=${encodeQuery(image)}", timeoutMs = 600_000)
+        require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }
+        return decodeJsonStream(resp.text)
+    }
+
     fun buildImage(contextDir: File, tag: String, dockerfile: String = "Dockerfile"): String {
         val tar = createTar(contextDir)
         val path = "/build?t=${encodeQuery(tag)}&dockerfile=${encodeQuery(dockerfile)}"
-        val resp = request("POST", path, tar, "application/x-tar")
+        val resp = request("POST", path, tar, "application/x-tar", timeoutMs = 900_000)
         require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }
         val text = decodeJsonStream(resp.text)
         require(!text.lines().any { it.startsWith("ERROR:") || it == "build failed" }) { text }
