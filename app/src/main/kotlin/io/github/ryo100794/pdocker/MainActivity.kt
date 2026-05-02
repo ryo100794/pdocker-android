@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         var exitCode: Int? = null,
         var startedAt: Long = System.currentTimeMillis(),
         var endedAt: Long? = null,
+        var progress: String = "",
         var output: MutableList<String> = mutableListOf(),
     )
 
@@ -823,6 +824,7 @@ class MainActivity : AppCompatActivity() {
             val statusText = jobStatusText(job)
             val detail = listOf(
                 job.detail,
+                job.progress,
                 job.command,
                 job.output.takeLast(3).joinToString("\n"),
             ).filter { it.isNotBlank() }.joinToString("\n")
@@ -865,6 +867,7 @@ class MainActivity : AppCompatActivity() {
         val log = listOf(
             job.title,
             jobStatusText(job),
+            job.progress,
             job.command,
             "",
             job.output.joinToString("\n"),
@@ -900,6 +903,7 @@ class MainActivity : AppCompatActivity() {
         job.endedAt = System.currentTimeMillis()
         dockerJobBuffers.remove(jobId)
         job.output += "[pdocker] job stopped from UI"
+        job.progress = getString(R.string.job_stopped)
         while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
         saveDockerJobs()
         renderContent()
@@ -922,9 +926,15 @@ class MainActivity : AppCompatActivity() {
                     if (marker != null) {
                         job.exitCode = marker.groupValues[1].toIntOrNull()
                         job.status = if (job.exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
+                        job.progress = if (job.exitCode == 0) {
+                            getString(R.string.job_done)
+                        } else {
+                            getString(R.string.job_failed)
+                        }
                         job.endedAt = System.currentTimeMillis()
                         dockerJobBuffers.remove(jobId)
                     } else {
+                        updateDockerJobProgress(job, line)
                         job.output += line
                         while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
                     }
@@ -934,6 +944,43 @@ class MainActivity : AppCompatActivity() {
                 renderContent()
             }
         }
+    }
+
+    private fun updateDockerJobProgress(job: DockerJob, line: String) {
+        val progress = dockerJobProgressLine(line) ?: return
+        job.progress = progress.take(180)
+    }
+
+    private fun dockerJobProgressLine(line: String): String? {
+        val cleaned = line
+            .removePrefix("[+] ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        if (cleaned.isBlank()) return null
+        val buildPrefixes = listOf(
+            "Step:",
+            "snapshotting layer:",
+            "Successfully built",
+            "Successfully tagged",
+            "ERROR:",
+        )
+        if (buildPrefixes.any { cleaned.startsWith(it) }) return cleaned
+        val pullPrefixes = listOf("Pulling ", "Status: Downloaded", "Downloaded newer image", "Image is up to date")
+        if (pullPrefixes.any { cleaned.startsWith(it) }) return cleaned
+        val composeWords = listOf(
+            "Building",
+            "Pulling",
+            "Creating",
+            "Created",
+            "Starting",
+            "Started",
+            "Running",
+            "Recreating",
+            "Removing",
+            "Removed",
+        )
+        if (composeWords.any { Regex("(^|\\s)$it($|\\s)").containsMatchIn(cleaned) }) return cleaned
+        return null
     }
 
     private fun trimDockerJobs() {
@@ -959,6 +1006,7 @@ class MainActivity : AppCompatActivity() {
                 exitCode = if (obj.has("exitCode") && !obj.isNull("exitCode")) obj.optInt("exitCode") else null,
                 startedAt = obj.optLong("startedAt", System.currentTimeMillis()),
                 endedAt = if (obj.has("endedAt") && !obj.isNull("endedAt")) obj.optLong("endedAt") else null,
+                progress = obj.optString("progress"),
                 output = (0 until lines.length()).mapNotNull { j ->
                     lines.optString(j).takeIf { it.isNotBlank() }
                 }.toMutableList(),
@@ -989,6 +1037,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     put("endedAt", job.endedAt)
                 }
+                put("progress", job.progress)
                 put("output", JSONArray().apply { job.output.forEach { put(it) } })
             })
         }
