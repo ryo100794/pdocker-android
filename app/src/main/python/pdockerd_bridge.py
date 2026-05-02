@@ -111,6 +111,7 @@ def run_daemon(sock_path: str, home: str, runtime_dir: str) -> None:
     tmp_dir = os.path.join(runtime_dir, "tmp")
     os.environ["PDOCKER_TMP_DIR"] = tmp_dir
     os.environ["TMPDIR"] = tmp_dir
+    os.environ["PROOT_TMP_DIR"] = tmp_dir
 
     runner = os.path.join(runtime_dir, "docker-bin", "proot")
     if os.path.exists(runner):
