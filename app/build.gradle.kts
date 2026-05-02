@@ -1,3 +1,5 @@
+import java.time.Instant
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,6 +17,7 @@ android {
         targetSdk = 34
         versionCode = 21
         versionName = "0.5.2"
+        buildConfigField("String", "BUILD_TIME_UTC", "\"${Instant.now()}\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -54,6 +57,10 @@ android {
             // files are tiny (<20 KB) so skip stripping entirely.
             keepDebugSymbols += listOf("**/*.so")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 }
 

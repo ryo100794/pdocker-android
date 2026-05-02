@@ -175,11 +175,23 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         status = TextView(this).apply {
             text = getString(R.string.status_unknown)
             textSize = 14f
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.END
+        }
+        val buildInfo = TextView(this).apply {
+            text = appBuildInfo()
+            textSize = 11f
+            gravity = Gravity.END
+            setSingleLine(true)
+            ellipsize = TextUtils.TruncateAt.START
+            typeface = Typeface.MONOSPACE
         }
         tabRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -198,7 +210,16 @@ class MainActivity : AppCompatActivity() {
         }
         lowerHost = FrameLayout(this)
 
-        upperPane.addView(status)
+        headerRow.addView(status, LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f,
+        ))
+        headerRow.addView(buildInfo, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ))
+        upperPane.addView(headerRow)
         upperPane.addView(HorizontalScrollView(this).apply { addView(tabRow) })
         upperPane.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -251,6 +272,27 @@ class MainActivity : AppCompatActivity() {
         toolTabs.forEach { it.bridge?.close() }
         toolTabs.clear()
         super.onDestroy()
+    }
+
+    private fun appBuildInfo(): String {
+        val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0)
+        }
+        val versionName = info.versionName ?: "dev"
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            info.versionCode.toLong()
+        }
+        val rawBuildTime = BuildConfig.BUILD_TIME_UTC
+            .replace('T', ' ')
+            .removeSuffix("Z")
+        val buildTime = rawBuildTime.substringBeforeLast('.', rawBuildTime)
+        return getString(R.string.app_build_info_fmt, versionName, versionCode, buildTime)
     }
 
     private fun splitterView(): View =

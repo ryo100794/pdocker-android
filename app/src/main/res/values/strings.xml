@@ -28,6 +28,7 @@
     <string name="status_library_install_report_fmt">installed template: %1$s, copied %2$d, kept %3$d, version %4$d</string>
     <string name="status_gpu_bench_running">android-gpu-bench: running</string>
     <string name="status_gpu_bench_done">android-gpu-bench: complete</string>
+    <string name="app_build_info_fmt">v%1$s (%2$d) | built %3$s UTC</string>
 
     <string name="section_runtime">Runtime</string>
     <string name="section_workspace">Workspace</string>

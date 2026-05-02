@@ -28,6 +28,7 @@
     <string name="status_library_install_report_fmt">テンプレートを展開しました: %1$s, コピー %2$d, 既存保持 %3$d, version %4$d</string>
     <string name="status_gpu_bench_running">android-gpu-bench: 実行中</string>
     <string name="status_gpu_bench_done">android-gpu-bench: 完了</string>
+    <string name="app_build_info_fmt">v%1$s (%2$d) | build %3$s UTC</string>
 
     <string name="section_runtime">ランタイム</string>
     <string name="section_workspace">ワークスペース</string>

@@ -56,6 +56,8 @@ def main() -> int:
 
     docker_action_count = main_src.count("openDockerTerminal(") - 1
     require("diagnostic docker terminal remains available", docker_action_count >= 2)
+    build_gradle_src = (ROOT / "app/build.gradle.kts").read_text()
+    require("main header surfaces version and build time", "appBuildInfo()" in main_src and "BUILD_TIME_UTC" in main_src and "app_build_info_fmt" in string_src and "buildConfigField(\"String\", \"BUILD_TIME_UTC\"" in build_gradle_src)
     require("docker terminal starts pdockerd first", "private fun openDockerTerminal" in main_src and "startDaemon()" in main_src)
     require("docker actions wait for daemon readiness", "waiting for pdockerd" in main_src and "docker version >/dev/null" in main_src)
     require("docker build uses legacy builder env", "DOCKER_BUILDKIT=0" in main_src and "COMPOSE_DOCKER_CLI_BUILD=0" in main_src)
