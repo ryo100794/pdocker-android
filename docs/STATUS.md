@@ -78,8 +78,10 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - Main UI job tracking → Docker-backed actions also create native upper-pane
   job cards backed by `filesDir/pdocker/jobs.json`. The cards show
   running/done/failed status, elapsed time, command context, and recent output
-  captured from the PTY stream, so build/compose progress remains visible when
-  the lower terminal tab is not selected.
+  captured from the PTY stream. Running jobs can be stopped from the card, and
+  finished jobs can be retried or opened as lower-pane log tabs, so
+  build/compose progress remains visible when the lower terminal tab is not
+  selected.
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
   between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
   equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is

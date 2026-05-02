@@ -98,7 +98,8 @@ def check_static_api() -> list[Check]:
         ok = re.search(pattern, src) is not None
         checks.append(Check(f"static api: {name}", "PASS" if ok else "FAIL", pattern))
     for token in ("application/vnd.docker.raw-stream", "X-Docker-Container-Path-Stat",
-                  "Api-Version", "application/x-tar"):
+                  "Api-Version", "application/x-tar", "PdockerWarnings",
+                  "not active yet"):
         checks.append(Check(f"protocol token: {token}", "PASS" if token in src else "FAIL"))
     return checks
 

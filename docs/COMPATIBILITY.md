@@ -64,7 +64,7 @@ is most useful for named or long-running containers created by the compose,
 exec, stats, and network parts of the regression.
 
 Latest recorded fast result: [compat-audit-latest.md](compat-audit-latest.md)
-has 53 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
+has 55 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
 design checks pass, including native Docker job-card wiring, and the APK
 payload is present.
 
@@ -84,7 +84,7 @@ suite and should be recorded separately when it is run to completion.
 | Logs/attach/exec | Partial | Raw stream and hijack paths exist. Non-TTY exec works; `docker run -t` and `docker exec -it` still need PTY integration into the container side. |
 | `docker cp` archive API | Partial | HEAD/GET/PUT support Docker tar and `X-Docker-Container-Path-Stat`. cow_bind reads prefer upper then lower, writes target upper. Directory merge of lower+upper entries is still incomplete. |
 | Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. |
-| Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows, but no bridge IPs, DNS server, iptables, or port publishing. |
+| Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
 | Volumes/binds | Partial | Named volumes map to host directories; bind mounts use PRoot. No kernel mount propagation or tmpfs semantics. |
 | Dockerfile build | Partial | Legacy builder supports common instructions. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
 | Compose | Partial | Basic up/down flows work when they stay inside the supported network/build/container subset. |

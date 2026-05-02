@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity() {
         private const val REQUEST_POST_NOTIFICATIONS = 100
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
         private const val MAX_JOB_HISTORY = 20
-        private const val MAX_JOB_LINES = 8
+        private const val MAX_JOB_LINES = 200
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -767,7 +767,14 @@ class MainActivity : AppCompatActivity() {
                 val index = toolTabs.indexOfFirst { it.key == job.toolKey }
                 if (index >= 0) switchTool(index)
             }
-            if (job.exitCode != null) {
+            addAction(getString(R.string.action_open_job_log_fmt, job.title), job.command) {
+                openJobLog(job)
+            }
+            if (job.exitCode == null) {
+                addAction(getString(R.string.action_stop_job_fmt, job.title), job.command) {
+                    stopDockerJob(job.id)
+                }
+            } else {
                 addAction(getString(R.string.action_retry_job_fmt, job.title), job.command) {
                     openDockerTerminal(job.title, job.command, job.group)
                 }
@@ -780,8 +787,59 @@ class MainActivity : AppCompatActivity() {
         return when {
             job.exitCode == null -> getString(R.string.job_status_running_fmt, elapsed)
             job.exitCode == 0 -> getString(R.string.job_status_done_fmt, elapsed)
+            job.exitCode == -129 -> getString(R.string.job_status_stopped_fmt, elapsed)
             else -> getString(R.string.job_status_failed_fmt, job.exitCode ?: -1, elapsed)
         }
+    }
+
+    private fun openJobLog(job: DockerJob) {
+        val key = "job-log:${job.id}"
+        val existing = toolTabs.indexOfFirst { it.key == key }
+        if (existing >= 0) {
+            switchTool(existing)
+            return
+        }
+        val log = listOf(
+            job.title,
+            jobStatusText(job),
+            job.command,
+            "",
+            job.output.joinToString("\n"),
+        ).joinToString("\n").trimEnd()
+        val view = ScrollView(this).apply {
+            addView(TextView(this@MainActivity).apply {
+                text = log
+                textSize = 12f
+                typeface = Typeface.MONOSPACE
+                setTextIsSelectable(true)
+                setPadding(18, 18, 18, 18)
+            })
+        }
+        toolTabs += ToolTab(
+            job.group,
+            getString(R.string.terminal_job_log_fmt, job.title),
+            ToolKind.Editor,
+            view,
+            key = key,
+        )
+        switchTool(toolTabs.lastIndex)
+    }
+
+    private fun stopDockerJob(jobId: String) {
+        val job = dockerJobs.firstOrNull { it.id == jobId } ?: return
+        if (job.exitCode != null) return
+        val index = toolTabs.indexOfFirst { it.key == job.toolKey }
+        if (index >= 0) {
+            toolTabs[index].bridge?.close()
+        }
+        job.exitCode = -129
+        job.status = getString(R.string.job_stopped)
+        job.endedAt = System.currentTimeMillis()
+        dockerJobBuffers.remove(jobId)
+        job.output += "[pdocker] job stopped from UI"
+        while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+        saveDockerJobs()
+        renderContent()
     }
 
     private fun handleDockerJobOutput(jobId: String, bytes: ByteArray) {

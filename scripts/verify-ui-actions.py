@@ -57,6 +57,7 @@ def main() -> int:
     require("docker jobs capture terminal output", "onOutput: ((ByteArray) -> Unit)?" in main_src and "handleDockerJobOutput" in main_src)
     require("docker jobs record exit markers", "__PDOCKER_JOB_EXIT" in main_src and "job_status_failed_fmt" in string_src)
     require("docker jobs expose retry actions", "action_retry_job_fmt" in main_src and "openDockerTerminal(job.title, job.command, job.group)" in main_src)
+    require("docker jobs expose stop and log actions", "stopDockerJob(job.id)" in main_src and "openJobLog(job)" in main_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)
     require("image rows deep-link to selected image", "openImageFiles(image)" in main_src)

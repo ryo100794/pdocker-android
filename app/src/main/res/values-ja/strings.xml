@@ -126,9 +126,13 @@
     <string name="job_running">実行中</string>
     <string name="job_done">完了</string>
     <string name="job_failed">失敗</string>
+    <string name="job_stopped">停止</string>
     <string name="job_status_running_fmt">実行中, %1$d秒</string>
     <string name="job_status_done_fmt">完了, %1$d秒</string>
     <string name="job_status_failed_fmt">失敗 (%1$d), %2$d秒</string>
+    <string name="job_status_stopped_fmt">停止, %1$d秒</string>
+    <string name="action_open_job_log_fmt">ログを開く: %1$s</string>
+    <string name="action_stop_job_fmt">%1$s を停止</string>
     <string name="action_retry_job_fmt">%1$s を再実行</string>
 
     <string name="terminal_title">ターミナル</string>
@@ -142,6 +146,7 @@
     <string name="terminal_container_fmt">コンテナ %1$s</string>
     <string name="terminal_docker_interactive">Docker 対話セッション</string>
     <string name="terminal_gpu_profile">GPU profile</string>
+    <string name="terminal_job_log_fmt">ログ: %1$s</string>
 
     <string name="button_back">戻る</string>
     <string name="button_refresh">更新</string>

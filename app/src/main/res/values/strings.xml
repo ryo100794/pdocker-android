@@ -126,9 +126,13 @@
     <string name="job_running">Running</string>
     <string name="job_done">Done</string>
     <string name="job_failed">Failed</string>
+    <string name="job_stopped">Stopped</string>
     <string name="job_status_running_fmt">Running, %1$ds</string>
     <string name="job_status_done_fmt">Done, %1$ds</string>
     <string name="job_status_failed_fmt">Failed (%1$d), %2$ds</string>
+    <string name="job_status_stopped_fmt">Stopped, %1$ds</string>
+    <string name="action_open_job_log_fmt">Open log: %1$s</string>
+    <string name="action_stop_job_fmt">Stop %1$s</string>
     <string name="action_retry_job_fmt">Retry %1$s</string>
 
     <string name="terminal_title">Terminal</string>
@@ -142,6 +146,7 @@
     <string name="terminal_container_fmt">container %1$s</string>
     <string name="terminal_docker_interactive">Docker interactive</string>
     <string name="terminal_gpu_profile">GPU profile</string>
+    <string name="terminal_job_log_fmt">log: %1$s</string>
 
     <string name="button_back">Back</string>
     <string name="button_refresh">Refresh</string>
