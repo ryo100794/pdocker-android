@@ -77,8 +77,9 @@
     border-radius: 50%;
     background: #0e5f9d;
     box-shadow: 0 0 0 2px rgba(14, 95, 157, 0.35);
-    pointer-events: none;
+    pointer-events: auto;
     display: none;
+    touch-action: none;
   }
   .selection-handle.active {
     display: block;
@@ -99,6 +100,31 @@
   .selection-status.active {
     display: block;
   }
+  .selection-menu {
+    position: absolute;
+    right: 8px;
+    bottom: 32px;
+    z-index: 21;
+    display: none;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    background: rgba(18, 18, 18, 0.96);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  }
+  .selection-menu.active {
+    display: flex;
+  }
+  .selection-menu button {
+    min-width: 48px;
+    height: 30px;
+    border: 1px solid #3a3a3a;
+    border-radius: 5px;
+    background: #232323;
+    color: #eeeeee;
+    font: 12px/1.1 system-ui, sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -106,9 +132,15 @@
   <div id="selectionStart" class="selection-handle"></div>
   <div id="selectionEnd" class="selection-handle"></div>
   <div id="selectionStatus" class="selection-status">selection</div>
+  <div id="selectionMenu" class="selection-menu" aria-label="selection menu">
+    <button data-selection-action="all">All</button>
+    <button data-selection-action="copy">Copy</button>
+    <button data-selection-action="clear">Clear</button>
+  </div>
 </div>
 <div id="keybar" aria-label="terminal shortcut keys">
   <button class="key toggle compact" data-toggle="select">Sel</button>
+  <button class="key compact" data-select-all="1">All</button>
   <button class="key compact" data-copy="1">Copy</button>
   <button class="key toggle compact" data-toggle="esc">Esc</button>
   <button class="key toggle compact" data-toggle="ctrl">Ctrl</button>
@@ -181,13 +213,16 @@
   const startHandle = document.getElementById('selectionStart');
   const endHandle = document.getElementById('selectionEnd');
   const selectionStatus = document.getElementById('selectionStatus');
+  const selectionMenu = document.getElementById('selectionMenu');
   let fontSize = 12;
   let pinch = null;
   let longPressTimer = null;
-  let selectionAnchor = null;
-  let selectionFocus = null;
+  let selectionStartCell = null;
+  let selectionEndCell = null;
   let selectionActive = false;
+  let selectionDrag = null;
   let touchScroll = null;
+  let allSelected = false;
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -220,17 +255,24 @@
     };
   };
   const orderedSelection = () => {
-    if (!selectionAnchor || !selectionFocus) return null;
-    const a = selectionAnchor;
-    const b = selectionFocus;
+    if (!selectionStartCell || !selectionEndCell) return null;
+    const a = selectionStartCell;
+    const b = selectionEndCell;
     const aIndex = a.y * term.cols + a.x;
     const bIndex = b.y * term.cols + b.x;
     return aIndex <= bIndex ? { start: a, end: b } : { start: b, end: a };
   };
+  const sameCell = (a, b) => !!a && !!b && a.x === b.x && a.y === b.y;
+  const roleForVisualHandle = (visual) => {
+    const ordered = orderedSelection();
+    if (!ordered) return visual === 'start' ? 'start' : 'end';
+    if (visual === 'start') return sameCell(ordered.start, selectionStartCell) ? 'start' : 'end';
+    return sameCell(ordered.end, selectionStartCell) ? 'start' : 'end';
+  };
   const refreshSelectionMarkers = () => {
     const ordered = orderedSelection();
     const active = selectionActive && ordered;
-    [startHandle, endHandle, selectionStatus].forEach((el) => el.classList.toggle('active', !!active));
+    [startHandle, endHandle, selectionStatus, selectionMenu].forEach((el) => el.classList.toggle('active', !!active));
     if (!active) return;
     const start = cellToPoint(ordered.start);
     const end = cellToPoint(ordered.end);
@@ -238,11 +280,14 @@
     startHandle.style.top = `${start.top}px`;
     endHandle.style.left = `${end.left}px`;
     endHandle.style.top = `${end.top}px`;
-    selectionStatus.textContent = `${ordered.start.y + 1}:${ordered.start.x + 1} - ${ordered.end.y + 1}:${ordered.end.x + 1}`;
+    selectionStatus.textContent = allSelected
+      ? 'all selected'
+      : `${ordered.start.y + 1}:${ordered.start.x + 1} - ${ordered.end.y + 1}:${ordered.end.x + 1}`;
   };
   const applyTerminalSelection = () => {
     const ordered = orderedSelection();
     if (!ordered) return;
+    allSelected = false;
     const length = (ordered.end.y - ordered.start.y) * term.cols + (ordered.end.x - ordered.start.x) + 1;
     term.select(ordered.start.x, ordered.start.y, Math.max(length, 1));
     refreshSelectionMarkers();
@@ -250,19 +295,35 @@
   const startSelection = (cell) => {
     selectionActive = true;
     mods.select = true;
-    selectionAnchor = cell;
-    selectionFocus = cell;
+    allSelected = false;
+    selectionStartCell = cell;
+    selectionEndCell = cell;
+    selectionDrag = 'end';
     refreshModifiers();
     applyTerminalSelection();
   };
-  const updateSelection = (cell) => {
+  const updateSelection = (cell, handle = selectionDrag || 'end') => {
     if (!selectionActive) return;
-    selectionFocus = cell;
+    if (handle === 'start') selectionStartCell = cell;
+    else selectionEndCell = cell;
     applyTerminalSelection();
+  };
+  const selectAllTerminal = () => {
+    selectionActive = true;
+    mods.select = true;
+    allSelected = true;
+    selectionStartCell = { x: 0, y: 0 };
+    selectionEndCell = { x: Math.max(term.cols - 1, 0), y: Math.max(term.rows - 1, 0) };
+    refreshModifiers();
+    term.selectAll();
+    refreshSelectionMarkers();
   };
   const stopSelection = () => {
     selectionActive = false;
     mods.select = false;
+    selectionDrag = null;
+    allSelected = false;
+    term.clearSelection();
     refreshModifiers();
     refreshSelectionMarkers();
   };
@@ -337,6 +398,11 @@
       focusTerm();
       return;
     }
+    if (btn.dataset.selectAll) {
+      selectAllTerminal();
+      focusTerm();
+      return;
+    }
     if (btn.dataset.toggle) {
       mods[btn.dataset.toggle] = !mods[btn.dataset.toggle];
       if (btn.dataset.toggle === 'select') {
@@ -355,6 +421,17 @@
       sendInput(decodeKey(btn.dataset.key), btn.dataset.raw === '1');
       focusTerm();
     }
+  });
+
+  selectionMenu.addEventListener('click', (event) => {
+    const btn = event.target.closest('button');
+    if (!btn) return;
+    event.preventDefault();
+    const action = btn.dataset.selectionAction;
+    if (action === 'all') selectAllTerminal();
+    if (action === 'copy') copySelection();
+    if (action === 'clear') stopSelection();
+    focusTerm();
   });
 
   window.pdockerRecv = (b64) => {
@@ -395,8 +472,15 @@
     const touch = event.touches[0];
     const cell = cellFromTouch(touch);
     touchScroll = { x: touch.clientX, y: touch.clientY };
+    const handleEl = event.target.closest ? event.target.closest('.selection-handle') : null;
+    if (handleEl === startHandle || handleEl === endHandle) {
+      selectionDrag = roleForVisualHandle(handleEl === startHandle ? 'start' : 'end');
+      event.preventDefault();
+      return;
+    }
     if (selectionActive || mods.select) {
-      startSelection(cell);
+      selectionDrag = nearestSelectionHandle(cell);
+      updateSelection(cell, selectionDrag);
       event.preventDefault();
       return;
     }
@@ -412,7 +496,7 @@
       return;
     }
     if (event.touches.length === 1 && selectionActive) {
-      updateSelection(cellFromTouch(event.touches[0]));
+      updateSelection(cellFromTouch(event.touches[0]), selectionDrag || 'end');
       event.preventDefault();
       return;
     }
@@ -436,6 +520,7 @@
     clearTimeout(longPressTimer);
     if (event.touches.length < 2) pinch = null;
     if (event.touches.length === 0) touchScroll = null;
+    if (event.touches.length === 0) selectionDrag = null;
     if (!selectionActive && event.touches.length === 0) focusTerm();
   }, { passive: false });
 
@@ -443,7 +528,33 @@
     clearTimeout(longPressTimer);
     pinch = null;
     touchScroll = null;
+    selectionDrag = null;
   }, { passive: false });
+
+  const nearestSelectionHandle = (cell) => {
+    const ordered = orderedSelection();
+    if (!ordered) return 'end';
+    const index = (c) => c.y * term.cols + c.x;
+    const visual = Math.abs(index(cell) - index(ordered.start)) <= Math.abs(index(cell) - index(ordered.end))
+      ? 'start'
+      : 'end';
+    return roleForVisualHandle(visual);
+  };
+
+  termHost.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    if (!selectionActive) {
+      startSelection(cellFromTouch(event));
+    }
+    refreshSelectionMarkers();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      selectAllTerminal();
+    }
+  }, true);
 
   PdockerBridge.start(PdockerBridge.initialCommand());
   term.focus();
