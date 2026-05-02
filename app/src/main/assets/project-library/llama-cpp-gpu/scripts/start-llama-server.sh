@@ -56,7 +56,7 @@ EOF
 <h1>pdocker llama.cpp workspace</h1>
 <p><strong>Status:</strong> waiting for a GGUF model.</p>
 <p>Expected model path: <code>$model</code></p>
-<p>Place a model at <code>models/model.gguf</code>, set <code>LLAMA_ARG_MODEL</code>, or set <code>LLAMA_MODEL_URL</code> and compose up again. The default template downloads <code>ggml-org/gpt-oss-20b-GGUF</code>.</p>
+<p>Place a model at <code>models/model.gguf</code>, set <code>LLAMA_ARG_MODEL</code>, or set <code>LLAMA_MODEL_URL</code> and compose up again. The default template downloads <code>Qwen/Qwen3-8B-GGUF</code>.</p>
 <pre>$(cat "$profile" 2>/dev/null || true)</pre>
 </body>
 </html>

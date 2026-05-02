@@ -66,7 +66,7 @@ def main() -> int:
         "start sources profile": "source \"$profile\"" in start,
         "start passes gpu layers": "--n-gpu-layers" in start,
         "llama default port offset": "18081:18081" in llama_compose and "18081" in start,
-        "llama default gpt-oss model": "ggml-org/gpt-oss-20b-GGUF" in llama_compose and "gpt-oss-20b-mxfp4.gguf" in llama_compose,
+        "llama default 8b model": "Qwen/Qwen3-8B-GGUF" in llama_compose and "Qwen3-8B-Q4_K_M.gguf" in llama_compose,
         "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start and "-C -" in start,
         "llama default chat template": "--jinja" in start,
         "llama docker logs stream": "LLAMA_LOG_FILE" in llama_compose and "tee -a \"$log_file\"" in start and "stdbuf -oL -eL" in start,

@@ -18,7 +18,7 @@ services:
       LLAMA_ARG_N_GPU_LAYERS: "${LLAMA_ARG_N_GPU_LAYERS:-}"
       LLAMA_EXTRA_ARGS: "${LLAMA_EXTRA_ARGS:-}"
       LLAMA_LOG_FILE: "${LLAMA_LOG_FILE:-/workspace/logs/llama-server.log}"
-      LLAMA_MODEL_URL: "${LLAMA_MODEL_URL-https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf}"
+      LLAMA_MODEL_URL: "${LLAMA_MODEL_URL-https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf}"
     command: ["/usr/local/bin/start-llama-server"]
     ports:
       - "18081:18081"

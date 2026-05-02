@@ -16,23 +16,23 @@ Usage from pdocker:
 1. Open the Library tab.
 2. Install the `llama.cpp GPU workspace` template.
 3. Run the GPU profile action.
-4. Run compose up and let the default gpt-oss GGUF download complete.
+4. Run compose up and let the default Qwen3 8B GGUF download complete.
 5. Open the service on port `18081`.
 
-By default, first compose up downloads the smaller OpenAI gpt-oss model in
-GGUF form:
+By default, first compose up downloads an 8B-class Apache-2.0 model in GGUF
+form:
 
-`https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf`
+`https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf`
 
-The file is about 12 GB and is stored as `models/model.gguf`. The download uses
+The file is about 5 GB and is stored as `models/model.gguf`. The download uses
 `models/model.gguf.part` while in progress so it can resume after interruption.
 Set `LLAMA_MODEL_URL` to another direct GGUF URL, or set it to an empty value
 and place a GGUF manually. If no model is available after the download attempt,
 the container still opens a small status page on port `18081` so the workspace
 has a visible running state.
 
-The entrypoint adds `--jinja` by default because the gpt-oss GGUF uses a chat
-template. Override `LLAMA_EXTRA_ARGS` if you need different llama-server
+The entrypoint adds `--jinja` by default because the bundled Qwen3 GGUF uses a
+chat template. Override `LLAMA_EXTRA_ARGS` if you need different llama-server
 options.
 
 All startup, download, status-page, and `llama-server` output is written to
@@ -40,8 +40,8 @@ stdout/stderr so `docker logs pdocker-llama-cpp` can show it. The same stream is
 also copied to `/workspace/logs/llama-server.log`; override `LLAMA_LOG_FILE` to
 change or disable that extra file.
 
-OpenAI gpt-oss weights are available under the Apache 2.0 license. This
-template downloads the model at runtime; it is not bundled into the APK.
+Qwen3 weights are available under the Apache 2.0 license. This template
+downloads the model at runtime; it is not bundled into the APK.
 
 The compose file requests Docker-compatible `gpus: all`. pdockerd maps that to
 its Vulkan passthrough / CUDA-compatible negotiation state where available.
