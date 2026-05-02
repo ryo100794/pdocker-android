@@ -78,7 +78,7 @@ run_gpu_bench() {
   local i
   for i in $(seq 1 20); do
     if run_as "ls '$bench_dir'/android-gpu-bench-*.jsonl >/dev/null 2>&1 && ls '$bench_dir'/android-gpu-bench-*.csv >/dev/null 2>&1"; then
-      run_as "tail -n 3 '$bench_dir'/android-gpu-bench-*.jsonl"
+      run_as "tail -n 6 '$bench_dir'/android-gpu-bench-*.jsonl"
       return 0
     fi
     sleep 1

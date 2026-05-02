@@ -113,11 +113,12 @@ library is visible inside the container. A backend must validate against a CPU
 reference implementation before its speedup is accepted.
 
 The Android UI diagnostics now include a first-pass `android-gpu-bench` action
-which writes CPU scalar reference results as JSON Lines and CSV under
-`files/pdocker/bench/` and mirrors them to the app external files `bench/`
-directory when Android storage policy allows it. This is the baseline artifact
-format for later Vulkan and cuVK runs, not a claim that GPU acceleration is
-available yet.
+which writes CPU scalar and OpenGL ES 3.1 compute-shader results as JSON Lines
+and CSV under `files/pdocker/bench/` and mirrors them to the app external files
+`bench/` directory when Android storage policy allows it. GLES compute is an
+Android-side GPU smoke backend; the Docker-facing target remains Vulkan/cuVK,
+but the same artifact format and validation rules are used so the results are
+comparable later.
 
 Initial benchmark kernels:
 
@@ -143,6 +144,19 @@ Recommended decision thresholds:
   faster than `cpu_neon`
 - defer GPU when transfer overhead dominates, validation fails, or thermal
   throttling erases the gain
+
+Latest quick smoke on Sony SOG15, 2026-05-02, using the Android-side
+`gles31_compute` backend:
+
+| Kernel | CPU scalar total | GLES 3.1 total | CPU/GLES |
+|---|---:|---:|---:|
+| `vector_add` n=262144 | 22.21 ms | 23.70 ms | 0.94x |
+| `saxpy` n=262144 | 25.76 ms | 4.99 ms | 5.16x |
+| `matmul_fp32` 64x64 | 26.78 ms | 1.02 ms | 26.31x |
+
+This confirms that the benchmark can observe GPU speedup on this device for
+workloads with enough arithmetic intensity. `vector_add` remains CPU-favored
+at this size because compile/upload/synchronization overhead dominates.
 
 Benchmark outputs should be JSON Lines and CSV under:
 
