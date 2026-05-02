@@ -164,6 +164,7 @@
     <string name="button_refresh">更新</string>
     <string name="title_image_files">イメージ内ファイル</string>
     <string name="title_container_files_fmt">コンテナ %1$s のファイル</string>
+    <string name="title_container_merged_files_fmt">コンテナ %1$s の merged ファイル</string>
     <string name="title_container_lower_files_fmt">コンテナ %1$s のイメージ層</string>
     <string name="title_container_upper_files_fmt">コンテナ %1$s の書き込み層</string>
     <string name="message_no_images_refresh">pull 済みイメージはまだありません。先にイメージを pull してから更新してください。</string>
@@ -171,6 +172,7 @@
     <string name="detail_parent_directory">親ディレクトリ</string>
     <string name="message_empty_directory">空のディレクトリ</string>
     <string name="detail_back_to_directory">ディレクトリに戻る</string>
+    <string name="detail_merged_container_root">コンテナの merged 表示</string>
     <string name="detail_writable_container_root">書き込み可能なコンテナ層</string>
     <string name="detail_readonly_container_root">読み取り専用のコンテナ層</string>
     <string name="action_copy_file_to_project">プロジェクトへコピー</string>

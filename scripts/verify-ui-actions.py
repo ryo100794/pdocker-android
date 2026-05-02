@@ -76,6 +76,7 @@ def main() -> int:
     require("container rows deep-link to container files", "openContainerFiles(dir)" in main_src and "action_browse_container_files_fmt" in string_src)
     require("image/container files copy into editable projects", "copyFileToProject" in image_src and "TextEditorActivity.EXTRA_PATH" in image_src)
     require("container files expose writable overlay editing", "containerBrowserRoots" in image_src and "copyToOverlayAndOpen" in image_src and "EXTRA_ROOT_PATH" in editor_activity_src)
+    require("container files expose merged lower upper view", "mergedEntries" in image_src and ".wh..wh..opq" in image_src and "title_container_merged_files_fmt" in string_src)
 
     require("editor tabs are keyed by canonical file path", "val key = target.absolutePath" in main_src)
     require("same-name editors get parent-qualified titles", "private fun editorTitle" in main_src)

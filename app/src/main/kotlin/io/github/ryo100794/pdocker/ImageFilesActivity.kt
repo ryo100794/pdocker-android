@@ -32,6 +32,14 @@ class ImageFilesActivity : AppCompatActivity() {
         val root: File,
         val writable: Boolean,
         val overlayTarget: File? = null,
+        val mergedLower: File? = null,
+        val mergedUpper: File? = null,
+    )
+
+    private data class MergedEntry(
+        val name: String,
+        val file: File,
+        val sourceRoot: File,
     )
 
     private lateinit var title: TextView
@@ -46,6 +54,9 @@ class ImageFilesActivity : AppCompatActivity() {
     private var currentDir: File? = null
     private var currentWritable = false
     private var currentOverlayTarget: File? = null
+    private var currentMergedLower: File? = null
+    private var currentMergedUpper: File? = null
+    private var currentMergedRel = ""
     private var availableRoots: List<BrowserRoot> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,7 +143,58 @@ class ImageFilesActivity : AppCompatActivity() {
                 currentDir = root
                 render()
             }
+            currentMergedLower != null && currentMergedUpper != null ->
+                renderMergedDirectory(
+                    currentTitle ?: getString(R.string.title_image_files),
+                    currentMergedLower ?: root,
+                    currentMergedUpper ?: root,
+                    currentMergedRel,
+                )
             else -> renderDirectory(currentTitle ?: getString(R.string.title_image_files), root, dir)
+        }
+    }
+
+    private fun renderMergedDirectory(displayTitle: String, lowerRoot: File, upperRoot: File, rel: String) {
+        val lower = lowerRoot.canonicalFile
+        val upper = upperRoot.canonicalFile
+        val cleanRel = rel.trim('/')
+        val lowerDir = File(lower, cleanRel)
+        val upperDir = File(upper, cleanRel)
+        if (!lowerDir.isInside(lower) || !upperDir.isInside(upper)) {
+            addMessage(getString(R.string.message_outside_rootfs))
+            currentMergedRel = ""
+            return
+        }
+
+        title.text = displayTitle
+        path.text = "/" + cleanRel
+        renderRootSwitcher()
+
+        if (cleanRel.isNotBlank()) {
+            addRow("..", getString(R.string.detail_parent_directory)) {
+                currentMergedRel = cleanRel.substringBeforeLast('/', "")
+                render()
+            }
+        }
+
+        val entries = mergedEntries(lower, upper, cleanRel)
+        if (entries.isEmpty()) {
+            addMessage(getString(R.string.message_empty_directory))
+            return
+        }
+        entries.forEach { entry ->
+            addRow(entry.name, describe(entry.file)) {
+                when {
+                    isDirectoryEntry(entry.file) -> {
+                        currentMergedRel = listOf(cleanRel, entry.name)
+                            .filter { it.isNotBlank() }
+                            .joinToString("/")
+                        render()
+                    }
+                    isRegularFileEntry(entry.file) -> renderPreview(entry.sourceRoot, entry.file)
+                    else -> addMessage(describe(entry.file))
+                }
+            }
         }
     }
 
@@ -175,7 +237,7 @@ class ImageFilesActivity : AppCompatActivity() {
             .replace(File.separatorChar, '/')
             .trim('/')
 
-        renderRootSwitcher(rootfs)
+        renderRootSwitcher()
 
         val parent = safeDir.parentFile
         if (parent != null && parent.isInside(rootfs)) {
@@ -223,7 +285,10 @@ class ImageFilesActivity : AppCompatActivity() {
         addRow(getString(R.string.action_copy_file_to_project), getString(R.string.detail_copy_file_to_project)) {
             copyFileToProject(rootfs, safeFile)
         }
-        if (currentWritable) {
+        val isWritableFile = currentWritable || (currentMergedUpper
+            ?.let { safeFile.isInside(it.canonicalFile) }
+            ?: false)
+        if (isWritableFile) {
             addRow(getString(R.string.action_edit_container_file), getString(R.string.detail_edit_container_file)) {
                 openWritableFile(rootfs, safeFile)
             }
@@ -299,6 +364,11 @@ class ImageFilesActivity : AppCompatActivity() {
         }
         val rootfs = root.canonicalFile
         if (dir == null || dir.canonicalFile == rootfs) {
+            if (currentMergedLower != null && currentMergedRel.isNotBlank()) {
+                currentMergedRel = currentMergedRel.substringBeforeLast('/', "")
+                render()
+                return
+            }
             currentRoot = null
             currentTitle = null
             currentDir = null
@@ -308,15 +378,16 @@ class ImageFilesActivity : AppCompatActivity() {
         render()
     }
 
-    private fun renderRootSwitcher(activeRoot: File) {
+    private fun renderRootSwitcher() {
         if (availableRoots.size <= 1) return
         availableRoots.forEach { browserRoot ->
-            val root = runCatching { browserRoot.root.canonicalFile }.getOrNull() ?: return@forEach
-            if (root == activeRoot) return@forEach
-            val detail = if (browserRoot.writable) {
-                getString(R.string.detail_writable_container_root)
-            } else {
-                getString(R.string.detail_readonly_container_root)
+            runCatching { browserRoot.root.canonicalFile }.getOrNull() ?: return@forEach
+            if (browserRoot.label == currentTitle) return@forEach
+            val detail = when {
+                browserRoot.mergedLower != null && browserRoot.mergedUpper != null ->
+                    getString(R.string.detail_merged_container_root)
+                browserRoot.writable -> getString(R.string.detail_writable_container_root)
+                else -> getString(R.string.detail_readonly_container_root)
             }
             addRow(browserRoot.label, detail) {
                 selectRoot(browserRoot)
@@ -425,6 +496,9 @@ class ImageFilesActivity : AppCompatActivity() {
         currentDir = root
         currentWritable = false
         currentOverlayTarget = null
+        currentMergedLower = null
+        currentMergedUpper = null
+        currentMergedRel = ""
     }
 
     private fun selectRoot(browserRoot: BrowserRoot) {
@@ -434,6 +508,9 @@ class ImageFilesActivity : AppCompatActivity() {
         currentDir = browserRoot.root
         currentWritable = browserRoot.writable
         currentOverlayTarget = browserRoot.overlayTarget
+        currentMergedLower = browserRoot.mergedLower
+        currentMergedUpper = browserRoot.mergedUpper
+        currentMergedRel = ""
     }
 
     private fun containerBrowserRoots(container: File): List<BrowserRoot> {
@@ -446,6 +523,16 @@ class ImageFilesActivity : AppCompatActivity() {
         val rootfs = storage?.optString("Rootfs")?.takeIf { it.isNotBlank() }?.let { File(it) }
             ?: File(container, "rootfs")
         val roots = mutableListOf<BrowserRoot>()
+        if (lower?.isDirectory == true && upper?.isDirectory == true) {
+            roots += BrowserRoot(
+                getString(R.string.title_container_merged_files_fmt, container.name.take(12)),
+                lower,
+                writable = false,
+                overlayTarget = upper,
+                mergedLower = lower,
+                mergedUpper = upper,
+            )
+        }
         if (rootfs.isDirectory) {
             roots += BrowserRoot(title, rootfs, writable = true)
         }
@@ -464,7 +551,36 @@ class ImageFilesActivity : AppCompatActivity() {
                 writable = true,
             )
         }
-        return roots.distinctBy { runCatching { it.root.canonicalPath }.getOrDefault(it.root.absolutePath) }
+        return roots.distinctBy {
+            "${it.label}:${runCatching { it.root.canonicalPath }.getOrDefault(it.root.absolutePath)}"
+        }
+    }
+
+    private fun mergedEntries(lowerRoot: File, upperRoot: File, rel: String): List<MergedEntry> {
+        val lowerDir = File(lowerRoot, rel)
+        val upperDir = File(upperRoot, rel)
+        val upperNames = upperDir.listFiles().orEmpty().map { it.name }.toSet()
+        val hidden = upperNames
+            .filter { it.startsWith(".wh.") && it != ".wh..wh..opq" }
+            .map { it.removePrefix(".wh.") }
+            .toSet()
+        val opaque = ".wh..wh..opq" in upperNames
+        val entries = mutableMapOf<String, MergedEntry>()
+        if (!opaque) {
+            lowerDir.listFiles().orEmpty()
+                .filter { it.name !in hidden && ".wh.${it.name}" !in upperNames }
+                .forEach { file ->
+                    entries[file.name] = MergedEntry(file.name, file, lowerRoot)
+                }
+        }
+        upperDir.listFiles().orEmpty()
+            .filter { !it.name.startsWith(".wh.") }
+            .forEach { file ->
+                entries[file.name] = MergedEntry(file.name, file, upperRoot)
+            }
+        return entries.values.sortedWith(
+            compareBy<MergedEntry> { !isDirectoryEntry(it.file) }.thenBy { it.name.lowercase() }
+        )
     }
 
     private fun File.isInside(root: File): Boolean {

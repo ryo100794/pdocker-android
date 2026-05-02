@@ -102,11 +102,13 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   installation.
 - Main UI → "Browse image files" opens a browser for pulled image rootfs trees
   under `filesDir/pdocker/images/*/rootfs`, and container cards can open
-  created container `rootfs`/`upper` trees. Users can inspect image/container
-  contents without starting a temporary container or invoking the docker CLI.
-  Individual files can be copied into `filesDir/pdocker/projects/imports/`;
-  writable container layers can be edited directly, and read-only lower-layer
-  files can be copied into the container's writable overlay before editing.
+  created container `rootfs`/`upper` trees. cow_bind containers expose a merged
+  lower/upper view that prefers upper entries and honors upper-layer whiteouts.
+  Users can inspect image/container contents without starting a temporary
+  container or invoking the docker CLI. Individual files can be copied into
+  `filesDir/pdocker/projects/imports/`; writable container layers can be edited
+  directly, and read-only lower-layer files can be copied into the container's
+  writable overlay before editing.
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.

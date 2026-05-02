@@ -164,6 +164,7 @@
     <string name="button_refresh">Refresh</string>
     <string name="title_image_files">Image files</string>
     <string name="title_container_files_fmt">container %1$s files</string>
+    <string name="title_container_merged_files_fmt">container %1$s merged files</string>
     <string name="title_container_lower_files_fmt">container %1$s image layer</string>
     <string name="title_container_upper_files_fmt">container %1$s writable layer</string>
     <string name="message_no_images_refresh">No pulled images yet. Pull an image first, then refresh.</string>
@@ -171,6 +172,7 @@
     <string name="detail_parent_directory">Parent directory</string>
     <string name="message_empty_directory">Empty directory</string>
     <string name="detail_back_to_directory">Back to directory</string>
+    <string name="detail_merged_container_root">Merged container view</string>
     <string name="detail_writable_container_root">Writable container layer</string>
     <string name="detail_readonly_container_root">Read-only container layer</string>
     <string name="action_copy_file_to_project">Copy to project</string>
