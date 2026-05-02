@@ -78,6 +78,7 @@
     <string name="detail_compose_file">Compose ファイル</string>
     <string name="action_up_fmt">%1$s を Up</string>
     <string name="detail_compose_up">docker compose up -d --build</string>
+    <string name="engine_operation_failed_fmt">pdocker 操作に失敗しました: %1$s</string>
 
     <string name="section_dockerfile">Dockerfile</string>
     <string name="action_new_dockerfile">新規 Dockerfile</string>

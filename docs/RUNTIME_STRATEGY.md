@@ -1,6 +1,6 @@
 # Runtime strategy: retiring PRoot
 
-Snapshot date: 2026-05-01.
+Snapshot date: 2026-05-02.
 
 PRoot is the current execution backend because it gives an unprivileged Android
 app a usable Linux rootfs view without `chroot`, mount namespaces, overlayfs, or
@@ -16,9 +16,45 @@ cgroups. It should not remain the long-term core runtime.
   rewrite and fake root, but weak for Docker-level semantics such as cgroups,
   namespaces, TTY attach, signal supervision, network isolation, and exact
   overlayfs behavior.
+- **Android 15 blocker**: on the Sony SOG15 test device (Android SDK 36,
+  kernel 6.6.92-android15), PRoot can read tracee memory but fails when it
+  must rewrite tracee memory for `execve`. Direct `proot -r ROOTFS /bin/sh`
+  returns `execve(...): Bad address`; Dockerfile `RUN`/`docker run` may also
+  surface `proot warning: signal 11`. Disabling seccomp does not change this.
 - **Patch burden**: Extending PRoot with `--cow-bind` moves more project-specific
   syscall rewriting into a GPL binary. That makes the runtime harder to replace
   later and raises the cost of keeping source/binary correspondence exact.
+
+## Android 15 execve test record
+
+These checks are the current repeatable evidence for the P0 runtime blocker:
+
+```sh
+scripts/android-device-smoke.sh --quick --no-install
+scripts/android-device-smoke.sh --no-install
+```
+
+Result on 2026-05-02:
+
+- quick smoke passes: daemon starts, Engine API responds, Docker CLI can talk to
+  `pdockerd`.
+- full smoke fails at the first Dockerfile `RUN`, after image layer
+  materialization, because the PRoot backend cannot start the rootfs process.
+
+Focused direct runner probe:
+
+```sh
+adb shell "run-as io.github.ryo100794.pdocker sh -c 'cd files; R=\$PWD/pdocker-runtime; ROOT=\$(find \$PWD/pdocker/containers -maxdepth 2 -path \"*/rootfs\" | tail -1); export LD_LIBRARY_PATH=\$R/lib PROOT_LOADER=\$R/docker-bin/proot-loader TMPDIR=\$R/tmp PROOT_TMP_DIR=\$R/tmp PROOT_NO_SECCOMP=1; \$R/docker-bin/proot -v 9 -0 -r \$ROOT -b /proc -b /sys -b /dev -w / /bin/sh -c \"echo direct-ok\"; echo rc=\$?'"
+```
+
+Observed failure:
+
+- `translate_execve_enter()` reaches the first `execve`.
+- PRoot returns `-EFAULT` before loader handoff.
+- Experiments that moved the cached stack pointer first, and experiments that
+  attempted shorter in-place loader path rewriting, still failed. This points
+  at tracee memory write restrictions rather than only path length, tmpdir, or
+  seccomp.
 
 ## Current dependency points
 
@@ -56,6 +92,9 @@ APK distribution shape can be tested while the backend replacement lands.
      possible.
    - Keep image/layer management in `pdockerd`; only process execution changes.
    - Treat Android app sandbox as the real isolation boundary.
+   - First prototype should prove direct `fork/exec` of APK-shipped helper
+     binaries, then add a syscall-hook/helper ABI for filesystem, port, and GPU
+     mediation instead of depending on PRoot ptrace memory writes.
 
 3. **Independent filesystem layer**
    - Move lower/upper/whiteout semantics out of patched PRoot.
@@ -83,4 +122,3 @@ APK distribution shape can be tested while the backend replacement lands.
   - non-interactive `docker exec`
 - Third-party notice asset no longer needs a PRoot GPL entry for the default
   APK build.
-

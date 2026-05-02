@@ -586,7 +586,7 @@ class MainActivity : AppCompatActivity() {
             val output = runCatching {
                 if (!waitForEngine()) error(getString(R.string.status_socket_absent))
                 engine.block()
-            }.getOrElse { "Engine API error: ${it.message.orEmpty()}" }
+            }.getOrElse { getString(R.string.engine_operation_failed_fmt, it.message.orEmpty()) }
             ui.post {
                 openTextTool(group, title, output)
                 renderContent()
