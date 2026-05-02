@@ -78,11 +78,9 @@ Plan document: [`docker-proot-setup/APK_PLAN.md`](docker-proot-setup/APK_PLAN.md
 
 Compatibility and compliance records:
 
-- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md)
-- [`docs/DEFAULT_DEV_WORKSPACE.md`](docs/DEFAULT_DEV_WORKSPACE.md)
-- [`docs/GPU_COMPAT.md`](docs/GPU_COMPAT.md)
-- [`docs/REPLAN_2026-05-01.md`](docs/REPLAN_2026-05-01.md)
-- [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md)
+- [`docs/README.md`](docs/README.md) is the documentation map and canonical
+  ownership table.
+- [`docs/TODO.md`](docs/TODO.md) is the live unfinished-work ledger.
 - `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
 - `bash scripts/verify-fast.sh` for the build-time fast gate
 - `bash scripts/verify-heavy.sh --backend-quick` or `--backend-full` for slower backend regression

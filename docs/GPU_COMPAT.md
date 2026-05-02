@@ -6,6 +6,13 @@ pdocker has an experimental Docker-compatible GPU request surface. It is
 designed for Android devices where native Docker GPU runtimes such as
 `nvidia-container-runtime` do not exist.
 
+Canonical split:
+
+- Backend request/env/inspect behavior lives in
+  [`docker-proot-setup/docs/GPU_COMPAT.md`](../docker-proot-setup/docs/GPU_COMPAT.md).
+- This document owns the Android benchmark philosophy, cuVK direction, UI
+  diagnostics, and device-specific measurement notes.
+
 ## Design principle
 
 pdocker treats Android GPU support as a Vulkan-first compatibility stack.
@@ -43,41 +50,10 @@ can dominate small workloads.
 
 ## Current behavior
 
-- `docker run --gpus all ...` is accepted by `pdockerd`.
-- Docker `HostConfig.DeviceRequests` with `Driver=nvidia` or GPU capabilities
-  maps to pdocker GPU modes:
-  - `vulkan`
-  - `cuda-compat`
-- Containers receive environment variables such as:
-  - `PDOCKER_GPU=1`
-  - `PDOCKER_GPU_MODES=cuda-compat,vulkan`
-  - `PDOCKER_VULKAN_PASSTHROUGH=1`
-  - `PDOCKER_CUDA_COMPAT=1`
-  - `NVIDIA_VISIBLE_DEVICES=all`
-  - `NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics`
-- Android Vulkan device/library paths are bind-passed when present:
-  - `/dev/kgsl-3d0`
-  - `/dev/dri`
-  - `/system/lib64/libvulkan.so`
-  - `/vendor/lib64/libvulkan.so`
-  - `/vendor/lib64/egl`
-  - `/vendor/lib64/hw`
-  - `/system/etc/vulkan`
-  - `/vendor/etc/vulkan`
-
-## Vulkan
-
-Vulkan is a best-effort passthrough. pdockerd writes a minimal ICD file at:
-
-```text
-/etc/vulkan/icd.d/pdocker-android.json
-```
-
-and points `VK_ICD_FILENAMES` at it.
-
-Whether `vulkaninfo` succeeds depends on vendor driver behavior, Android
-device permissions, and whether the Linux userland Vulkan loader can use the
-Android driver library from the container process.
+Current backend behavior is request parsing, environment negotiation, inspect
+metadata, and best-effort Vulkan device/library passthrough. The actual
+container-facing `libcuda.so`/runtime shim is still pending. See the backend GPU
+doc linked above for the exact request surface and injected environment.
 
 ## CUDA-compatible API
 
@@ -85,9 +61,6 @@ Android driver library from the container process.
 NVIDIA `/dev/nvidia*` devices or the NVIDIA driver ABI. In pdocker, CUDA means
 a planned compatibility API layer which can provide a CUDA-shaped userspace ABI
 backed primarily by Vulkan Compute.
-
-The current implementation handles negotiation and container environment setup.
-The actual `libcuda.so`/runtime shim is still pending.
 
 The first cuVK runtime scope is intentionally small:
 

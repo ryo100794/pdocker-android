@@ -12,7 +12,7 @@ must become real implementations later, see [`docs/TODO.md`](TODO.md).
 | layer | size | status |
 |---|---|---|
 | **pdockerd** (Python single-file daemon, docker-proot-setup/bin) | 3500 LOC | Engine API 1.43-compatible, ~30 endpoints |
-| **APK** (pdocker-android) | 31 MB | install + foreground service + ubuntu image pull + container run end-to-end on Android 15 |
+| **APK** (pdocker-android) | 31 MB | install, foreground service, Engine API, image pull/browse/edit flows; Android direct container execution is blocked until the executor lands |
 | **Workspace UI** | native widgets + xterm.js 5.3 + JNI pty tabs + editor | Compose, Dockerfile, images, containers, and `-it`-style sessions share one console surface |
 
 ## Implementation overview
@@ -34,37 +34,23 @@ the entire stack is built on user-space replacements:
 
 ### 2. Endpoint coverage in pdockerd
 
-| Docker API path | status |
-|---|---|
-| `/_ping`, `/version`, `/info`, `/events` | ✓ |
-| `/images/json`, `/images/{name}/json`, `/images/{name}/history` | ✓ |
-| `/images/create` (pull) | ✓ via crane (works on Android via HTTP CONNECT proxy in pdockerd_bridge) |
-| `/images/{name}` DELETE | ✓ |
-| `/images/get`, `/images/load` (save/load) | ✓ |
-| `/containers/json`, `/containers/{id}/json` | ✓ |
-| `/containers/create`, `/containers/{id}/start`, `/stop`, `/kill`, `/wait` | ✓ |
-| `/containers/{id}/wait?condition=removed` | ✓ (since 0.5.1) |
-| `/containers/{id}/logs` | ✓ (file tail) |
-| `/containers/{id}/attach` | ✓ HTTP/1.1 hijack — verified on Linux host; on Android the `docker run` (no `-d`) path that needs synchronous attach still flaky |
-| `/containers/{id}/exec`, `/exec/{id}/start` | ✓ live multiplexed streaming |
-| `/containers/{id}/archive` HEAD/GET/PUT | ✓ docker cp both directions |
-| `/containers/{id}/stats` | ✓ /proc walking approximation (no cgroups) |
-| `/networks/*`, `/volumes/*` | ✓ stubs that satisfy compose's create/list/connect flow |
-| `HostConfig.DeviceRequests` / `--gpus` | experimental pdocker extension: Vulkan passthrough + CUDA-compatible API negotiation |
-| `/build` | ✓ legacy builder with common instructions and basic `.dockerignore`; BuildKit not supported |
-| `/auth` (registry login) | ✗ |
-| `/swarm/*`, `/services/*`, `/secrets/*`, `/configs/*` | ✗ (Swarm-only) |
-| `/system/df` | partial via `/info` |
+Endpoint and protocol coverage is maintained in
+[`docs/COMPATIBILITY.md`](COMPATIBILITY.md) and the generated
+[`docs/compat-audit-latest.md`](compat-audit-latest.md). Keep those files as the
+canonical API compatibility record; this status file only summarizes the system
+shape.
 
 ### 3. End-to-end Android verification
 
-What's been confirmed working on a physical Android 15 device (Pixel-class):
+What's been confirmed working on the current Android 15 test device:
 
 - `adb install pdocker-android.apk` → MainActivity launches → "Start pdockerd" → unix socket binds at `filesDir/pdocker/pdockerd.sock`
 - `curl --unix-socket .../pdockerd.sock http://d/_ping` → `OK`
 - `docker version` (CLI 29.4 client → pdockerd 0.1 server) → both sides report API 1.43
 - `docker pull ubuntu:latest` → 132 MB image landed under `filesDir/pdocker/{images,layers}/` in 52s
-- `docker create + start + wait + logs` → `hi-from-container` printed via /bin/echo inside ubuntu rootfs
+- `docker compose up --build` reaches the first Dockerfile `RUN` and then
+  fails honestly because Android direct mode cannot execute container
+  processes yet; no fake service listener is started.
 - xterm.js WebView terminal → spawns sh with `PATH=runtime/docker-bin:...` and `DOCKER_HOST=unix://...` so user can type `docker ps` directly
 - Terminal UTF-8 output is decoded through `TextDecoder`, uses an Android/CJK
   monospace font stack, disables IME autocorrect/capitalization, and reports
@@ -141,44 +127,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 
 ### 5. Gaps vs upstream Docker
 
-What mainline docker has that pdockerd doesn't:
-
-#### Networking
-- ✗ **Bridge networks with real IPs**: each container's IP = host's 127.0.0.1 (host network always). Means you can't simulate multi-container topologies where each container wants its own port 80.
-- ✗ **iptables port forwarding** (`-p 18080:18080`): no kernel hooks. pdocker
-  records Docker-compatible port metadata and warns that syscall rewrite is not
-  active yet; container processes currently bind on the host (uid permitting).
-- ✗ **DNS aliases via libnetwork**: we synthesize `/etc/hosts` for compose-network members, but no proper DNS server.
-- ✗ **macvlan / ipvlan / overlay / Swarm networking**.
-
-#### Storage / drivers
-- ✗ **Real overlayfs**: container CoW is via libcow.so LD_PRELOAD, which only intercepts dynamically-linked binaries. Statically-linked binaries inside the container write through to the shared image rootfs.
-- ◐ **proot cow_bind path**: pdockerd has the opt-in lower/upper plumbing (`PDOCKER_USE_COW_BIND=1`) and proot has minimal `open`/`openat`/`creat` copy-up. Whiteouts, rename, and metadata syscalls are still pending.
-- ✗ **Volumes with native mount semantics**: bind mounts work via `proot -b`, but `docker volume` is a thin shim (per-name dir under `$PDOCKER_HOME/volumes/`).
-- ✗ **tmpfs / devpts / proc / sys mounts**: proot binds `/proc`, `/sys`, `/dev` from host; no isolation.
-
-#### Process
-- ✗ **PID namespace**: `ps` inside container sees host processes. `docker stop $CID` sends SIGTERM only to the proot tracee tree, not via cgroup freezer.
-- ✗ **User namespace remapping**: container processes run as the host app uid (no fake uid 0 unless you `proot -0`).
-- ✗ **Capabilities, seccomp, AppArmor**: can't drop or grant — process inherits the app's sandbox profile.
-- ✗ **cgroup limits** (`-m`, `--cpus`): no v1/v2 cgroup interface exposed.
-
-#### Image / build
-- ✗ **BuildKit, Buildx**: only legacy builder. No multi-stage caching, no `--platform` for cross-build, no `RUN --mount`.
-- ✗ **Image signing / Notary / sigstore**: not implemented.
-- ✗ **Login / private registries**: no `/auth`. Public registries only.
-- ✗ **Layer compression formats**: gzip + plain tar yes, **zstd no** (raises explicitly).
-
-#### Engine
-- ✗ **Swarm mode**: no `/services`, `/secrets`, `/configs`, `/nodes`.
-- ✗ **Plugins**: no plugin loader.
-- ✗ **Live restore on pdockerd restart**: container procs are killed when pdockerd dies.
-- ✗ **`docker stats` block I/O / network I/O numbers**: cpu% / mem only (no cgroup → no blkio counter).
-
-#### CLI affordances
-- ✗ `docker run --rm` with synchronous stdout streaming on Android (works via `create + start + wait + logs` workaround). Investigation in 0.5.2 — `wait?condition=removed` honored, but the attach hijack interaction with docker CLI 29.4 on the Android device path needs more work.
-- ✗ `docker run -t` (TTY allocation): no PTY plumbing into the container side yet.
-- ✗ `docker exec -it`: same.
+The detailed gap table lives in [`docs/COMPATIBILITY.md`](COMPATIBILITY.md).
+The active implementation plan for closing those gaps lives in
+[`docs/TODO.md`](TODO.md).
 
 ### 6. What it can do that mainline docker can't
 
