@@ -87,7 +87,7 @@ def check_static_api() -> list[Check]:
         "version": r'path == "/version"',
         "info": r'path == "/info"',
         "image list/create/save/load/history/inspect/delete": r'/images/(json|create|get|load|.+?/(history|json)|.+)',
-        "container lifecycle/inspect/logs/wait/archive/exec/stats": r'/containers/.+?(start|json|logs|wait|archive|exec|stats)',
+        "container lifecycle/inspect/logs/wait/archive/exec/stats/rename": r'/containers/.+?(start|json|logs|wait|archive|exec|stats|rename)',
         "exec start/json": r'/exec/.+?/(start|json)',
         "network list/create/connect/disconnect/inspect/delete": r'/networks',
         "volume list/create/prune/inspect/delete": r'/volumes',

@@ -143,7 +143,7 @@ echo "[pdocker smoke] docker build"
 docker_cmd "cd pdocker/projects/$PROJECT && docker build -t local/pdocker-device-smoke:latest ."
 
 echo "[pdocker smoke] compose up/down"
-docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build && docker compose ps && docker compose logs --tail=50 && docker compose down"
+docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build --remove-orphans && docker compose ps && docker compose logs --tail=50 && docker compose down"
 
 echo "[pdocker smoke] checking UI-visible job state path"
 run_as 'ls -l files/pdocker/jobs.json >/dev/null 2>&1 || true; ls -ld files/pdocker/projects/device-smoke files/pdocker-runtime'
