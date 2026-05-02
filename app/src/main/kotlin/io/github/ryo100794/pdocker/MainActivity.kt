@@ -459,7 +459,7 @@ class MainActivity : AppCompatActivity() {
                 ?.ifBlank { getString(R.string.unknown_status) }
                 ?: getString(R.string.unknown_status)
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
-                openDockerTerminal(
+                openDockerInteractiveTerminal(
                     getString(R.string.terminal_container_fmt, name),
                     "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh",
                     name,
@@ -583,6 +583,18 @@ class MainActivity : AppCompatActivity() {
             contextualize = false,
         )
         renderContent()
+    }
+
+    private fun openDockerInteractiveTerminal(title: String, command: String, group: String = workspaceGroup()) {
+        startDaemon()
+        val wrapped = dockerCommand("$command; status=\$?; printf '\\n[pdocker] container console exited: %s\\n' \"\$status\"; exit \"\$status\"")
+        val launchCommand = terminalSessionCommand(title, group, wrapped)
+        openTerminal(
+            title,
+            launchCommand,
+            group,
+            contextualize = false,
+        )
     }
 
     private fun openEditor(file: File, group: String = workspaceGroup()) {
