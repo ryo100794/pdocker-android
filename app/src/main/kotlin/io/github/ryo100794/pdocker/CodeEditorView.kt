@@ -11,6 +11,8 @@ import android.text.TextWatcher
 import android.text.method.ReplacementTransformationMethod
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
@@ -32,6 +34,14 @@ class CodeEditorView(
     private var spacesMode = true
     private var tabWidth = 4
     private var highlighting = false
+    private var editorFontSize = 14f
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            editorFontSize = (editorFontSize * detector.scaleFactor).coerceIn(10f, 24f)
+            applyEditorFontSize()
+            return true
+        }
+    })
 
     init {
         orientation = VERTICAL
@@ -55,7 +65,6 @@ class CodeEditorView(
         replaceField = smallField(context.getString(R.string.editor_replace_hint))
         lineNumbers = TextView(context).apply {
             typeface = Typeface.MONOSPACE
-            textSize = 14f
             gravity = Gravity.END or Gravity.TOP
             alpha = 0.58f
             setPadding(0, 8, 10, 8)
@@ -65,12 +74,27 @@ class CodeEditorView(
             setHorizontallyScrolling(true)
             gravity = Gravity.START or Gravity.TOP
             typeface = Typeface.MONOSPACE
-            textSize = 14f
             inputType = InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             minLines = 12
             transformationMethod = VisibleWhitespaceTransformation()
+            setOnTouchListener { view, event ->
+                val scaling = event.pointerCount > 1
+                if (scaling) {
+                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                    scaleDetector.onTouchEvent(event)
+                    if (event.actionMasked == MotionEvent.ACTION_POINTER_UP ||
+                        event.actionMasked == MotionEvent.ACTION_UP ||
+                        event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                        view.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                    true
+                } else {
+                    scaleDetector.onTouchEvent(event)
+                    false
+                }
+            }
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -84,6 +108,7 @@ class CodeEditorView(
         addView(toolPalette(pathView))
         addView(searchPalette())
         addView(message)
+        applyEditorFontSize()
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             addView(lineNumbers, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
@@ -94,6 +119,11 @@ class CodeEditorView(
             ))
         }, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         load()
+    }
+
+    private fun applyEditorFontSize() {
+        editor.textSize = editorFontSize
+        lineNumbers.textSize = editorFontSize
     }
 
     private fun toolPalette(pathView: TextView): LinearLayout =

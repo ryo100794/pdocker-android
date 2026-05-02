@@ -78,10 +78,14 @@ def main() -> int:
 
     require("terminal font remains 12pt", "fontSize: 12" in xterm_src)
     require("terminal shortcut key palette is present", 'id="keybar"' in xterm_src and 'data-toggle="ctrl"' in xterm_src)
+    require("terminal supports pinch zoom", "setFontSize" in xterm_src and "event.touches.length === 2" in xterm_src)
+    require("terminal touch scroll remains available", "term.scrollLines" in xterm_src and "touchScroll" in xterm_src)
+    require("terminal shows touch selection markers", "selection-handle" in xterm_src and "term.select(" in xterm_src and "data-toggle=\"select\"" in xterm_src)
 
     require("code editor exposes whitespace", "VisibleWhitespaceTransformation" in editor_src)
     require("code editor keeps indent/outdent actions", "indentSelection()" in editor_src and "outdentSelection()" in editor_src)
     require("code editor supports search and replace", "findNext()" in editor_src and "replaceAllMatches()" in editor_src)
+    require("code editor supports pinch zoom", "ScaleGestureDetector" in editor_src and "editorFontSize" in editor_src)
 
     require("localized terminal title formats exist", "terminal_compose_up_fmt" in string_src and "terminal_docker_build_fmt" in string_src)
     return 0

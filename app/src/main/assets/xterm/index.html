@@ -18,7 +18,8 @@
   #term {
     flex: 1 1 auto;
     min-height: 0;
-    touch-action: manipulation;
+    position: relative;
+    touch-action: none;
   }
   .xterm {
     height: 100%;
@@ -65,11 +66,50 @@
   .key:active {
     background: #444444;
   }
+  .selection-handle {
+    position: absolute;
+    z-index: 20;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    margin-top: -7px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    background: #0e5f9d;
+    box-shadow: 0 0 0 2px rgba(14, 95, 157, 0.35);
+    pointer-events: none;
+    display: none;
+  }
+  .selection-handle.active {
+    display: block;
+  }
+  .selection-status {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 19;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: rgba(14, 95, 157, 0.92);
+    color: #ffffff;
+    font: 11px/1.2 system-ui, sans-serif;
+    pointer-events: none;
+    display: none;
+  }
+  .selection-status.active {
+    display: block;
+  }
 </style>
 </head>
 <body>
-<div id="term"></div>
+<div id="term">
+  <div id="selectionStart" class="selection-handle"></div>
+  <div id="selectionEnd" class="selection-handle"></div>
+  <div id="selectionStatus" class="selection-status">selection</div>
+</div>
 <div id="keybar" aria-label="terminal shortcut keys">
+  <button class="key toggle compact" data-toggle="select">Sel</button>
+  <button class="key compact" data-copy="1">Copy</button>
   <button class="key toggle compact" data-toggle="esc">Esc</button>
   <button class="key toggle compact" data-toggle="ctrl">Ctrl</button>
   <button class="key toggle compact" data-toggle="alt">Alt</button>
@@ -110,7 +150,11 @@
     drawBoldTextInBrightColors: true,
     rightClickSelectsWord: true,
     scrollOnUserInput: true,
-    tabStopWidth: 8
+    tabStopWidth: 8,
+    theme: {
+      selectionBackground: '#2f7edb',
+      selectionForeground: '#ffffff'
+    }
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -131,8 +175,111 @@
     return out;
   };
 
-  const mods = { esc: false, ctrl: false, alt: false };
+  const mods = { esc: false, ctrl: false, alt: false, select: false };
   const keybar = document.getElementById('keybar');
+  const termHost = document.getElementById('term');
+  const startHandle = document.getElementById('selectionStart');
+  const endHandle = document.getElementById('selectionEnd');
+  const selectionStatus = document.getElementById('selectionStatus');
+  let fontSize = 12;
+  let pinch = null;
+  let longPressTimer = null;
+  let selectionAnchor = null;
+  let selectionFocus = null;
+  let selectionActive = false;
+  let touchScroll = null;
+
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const setFontSize = (value) => {
+    fontSize = clamp(Math.round(value * 10) / 10, 9, 24);
+    term.options.fontSize = fontSize;
+    pushResize();
+  };
+  const screenRect = () => {
+    const screen = termHost.querySelector('.xterm-screen canvas') || termHost.querySelector('.xterm-screen') || termHost;
+    return screen.getBoundingClientRect();
+  };
+  const cellFromTouch = (touch) => {
+    const rect = screenRect();
+    const cellWidth = rect.width / Math.max(term.cols, 1);
+    const cellHeight = rect.height / Math.max(term.rows, 1);
+    return {
+      x: clamp(Math.floor((touch.clientX - rect.left) / cellWidth), 0, Math.max(term.cols - 1, 0)),
+      y: clamp(Math.floor((touch.clientY - rect.top) / cellHeight), 0, Math.max(term.rows - 1, 0))
+    };
+  };
+  const cellToPoint = (cell) => {
+    const rect = screenRect();
+    const cellWidth = rect.width / Math.max(term.cols, 1);
+    const cellHeight = rect.height / Math.max(term.rows, 1);
+    const hostRect = termHost.getBoundingClientRect();
+    return {
+      left: rect.left - hostRect.left + (cell.x + 0.5) * cellWidth,
+      top: rect.top - hostRect.top + (cell.y + 1) * cellHeight
+    };
+  };
+  const orderedSelection = () => {
+    if (!selectionAnchor || !selectionFocus) return null;
+    const a = selectionAnchor;
+    const b = selectionFocus;
+    const aIndex = a.y * term.cols + a.x;
+    const bIndex = b.y * term.cols + b.x;
+    return aIndex <= bIndex ? { start: a, end: b } : { start: b, end: a };
+  };
+  const refreshSelectionMarkers = () => {
+    const ordered = orderedSelection();
+    const active = selectionActive && ordered;
+    [startHandle, endHandle, selectionStatus].forEach((el) => el.classList.toggle('active', !!active));
+    if (!active) return;
+    const start = cellToPoint(ordered.start);
+    const end = cellToPoint(ordered.end);
+    startHandle.style.left = `${start.left}px`;
+    startHandle.style.top = `${start.top}px`;
+    endHandle.style.left = `${end.left}px`;
+    endHandle.style.top = `${end.top}px`;
+    selectionStatus.textContent = `${ordered.start.y + 1}:${ordered.start.x + 1} - ${ordered.end.y + 1}:${ordered.end.x + 1}`;
+  };
+  const applyTerminalSelection = () => {
+    const ordered = orderedSelection();
+    if (!ordered) return;
+    const length = (ordered.end.y - ordered.start.y) * term.cols + (ordered.end.x - ordered.start.x) + 1;
+    term.select(ordered.start.x, ordered.start.y, Math.max(length, 1));
+    refreshSelectionMarkers();
+  };
+  const startSelection = (cell) => {
+    selectionActive = true;
+    mods.select = true;
+    selectionAnchor = cell;
+    selectionFocus = cell;
+    refreshModifiers();
+    applyTerminalSelection();
+  };
+  const updateSelection = (cell) => {
+    if (!selectionActive) return;
+    selectionFocus = cell;
+    applyTerminalSelection();
+  };
+  const stopSelection = () => {
+    selectionActive = false;
+    mods.select = false;
+    refreshModifiers();
+    refreshSelectionMarkers();
+  };
+  const copySelection = () => {
+    const text = term.getSelection();
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+  };
   const ctrlMap = (ch) => {
     if (ch.length !== 1) return ch;
     const code = ch.codePointAt(0);
@@ -185,8 +332,21 @@
     const btn = event.target.closest('button');
     if (!btn) return;
     event.preventDefault();
+    if (btn.dataset.copy) {
+      copySelection();
+      focusTerm();
+      return;
+    }
     if (btn.dataset.toggle) {
       mods[btn.dataset.toggle] = !mods[btn.dataset.toggle];
+      if (btn.dataset.toggle === 'select') {
+        if (mods.select) {
+          const mid = { x: Math.floor(term.cols / 2), y: Math.floor(term.rows / 2) };
+          startSelection(mid);
+        } else {
+          stopSelection();
+        }
+      }
       refreshModifiers();
       focusTerm();
       return;
@@ -204,6 +364,7 @@
   const pushResize = () => {
     fit.fit();
     PdockerBridge.resize(term.rows, term.cols);
+    refreshSelectionMarkers();
   };
   window.addEventListener('resize', pushResize);
   if (window.visualViewport) {
@@ -219,6 +380,70 @@
     ta.setAttribute('spellcheck', 'false');
     ta.setAttribute('inputmode', 'text');
   };
+
+  termHost.addEventListener('touchstart', (event) => {
+    if (event.touches.length === 2) {
+      clearTimeout(longPressTimer);
+      pinch = {
+        distance: distance(event.touches[0], event.touches[1]),
+        fontSize
+      };
+      event.preventDefault();
+      return;
+    }
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const cell = cellFromTouch(touch);
+    touchScroll = { x: touch.clientX, y: touch.clientY };
+    if (selectionActive || mods.select) {
+      startSelection(cell);
+      event.preventDefault();
+      return;
+    }
+    clearTimeout(longPressTimer);
+    longPressTimer = setTimeout(() => startSelection(cell), 460);
+  }, { passive: false });
+
+  termHost.addEventListener('touchmove', (event) => {
+    if (event.touches.length === 2 && pinch) {
+      const ratio = distance(event.touches[0], event.touches[1]) / Math.max(pinch.distance, 1);
+      setFontSize(pinch.fontSize * ratio);
+      event.preventDefault();
+      return;
+    }
+    if (event.touches.length === 1 && selectionActive) {
+      updateSelection(cellFromTouch(event.touches[0]));
+      event.preventDefault();
+      return;
+    }
+    if (event.touches.length === 1 && touchScroll) {
+      const touch = event.touches[0];
+      const rect = screenRect();
+      const cellHeight = rect.height / Math.max(term.rows, 1);
+      const moved = Math.hypot(touch.clientX - touchScroll.x, touch.clientY - touchScroll.y);
+      if (moved > 8) clearTimeout(longPressTimer);
+      const lines = Math.trunc((touch.clientY - touchScroll.y) / Math.max(cellHeight, 1));
+      if (lines !== 0) {
+        term.scrollLines(-lines);
+        touchScroll.y += lines * cellHeight;
+        refreshSelectionMarkers();
+        event.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  termHost.addEventListener('touchend', (event) => {
+    clearTimeout(longPressTimer);
+    if (event.touches.length < 2) pinch = null;
+    if (event.touches.length === 0) touchScroll = null;
+    if (!selectionActive && event.touches.length === 0) focusTerm();
+  }, { passive: false });
+
+  termHost.addEventListener('touchcancel', () => {
+    clearTimeout(longPressTimer);
+    pinch = null;
+    touchScroll = null;
+  }, { passive: false });
 
   PdockerBridge.start(PdockerBridge.initialCommand());
   term.focus();
