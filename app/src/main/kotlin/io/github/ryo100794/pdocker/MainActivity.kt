@@ -830,7 +830,7 @@ class MainActivity : AppCompatActivity() {
             ).filter { it.isNotBlank() }.joinToString("\n")
             addWidget(job.title, statusText, detail) {
                 val index = toolTabs.indexOfFirst { it.key == job.toolKey }
-                if (index >= 0) switchTool(index)
+                if (index >= 0) switchTool(index) else openJobLog(job)
             }
             addAction(getString(R.string.action_open_job_log_fmt, job.title), job.command) {
                 openJobLog(job)
@@ -853,6 +853,7 @@ class MainActivity : AppCompatActivity() {
             job.exitCode == null -> getString(R.string.job_status_running_fmt, elapsed)
             job.exitCode == 0 -> getString(R.string.job_status_done_fmt, elapsed)
             job.exitCode == -129 -> getString(R.string.job_status_stopped_fmt, elapsed)
+            job.exitCode == -130 -> getString(R.string.job_status_interrupted_fmt, elapsed)
             else -> getString(R.string.job_status_failed_fmt, job.exitCode ?: -1, elapsed)
         }
     }
@@ -987,15 +988,25 @@ class MainActivity : AppCompatActivity() {
         while (dockerJobs.size > MAX_JOB_HISTORY) dockerJobs.removeAt(dockerJobs.lastIndex)
     }
 
+    private fun markInterruptedJob(job: DockerJob) {
+        job.exitCode = -130
+        job.status = getString(R.string.job_interrupted)
+        job.endedAt = System.currentTimeMillis()
+        job.progress = getString(R.string.job_interrupted)
+        job.output += "[pdocker] job terminal was not restored after app restart; open logs or retry"
+        while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+    }
+
     private fun loadDockerJobs() {
         val file = File(pdockerHome, "jobs.json")
         val arr = runCatching { JSONArray(file.readText()) }.getOrNull() ?: return
         dockerJobs.clear()
+        var migrated = false
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
             val lines = obj.optJSONArray("output") ?: JSONArray()
             val command = normalizeDockerCommand(obj.optString("command"))
-            dockerJobs += DockerJob(
+            val job = DockerJob(
                 id = obj.optString("id"),
                 title = obj.optString("title"),
                 detail = obj.optString("detail"),
@@ -1011,8 +1022,14 @@ class MainActivity : AppCompatActivity() {
                     lines.optString(j).takeIf { it.isNotBlank() }
                 }.toMutableList(),
             )
+            if (job.exitCode == null) {
+                markInterruptedJob(job)
+                migrated = true
+            }
+            dockerJobs += job
         }
         trimDockerJobs()
+        if (migrated) saveDockerJobs()
     }
 
     private fun saveDockerJobs() {

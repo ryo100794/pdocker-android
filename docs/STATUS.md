@@ -83,7 +83,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   running/done/failed status, elapsed time, command context, parsed
   build/compose/pull progress, and recent output captured from the PTY stream.
   Running jobs can be stopped from the card, and finished jobs can be retried
-  or opened as lower-pane log tabs, so build/compose progress remains visible
+  or opened as lower-pane log tabs. Persisted jobs that no longer have a live
+  PTY tab after app restart are marked interrupted and open their saved log
+  instead of leaving a dead card, so build/compose progress remains visible
   when the lower terminal tab is not selected.
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
   between them with tabs. `DOCKER_HOST` is prewired, which is the app-side

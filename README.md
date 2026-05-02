@@ -35,8 +35,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
 - **Docker job widgets**: Docker-backed UI actions create persistent job cards
   in the upper pane with running/done/failed status, elapsed time, command
   context, parsed build/compose/pull progress, a small log tail, log tabs, stop
-  controls for running jobs, and retry actions, while the PTY tab remains
-  available below.
+  controls for running jobs, retry actions, and restart-safe log fallback when
+  a persisted job no longer has a live PTY tab.
 - **Persistent command actions**: UI actions such as `docker ps`, `docker pull`,
   `docker build`, and `docker compose up` start pdockerd, run in PTY-backed
   lower tabs, export the legacy builder/Compose environment expected by
