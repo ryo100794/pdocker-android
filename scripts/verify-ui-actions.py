@@ -20,6 +20,7 @@ EDITOR = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/CodeEditorView.
 EDITOR_ACTIVITY = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/TextEditorActivity.kt"
 XTERM = ROOT / "app/src/main/assets/xterm/index.html"
 BRIDGE = ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt"
+PDOCKERD_BRIDGE = ROOT / "app/src/main/python/pdockerd_bridge.py"
 ANDROID_SMOKE = ROOT / "scripts/android-device-smoke.sh"
 STRINGS = [
     ROOT / "app/src/main/res/values/strings.xml",
@@ -47,6 +48,7 @@ def main() -> int:
     editor_activity_src = EDITOR_ACTIVITY.read_text()
     xterm_src = XTERM.read_text()
     bridge_src = BRIDGE.read_text()
+    pdockerd_bridge_src = PDOCKERD_BRIDGE.read_text()
     android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
     string_src = "\n".join(path.read_text() for path in STRINGS)
 
@@ -80,6 +82,7 @@ def main() -> int:
     require("container lifecycle avoids docker cli shell", "DockerEngineClient" in main_src and "runContainerAction" in main_src)
     require("dockerfile builds use engine api", "runImageBuild" in main_src and "buildImage(dir" in main_src and "/build?t=" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
     require("compose up uses in-app orchestrator", "runComposeUp" in main_src and "parseComposeServices" in main_src and "/containers/create" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text())
+    require("android runtime preflight is enabled", "PDOCKER_RUNTIME_PREFLIGHT" in pdockerd_bridge_src)
     require("debug smoke can start daemon through activity", "ACTION_SMOKE_START" in main_src and "FLAG_DEBUGGABLE" in main_src and ".PdockerdService" not in android_smoke_src)
     require("terminals label their origin", "terminalSessionCommand" in main_src and "PDOCKER_TERMINAL_TITLE" in main_src)
     require("existing templates migrate service ports", "migrateProjectPorts" in main_src and "8080:8080" in main_src and "18080:18080" in main_src)
