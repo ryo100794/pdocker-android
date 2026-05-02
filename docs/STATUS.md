@@ -69,6 +69,9 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
 - Main UI → tabbed workspace for Overview, Compose, Dockerfile, Images,
   Containers, and Sessions. Tabs show widget-style state, counts, paths, and
   log previews in the native UI instead of immediately dropping into a console.
+- Container widgets show `State.Status`, synthetic IP, Docker-visible ports,
+  planned port-hook rewrite count, and pdocker networking warnings such as
+  metadata-only port publishing.
 - Main UI action wiring → Docker-backed actions start pdockerd before opening
   the PTY tool tab, wait for `docker version`, export
   `DOCKER_BUILDKIT=0` / `COMPOSE_DOCKER_CLI_BUILD=0`, and append an
@@ -93,9 +96,11 @@ What's been confirmed working on a physical Android 15 device (Pixel-class):
   `assets/default-project/`, providing a Dockerfile/Compose workspace with
   code-server, Continue, OpenAI Codex CLI, and common dev tools.
 - Main UI → "Browse image files" opens a read-only browser for pulled image
-  rootfs trees under `filesDir/pdocker/images/*/rootfs`, so users can inspect
-  image contents without starting a container or invoking the docker CLI.
-  Selecting an image card deep-links directly into that image's rootfs.
+  rootfs trees under `filesDir/pdocker/images/*/rootfs`, and container cards
+  can open created container `rootfs`/`upper` trees. Users can inspect
+  image/container contents without starting a temporary container or invoking
+  the docker CLI. Selecting an image or container card deep-links directly into
+  that filesystem.
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.
@@ -177,7 +182,7 @@ pdocker-android/
 │   │   │                              Dockerfile, status/control; lower pane
 │   │   │                              for grouped console/editor tabs; container
 │   │   │                              cards show IP/ports/hook plan
-│   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image rootfs files
+│   │   ├── ImageFilesActivity.kt     — read-only browser for pulled image and container rootfs files
 │   │   ├── TextEditorActivity.kt     — Compose/Dockerfile code editor host
 │   │   ├── CodeEditorView.kt         — line numbers, visible whitespace,
 │   │   │                              highlighting, tab/space conversion,

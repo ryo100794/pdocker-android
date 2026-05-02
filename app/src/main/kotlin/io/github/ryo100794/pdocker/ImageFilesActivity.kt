@@ -17,11 +17,11 @@ import java.text.DateFormat
 import java.util.Date
 
 /**
- * Read-only browser for pulled image rootfs trees.
+ * Read-only browser for pulled image and container rootfs trees.
  *
  * This intentionally bypasses the docker CLI. The UI is inside the same app
- * sandbox as pdockerd, so image files can be inspected directly without
- * starting a temporary container or round-tripping through docker cp.
+ * sandbox as pdockerd, so files can be inspected directly without starting a
+ * temporary container or round-tripping through docker cp.
  */
 class ImageFilesActivity : AppCompatActivity() {
     private lateinit var title: TextView
@@ -29,7 +29,9 @@ class ImageFilesActivity : AppCompatActivity() {
     private lateinit var body: LinearLayout
 
     private val imageRoot: File by lazy { File(filesDir, "pdocker/images") }
-    private var currentImage: File? = null
+    private val containerRoot: File by lazy { File(filesDir, "pdocker/containers") }
+    private var currentRoot: File? = null
+    private var currentTitle: String? = null
     private var currentDir: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,31 +87,39 @@ class ImageFilesActivity : AppCompatActivity() {
         ))
         setContentView(root)
 
-        intent.getStringExtra(EXTRA_IMAGE_NAME)
+        val selectedImage = intent.getStringExtra(EXTRA_IMAGE_NAME)
             ?.takeIf { it.isNotBlank() && it.indexOf(File.separatorChar) < 0 }
-            ?.let { name ->
-                val image = File(imageRoot, name)
-                val rootfs = File(image, "rootfs")
-                if (rootfs.isDirectory) {
-                    currentImage = image
-                    currentDir = rootfs
+        val selectedContainer = intent.getStringExtra(EXTRA_CONTAINER_ID)
+            ?.takeIf { it.isNotBlank() && it.indexOf(File.separatorChar) < 0 }
+        when {
+            selectedImage != null -> {
+                val image = File(imageRoot, selectedImage)
+                selectRoot(image.name, File(image, "rootfs"))
+            }
+            selectedContainer != null -> {
+                val container = File(containerRoot, selectedContainer)
+                val containerFsRoot = listOf(File(container, "rootfs"), File(container, "upper"))
+                    .firstOrNull { it.isDirectory }
+                if (containerFsRoot != null) {
+                    selectRoot(getString(R.string.title_container_files_fmt, container.name.take(12)), containerFsRoot)
                 }
             }
+        }
 
         render()
     }
 
     private fun render() {
         body.removeAllViews()
-        val image = currentImage
+        val root = currentRoot
         val dir = currentDir
         when {
-            image == null -> renderImages()
+            root == null -> renderImages()
             dir == null -> {
-                currentDir = File(image, "rootfs")
+                currentDir = root
                 render()
             }
-            else -> renderDirectory(image, dir)
+            else -> renderDirectory(currentTitle ?: getString(R.string.title_image_files), root, dir)
         }
     }
 
@@ -131,16 +141,15 @@ class ImageFilesActivity : AppCompatActivity() {
                 label = image.name,
                 detail = summarizeDir(File(image, "rootfs")),
                 onClick = {
-                    currentImage = image
-                    currentDir = File(image, "rootfs")
+                    selectRoot(image.name, File(image, "rootfs"))
                     render()
                 }
             )
         }
     }
 
-    private fun renderDirectory(image: File, dir: File) {
-        val rootfs = File(image, "rootfs").canonicalFile
+    private fun renderDirectory(displayTitle: String, root: File, dir: File) {
+        val rootfs = root.canonicalFile
         val safeDir = runCatching { dir.canonicalFile }.getOrNull()
         if (safeDir == null || !safeDir.isInside(rootfs)) {
             addMessage(getString(R.string.message_outside_rootfs))
@@ -148,7 +157,7 @@ class ImageFilesActivity : AppCompatActivity() {
             return
         }
 
-        title.text = image.name
+        title.text = displayTitle
         path.text = "/" + rootfs.toPath().relativize(safeDir.toPath()).toString()
             .replace(File.separatorChar, '/')
             .trim('/')
@@ -221,15 +230,16 @@ class ImageFilesActivity : AppCompatActivity() {
     }
 
     private fun navigateBack() {
-        val image = currentImage
+        val root = currentRoot
         val dir = currentDir
-        if (image == null) {
+        if (root == null) {
             finish()
             return
         }
-        val rootfs = File(image, "rootfs").canonicalFile
+        val rootfs = root.canonicalFile
         if (dir == null || dir.canonicalFile == rootfs) {
-            currentImage = null
+            currentRoot = null
+            currentTitle = null
             currentDir = null
         } else {
             currentDir = dir.parentFile
@@ -302,6 +312,13 @@ class ImageFilesActivity : AppCompatActivity() {
         return getString(R.string.detail_rootfs_entries_fmt, count)
     }
 
+    private fun selectRoot(label: String, root: File) {
+        if (!root.isDirectory) return
+        currentRoot = root
+        currentTitle = label
+        currentDir = root
+    }
+
     private fun File.isInside(root: File): Boolean {
         val base = root.canonicalFile.toPath()
         val child = canonicalFile.toPath()
@@ -316,5 +333,6 @@ class ImageFilesActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_IMAGE_NAME = "io.github.ryo100794.pdocker.extra.IMAGE_NAME"
+        const val EXTRA_CONTAINER_ID = "io.github.ryo100794.pdocker.extra.CONTAINER_ID"
     }
 }

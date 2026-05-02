@@ -106,6 +106,10 @@
     <string name="container_port_binding_fmt">%1$s:%2$s-&gt;%3$s</string>
     <string name="container_port_exposed_fmt">%1$s 公開予定</string>
     <string name="container_hook_plan_fmt">ポート hook 計画: %1$d</string>
+    <string name="container_warnings_fmt">警告: %1$s</string>
+    <string name="container_warning_ports_metadata">syscall rewrite 実装まではポート公開はメタデータのみ</string>
+    <string name="container_warning_network_stub">ネットワークは host-network stub</string>
+    <string name="action_browse_container_files_fmt">ファイルを表示: %1$s</string>
     <string name="log_no_preview">ログプレビューなし</string>
     <string name="log_empty">ログは空です</string>
     <string name="log_unavailable">ログを取得できません</string>
@@ -151,8 +155,9 @@
     <string name="button_back">戻る</string>
     <string name="button_refresh">更新</string>
     <string name="title_image_files">イメージ内ファイル</string>
+    <string name="title_container_files_fmt">コンテナ %1$s のファイル</string>
     <string name="message_no_images_refresh">pull 済みイメージはまだありません。先にイメージを pull してから更新してください。</string>
-    <string name="message_outside_rootfs">パスがイメージ rootfs の外にあります。</string>
+    <string name="message_outside_rootfs">パスが選択中の rootfs の外にあります。</string>
     <string name="detail_parent_directory">親ディレクトリ</string>
     <string name="message_empty_directory">空のディレクトリ</string>
     <string name="detail_back_to_directory">ディレクトリに戻る</string>

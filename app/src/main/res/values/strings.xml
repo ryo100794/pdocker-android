@@ -106,6 +106,10 @@
     <string name="container_port_binding_fmt">%1$s:%2$s-&gt;%3$s</string>
     <string name="container_port_exposed_fmt">%1$s exposed</string>
     <string name="container_hook_plan_fmt">port hook plan: %1$d</string>
+    <string name="container_warnings_fmt">Warnings: %1$s</string>
+    <string name="container_warning_ports_metadata">port publishing is metadata-only until syscall rewrite lands</string>
+    <string name="container_warning_network_stub">network is a host-network stub</string>
+    <string name="action_browse_container_files_fmt">Browse files: %1$s</string>
     <string name="log_no_preview">No log preview</string>
     <string name="log_empty">Log is empty</string>
     <string name="log_unavailable">Log unavailable</string>
@@ -151,8 +155,9 @@
     <string name="button_back">Back</string>
     <string name="button_refresh">Refresh</string>
     <string name="title_image_files">Image files</string>
+    <string name="title_container_files_fmt">container %1$s files</string>
     <string name="message_no_images_refresh">No pulled images yet. Pull an image first, then refresh.</string>
-    <string name="message_outside_rootfs">Path is outside the image rootfs.</string>
+    <string name="message_outside_rootfs">Path is outside the selected rootfs.</string>
     <string name="detail_parent_directory">Parent directory</string>
     <string name="message_empty_directory">Empty directory</string>
     <string name="detail_back_to_directory">Back to directory</string>

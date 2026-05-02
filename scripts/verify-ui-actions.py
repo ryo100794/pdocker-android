@@ -58,10 +58,13 @@ def main() -> int:
     require("docker jobs record exit markers", "__PDOCKER_JOB_EXIT" in main_src and "job_status_failed_fmt" in string_src)
     require("docker jobs expose retry actions", "action_retry_job_fmt" in main_src and "openDockerTerminal(job.title, job.command, job.group)" in main_src)
     require("docker jobs expose stop and log actions", "stopDockerJob(job.id)" in main_src and "openJobLog(job)" in main_src)
+    require("container cards surface network warnings", "containerWarningSummary" in main_src and "container_warning_ports_metadata" in string_src)
 
     require("image browser accepts selected image extra", "EXTRA_IMAGE_NAME" in image_src)
+    require("image browser accepts selected container extra", "EXTRA_CONTAINER_ID" in image_src)
     require("image rows deep-link to selected image", "openImageFiles(image)" in main_src)
     require("generic image browser action remains available", "openImageFiles()" in main_src)
+    require("container rows deep-link to container files", "openContainerFiles(dir)" in main_src and "action_browse_container_files_fmt" in string_src)
 
     require("editor tabs are keyed by canonical file path", "val key = target.absolutePath" in main_src)
     require("same-name editors get parent-qualified titles", "private fun editorTitle" in main_src)

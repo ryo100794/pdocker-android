@@ -454,13 +454,19 @@ class MainActivity : AppCompatActivity() {
             val state = readState(dir)
             val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
-            val statusText = state?.optString("Status")?.ifBlank { getString(R.string.unknown_status) } ?: getString(R.string.unknown_status)
+            val statusText = state?.optJSONObject("State")
+                ?.optString("Status")
+                ?.ifBlank { getString(R.string.unknown_status) }
+                ?: getString(R.string.unknown_status)
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
                 openDockerTerminal(
                     getString(R.string.terminal_container_fmt, name),
                     "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh",
                     name,
                 )
+            }
+            addAction(getString(R.string.action_browse_container_files_fmt, name), dir.name) {
+                openContainerFiles(dir)
             }
         }
     }
@@ -605,6 +611,12 @@ class MainActivity : AppCompatActivity() {
     private fun openImageFiles(image: File? = null) {
         startActivity(Intent(this, ImageFilesActivity::class.java).apply {
             image?.let { putExtra(ImageFilesActivity.EXTRA_IMAGE_NAME, it.name) }
+        })
+    }
+
+    private fun openContainerFiles(container: File) {
+        startActivity(Intent(this, ImageFilesActivity::class.java).apply {
+            putExtra(ImageFilesActivity.EXTRA_CONTAINER_ID, container.name)
         })
     }
 
@@ -1126,7 +1138,32 @@ class MainActivity : AppCompatActivity() {
         if (rewriteCount > 0) {
             lines += getString(R.string.container_hook_plan_fmt, rewriteCount)
         }
+        containerWarningSummary(state, pdockerNetwork).takeIf { it.isNotBlank() }?.let {
+            lines += it
+        }
         return lines.joinToString("\n")
+    }
+
+    private fun containerWarningSummary(state: JSONObject?, pdockerNetwork: JSONObject?): String {
+        val warnings = mutableListOf<String>()
+        fun appendWarnings(arr: JSONArray?) {
+            if (arr == null) return
+            for (i in 0 until arr.length()) {
+                arr.optString(i).takeIf { it.isNotBlank() }?.let { warnings += it }
+            }
+        }
+        appendWarnings(state?.optJSONArray("Warnings"))
+        appendWarnings(pdockerNetwork?.optJSONArray("Warnings"))
+        val unique = warnings.distinct()
+        if (unique.isEmpty()) return ""
+        val text = unique.joinToString(" / ") { warning ->
+            when {
+                "not active yet" in warning -> getString(R.string.container_warning_ports_metadata)
+                "host-network stub" in warning -> getString(R.string.container_warning_network_stub)
+                else -> warning
+            }
+        }
+        return getString(R.string.container_warnings_fmt, text)
     }
 
     private fun summarizePorts(ports: JSONObject?): String {

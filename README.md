@@ -43,7 +43,8 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   pinned to foreground logs.
 - **Network visibility**: container cards show the synthetic container IP,
   exposed/published ports, metadata-only port-publishing warnings, and planned
-  port-hook rewrite count from pdockerd.
+  port-hook rewrite count from pdockerd, so unsupported networking is visible
+  in the app instead of being hidden behind Docker-looking metadata.
 - **Terminal tabs**: one terminal screen can keep multiple PTY sessions alive
   and switch between them with tabs.
 - **Editor**: in-app code editor for Compose files and Dockerfiles under
@@ -54,8 +55,9 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   for code-server, Continue, OpenAI Codex CLI, and common development tools.
 - **GPU extensions**: experimental Docker-compatible `--gpus` handling for
   Vulkan passthrough and a future CUDA-compatible API layer.
-- **Image files**: read-only in-app browser for pulled image rootfs trees
-  under `filesDir/pdocker/images/*/rootfs`, without invoking the docker CLI.
+- **Image/container files**: read-only in-app browser for pulled image rootfs
+  trees and created container rootfs/upperdir trees, without invoking the
+  docker CLI.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
   containers; experimental `PDOCKER_USE_COW_BIND=1` uses the self-built
   proot `--cow-bind` backend for write-open copy-up.
