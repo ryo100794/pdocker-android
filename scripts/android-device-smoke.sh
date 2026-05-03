@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FLAVOR="${PDOCKER_ANDROID_FLAVOR:-modern}"
+FLAVOR="${PDOCKER_ANDROID_FLAVOR:-compat}"
 if [[ "$FLAVOR" == "compat" ]]; then
   DEFAULT_PKG="io.github.ryo100794.pdocker.compat"
   DEFAULT_APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"

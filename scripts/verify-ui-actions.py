@@ -57,6 +57,8 @@ def main() -> int:
 
     docker_action_count = main_src.count("openDockerTerminal(") - 1
     require("upstream docker cli is not a normal apk ui path", docker_action_count <= 1)
+    require("default apk build targets process-exec compat flavor", 'PDOCKER_ANDROID_FLAVOR:=compat' in (ROOT / "scripts/build-apk.sh").read_text() and 'PDOCKER_ANDROID_FLAVOR:-compat' in android_smoke_src)
+    require("runtime flavors have distinct launcher labels", "pdocker compat" in (ROOT / "app/src/compat/res/values/strings.xml").read_text() and "pdocker modern" in (ROOT / "app/src/modern/res/values/strings.xml").read_text())
     build_gradle_src = (ROOT / "app/build.gradle.kts").read_text()
     require("main header surfaces version and build time", "appBuildInfo()" in main_src and "BUILD_TIME_UTC" in main_src and "app_build_info_fmt" in string_src and "buildConfigField(\"String\", \"BUILD_TIME_UTC\"" in build_gradle_src)
     require("test-staged docker terminal helper remains diagnostic only", "private fun openDockerTerminal" in main_src and "startDaemon()" in main_src)

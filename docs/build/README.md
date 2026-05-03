@@ -33,6 +33,18 @@ Build the default configured APK:
 bash scripts/build-apk.sh
 ```
 
+The default build flavor is `compat` because it is the flavor that enables the
+scratch `pdocker-direct` process executor for Dockerfile `RUN`, `docker run`,
+`docker exec`, and `compose up` validation. The `modern` flavor is useful for
+API 29+ metadata, image browsing, editing, and Engine API work, but it does not
+advertise `process-exec=1`.
+
+Build the API 29+ metadata-only flavor explicitly:
+
+```sh
+PDOCKER_ANDROID_FLAVOR=modern bash scripts/build-apk.sh
+```
+
 Build explicit debug variants:
 
 ```sh

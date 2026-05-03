@@ -8,7 +8,7 @@ cd "$ROOT"
 
 : "${ANDROID_HOME:=$HOME/android-sdk}"
 : "${ANDROID_NDK_HOME:=$HOME/android-ndk-r26d}"
-: "${PDOCKER_ANDROID_FLAVOR:=modern}"
+: "${PDOCKER_ANDROID_FLAVOR:=compat}"
 export ANDROID_HOME ANDROID_NDK_HOME
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 

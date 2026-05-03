@@ -159,6 +159,7 @@ bump `versionCode`.
 | Symptom | Cause | Mitigation |
 |---|---|---|
 | `process-exec=0` | The modern flavor limits direct runtime to metadata/edit/browse mode | Use the compat flavor for process execution validation |
+| `does not advertise process-exec=1` during UI `compose up` | The API 29+ metadata-only package (`io.github.ryo100794.pdocker`) is open | Install and open `io.github.ryo100794.pdocker.compat`, or build with `PDOCKER_ANDROID_FLAVOR=compat` |
 | Direct execution is slow | ptrace/seccomp stop count or layer snapshotting dominates | Use `scripts/android-runtime-bench.sh --trace-mode seccomp` to inspect stop counts and hot syscalls |
 | `tls: certificate signed by unknown authority` | Go's standard Linux CA paths do not exist on Android | Set `SSL_CERT_DIR=/system/etc/security/cacerts` |
 | `Permission denied: /tmp/pdblob_...` | `/tmp` is not writable in the app sandbox | Set `PDOCKER_TMP_DIR=<filesDir>/pdocker-runtime/tmp` |
