@@ -91,7 +91,7 @@ Compatibility and compliance records:
 
 ## Build
 
-Build and install commands live in [`docs/build/BUILD.md`](docs/build/BUILD.md).
+Build and install commands live in [`docs/build/README.md`](docs/build/README.md).
 
 Short form:
 

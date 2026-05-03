@@ -1,71 +1,33 @@
-# Documentation index
+# Documentation Index
 
 Snapshot date: 2026-05-03.
 
-This tree is grouped by document purpose. When adding or updating docs, put the
-content in one category and link to it instead of copying the same status,
-command list, or TODO table into another file.
+## Purpose
 
-## Manual
+This tree contains supporting documentation for pdocker-android. Root-level
+standard files stay at the repository root:
 
-User-facing operation notes.
+- [`../README.md`](../README.md): project overview and entry points.
+- [`../LICENSE`](../LICENSE): license status for original pdocker-android code.
+- [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md): maintained
+  third-party license inventory and distribution notes.
 
-- [`manual/DEFAULT_DEV_WORKSPACE.md`](manual/DEFAULT_DEV_WORKSPACE.md): bundled
-  VS Code Server, Continue, Codex, Claude Code, and llama.cpp workspace flow.
+## Categories
 
-## Design
+| Category | Purpose | Index |
+|---|---|---|
+| Manual | User-facing operation notes and bundled workspace manuals | [`manual/README.md`](manual/README.md) |
+| Design | Architecture, compatibility boundaries, and feasibility decisions | [`design/README.md`](design/README.md) |
+| Build | Local setup, APK packaging, install commands, and build gates | [`build/README.md`](build/README.md) |
+| Test | Repeatable checks, audits, debug workflows, and recorded results | [`test/README.md`](test/README.md) |
+| Plan | Current status, TODOs, and historical steering snapshots | [`plan/README.md`](plan/README.md) |
 
-Architecture, compatibility boundary, and feasibility decisions.
+## Maintenance Rules
 
-- [`design/DOCKER_COMPAT_SCOPE.md`](design/DOCKER_COMPAT_SCOPE.md): Docker
-  compatibility scope, non-goals, and replacement strategies.
-- [`design/RUNTIME_STRATEGY.md`](design/RUNTIME_STRATEGY.md): direct runtime
-  direction and PRoot retirement plan.
-- [`design/API29_DIRECT_EXEC_FEASIBILITY.md`](design/API29_DIRECT_EXEC_FEASIBILITY.md):
-  API 29+ direct execution feasibility notes.
-- [`design/GPU_COMPAT.md`](design/GPU_COMPAT.md): Android GPU/Vulkan/cuVK
-  compatibility direction.
-- [`../docker-proot-setup/docs/GPU_COMPAT.md`](../docker-proot-setup/docs/GPU_COMPAT.md):
-  backend GPU request/env contract.
-- [`../docker-proot-setup/docs/NETWORK_COMPAT.md`](../docker-proot-setup/docs/NETWORK_COMPAT.md):
-  backend network metadata and port rewrite plan.
-
-## Build
-
-Build, packaging, and install commands.
-
-- [`build/BUILD.md`](build/BUILD.md): local environment setup, APK build, install,
-  and common build gates.
-
-## Test
-
-Repeatable checks, audits, and debug workflows.
-
-- [`test/COMPATIBILITY.md`](test/COMPATIBILITY.md): Docker API, file format,
-  protocol, and data exchange compatibility coverage.
-- [`test/compat-audit-latest.md`](test/compat-audit-latest.md): latest recorded
-  compatibility audit report.
-- [`test/ANDROID_SELFDEBUG.md`](test/ANDROID_SELFDEBUG.md): Android Wi-Fi ADB and
-  self-debug workflow.
-
-## Plan
-
-Current status, active TODOs, and historical steering.
-
-- [`plan/STATUS.md`](plan/STATUS.md): implementation status summary.
-- [`plan/TODO.md`](plan/TODO.md): live unfinished-work ledger and temporary
-  workaround tracker.
-- [`plan/REPLAN_2026-05-01.md`](plan/REPLAN_2026-05-01.md): historical replan
-  snapshot after UI/build/GPU steering.
-
-## License Notice
-
-Distribution and license inventory.
-
-- [`../LICENSE`](../LICENSE): license status for pdocker-android original code.
-- [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md): maintained source
-  license inventory.
-- [`license-notice/README.md`](license-notice/README.md): category index for
-  license notice files.
-- [`../app/src/main/assets/oss-licenses/THIRD_PARTY_NOTICES.md`](../app/src/main/assets/oss-licenses/THIRD_PARTY_NOTICES.md):
-  notice file bundled into the APK.
+- Keep documents in English.
+- Put each document in exactly one category.
+- Update the category README when adding, moving, or retiring a document.
+- Link to canonical documents instead of copying status tables, command lists,
+  or TODO blocks between files.
+- Keep release/license documents at the repository root unless they are
+  generated APK assets.
