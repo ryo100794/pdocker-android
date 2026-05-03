@@ -48,41 +48,49 @@ fi
 backend="cpu"
 ngl="0"
 extra="${LLAMA_EXTRA_ARGS:-}"
-reason="no GPU signal detected; using CPU fallback"
+reason="no validated glibc GPU bridge detected; using CPU fallback"
 cuda_signal="false"
 vulkan_env_signal="false"
 vulkan_icd_signal="false"
 vulkaninfo_signal="false"
 nvidia_device_signal="false"
+opencl_signal="false"
 mode="${PDOCKER_GPU_MODE:-${PDOCKER_GPU:-auto}}"
 mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
+
+if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
+  cuda_signal="true"
+fi
+if [[ "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" ]]; then
+  vulkan_env_signal="true"
+fi
+if [[ -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
+  vulkan_icd_signal="true"
+fi
+if [[ -e /dev/nvidia0 ]]; then
+  nvidia_device_signal="true"
+fi
+if [[ "${PDOCKER_OPENCL_PASSTHROUGH:-}" = "1" || -n "${OCL_ICD_VENDORS:-}" || -e /etc/OpenCL/vendors/pdocker-android.icd ]]; then
+  opencl_signal="true"
+fi
 
 if [[ "$mode" = "cpu" || "$mode" = "off" || "$mode" = "none" || "${PDOCKER_GPU_AUTO:-}" = "0" ]]; then
   backend="cpu"
   ngl="0"
   reason="PDOCKER_GPU_MODE requests CPU-only execution"
-elif [[ "$mode" = "vulkan" || "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" || -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
+elif [[ "$mode" = "vulkan-raw" || "$mode" = "android-vulkan-raw" ]]; then
   backend="vulkan"
   ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
-  reason="Vulkan passthrough environment or ICD file is present"
-  if [[ "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" ]]; then
-    vulkan_env_signal="true"
-  fi
-  if [[ -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
-    vulkan_icd_signal="true"
-  fi
-  if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
-    cuda_signal="true"
-  fi
+  reason="raw Android Vulkan library exposure was explicitly requested"
 elif [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || "${PDOCKER_CUDA_COMPAT:-}" = "1" || -e /dev/nvidia0 ]]; then
-  backend="cuda-compat"
-  ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
-  reason="PDOCKER_CUDA_COMPAT or NVIDIA device signal is present"
-  if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
-    cuda_signal="true"
-  fi
-  if [[ -e /dev/nvidia0 ]]; then
-    nvidia_device_signal="true"
+  if [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || -e /dev/nvidia0 ]]; then
+    backend="cuda-compat"
+    ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
+    reason="CUDA-compatible mode was explicitly requested or an NVIDIA device is present"
+  else
+    backend="cpu"
+    ngl="0"
+    reason="GPU negotiation signals are present, but no validated glibc GPU bridge exists"
   fi
 elif command -v vulkaninfo >/dev/null 2>&1 && vulkaninfo --summary >/dev/null 2>&1; then
   backend="vulkan"
@@ -115,7 +123,9 @@ cat > "$diagnostics" <<EOF
     "vk_icd_filenames": "$(json_escape "${VK_ICD_FILENAMES:-}")",
     "pdocker_icd_file": $vulkan_icd_signal,
     "vulkaninfo_summary": $vulkaninfo_signal,
-    "nvidia_device": $nvidia_device_signal
+    "nvidia_device": $nvidia_device_signal,
+    "pdocker_opencl_passthrough": $opencl_signal,
+    "ocl_icd_vendors": "$(json_escape "${OCL_ICD_VENDORS:-}")"
   },
   "outputs": {
     "env": "$(json_escape "$out")",

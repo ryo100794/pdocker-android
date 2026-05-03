@@ -555,18 +555,21 @@ Temporary behavior:
 - `--gpus all`, Vulkan env, CUDA-compatible env, and GPU diagnostics are
   negotiation signals, not a complete runtime.
 - Current benchmark has CPU/GLES first-pass coverage. Vulkan/OpenCL request
-  plumbing exists, but both hit the Android Bionic library boundary when loaded
-  from an Ubuntu/glibc container. cuVK remains pending.
+  plumbing exists, but direct Android library exposure is now classified as
+  diagnostic-only because it crosses from glibc into Bionic-only dependencies.
+  cuVK remains pending.
 
 Real implementation needed:
 
 1. Add Vulkan backend to `android-gpu-bench`.
 2. Add device/thermal/driver metadata to benchmark artifacts.
-3. Implement minimal container-facing Vulkan passthrough validation.
-4. Implement CUDA-compatible shim API only as a real library/runtime, not just
+3. Replace raw host-library exposure with a glibc-facing GPU bridge: container
+   shim/device ABI, shared-memory transport, Bionic sidecar process, fences,
+   error propagation, and lifecycle management.
+4. Implement minimal container-facing Vulkan/OpenCL validation against that
+   bridge, not against directly exposed Android libraries.
+5. Implement CUDA-compatible shim API only as a real library/runtime, not just
    env variables.
-5. Decide the GPU ABI bridge: Bionic sidecar process, native Android GPU
-   service, or container-facing shim that marshals to an Android process.
 6. Add UI recommendation based on measured CPU/GPU crossover size.
 
 Acceptance:

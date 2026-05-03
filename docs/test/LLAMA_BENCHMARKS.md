@@ -30,13 +30,19 @@ future Vulkan/CUDA-compatible runs.
 - HTTP generation speed: 0.171 tokens/s mean, 0.162 min, 0.185 max.
 - Mean wall time: 58.58s for 8 generated tokens.
 
-This is slower than the CPU fallback baseline. The request path and profile are
-working, but acceleration is not active: `llama-server` still reports CPU model,
-KV, and compute buffers. After fixing the direct runtime COW mis-detection, the
-Vulkan ICD file is visible in the container, but `vulkaninfo --summary` fails
-because Android's `/system/lib64/libvulkan.so` depends on Android/Bionic
-libraries such as `android.hardware.configstore@1.0.so` that are not loadable
-from the Ubuntu/glibc process.
+This is slower than the CPU fallback baseline. The request path and raw
+diagnostic exposure are working, but acceleration is not active:
+`llama-server` still reports CPU model, KV, and compute buffers. After fixing
+the direct runtime COW mis-detection, the Vulkan ICD file is visible in the
+container, but `vulkaninfo --summary` fails because Android's
+`/system/lib64/libvulkan.so` depends on Android/Bionic libraries such as
+`android.hardware.configstore@1.0.so` that are not loadable from the
+Ubuntu/glibc process.
+
+Conclusion: directly exposing Android host GPU libraries into the image is a
+diagnostic dead end, not the production design. The container-facing side must
+remain glibc-compatible and talk to an APK-owned Android/Bionic GPU sidecar
+through a thin pdocker bridge.
 
 Official `llama-bench` with `-p 16 -n 8 -r 2 -ngl 999 -t 8` is stored at
 `docs/test/llama-bench-tool-vulkan-requested-p16-n8-r2.json`:
@@ -58,8 +64,9 @@ The library is visible inside the container, but `ctypes.CDLL` fails with
 `liblog.so: cannot open shared object file`. `readelf -d` shows the Android
 OpenCL library depends on Bionic/Android libraries (`liblog.so`,
 `libcutils.so`, `libc++.so`, `libc.so`, `libm.so`, `libdl.so`). So the OpenCL
-result matches Vulkan: passthrough metadata and file exposure work, but direct
-loading from a glibc container is not yet a working GPU backend.
+result matches Vulkan: passthrough metadata and file exposure work as
+diagnostics, but direct loading from a glibc container is not a working GPU
+backend. OpenCL also needs the glibc bridge plus Android/Bionic sidecar model.
 
 ## Latest HTTP API Result
 

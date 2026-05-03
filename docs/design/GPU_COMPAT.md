@@ -22,8 +22,9 @@ external baseline for Jetson or NVIDIA Linux devices. The Android path is:
 ```text
 Docker --gpus / HostConfig.DeviceRequests
   -> pdocker GPU negotiation
-  -> Vulkan passthrough when the device exposes usable Vulkan libraries
-  -> cuVK, a restricted CUDA-like API lowered to Vulkan Compute
+  -> a glibc-facing GPU bridge owned by pdocker
+  -> Android-side Vulkan/OpenCL execution behind that bridge
+  -> cuVK, a restricted CUDA-like API lowered to the bridge runtime
 ```
 
 `cuda-compat` therefore means "CUDA-shaped userspace API backed by Android GPU
@@ -51,9 +52,29 @@ can dominate small workloads.
 ## Current behavior
 
 Current backend behavior is request parsing, environment negotiation, inspect
-metadata, and best-effort Vulkan device/library passthrough. The actual
-container-facing `libcuda.so`/runtime shim is still pending. See the backend GPU
-doc linked above for the exact request surface and injected environment.
+metadata, health/test reporting, and diagnostic exposure of Android GPU signals.
+The direct exposure experiment proved that Android vendor libraries should not
+be treated as a working container GPU backend: Android's Vulkan/OpenCL libraries
+are Bionic/Android ABI objects, while the bundled Linux images are glibc
+userlands. Exposing `/system/lib64/libvulkan.so` or
+`/vendor/lib64/libOpenCL.so` into an Ubuntu image naturally drives the glibc
+loader into Android-only dependencies such as `android.hardware.*`,
+`liblog.so`, and `libcutils.so`.
+
+The production direction is therefore:
+
+```text
+glibc container process
+  -> pdocker-owned glibc shim library or device ABI
+  -> stable RPC/shared-memory command queue
+  -> Android/Bionic GPU sidecar owned by the APK
+  -> Vulkan/OpenCL/NNAPI/other Android GPU API
+```
+
+The container must see a glibc-compatible ABI. Android GPU libraries may be
+used only behind the APK/sidecar boundary, not as direct glibc `dlopen` targets.
+Until that bridge exists and passes validation, llama.cpp GPU profile selection
+must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
 
 ## CUDA-compatible API
 
@@ -154,11 +175,13 @@ state, and thermal state when available.
    loading, CPU wall time and GPU timestamp timing when available.
 3. Matrix baseline: CPU reference, simple Vulkan matmul, tiled Vulkan matmul,
    GFLOPS and numerical error reporting.
-4. cuVK runtime: CUDA-shaped allocation/copy/module/kernel launch API backed by
-   the Vulkan runtime.
-5. CUDA subset transpiler: parse restricted CUDA-like kernels, emit GLSL/SPIR-V
+4. glibc bridge ABI: container-facing shim, shared-memory transport, command
+   buffers, fence/error model, and Bionic sidecar lifecycle.
+5. cuVK runtime: CUDA-shaped allocation/copy/module/kernel launch API backed by
+   the bridge runtime.
+6. CUDA subset transpiler: parse restricted CUDA-like kernels, emit GLSL/SPIR-V
    plus kernel metadata for buffer bindings and push constants.
-6. LLM-oriented kernels: RMSNorm, RoPE, softmax, FP16/quantized matmul, with
+7. LLM-oriented kernels: RMSNorm, RoPE, softmax, FP16/quantized matmul, with
    chained execution comparisons.
 
 ## Default dev workspace
@@ -187,7 +210,8 @@ diagnostic layer before the benchmark runner exists. Its
 - `profiles/pdocker-gpu-diagnostics.json` for UI/log inspection
 
 The JSON diagnostic captures the selected backend, the recommendation reason,
-thread/context/GPU-layer choices, memory size, and the CUDA/Vulkan signals that
-were visible in the container. This is not a performance validation yet; it is
-the visible bridge between Docker-compatible `gpus: all` negotiation and the
-future benchmark gate above.
+thread/context/GPU-layer choices, memory size, and the CUDA/Vulkan/OpenCL
+signals that were visible in the container. Visibility is not performance
+validation. The default profile now stays on CPU fallback when only raw Android
+library signals are present; raw Vulkan exposure requires an explicit
+diagnostic mode such as `PDOCKER_GPU_MODE=vulkan-raw`.

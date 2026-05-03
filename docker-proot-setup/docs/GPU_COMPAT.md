@@ -14,8 +14,9 @@ devices. On ordinary Android devices the intended path is:
 ```text
 Docker --gpus / HostConfig.DeviceRequests
   -> pdocker GPU negotiation
-  -> Vulkan passthrough when Android exposes usable Vulkan libraries
-  -> cuVK, a restricted CUDA-like API lowered to Vulkan Compute
+  -> a pdocker-owned glibc-facing GPU bridge
+  -> Android-side Vulkan/OpenCL execution behind that bridge
+  -> cuVK, a restricted CUDA-like API lowered to the bridge runtime
 ```
 
 `cuda-compat` therefore means a CUDA-shaped userspace contract backed by
@@ -37,7 +38,14 @@ Example:
 docker run --gpus all ubuntu:22.04 env | grep -E 'PDOCKER|CUDA|NVIDIA|VK_'
 ```
 
-## Vulkan passthrough
+## Vulkan/OpenCL diagnostics
+
+When Vulkan or OpenCL mode is requested, pdockerd records negotiation metadata
+and may expose diagnostic paths so tests can prove why direct loading fails.
+These paths are not a production GPU backend. Android vendor GPU libraries are
+Bionic/Android ABI libraries, while pdocker Linux images are glibc userlands.
+The production bridge must keep the container-facing side glibc-compatible and
+call Android GPU APIs from an APK-owned Bionic sidecar.
 
 When Vulkan mode is requested, pdockerd:
 
@@ -55,9 +63,20 @@ When Vulkan mode is requested, pdockerd:
   - `/system/etc/vulkan`
   - `/vendor/etc/vulkan`
 
-This is best-effort passthrough. Actual Vulkan usability depends on Android
-vendor drivers accepting calls from the container process and on the Linux
-userland Vulkan loader tolerating the Android ICD/library arrangement.
+This is diagnostic-only raw exposure unless `PDOCKER_GPU_MODE=vulkan-raw` is
+explicitly selected for an experiment. A successful backend must instead use a
+pdocker-owned glibc shim and marshal GPU work to an Android/Bionic sidecar.
+
+When OpenCL mode is requested, pdockerd:
+
+- marks the container with `PdockerGpu.Modes=["opencl", ...]`;
+- injects `PDOCKER_OPENCL_PASSTHROUGH=1`;
+- injects `OCL_ICD_VENDORS=/etc/OpenCL/vendors`;
+- creates `/etc/OpenCL/vendors/pdocker-android.icd`;
+- bind-passes `/vendor/lib64/libOpenCL.so` or
+  `/system/vendor/lib64/libOpenCL.so` when present.
+
+This has the same diagnostic-only limitation as raw Vulkan exposure.
 
 ## CUDA-compatible API
 
@@ -75,8 +94,9 @@ project-owned compatibility API target:
   Android GPU compute path.
 
 The current implementation provides request parsing, env negotiation, inspect
-state, and Vulkan-oriented device/library passthrough. The CUDA function ABI
-shim is still pending. The first shim scope is intentionally small:
+state, and diagnostic GPU signal exposure. The CUDA function ABI shim and
+glibc-to-Bionic GPU bridge are still pending. The first shim scope is
+intentionally small:
 
 - `cuvkInit` / `cuvkShutdown`
 - `cuvkMalloc` / `cuvkFree`
