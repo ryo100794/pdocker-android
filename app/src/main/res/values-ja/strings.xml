@@ -41,6 +41,8 @@
     <string name="detail_keep_resident">電池最適化除外を開く</string>
     <string name="action_run_gpu_bench">GPU ベンチを実行</string>
     <string name="detail_run_gpu_bench">CPU 基準の JSONL/CSV ベンチ結果を書き出し</string>
+    <string name="action_prune_build_cache">ビルドキャッシュを削除</string>
+    <string name="detail_prune_build_cache">中断ビルド rootfs と未参照レイヤを削除</string>
     <string name="action_docker_console">Engine 診断</string>
     <string name="detail_docker_console">本家 Docker CLI を同梱しない診断シェル</string>
     <string name="action_host_shell">ホストシェル</string>
@@ -56,6 +58,11 @@
     <string name="widget_compose_projects">Compose プロジェクト</string>
     <string name="widget_dockerfiles">Dockerfile</string>
     <string name="detail_dockerfiles_inventory">projects 配下のビルド定義</string>
+    <string name="widget_storage">ストレージ</string>
+    <string name="storage_scanning">計算中...</string>
+    <string name="detail_storage_scanning">pdocker の使用容量を計算しています</string>
+    <string name="storage_total_fmt">pdocker %1$s / ファイルシステム %2$s</string>
+    <string name="storage_detail_fmt">layers %1$s, images %2$s, containers %3$s, 空き %4$s</string>
     <string name="section_project_dashboard">プロジェクトダッシュボード</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$d</string>
     <string name="project_dashboard_services_fmt">サービス: %1$s</string>

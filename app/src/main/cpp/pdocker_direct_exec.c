@@ -472,6 +472,8 @@ typedef struct TraceeState {
     unsigned long long sgid;
     unsigned long long last_args[6];
     char exec_guest_path[PATH_MAX];
+    char guest_cwd[PATH_MAX];
+    char pending_guest_cwd[PATH_MAX];
 } TraceeState;
 
 #define MAX_TRACEES 128
@@ -501,6 +503,7 @@ static TraceeState *add_tracee(TraceeState *tracees, pid_t pid) {
             tracees[i].gid = 0;
             tracees[i].egid = 0;
             tracees[i].sgid = 0;
+            snprintf(tracees[i].guest_cwd, sizeof(tracees[i].guest_cwd), "/");
             return &tracees[i];
         }
     }
@@ -891,6 +894,57 @@ static int rewrite_path_arg(pid_t pid, struct user_pt_regs *regs, int arg_index,
     return rewrite_path_arg_scratch(pid, regs, arg_index, rootfs, context, 8192u);
 }
 
+static void normalize_guest_path(const char *base, const char *path, char *out, size_t out_len) {
+    char combined[PATH_MAX];
+    if (!path || !path[0]) {
+        snprintf(out, out_len, "%s", base && base[0] ? base : "/");
+        return;
+    }
+    if (path[0] == '/') {
+        snprintf(combined, sizeof(combined), "%s", path);
+    } else {
+        snprintf(combined, sizeof(combined), "%s/%s", base && base[0] ? base : "/", path);
+    }
+
+    char tmp[PATH_MAX];
+    snprintf(tmp, sizeof(tmp), "%s", combined);
+    char *parts[256];
+    int count = 0;
+    char *save = NULL;
+    for (char *part = strtok_r(tmp, "/", &save); part && count < 256; part = strtok_r(NULL, "/", &save)) {
+        if (strcmp(part, ".") == 0 || part[0] == '\0') {
+            continue;
+        }
+        if (strcmp(part, "..") == 0) {
+            if (count > 0) count--;
+            continue;
+        }
+        parts[count++] = part;
+    }
+
+    size_t pos = 0;
+    if (out_len == 0) return;
+    out[pos++] = '/';
+    for (int i = 0; i < count && pos + 1 < out_len; ++i) {
+        if (i > 0 && pos + 1 < out_len) out[pos++] = '/';
+        size_t len = strlen(parts[i]);
+        if (len > out_len - pos - 1) len = out_len - pos - 1;
+        memcpy(out + pos, parts[i], len);
+        pos += len;
+    }
+    out[pos] = '\0';
+}
+
+static int rewrite_chdir_arg(pid_t pid, struct user_pt_regs *regs, TraceeState *state,
+                             const char *rootfs) {
+    char original[PATH_MAX];
+    if (read_tracee_string(pid, regs->regs[0], original, sizeof(original)) >= 0 && state) {
+        normalize_guest_path(state->guest_cwd, original, state->pending_guest_cwd,
+                             sizeof(state->pending_guest_cwd));
+    }
+    return rewrite_path_arg(pid, regs, 0, rootfs, "chdir");
+}
+
 static int rewrite_path_args(pid_t pid, struct user_pt_regs *regs, int arg_a, int arg_b,
                              const char *rootfs, const char *context) {
     int rewrote = 0;
@@ -908,25 +962,33 @@ static int rewrite_at_path_args(pid_t pid, struct user_pt_regs *regs,
     return rewrote;
 }
 
-static int emulate_getcwd(pid_t pid, struct user_pt_regs *regs, const char *rootfs,
-                          unsigned long long *result) {
+static int emulate_getcwd(pid_t pid, struct user_pt_regs *regs, TraceeState *state,
+                          const char *rootfs, unsigned long long *result) {
     unsigned long long buf = regs->regs[0];
     unsigned long long size = regs->regs[1];
     if (!buf || size == 0) {
         *result = (unsigned long long)-EINVAL;
         return 1;
     }
-    char host_cwd[PATH_MAX];
-    if (!getcwd(host_cwd, sizeof(host_cwd))) {
-        *result = (unsigned long long)-errno;
-        return 1;
-    }
     const char *guest = "/";
-    size_t root_len = strlen(rootfs);
-    if (strncmp(host_cwd, rootfs, root_len) == 0 &&
-        (host_cwd[root_len] == '\0' || host_cwd[root_len] == '/')) {
-        guest = host_cwd + root_len;
-        if (!guest[0]) guest = "/";
+    if (state && state->guest_cwd[0]) {
+        guest = state->guest_cwd;
+    } else {
+        char proc_cwd[128];
+        char host_cwd[PATH_MAX];
+        snprintf(proc_cwd, sizeof(proc_cwd), "/proc/%d/cwd", (int)pid);
+        ssize_t n = readlink(proc_cwd, host_cwd, sizeof(host_cwd) - 1);
+        if (n < 0) {
+            *result = (unsigned long long)-errno;
+            return 1;
+        }
+        host_cwd[n] = '\0';
+        size_t root_len = strlen(rootfs);
+        if (strncmp(host_cwd, rootfs, root_len) == 0 &&
+            (host_cwd[root_len] == '\0' || host_cwd[root_len] == '/')) {
+            guest = host_cwd + root_len;
+            if (!guest[0]) guest = "/";
+        }
     }
     size_t need = strlen(guest) + 1;
     if (need > size) {
@@ -1546,7 +1608,7 @@ static int rewrite_syscall_paths(pid_t pid, struct user_pt_regs *regs, TraceeSta
         case 43:  /* statfs(pathname, buf) */
             return rewrite_path_arg(pid, regs, 0, rootfs, syscall_name(nr));
         case 49:  /* chdir(pathname) */
-            return rewrite_path_arg(pid, regs, 0, rootfs, syscall_name(nr));
+            return rewrite_chdir_arg(pid, regs, state, rootfs);
         case 221: /* execve(pathname, argv, envp) */
             return rewrite_execve_arg(pid, regs, state, rootfs, loader, libpath);
         case 281: /* execveat(dirfd, pathname, argv, envp, flags) */
@@ -1565,7 +1627,7 @@ static int handle_syscall_entry(pid_t pid, struct user_pt_regs *regs, TraceeStat
     for (int i = 0; i < 6; ++i) state->last_args[i] = regs->regs[i];
     int forced_emulation = 0;
     if (state->last_nr == 17 &&
-        emulate_getcwd(pid, regs, rootfs, &state->emulated_result)) {
+        emulate_getcwd(pid, regs, state, rootfs, &state->emulated_result)) {
         forced_emulation = 1;
         if (complete_emulated_syscall(pid, regs, state->emulated_result) == 0) {
             if (completed_in_userland) *completed_in_userland = 1;
@@ -1722,6 +1784,11 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
         fprintf(stderr, "pdocker-direct-trace: tracee table exhausted before start\n");
         TRACE_RETURN(126);
     }
+    const char *initial_guest_cwd = getenv("PDOCKER_GUEST_CWD");
+    if (initial_guest_cwd && initial_guest_cwd[0]) {
+        normalize_guest_path("/", initial_guest_cwd, child_state->guest_cwd,
+                             sizeof(child_state->guest_cwd));
+    }
     int root_opts = set_trace_options(child);
     if (g_trace_exec) {
         fprintf(stderr, "pdocker-direct-exec: root setopts pid=%d rc=%d\n", (int)child, root_opts);
@@ -1860,6 +1927,11 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                     }
                     state->last_emulated_nr = state->emulated_nr;
                     state->emulated_nr = -1;
+                } else if (state->last_nr == 49 && (long long)regs.regs[0] == 0 &&
+                           state->pending_guest_cwd[0]) {
+                    snprintf(state->guest_cwd, sizeof(state->guest_cwd), "%s",
+                             state->pending_guest_cwd);
+                    state->pending_guest_cwd[0] = '\0';
                 }
                     state->in_syscall = completed_in_userland ? 1 : !state->in_syscall;
             }
@@ -1878,7 +1950,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                                     syscall_completed_in_userland(state->last_emulated_nr)) ||
                                    completed_current;
                 if (!suppressible && current_nr == 17 &&
-                    emulate_getcwd(got, &regs, rootfs, &state->emulated_result)) {
+                    emulate_getcwd(got, &regs, state, rootfs, &state->emulated_result)) {
                     state->last_nr = current_nr;
                     for (int i = 0; i < 6; ++i) state->last_args[i] = regs.regs[i];
                     if (complete_emulated_syscall(got, &regs, state->emulated_result) == 0) {
@@ -2013,6 +2085,9 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
             }
             if (state->in_syscall && state->emulated_nr >= 0) {
                 if (continue_tracee_to_syscall_exit(got, 0) != 0) break;
+            } else if (state->last_nr == 49 && state->pending_guest_cwd[0]) {
+                state->in_syscall = 1;
+                if (continue_tracee_to_syscall_exit(got, 0) != 0) break;
             } else if (continue_tracee(got, 0) != 0) {
                 break;
             }
@@ -2035,6 +2110,8 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                         new_state->sgid = state->sgid;
                         snprintf(new_state->exec_guest_path, sizeof(new_state->exec_guest_path),
                                  "%s", state->exec_guest_path);
+                        snprintf(new_state->guest_cwd, sizeof(new_state->guest_cwd),
+                                 "%s", state->guest_cwd[0] ? state->guest_cwd : "/");
                     }
                     int opt_rc = set_trace_options((pid_t)new_pid);
                     if (g_trace_exec) {
@@ -2272,6 +2349,7 @@ loader_found:
     setenv("SSL_CERT_DIR", "/etc/ssl/certs", 0);
     setenv("NODE_EXTRA_CA_CERTS", "/etc/ssl/certs/ca-certificates.crt", 0);
     setenv("PWD", workdir, 1);
+    setenv("PDOCKER_GUEST_CWD", workdir, 1);
     for (int i = 0; i < env_count; ++i) {
         const char *eq = strchr(env_items[i], '=');
         if (!eq || eq == env_items[i]) continue;

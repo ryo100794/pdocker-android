@@ -2,6 +2,7 @@ package io.github.ryo100794.pdocker
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Typeface
@@ -68,6 +69,15 @@ class MainActivity : AppCompatActivity() {
     private data class TemplateInstallReport(
         var copied: Int = 0,
         var kept: Int = 0,
+    )
+
+    private data class StorageMetrics(
+        val fsTotalBytes: Long,
+        val fsFreeBytes: Long,
+        val pdockerBytes: Long,
+        val layersBytes: Long,
+        val imagesBytes: Long,
+        val containersBytes: Long,
     )
 
     private data class DockerJob(
@@ -175,6 +185,7 @@ class MainActivity : AppCompatActivity() {
         private const val PDOCKER_SERVICE_URL_LABEL_PREFIX = "io.github.ryo100794.pdocker.service-url."
         private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
         private const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
+        private const val ACTION_SMOKE_COMPOSE_UP = "io.github.ryo100794.pdocker.action.SMOKE_COMPOSE_UP"
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -219,15 +230,21 @@ class MainActivity : AppCompatActivity() {
     private var lowerWeight = 0.44f
     private var splitDragStartY = 0f
     private var splitDragStartUpper = 0f
+    private var lastDaemonStartAttemptAt = 0L
+    private var storageMetrics: StorageMetrics? = null
+    private var storageMetricsScanning = false
+    private var lastStorageMetricsAt = 0L
 
     private val pdockerHome: File by lazy { File(filesDir, "pdocker") }
     private val imageRoot: File by lazy { File(pdockerHome, "images") }
+    private val layerRoot: File by lazy { File(pdockerHome, "layers") }
     private val containerRoot: File by lazy { File(pdockerHome, "containers") }
     private val projectRoot: File by lazy { File(pdockerHome, "projects") }
     private val engine: DockerEngineClient by lazy { DockerEngineClient(File(pdockerHome, "pdockerd.sock")) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_NOSENSOR
         requestNotificationPermission()
         seedDefaultProject()
         loadDockerJobs()
@@ -317,6 +334,7 @@ class MainActivity : AppCompatActivity() {
         renderTabs()
         renderContent()
         renderToolChrome()
+        ensureDaemonStarted()
         handleAutomationIntent(intent)
     }
 
@@ -327,6 +345,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ensureDaemonStarted()
         renderContent()
         ui.post(pollTask)
         ui.post(jobTickerTask)
@@ -455,6 +474,7 @@ class MainActivity : AppCompatActivity() {
         addWidget(getString(R.string.widget_containers), containerDirs().size.toString(), getString(R.string.detail_containers_inventory))
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
+        renderStorageMetrics()
         renderProjectDashboard()
         renderDockerJobs()
     }
@@ -679,6 +699,11 @@ class MainActivity : AppCompatActivity() {
         addAction(getString(R.string.action_run_gpu_bench), getString(R.string.detail_run_gpu_bench)) {
             runAndroidGpuBench()
         }
+        addAction(getString(R.string.action_prune_build_cache), getString(R.string.detail_prune_build_cache)) {
+            runEngineAction(getString(R.string.action_prune_build_cache), getString(R.string.section_diagnostics)) {
+                post("/build/prune").text
+            }
+        }
         addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
             startDaemon()
             openTerminal(
@@ -703,6 +728,68 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun renderStorageMetrics() {
+        refreshStorageMetricsAsync()
+        val metrics = storageMetrics
+        if (metrics == null) {
+            addWidget(
+                getString(R.string.widget_storage),
+                getString(R.string.storage_scanning),
+                getString(R.string.detail_storage_scanning),
+                detailLines = 4,
+            )
+            return
+        }
+        addWidget(
+            getString(R.string.widget_storage),
+            getString(R.string.storage_total_fmt, formatBytes(metrics.pdockerBytes), formatBytes(metrics.fsTotalBytes)),
+            getString(
+                R.string.storage_detail_fmt,
+                formatBytes(metrics.layersBytes),
+                formatBytes(metrics.imagesBytes),
+                formatBytes(metrics.containersBytes),
+                formatBytes(metrics.fsFreeBytes),
+            ),
+            detailLines = 4,
+        ) {
+            refreshStorageMetricsAsync(force = true)
+        }
+    }
+
+    private fun refreshStorageMetricsAsync(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (storageMetricsScanning) return
+        if (!force && storageMetrics != null && now - lastStorageMetricsAt < 30_000L) return
+        storageMetricsScanning = true
+        thread(isDaemon = true, name = "pdocker-storage-metrics") {
+            val metrics = StorageMetrics(
+                fsTotalBytes = pdockerHome.totalSpace,
+                fsFreeBytes = pdockerHome.freeSpace,
+                pdockerBytes = directorySize(pdockerHome),
+                layersBytes = directorySize(layerRoot),
+                imagesBytes = directorySize(imageRoot),
+                containersBytes = directorySize(containerRoot),
+            )
+            ui.post {
+                storageMetrics = metrics
+                lastStorageMetricsAt = System.currentTimeMillis()
+                storageMetricsScanning = false
+                if (currentTab == Tab.Overview) renderContent()
+            }
+        }
+    }
+
+    private fun directorySize(root: File): Long {
+        if (!root.exists()) return 0L
+        var total = 0L
+        runCatching {
+            root.walkTopDown().forEach { file ->
+                if (file.isFile) total += runCatching { file.length() }.getOrDefault(0L)
+            }
+        }
+        return total
+    }
+
     private fun startDaemon() {
         val intent = Intent(this, PdockerdService::class.java)
             .setAction(PdockerdService.ACTION_START)
@@ -712,6 +799,14 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         status.text = getString(R.string.status_starting)
+    }
+
+    private fun ensureDaemonStarted() {
+        if (File(pdockerHome, "pdockerd.sock").exists()) return
+        val now = System.currentTimeMillis()
+        if (now - lastDaemonStartAttemptAt < 5000L) return
+        lastDaemonStartAttemptAt = now
+        startDaemon()
     }
 
     private fun runAndroidGpuBench() {
@@ -783,17 +878,36 @@ class MainActivity : AppCompatActivity() {
             }
             val exitCode = if (result.isSuccess) 0 else 1
             val finalOutput = result.getOrElse {
-                getString(R.string.engine_operation_failed_fmt, it.message.orEmpty())
+                getString(R.string.engine_operation_failed_fmt, summarizeEngineFailure(it.message.orEmpty()))
             }
-            appendUniqueLines(output, finalOutput)
+            val finishOutput = if (command.startsWith("engine compose up:") || command.startsWith("engine docker build:")) {
+                if (exitCode == 0) "" else finalOutput
+            } else {
+                appendUniqueLines(output, finalOutput)
+                output.toString()
+            }
             ui.post {
-                finishEngineJob(job.id, exitCode, output.toString())
+                finishEngineJob(job.id, exitCode, finishOutput)
                 val finished = dockerJobs.firstOrNull { it.id == job.id }
                 if (finished != null) handleEngineJobFinished(finished)
+                refreshStorageMetricsAsync(force = true)
                 renderContent()
                 refreshStatus()
             }
         }
+    }
+
+    private fun summarizeEngineFailure(message: String): String {
+        val lines = message.lineSequence()
+            .map { cleanTerminalLine(it) }
+            .filter { it.isNotBlank() }
+            .toList()
+        val important = lines.lastOrNull {
+            it.contains("ERROR:", ignoreCase = true) ||
+                it.contains("No space left", ignoreCase = true) ||
+                it.contains("failed", ignoreCase = true)
+        }
+        return important ?: lines.lastOrNull().orEmpty().ifBlank { message.take(500) }
     }
 
     private fun runImageBuild(dir: File, title: String) {
@@ -1158,6 +1272,11 @@ class MainActivity : AppCompatActivity() {
         when (action) {
             ACTION_SMOKE_START -> startDaemon()
             ACTION_SMOKE_GPU_BENCH -> runAndroidGpuBench()
+            ACTION_SMOKE_COMPOSE_UP -> {
+                val project = intent.getStringExtra("project").orEmpty().ifBlank { "default" }
+                val dir = File(projectRoot, project)
+                ui.post { runComposeUp(dir, getString(R.string.terminal_compose_up_fmt, project)) }
+            }
         }
     }
 
@@ -1654,7 +1773,7 @@ class MainActivity : AppCompatActivity() {
         if (dockerJobs.none { it.exitCode == null }) return
         updateLiveJobViews()
         if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
-            renderContent()
+            scheduleJobRenderUpdate(0L)
         }
     }
 
@@ -1694,34 +1813,35 @@ class MainActivity : AppCompatActivity() {
         val chunk = bytes.toString(Charsets.UTF_8)
         ui.post {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
-            appendLiveJobTerminal(jobId, chunk)
-            appendPersistentJobLog(jobId, chunk)
-            recordJobTerminalOutput(job, jobId, chunk)
-            updateLiveJobView(job)
+            val text = terminalDisplayText(chunk)
+            appendLiveJobTerminal(jobId, text)
+            appendPersistentJobLog(jobId, text)
+            recordJobTerminalOutput(job, jobId, text)
             scheduleDockerJobsSave()
             scheduleJobRenderUpdate()
         }
     }
 
-    private fun scheduleJobRenderUpdate() {
+    private fun scheduleJobRenderUpdate(delayMs: Long = 500L) {
         if (jobRenderScheduled) return
         jobRenderScheduled = true
         ui.postDelayed({
             jobRenderScheduled = false
+            updateLiveJobViews()
             if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
                 renderContent()
             }
-        }, 500L)
+        }, delayMs)
     }
 
     private fun appendEngineJobOutput(jobId: String, line: String) {
         ui.post {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
             val text = terminalRecordText(line)
-            appendLiveJobTerminal(jobId, text)
-            appendPersistentJobLog(jobId, text)
-            recordJobTerminalOutput(job, jobId, text)
-            updateLiveJobView(job)
+            val displayText = terminalDisplayText(text)
+            appendLiveJobTerminal(jobId, displayText)
+            appendPersistentJobLog(jobId, displayText)
+            recordJobTerminalOutput(job, jobId, displayText)
             scheduleDockerJobsSave()
             scheduleJobRenderUpdate()
         }
@@ -1737,6 +1857,18 @@ class MainActivity : AppCompatActivity() {
             if (ch == '\n' && previous != '\r') out.append('\r')
             out.append(ch)
             previous = ch
+        }
+        return out.toString()
+    }
+
+    private fun terminalDisplayText(text: String): String {
+        val out = StringBuilder(text.length + 16)
+        text.forEachIndexed { index, ch ->
+            if (ch == '\r' && text.getOrNull(index + 1) != '\n') {
+                out.append('\r').append("\u001B[2K")
+            } else {
+                out.append(ch)
+            }
         }
         return out.toString()
     }

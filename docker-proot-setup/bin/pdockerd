@@ -3091,6 +3091,74 @@ def prune_build_artifacts():
     return removed
 
 
+def _dir_size(path):
+    total = 0
+    if not os.path.exists(path):
+        return 0
+    if os.path.isfile(path):
+        try:
+            return os.path.getsize(path)
+        except OSError:
+            return 0
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            fp = os.path.join(root, name)
+            try:
+                total += os.path.getsize(fp)
+            except OSError:
+                pass
+    return total
+
+
+def referenced_layer_ids():
+    refs = set()
+    if not os.path.isdir(IMAGES_DIR):
+        return refs
+    for name in os.listdir(IMAGES_DIR):
+        img_dir = os.path.join(IMAGES_DIR, name)
+        if not os.path.isdir(img_dir):
+            continue
+        refs.update(_load_image_manifest(img_dir))
+    return refs
+
+
+def prune_unreferenced_layers(min_age_seconds=60):
+    """Delete layer store entries that are not reachable from any image tag.
+
+    Failed Dockerfile builds can create content-addressed layer directories
+    before the final image manifest is recorded. Docker engines garbage collect
+    those through builder/system prune; pdocker needs the same safety valve or
+    repeated failed builds keep filling app data.
+    """
+    removed = []
+    reclaimed = 0
+    if not os.path.isdir(LAYERS_DIR):
+        return {"Deleted": removed, "SpaceReclaimed": reclaimed}
+    referenced = referenced_layer_ids()
+    now = time.time()
+    for name in os.listdir(LAYERS_DIR):
+        if name in referenced:
+            continue
+        if not re.fullmatch(r"[A-Fa-f0-9]{64}", name):
+            continue
+        path = os.path.join(LAYERS_DIR, name)
+        if not os.path.isdir(path):
+            continue
+        try:
+            if min_age_seconds > 0 and now - os.path.getmtime(path) < min_age_seconds:
+                continue
+        except OSError:
+            continue
+        size = _dir_size(path)
+        try:
+            shutil.rmtree(path)
+            removed.append(name)
+            reclaimed += size
+        except OSError as exc:
+            log(f"layer prune {name} error: {exc}")
+    return {"Deleted": removed, "SpaceReclaimed": reclaimed}
+
+
 def spawn_in_container(cid, cmd, env=None, workdir=None, tty=False,
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         stdin=subprocess.DEVNULL):
@@ -4156,9 +4224,12 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         # build rootfs trees without scanning the whole image store.
         if path == "/build/prune" and method == "POST":
             removed = prune_build_artifacts()
+            layers = prune_unreferenced_layers()
             self._send_json(200, {
-                "CachesDeleted": removed,
-                "SpaceReclaimed": 0,
+                "CachesDeleted": removed + layers["Deleted"],
+                "BuildRootfsDeleted": removed,
+                "LayersDeleted": layers["Deleted"],
+                "SpaceReclaimed": layers["SpaceReclaimed"],
             })
             return
 
@@ -4180,6 +4251,7 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/system/prune" and method == "POST":
             build_removed = prune_build_artifacts()
+            layers = prune_unreferenced_layers()
             containers_deleted = []
             for name in list(os.listdir(CONTAINERS_DIR)):
                 if name.startswith("build_"):
@@ -4194,8 +4266,10 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                 "ImagesDeleted": [],
                 "NetworksDeleted": [],
                 "VolumesDeleted": [],
-                "BuildCacheDeleted": build_removed,
-                "SpaceReclaimed": 0,
+                "BuildCacheDeleted": build_removed + layers["Deleted"],
+                "BuildRootfsDeleted": build_removed,
+                "LayersDeleted": layers["Deleted"],
+                "SpaceReclaimed": layers["SpaceReclaimed"],
             })
             return
 
@@ -4576,9 +4650,10 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
 
         self._send_stream_started()
 
-        def emit(msg):
+        def emit(msg, newline=True):
             try:
-                self.wfile.write(json.dumps({"stream": msg + "\n"}).encode() + b"\r\n")
+                text = msg + "\n" if newline else msg
+                self.wfile.write(json.dumps({"stream": text}).encode() + b"\r\n")
                 self.wfile.flush()
             except BrokenPipeError:
                 pass
@@ -4875,18 +4950,27 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 emit("RUN skipped because the Android execution backend is unavailable")
                 return fail_build()
             run_start = time.perf_counter()
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 build_run_argv(rootfs, build_run_command(args),
                                full_env, workdir=workdir, mode="build"),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
             )
-            emit(f"  build-profile run-exec: {time.perf_counter() - run_start:.3f}s rc={proc.returncode}")
+            captured = bytearray()
             if proc.stdout:
-                emit(proc.stdout.decode(errors="replace"))
-            if proc.stderr:
-                emit(proc.stderr.decode(errors="replace"))
+                read_chunk = getattr(proc.stdout, "read1", proc.stdout.read)
+                while True:
+                    chunk = read_chunk(8192)
+                    if not chunk:
+                        break
+                    captured.extend(chunk)
+                    if len(captured) > 512 * 1024:
+                        del captured[:len(captured) - 512 * 1024]
+                    emit(chunk.decode(errors="replace"), newline=False)
+            proc.wait()
+            emit(f"  build-profile run-exec: {time.perf_counter() - run_start:.3f}s rc={proc.returncode}")
             if proc.returncode != 0:
-                fault = runner_fault_message((proc.stdout or b"") + (proc.stderr or b""))
+                fault = runner_fault_message(bytes(captured))
                 if fault:
                     emit(fault)
                 emit(f"RUN failed with exit code {proc.returncode}")

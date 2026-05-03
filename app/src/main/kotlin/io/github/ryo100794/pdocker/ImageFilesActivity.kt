@@ -1,6 +1,7 @@
 package io.github.ryo100794.pdocker
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.text.TextUtils
 import android.view.Gravity
@@ -61,6 +62,7 @@ class ImageFilesActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_NOSENSOR
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

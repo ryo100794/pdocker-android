@@ -41,6 +41,8 @@
     <string name="detail_keep_resident">Open battery optimization exemption</string>
     <string name="action_run_gpu_bench">Run GPU benchmark</string>
     <string name="detail_run_gpu_bench">Write CPU reference JSONL/CSV benchmark results</string>
+    <string name="action_prune_build_cache">Prune build cache</string>
+    <string name="detail_prune_build_cache">Delete interrupted build rootfs and unreferenced layers</string>
     <string name="action_docker_console">Engine diagnostics</string>
     <string name="detail_docker_console">Diagnostic shell without bundled Docker CLI</string>
     <string name="action_host_shell">Host shell</string>
@@ -56,6 +58,11 @@
     <string name="widget_compose_projects">Compose projects</string>
     <string name="widget_dockerfiles">Dockerfiles</string>
     <string name="detail_dockerfiles_inventory">Build definitions under projects</string>
+    <string name="widget_storage">Storage</string>
+    <string name="storage_scanning">scanning...</string>
+    <string name="detail_storage_scanning">Calculating pdocker storage usage</string>
+    <string name="storage_total_fmt">pdocker %1$s / filesystem %2$s</string>
+    <string name="storage_detail_fmt">layers %1$s, images %2$s, containers %3$s, free %4$s</string>
     <string name="section_project_dashboard">Project dashboard</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, files %3$d, containers %4$d</string>
     <string name="project_dashboard_services_fmt">Services: %1$s</string>

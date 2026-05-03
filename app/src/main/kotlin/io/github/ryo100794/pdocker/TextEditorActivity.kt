@@ -1,5 +1,6 @@
 package io.github.ryo100794.pdocker
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
@@ -7,6 +8,7 @@ import java.io.File
 class TextEditorActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_NOSENSOR
         val requested = intent.getStringExtra(EXTRA_PATH).orEmpty()
         setContentView(CodeEditorView(this, resolveProjectFile(requested), MAX_EDIT_BYTES, ::defaultContent))
     }
