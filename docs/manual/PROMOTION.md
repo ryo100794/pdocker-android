@@ -71,14 +71,20 @@ executor experiments.
 ## Pinned issue ideas
 
 1. **Roadmap: Compose up parity on Android**
+   https://github.com/ryo100794/pdocker-android/issues/3
+
    Track direct executor maturity, TTY attach, signals, networking, volumes,
    archive APIs, and storage cleanup.
 
 2. **Compatibility report: what works vs Docker**
+   https://github.com/ryo100794/pdocker-android/issues/1
+
    Link to `docs/test/COMPATIBILITY.md`, `docs/plan/STATUS.md`, and the latest
    Android smoke logs.
 
 3. **Call for testers: Android device matrix**
+   https://github.com/ryo100794/pdocker-android/issues/2
+
    Ask users to report model, Android version, ABI, SDK route, image pull,
    build, compose up, VS Code port, and runtime benchmark output.
 
