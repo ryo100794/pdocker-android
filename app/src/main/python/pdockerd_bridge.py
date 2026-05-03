@@ -124,10 +124,12 @@ def run_daemon(
         os.environ["PDOCKER_RUNTIME_BACKEND"] = runtime_backend
     if direct_experimental_process_exec:
         os.environ["PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC"] = "1"
-        os.environ["PDOCKER_DIRECT_TRACE_SYSCALLS"] = "1"
+        os.environ.setdefault("PDOCKER_DIRECT_TRACE_SYSCALLS", "0")
+        os.environ.setdefault("PDOCKER_DIRECT_TRACE_MODE", "seccomp")
     else:
         os.environ.pop("PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC", None)
         os.environ.pop("PDOCKER_DIRECT_TRACE_SYSCALLS", None)
+        os.environ.pop("PDOCKER_DIRECT_TRACE_MODE", None)
 
     runner = os.path.join(runtime_dir, "docker-bin", "proot")
     if os.path.exists(runner):

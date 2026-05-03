@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=latest
 ARG CODEX_NPM_PACKAGE=@openai/codex
+ARG NODE_MAJOR=22
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -15,30 +16,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       dumb-init \
-      fd-find \
       git \
       gnupg \
-      iproute2 \
       jq \
-      less \
-      locales \
-      nano \
-      nodejs \
-      npm \
       openssh-client \
       procps \
       python3 \
-      python3-pip \
-      python3-venv \
       ripgrep \
       sudo \
       tar \
       unzip \
-      vim \
-      vulkan-tools \
       libvulkan1 \
       wget \
       xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && node --version \
+    && npm --version \
     && rm -rf /var/lib/apt/lists/*
 
 RUN if [ "$CODE_SERVER_VERSION" = "latest" ]; then \
@@ -52,12 +48,7 @@ RUN npm install -g npm@latest \
 
 RUN mkdir -p /workspace "$CODE_SERVER_USER_DATA_DIR/User" "$CODE_SERVER_EXTENSIONS_DIR" \
     && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension Continue.continue || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension ms-python.python || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension ms-toolsai.jupyter || true \
     && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension redhat.vscode-yaml || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension dbaeumer.vscode-eslint || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension esbenp.prettier-vscode || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension eamodio.gitlens || true \
     && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension ms-azuretools.vscode-docker || true
 
 COPY scripts/start-code-server.sh /usr/local/bin/start-code-server

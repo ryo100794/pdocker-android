@@ -1,6 +1,6 @@
 # pdocker TODO ledger
 
-Snapshot date: 2026-05-02.
+Snapshot date: 2026-05-03.
 
 This is the working TODO list for unfinished items and deliberate temporary
 accommodations. Keep this file current whenever a workaround is added so it
@@ -8,8 +8,13 @@ does not become product behavior by accident.
 
 ## P0: Real Android Container Execution
 
-Status: **SDK28 compat smoke works for tiny build/compose; production runtime
-incomplete**. This is still the main blocker for VS Code server, llama-server,
+Status: **SDK28 compat smoke works for tiny build/compose through scratch
+`pdocker-direct`; the default dev workspace now reaches real Ubuntu `apt-get`
+execution with signature verification fixed under the selective syscall broker.
+The default `compose up --build` command returned successfully once on
+2026-05-03, but Wi-Fi ADB dropped offline before `compose ps/logs` could verify
+that code-server was running, so the default workspace service start remains
+unconfirmed**. This remains the main blocker for VS Code server, llama-server,
 PTY attach, port publishing, and broader Docker compatibility.
 
 Temporary behavior:
@@ -30,8 +35,49 @@ Temporary behavior:
   children, route child `execve()` through the rootfs loader, rewrite common
   absolute path syscalls into the image rootfs, and emulate/suppress known
   Android-blocked startup syscalls.
-- `faccessat2` currently returns a permissive success result. Replace this with
-  host-side path probing and accurate errno mapping.
+- `PDOCKER_DIRECT_TRACE_SYSCALLS=0` now disables verbose syscall logging only;
+  the syscall broker remains enabled by default. This is required so UI builds
+  are not drowned in trace logs while path mediation still happens.
+- `io_uring_setup`/`io_uring_enter`/`io_uring_register` currently return
+  `ENOSYS` in the direct runtime so Node/libuv falls back to portable polling.
+  Replace this with an explicit compatibility policy and tests for runtimes
+  that probe io_uring.
+- `/proc/self/exe` readlink is mediated with a rootfs-local temporary symlink
+  so Node sees `/usr/bin/node` instead of the Android host loader path. Replace
+  this with a cleaner readlink emulation path that does not create helper
+  symlinks in rootfs state.
+- `faccessat2` is now handled in user-space mediation for apt-key. Replace the
+  current minimal path probing with full flags/errno parity.
+- `linkat` currently uses a file-copy fallback, including a dpkg
+  `/var/lib/dpkg/status-old` replace case, because Android app data rejects the
+  hardlink behavior dpkg expects. Replace this with a real inode/hardlink/CoW
+  storage model.
+- apt archive staging currently has a narrow `/var/cache/apt/archives/*.deb` to
+  `/tmp/apt-dpkg-install-*` symlink mediation path. The earlier
+  `DPkg::Go (14: Bad address)` blocker is past the current test point, but the
+  special case still needs to be replaced with general rootfs symlink handling.
+- Absolute symlink normalization inside rootfs is a temporary compatibility
+  measure for direct execution without chroot. Replace it with runtime path
+  mediation that does not mutate image data.
+- `ldconfig`/`ldconfig.real` can be skipped in direct mode to avoid blocking
+  Android ptrace execution. Replace this with deterministic ld cache handling
+  or a correct executable path.
+- Direct tracee cleanup now prunes vanished or detached tracees and includes
+  temporary idle diagnostics. Remove normal stderr diagnostics once the default
+  dev workspace compose build/start is stable.
+- The direct runtime now defaults to a scratch seccomp-BPF selective trace mode
+  instead of stopping every syscall. A focused device bench on 2026-05-03
+  improved `apt-cache policy nodejs` from about 22.5s / 15,839 stops to about
+  4.3s / 1,783 stops. Keep `PDOCKER_DIRECT_TRACE_MODE=syscall` available as a
+  diagnostic fallback and continue tuning the selective syscall set.
+- Seccomp event emulation must take a one-shot syscall-exit stop before writing
+  the final return value. Returning from the seccomp event directly caused
+  emulated `faccessat2` to appear as `ENOSYS`, which made apt-key treat Ubuntu
+  keyrings as unreadable.
+- `setxattr`/`getxattr`/`listxattr` path syscalls are now included in rootfs
+  path mediation. Missing xattr path rewrite caused tools like `ls`, `find`,
+  and apt-key to partially evaluate `/etc/...` against the Android host
+  filesystem.
 - Temporary `/bin` -> `/usr/bin` and related `/sbin`/`/lib` path fallback was
   added in `pdocker-direct` only to prove the syscall broker path, then removed.
   Correct behavior is to preserve Docker/OCI rootfs symlinks during layer
@@ -69,6 +115,21 @@ Real implementation needed:
 7. Add Engine-level TTY plumbing for `docker run -t` and `docker exec -it`.
 8. Add process supervision that survives UI navigation and reports honest exit
    codes.
+9. Reduce direct-runtime overhead for apt/npm-heavy Dockerfiles. Current
+   selective seccomp/ptrace mediation is correct enough for tiny compose and
+   `apt-get update`, but still needs full default workspace confirmation.
+   - Continue tuning the child seccomp-BPF trace filter so path/credential/
+     process syscalls trap, while hot syscalls such as `read`, `write`,
+     `mmap`, `mprotect`, and `brk` run without ptrace stops.
+   - Keep path mediation on `openat`, `newfstatat`, `statx`, `execve`,
+     `readlinkat`, `linkat`, `symlinkat`, `renameat`, `unlinkat`, and related
+     filesystem syscalls.
+   - Keep a comparison bench path for existing proot/proot-like commands when
+     the user supplies one, but do not download or bundle PRoot/fakechroot.
+10. Keep the fast native verification loop documented and working:
+   `scripts/build-native-termux.sh`, `adb push libpdockerdirect.so`, then
+   replace `files/pdocker-runtime/docker-bin/pdocker-direct` via `run-as`.
+   APK rebuilds are for final packaging checks, not every runtime iteration.
 
 Acceptance:
 
@@ -78,6 +139,9 @@ Acceptance:
 - `docker compose up -d` starts a service process, `compose logs` shows its
   stdout, and `compose down` stops it. **Passing for the tiny SDK28 compat
   smoke.**
+- `apt-get update` inside an Ubuntu 22.04 direct rootfs verifies Ubuntu archive
+  signatures without apt-key keyring readability warnings. **Passing in the
+  2026-05-03 device run after xattr mediation and seccomp return fixes.**
 - Opening a container terminal runs inside the container rootfs; `ls /` lists
   container root, not Android host root.
 
@@ -184,14 +248,19 @@ Acceptance:
 
 ## P1: VS Code Server and Dev Workspace
 
-Status: **template exists; runtime blocked**.
+Status: **quick-start template exists; runtime is now the blocker for first
+successful service start**.
 
 Temporary behavior:
 
-- Dockerfile and Compose templates exist for code-server, Continue, Codex, and
-  common dev tools.
-- The image can be inspected, but the server cannot run until the executor
-  exists.
+- The default Dockerfile is standard-only and intentionally trimmed to the
+  first useful path: code-server, Continue, Codex, Docker/YAML editing support,
+  Python 3, git, ripgrep, curl, and Vulkan library presence.
+- The earlier all-tools default (`pip`, `venv`, vim/nano, Jupyter/Python/ESLint/
+  Prettier/GitLens extensions, `vulkan-tools`, etc.) made first on-device
+  `compose up` too slow under ptrace. Reintroduce it as a separate full dev
+  workspace template or optional install layer after quick-start compose is
+  stable.
 
 Real implementation needed:
 
@@ -199,7 +268,9 @@ Real implementation needed:
 2. Once executor lands, start real code-server and expose the actual service
    URL.
 3. Add first-run credential/password handling.
-4. Add test that `docker compose up -d` makes the VS Code HTTP endpoint respond.
+4. Add a full dev workspace template with the heavier editor extensions and
+   CLI tools.
+5. Add test that `docker compose up -d` makes the VS Code HTTP endpoint respond.
 
 Acceptance:
 
@@ -317,8 +388,16 @@ Heavy tests, run before major runtime changes:
 - `bash scripts/android-device-smoke.sh --quick --no-install` for current
   device Engine/helper smoke.
 - `bash scripts/android-device-smoke.sh --no-install` as the full Android
-  runtime smoke. It is expected to fail at Dockerfile `RUN` until
-  `pdocker-direct` advertises `process-exec=1`.
+  runtime smoke. It should pass the tiny direct build/compose path on the SDK28
+  compat flavor; failures here are release blockers.
+- Default dev workspace `docker compose up --detach --build --remove-orphans`
+  on device. This is intentionally heavier than the smoke test and is the gate
+  for VS Code Server/Codex/Continue usability.
+- Runtime performance bench:
+  `bash scripts/android-runtime-bench.sh` for short direct syscall stats, and
+  `bash scripts/android-runtime-bench.sh --apt-update` for the slow apt wall
+  clock path. Optional existing proot comparison:
+  `bash scripts/android-runtime-bench.sh --proot-cmd '<command>'`.
 - GPU benchmark scenarios after GPU/runtime changes
 
 Never mark a temporary workaround as complete unless the acceptance check for

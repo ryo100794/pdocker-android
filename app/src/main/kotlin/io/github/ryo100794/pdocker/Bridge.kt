@@ -57,7 +57,8 @@ class Bridge(
             "COMPOSE_MENU=false",
             "PDOCKER_RUNTIME_BACKEND=${BuildConfig.PDOCKER_RUNTIME_BACKEND}",
             "PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC=${if (BuildConfig.PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC) "1" else "0"}",
-            "PDOCKER_DIRECT_TRACE_SYSCALLS=${if (BuildConfig.PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC) "1" else "0"}",
+            "PDOCKER_DIRECT_TRACE_SYSCALLS=0",
+            "PDOCKER_DIRECT_TRACE_MODE=seccomp",
             // Docker Compose is a CLI plugin; point Docker at the runtime
             // plugin dir so `docker compose ...` works on Android too.
             "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin"
