@@ -30,8 +30,28 @@ or closes.
 - [done] Verified default workspace with `docker ps -a`, `docker compose ps -a`,
   `docker logs --tail=120 pdocker-dev`, and `curl -I http://127.0.0.1:18080/`.
   The real code-server endpoint returns HTTP 302 to `./?folder=/workspace`.
+- [done] Ensure the compat backend startup path force-enables direct process
+  execution when `PDOCKER_RUNTIME_BACKEND=direct`, so the helper probe
+  advertises `process-exec=1` and `RUN/docker run/compose up` no longer fail
+  at the backend gate.
+- [done] Harden llama template env substitution (`LLAMA_MODEL_URL`) to `:-` form
+  and add project-library verification coverage so parser incompatibility regressions
+  are caught by `scripts/verify-project-library.py`.
+- [done] Start llama.cpp GPU workspace on SOG15 through UI/Engine-compatible
+  compose path after rebuilding the APK. The 8B Qwen3 GGUF model is present,
+  `pdocker-llama-cpp` reaches `Up`, `GET /` returns HTTP 200 after model load,
+  `/v1/models` reports the loaded 8.19B GGUF, and `docker logs` streams the
+  real llama-server output.
+- [done] Record a repeatable llama.cpp CPU fallback baseline with
+  `scripts/android-llama-bench.sh`. Latest SOG15 8B Qwen3 Q4_K_M result:
+  8 generated tokens in 34.09s generation time, about 0.235 tokens/s, with
+  the full JSON stored in `docs/test/llama-bench-latest.json` and copied to
+  `files/pdocker/bench/llama-bench-latest.json` on device.
 - [next] Add a UI/device health card that checks the real 18080 listener and
   links to the container logs rather than relying on placeholder state.
+- [next] Prevent duplicate container names after interrupted compose attempts.
+  The current device had an old exited `pdocker-llama-cpp` plus the new running
+  one, which makes name-based `docker logs` and `docker ps` display ambiguous.
 - [next] If default workspace regresses, capture the first failing syscall or
   package-manager operation and add a focused direct-runtime smoke before
   retrying the full template. Latest focused blocker: npm self-update
@@ -151,6 +171,11 @@ or closes.
   `newfstatat` and `openat` as the dominant trapped syscalls.
 - [doing] Replace permissive syscall answers with Docker/Linux-compatible errno
   behavior where package managers depend on it.
+- [done] Treat Android-blocked NUMA policy syscalls (`mbind`,
+  `get_mempolicy`, `set_mempolicy`, `migrate_pages`, `move_pages`, and
+  `set_mempolicy_home_node`) as unavailable with `ENOSYS`. This unblocks
+  llama.cpp/OpenBLAS-style startup on Android app seccomp without granting fake
+  NUMA behavior.
 - [next] Fix npm self-update rename/reify compatibility so
   `npm install -g npm@latest` works without temporarily relying on the
   NodeSource-bundled npm.
@@ -475,26 +500,34 @@ Acceptance:
 
 ## P1: llama.cpp and Model Workflow
 
-Status: **template exists; runtime blocked**.
+Status: **llama.cpp server runs on Android direct runtime with CPU fallback**.
 
 Temporary behavior:
 
 - llama.cpp GPU template, model volume, optional model download, and logs script
   exist.
-- No real llama-server runs on Android direct mode yet.
+- Current SOG15 run starts the real `llama-server` and serves HTTP on
+  `127.0.0.1:18081`, but GPU diagnostics select CPU fallback because Vulkan
+  and CUDA-compatible container signals are not visible yet.
 
 Real implementation needed:
 
 1. Keep Dockerfile standard-only.
 2. Add reliable model download/resume and model selection UI.
 3. Validate the 8B default model path on-device with storage checks.
-4. Once executor lands, verify `docker compose up -d` starts llama-server.
+4. Keep `docker compose up -d` llama-server start in the Android smoke/manual
+   regression loop.
 5. Stream real llama logs through `docker logs`.
+6. Keep Compose env defaults compatible with the strict parser in runtime-backed
+   builds (`${LLAMA_MODEL_URL:-...}`), and add a project-library verify assertion
+   so this regression is caught early.
 
 Acceptance:
 
 - A selected GGUF model appears in UI status.
 - llama-server responds on the configured port from inside the container.
+- GPU mode shows Vulkan/CUDA-compatible evidence before claiming acceleration;
+  otherwise the UI must label the run as CPU fallback.
 
 ## P2: GPU, Vulkan, and CUDA-Compatible API
 

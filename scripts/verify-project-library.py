@@ -70,6 +70,7 @@ def main() -> int:
         "compose gpus all": "gpus: all" in llama_compose,
         "compose exposes build parallelism": "LLAMA_CPP_BUILD_JOBS" in llama_compose,
         "compose model volume": "./models:/models" in llama_compose,
+        "compose model url syntax": re.search(r'\$\{LLAMA_MODEL_URL:-[^}]+\}', llama_compose) is not None,
         "Dockerfile modern Vulkan headers": "FROM ubuntu:24.04" in llama_dockerfile,
         "Dockerfile llama.cpp source": "ggml-org/llama.cpp" in llama_dockerfile,
         "Dockerfile Vulkan build": "-DGGML_VULKAN=ON" in llama_dockerfile,

@@ -75,6 +75,7 @@ def main() -> int:
     require("runtime omits upstream docker cli and compose plugin", "libdocker.so" not in runtime_src and "libdocker-compose.so" not in runtime_src and 'File(dockerBin, "docker")' in runtime_src)
     require("runtime installs direct executor helper", "libpdockerdirect.so" in runtime_src and "pdocker-direct" in runtime_src and "PDOCKER_DIRECT_EXECUTOR" in pdockerd_bridge_src)
     require("direct runtime uses cow bind rootfs sharing", "PDOCKER_USE_COW_BIND" in pdockerd_bridge_src and 'if DIRECT_EXECUTOR and os.path.exists(DIRECT_EXECUTOR)' in pdockerd_src and "cow-bind=1" in direct_src)
+    require("direct runtime treats blocked NUMA policy syscalls as unavailable", "case 235: return \"mbind\"" in direct_src and "syscall_emulate_errno" in direct_src and "ADD_ERRNO_SYSCALL(235, ENOSYS)" in direct_src and "set_mempolicy_home_node" in direct_src)
     require("runtime removes stale docker-compose shim", "docker-compose" in runtime_src)
     require("runtime selects no-proot when proot absent", 'PDOCKER_RUNTIME_BACKEND", "no-proot"' in pdockerd_bridge_src)
     require("terminal exposes test cli config path without bundling cli", "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin" in bridge_src and "Product APKs do not bundle upstream Docker CLI" in bridge_src)

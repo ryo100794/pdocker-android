@@ -1,0 +1,78 @@
+{
+  "schema": "pdocker.llama.bench.v1",
+  "timestamp_utc": "2026-05-03T22:36:02Z",
+  "endpoint": "http://127.0.0.1:28081",
+  "mode": "cpu-fallback-baseline",
+  "prompt": "Repeat exactly: pdocker-ok",
+  "n_predict": 8,
+  "repeat": 1,
+  "models": {
+    "models": [
+      {
+        "name": "model.gguf",
+        "model": "model.gguf",
+        "modified_at": "",
+        "size": "",
+        "digest": "",
+        "type": "model",
+        "description": "",
+        "tags": [
+          ""
+        ],
+        "capabilities": [
+          "completion"
+        ],
+        "parameters": "",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "",
+          "families": [
+            ""
+          ],
+          "parameter_size": "",
+          "quantization_level": ""
+        }
+      }
+    ],
+    "object": "list",
+    "data": [
+      {
+        "id": "model.gguf",
+        "aliases": [],
+        "tags": [],
+        "object": "model",
+        "created": 1777847723,
+        "owned_by": "llamacpp",
+        "meta": {
+          "vocab_type": 2,
+          "n_vocab": 151936,
+          "n_ctx_train": 40960,
+          "n_embd": 4096,
+          "n_params": 8190735360,
+          "size": 5021827072
+        }
+      }
+    ]
+  },
+  "summary": {
+    "predicted_tokens_per_second_mean": 0.23464815887135176,
+    "predicted_tokens_per_second_min": 0.23464815887135176,
+    "predicted_tokens_per_second_max": 0.23464815887135176,
+    "wall_seconds_mean": 39.54354529798729
+  },
+  "runs": [
+    {
+      "index": 0,
+      "http_status": 200,
+      "wall_seconds": 39.54354529798729,
+      "prompt_tokens": 6,
+      "prompt_seconds": 5.385559,
+      "prompt_tokens_per_second": 1.1140904778872536,
+      "predicted_tokens": 8,
+      "predicted_seconds": 34.093598,
+      "predicted_tokens_per_second": 0.23464815887135176,
+      "content_preview": "\n\nOkay, I need to figure out"
+    }
+  ]
+}

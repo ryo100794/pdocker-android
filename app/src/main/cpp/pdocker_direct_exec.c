@@ -271,6 +271,11 @@ static const char *syscall_name(long nr) {
         case 226: return "mprotect";
         case 227: return "msync";
         case 233: return "madvise";
+        case 235: return "mbind";
+        case 236: return "get_mempolicy";
+        case 237: return "set_mempolicy";
+        case 238: return "migrate_pages";
+        case 239: return "move_pages";
         case 242: return "sched_getaffinity";
         case 260: return "wait4";
         case 261: return "prlimit64";
@@ -336,7 +341,19 @@ static int syscall_emulate_success(long nr) {
            nr == 293;    /* rseq: glibc can continue when registration appears unavailable. */
 }
 
+static int syscall_emulate_errno(long nr, int *err) {
+    if ((nr >= 235 && nr <= 239) || nr == 450) {
+        /* Android app seccomp commonly blocks NUMA policy syscalls.  Container
+         * workloads such as OpenBLAS/llama.cpp should treat unavailable NUMA
+         * policy support like a kernel without NUMA support and continue. */
+        if (err) *err = ENOSYS;
+        return 1;
+    }
+    return 0;
+}
+
 static int syscall_completed_in_userland(long nr) {
+    int ignored = 0;
     return nr == 17 ||   /* getcwd */
            nr == 36 ||   /* symlinkat */
            nr == 37 ||   /* linkat */
@@ -345,6 +362,7 @@ static int syscall_completed_in_userland(long nr) {
            nr == 426 ||  /* io_uring_enter */
            nr == 427 ||  /* io_uring_register */
            nr == 439 ||  /* faccessat2 */
+           syscall_emulate_errno(nr, &ignored) ||
            syscall_emulate_success(nr);
 }
 
@@ -367,7 +385,7 @@ static int syscall_completed_in_userland(long nr) {
 } while (0)
 
 static int install_selective_seccomp_trace_filter(void) {
-    struct sock_filter filter[128];
+    struct sock_filter filter[160];
     size_t n = 0;
 
     ADD_STMT(BPF_LD | BPF_W | BPF_ABS, (uint32_t)offsetof(struct seccomp_data, arch));
@@ -429,11 +447,17 @@ static int install_selective_seccomp_trace_filter(void) {
     ADD_TRACE_SYSCALL(177);  /* getegid */
     ADD_TRACE_SYSCALL(221);  /* execve */
     ADD_ERRNO_SYSCALL(293, ENOSYS);  /* rseq */
+    ADD_ERRNO_SYSCALL(235, ENOSYS);  /* mbind */
+    ADD_ERRNO_SYSCALL(236, ENOSYS);  /* get_mempolicy */
+    ADD_ERRNO_SYSCALL(237, ENOSYS);  /* set_mempolicy */
+    ADD_ERRNO_SYSCALL(238, ENOSYS);  /* migrate_pages */
+    ADD_ERRNO_SYSCALL(239, ENOSYS);  /* move_pages */
     ADD_ERRNO_SYSCALL(425, ENOSYS);  /* io_uring_setup */
     ADD_ERRNO_SYSCALL(426, ENOSYS);  /* io_uring_enter */
     ADD_ERRNO_SYSCALL(427, ENOSYS);  /* io_uring_register */
     ADD_ERRNO_SYSCALL(435, ENOSYS);  /* clone3 */
     ADD_ERRNO_SYSCALL(436, ENOSYS);  /* close_range */
+    ADD_ERRNO_SYSCALL(450, ENOSYS);  /* set_mempolicy_home_node */
 
     ADD_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
 
@@ -1711,7 +1735,20 @@ static int handle_syscall_entry(pid_t pid, struct user_pt_regs *regs, TraceeStat
             regs->regs[8] = (unsigned long long)remapped_nr;
         }
     }
-    if (!forced_emulation && syscall_emulate_success(state->last_nr)) {
+    int emulated_errno = 0;
+    if (!forced_emulation && syscall_emulate_errno(state->last_nr, &emulated_errno)) {
+        state->emulated_result = (unsigned long long)-emulated_errno;
+        TRACE_LOG(
+                "pdocker-direct-trace: pid=%d emulate-errno nr=%ld(%s) errno=%d via skipped syscall\n",
+                (int)pid, state->last_nr, syscall_name(state->last_nr), emulated_errno);
+        if (complete_emulated_syscall(pid, regs, state->emulated_result) == 0) {
+            if (completed_in_userland) *completed_in_userland = 1;
+            state->emulated_nr = state->last_nr;
+        } else {
+            fprintf(stderr, "pdocker-direct-trace: pid=%d setregs errno emulation failed: %s\n",
+                    (int)pid, strerror(errno));
+        }
+    } else if (!forced_emulation && syscall_emulate_success(state->last_nr)) {
         state->emulated_result = prepare_emulated_result(pid, state, state->last_nr);
         TRACE_LOG(
                 "pdocker-direct-trace: pid=%d emulate-success nr=%ld(%s) result=%llu via skipped syscall\n",
@@ -1949,6 +1986,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                                    (state->last_emulated_nr >= 0 &&
                                     syscall_completed_in_userland(state->last_emulated_nr)) ||
                                    completed_current;
+                int emulated_errno = 0;
                 if (!suppressible && current_nr == 17 &&
                     emulate_getcwd(got, &regs, state, rootfs, &state->emulated_result)) {
                     state->last_nr = current_nr;
@@ -1973,6 +2011,19 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                         suppressible = 1;
                     } else {
                         fprintf(stderr, "pdocker-direct-trace: pid=%d setregs direct faccess SIGSYS emulation failed: %s\n",
+                                (int)got, strerror(errno));
+                    }
+                } else if (!suppressible && syscall_emulate_errno(current_nr, &emulated_errno)) {
+                    state->last_nr = current_nr;
+                    for (int i = 0; i < 6; ++i) state->last_args[i] = regs.regs[i];
+                    state->emulated_result = (unsigned long long)-emulated_errno;
+                    if (complete_emulated_syscall(got, &regs, state->emulated_result) == 0) {
+                        state->last_emulated_nr = current_nr;
+                        state->emulated_nr = -1;
+                        state->in_syscall = 0;
+                        suppressible = 1;
+                    } else {
+                        fprintf(stderr, "pdocker-direct-trace: pid=%d setregs direct errno SIGSYS emulation failed: %s\n",
                                 (int)got, strerror(errno));
                     }
                 } else if (!suppressible && syscall_emulate_success(current_nr)) {

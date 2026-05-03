@@ -218,6 +218,8 @@ docker_cmd "cd pdocker/projects/$PROJECT && docker build -t local/pdocker-device
 echo "[pdocker smoke] compose up/down"
 docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build && CID=\$(docker compose ps -q app) && test -n \"\$CID\" && printf '%s' \"\$CID\" > .smoke-cid && for i in \$(seq 1 10); do docker compose logs --tail=80 | grep -q pdocker-smoke-build && break; sleep 1; done && docker compose logs --tail=80 | grep -q pdocker-smoke-build && EXEC_OUT=\$(docker exec \"\$CID\" sh -lc 'echo pdocker-exec-ok' 2>&1) && echo \"\$EXEC_OUT\" && echo \"\$EXEC_OUT\" | grep -q pdocker-exec-ok && ! echo \"\$EXEC_OUT\" | grep -q '/vendor/xbin' && docker compose ps -a"
 CID="$(run_as "cat files/pdocker/projects/$PROJECT/.smoke-cid" | tr -d '\r')"
+echo "[pdocker smoke] docker ps filters"
+docker_cmd "FILTERED=\$(docker ps -a --filter name=device-smoke-app-1 -q) && test \"\$FILTERED\" = \"$CID\" && test -z \"\$(docker ps -a --filter name=pdocker-smoke-filter-miss -q)\""
 echo "[pdocker smoke] engine exec -it"
 engine_exec_it_smoke "$CID"
 docker_cmd "cd pdocker/projects/$PROJECT && docker compose down"

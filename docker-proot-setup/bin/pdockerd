@@ -2997,7 +2997,49 @@ def _signal_pid_group(pid, sig):
             return False
 
 
-def list_containers(all_=False):
+def _container_matches_filters(summary, filters):
+    if not filters:
+        return True
+    names = [n.lstrip("/") for n in summary.get("Names") or []]
+    cid = summary.get("Id", "")
+    labels = summary.get("Labels") or {}
+    image = summary.get("Image", "")
+    state = summary.get("State", "")
+    status = summary.get("Status", "")
+    for key, wanted in filters.items():
+        if not wanted:
+            continue
+        if key == "name":
+            if not any(any(w in n or w in ("/" + n) for n in names) for w in wanted):
+                return False
+        elif key == "id":
+            if not any(cid.startswith(w) for w in wanted):
+                return False
+        elif key == "status":
+            if not any(w == state or status.lower().startswith(w.lower()) for w in wanted):
+                return False
+        elif key in ("ancestor", "image"):
+            if not any(w == image or w in image for w in wanted):
+                return False
+        elif key == "label":
+            matched = False
+            for w in wanted:
+                if "=" in w:
+                    lk, lv = w.split("=", 1)
+                    matched = labels.get(lk) == lv
+                else:
+                    matched = w in labels
+                if matched:
+                    break
+            if not matched:
+                return False
+        else:
+            # Unknown filters should not broaden results silently.
+            return False
+    return True
+
+
+def list_containers(all_=False, filters=None):
     containers = []
     if not os.path.isdir(CONTAINERS_DIR):
         return containers
@@ -3018,7 +3060,7 @@ def list_containers(all_=False):
             docker_status = "Created"
         else:
             docker_status = f"Exited ({st.get('ExitCode', 0)})"
-        containers.append({
+        summary = {
             "Id": cid,
             "Names": [state.get("Name", f"/{cid[:12]}")],
             "Image": img,
@@ -3034,7 +3076,10 @@ def list_containers(all_=False):
             "Mounts": [],
             "HostConfig": {"NetworkMode": "default"},
             "NetworkSettings": state.get("NetworkSettings", {}),
-        })
+        }
+        if not _container_matches_filters(summary, filters or {}):
+            continue
+        containers.append(summary)
     return containers
 
 
@@ -4023,7 +4068,8 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         # --- Containers ---
         if path == "/containers/json" and method == "GET":
             all_ = query.get("all", ["false"])[0] in ("1", "true", "True")
-            self._send_json(200, list_containers(all_=all_))
+            filters = _decode_event_filters(query.get("filters", [""])[0])
+            self._send_json(200, list_containers(all_=all_, filters=filters))
             return
 
         if path == "/containers/create" and method == "POST":

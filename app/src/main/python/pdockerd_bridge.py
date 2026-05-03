@@ -125,7 +125,12 @@ def run_daemon(
 
     if runtime_backend:
         os.environ["PDOCKER_RUNTIME_BACKEND"] = runtime_backend
-    if direct_experimental_process_exec:
+    effective_process_exec = bool(direct_experimental_process_exec)
+    # For direct backend runs, process-exec must be explicitly available so
+    # container RUN/docker run/compose services can be scheduled.
+    if runtime_backend == "direct":
+        effective_process_exec = True
+    if effective_process_exec:
         os.environ["PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC"] = "1"
         os.environ.setdefault("PDOCKER_DIRECT_TRACE_SYSCALLS", "0")
         os.environ.setdefault("PDOCKER_DIRECT_TRACE_MODE", "seccomp")
