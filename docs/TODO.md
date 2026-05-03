@@ -18,15 +18,21 @@ or closes.
   exit code, and `compose down` pass with the scratch direct executor.
 - [done] Ubuntu `apt-get update` signature verification works under direct
   runtime path mediation.
-- [doing] Re-run default dev workspace `compose up --detach --build` after ADB
-  reconnect and verify `compose ps`, `compose logs`, and code-server process
-  state. Last command returned successfully once, but ADB went offline before
-  service verification.
-- [next] If default workspace starts, open/verify the real `18080` code-server
-  endpoint and record the container log path.
-- [next] If default workspace fails, capture the first failing syscall or
+- [done] Re-run default dev workspace `compose up --detach --build` on SOG15:
+  Ubuntu `apt-get`, NodeSource Node.js, code-server, Codex, Continue/YAML/
+  Docker extensions, image tagging, container create, and service start passed.
+- [done] Verified default workspace with `docker ps -a`, `docker compose ps -a`,
+  `docker logs --tail=120 pdocker-dev`, and `curl -I http://127.0.0.1:18080/`.
+  The real code-server endpoint returns HTTP 302 to `./?folder=/workspace`.
+- [next] Add a UI/device health card that checks the real 18080 listener and
+  links to the container logs rather than relying on placeholder state.
+- [next] If default workspace regresses, capture the first failing syscall or
   package-manager operation and add a focused direct-runtime smoke before
-  retrying the full template.
+  retrying the full template. Latest focused blocker: npm self-update
+  (`npm install -g npm@latest`) retires its own tree then loses
+  `promise-retry` during Arborist rebuild. `@openai/codex` install with the
+  NodeSource-bundled npm 10.9.7 works, so the template temporarily avoids the
+  self-update while the runtime rename/reify parity bug remains open.
 - [next] Add `docker run --rm ubuntu:22.04 echo hi` as an Android smoke gate.
 
 ### Performance
@@ -40,16 +46,45 @@ or closes.
   trace mode to `seccomp`.
 - [done] Establish improved baseline: selective tracing `apt-cache policy
   nodejs` took about 4.3s / 1,783 stops.
-- [doing] Keep default workspace build on `apt-get`; performance fixes belong
+- [done] Keep default workspace build on `apt-get`; performance fixes belong
   in syscall mediation, not Dockerfile shortcuts.
-- [next] Add benchmark output capture to a stable artifact file under
+- [done] Add benchmark output capture to a stable artifact file under
   `files/pdocker/bench` so device runs can be compared over time.
-- [next] Add a regression threshold for stop count and wall-clock deltas in the
+- [done] Add a regression threshold for stop count and wall-clock deltas in the
   lightweight bench, with generous device variance.
+- [done] Make the benchmark fail when no traced rootfs/stats are available;
+  after build-prune removed transient roots, the old script could report a
+  false PASS on `rootfs dynamic loader not found`.
+- [done] Add Docker-compatible build/system prune paths for interrupted build
+  cleanup. `docker builder prune -f` and `docker system prune -f` pass through
+  the bundled Docker CLI on Android.
+- [done] Add tracer process cleanup: `PTRACE_O_EXITKILL` where available,
+  separate child process group, and SIGINT/SIGTERM/SIGHUP/SIGQUIT handling so
+  aborted direct runs do not leave tracee process leftovers.
 - [next] Run optional PRoot/proot-like comparison only when an existing command
   is supplied; do not download or bundle external PRoot/fakechroot.
-- [next] Profile remaining hot trapped syscalls after `newfstatat/openat` and
-  decide which can be safely handled with fewer ptrace stops.
+- [doing] Profile remaining hot trapped syscalls after `newfstatat/openat` and
+  decide which can be safely handled with fewer ptrace stops. Current tuning
+  adds seccomp errno returns for probe syscalls and a blocking
+  `waitpid(__WALL)` loop. On SOG15, the
+  filesystem-heavy `npm install -g @openai/codex --dry-run` profile improved
+  from about 19.4s with the old polling wait loop to about 1.8-2.4s with the
+  blocking wait loop at roughly the same 9.9k traced stops.
+  A clean lightweight run after pruning uses
+  `docker.io/library/ubuntu:22.04` and reports about 0.210s / 1,069 stops,
+  with `newfstatat` and `openat` still the top trapped syscalls.
+- [next] Optimize Python layer diff/snapshot. Default dev workspace now starts,
+  but large COPY/RUN layer snapshots can take 70-180s each; this is not ptrace
+  time and needs a separate storage/diff profiler.
+- [next] Revisit rootfs-fd path rewriting as an opt-in optimization only after
+  fd lifetime handling is proven. A trial that rewrote absolute `*at` paths to
+  `openat(rootfs_fd, relative)` made apt resolver cleanup hit
+  `getaddrinfo (9: Bad file descriptor)`, so the optimization is currently
+  gated behind `PDOCKER_DIRECT_ROOTFD_REWRITE` and off by default.
+- [next] Revisit `statx -> ENOSYS` as an optional Node/npm optimization only
+  after apt Acquire DNS remains stable; a trial removed `statx` stops but made
+  `apt-get update` report `Could not resolve 'ports.ubuntu.com'` despite
+  `getent hosts` working.
 
 ### Filesystem / Syscall Semantics
 
@@ -57,8 +92,14 @@ or closes.
   Android host paths after `statx`.
 - [done] Fix seccomp event emulation so user-space return values survive via a
   one-shot syscall-exit stop.
+- [done] `dpkg --configure -a` focused reproduction passes after the previous
+  `ca-certificates`/debconf failure; a device run completed in about 145s with
+  `newfstatat` and `openat` as the dominant trapped syscalls.
 - [doing] Replace permissive syscall answers with Docker/Linux-compatible errno
   behavior where package managers depend on it.
+- [next] Fix npm self-update rename/reify compatibility so
+  `npm install -g npm@latest` works without temporarily relying on the
+  NodeSource-bundled npm.
 - [next] Replace `linkat` copy fallback with an inode/hardlink/CoW storage
   model.
 - [next] Replace `/proc/self/exe` rootfs temporary symlink mediation with direct
@@ -100,10 +141,10 @@ or closes.
 Status: **SDK28 compat smoke works for tiny build/compose through scratch
 `pdocker-direct`; the default dev workspace now reaches real Ubuntu `apt-get`
 execution with signature verification fixed under the selective syscall broker.
-The default `compose up --build` command returned successfully once on
-2026-05-03, but Wi-Fi ADB dropped offline before `compose ps/logs` could verify
-that code-server was running, so the default workspace service start remains
-unconfirmed**. This remains the main blocker for VS Code server, llama-server,
+The default `compose up --build` command returned successfully on 2026-05-03
+and `pdocker-dev` was verified running with real code-server logs and
+HTTP 302 from `127.0.0.1:18080`**. This closes the first VS Code server/Codex/
+Continue usability gate; llama-server,
 PTY attach, port publishing, and broader Docker compatibility.
 
 Temporary behavior:

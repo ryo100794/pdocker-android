@@ -2,6 +2,7 @@ package io.github.ryo100794.pdocker
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
 import android.os.Build
 import android.util.Log
 import java.io.File
@@ -18,28 +19,20 @@ import java.io.File
  *   │   ├── pdocker-ld-linux-aarch64 (-> nativeLibraryDir/libpdocker-ld-linux-aarch64.so)
  *   │   ├── docker         (-> nativeLibraryDir/libdocker.so)
  *   │   ├── cli-plugins/docker-compose (-> nativeLibraryDir/libdocker-compose.so)
- *   │   └── proot          (optional legacy PRoot payload)
- *   ├── etc/resolv.conf    (DNS nameservers; crane reads via proot bind)
+ *   ├── etc/resolv.conf    (DNS nameservers discovered from Android networks)
  *   └── lib/
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
- *       ├── pdocker-rootfs-shim.so (-> nativeLibraryDir/libpdocker-rootfs-shim.so)
- *       └── libtalloc.so   (optional legacy PRoot dependency)
+ *       └── pdocker-rootfs-shim.so (-> nativeLibraryDir/libpdocker-rootfs-shim.so)
  *
  * pdockerd derives _PROJECT_DIR = dirname(dirname(__file__)), so running
  * runtime/bin/pdockerd makes it find everything via the expected relative
  * paths. Symlinks point at real ELFs in nativeLibraryDir — the only
  * location where Android allows execve on API 29+.
  *
- * DNS: crane is pure-Go with CGO disabled, so it reads /etc/resolv.conf
- * directly instead of going through Android's bionic resolver. Android
- * doesn't ship /etc/resolv.conf to apps, so crane falls back to [::1]:53
- * and hits "connection refused". We can't shim with a shell wrapper
- * because SELinux blocks execve of scripts under /data/data/<pkg>/files
- * (exec_no_trans on API 29+). Instead, pdockerd itself honours
- * PDOCKER_CRANE_WRAP: pdockerd_bridge.py sets it to the proot invocation
- * that bind-mounts our resolv.conf onto /etc/resolv.conf before crane
- * runs. proot itself is a symlink into nativeLibraryDir, so its execve
- * is allowed.
+ * DNS: container processes use glibc and read /etc/resolv.conf directly.
+ * Android does not expose a normal host /etc/resolv.conf to apps, so we
+ * discover DNS servers from ConnectivityManager and pdockerd injects this
+ * file into build and runtime rootfs state.
  */
 object PdockerdRuntime {
     private const val TAG = "pdockerd-runtime"
@@ -55,10 +48,8 @@ nameserver 1.1.1.1
         val dockerCliPlugins = File(dockerBin, "cli-plugins").apply { mkdirs() }
         val lib = File(root, "lib").apply { mkdirs() }
         val etc = File(root, "etc").apply { mkdirs() }
-        // proot needs a writable temp dir for its "glue rootfs" (fabricated
-        // directory stubs for missing bind targets). Android app sandboxes
-        // have no writable /tmp, so hand proot one inside the app's data dir
-        // via PROOT_TMP_DIR (wired up in pdockerd_bridge.py).
+        // Android app sandboxes have no writable /tmp, so keep runtime temp
+        // files inside the app's data dir.
         File(root, "tmp").apply { mkdirs() }
 
         val nativeDir = File(ctx.applicationInfo.nativeLibraryDir)
@@ -71,8 +62,8 @@ nameserver 1.1.1.1
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
         optionalLinkTo(File(nativeDir, "libpdockerdirect.so"), File(dockerBin, "pdocker-direct"))
         optionalLinkTo(File(nativeDir, "libpdocker-ld-linux-aarch64.so"), File(dockerBin, "pdocker-ld-linux-aarch64"))
-        optionalLinkTo(File(nativeDir, "libproot.so"),         File(dockerBin, "proot"))
-        optionalLinkTo(File(nativeDir, "libproot-loader.so"),  File(dockerBin, "proot-loader"))
+        java.nio.file.Files.deleteIfExists(File(dockerBin, "proot").toPath())
+        java.nio.file.Files.deleteIfExists(File(dockerBin, "proot-loader").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "pl").toPath())
         linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
         optionalLinkTo(
@@ -86,9 +77,9 @@ nameserver 1.1.1.1
         java.nio.file.Files.deleteIfExists(File(dockerBin, "docker-compose").toPath())
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
         optionalLinkTo(File(nativeDir, "libpdocker-rootfs-shim.so"), File(lib, "pdocker-rootfs-shim.so"))
-        optionalLinkTo(File(nativeDir, "libtalloc.so"),        File(lib, "libtalloc.so"))
+        java.nio.file.Files.deleteIfExists(File(lib, "libtalloc.so").toPath())
 
-        writeIfChanged(File(etc, "resolv.conf"), FALLBACK_RESOLV_CONF)
+        writeIfChanged(File(etc, "resolv.conf"), androidResolvConf(ctx))
 
         if (versionChanged) versionStamp.writeText(currentVersion)
 
@@ -100,6 +91,26 @@ nameserver 1.1.1.1
             dst.writeText(content)
             Log.i(TAG, "wrote ${content.length} bytes to $dst")
         }
+    }
+
+    private fun androidResolvConf(ctx: Context): String {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return FALLBACK_RESOLV_CONF
+        val networks = buildList {
+            cm.activeNetwork?.let { add(it) }
+            cm.allNetworks.forEach { if (!contains(it)) add(it) }
+        }
+        val servers = LinkedHashSet<String>()
+        for (network in networks) {
+            val props = cm.getLinkProperties(network) ?: continue
+            for (addr in props.dnsServers) {
+                val host = addr.hostAddress?.substringBefore('%') ?: continue
+                if (host.isNotBlank() && host != "::1" && host != "127.0.0.1") {
+                    servers.add(host)
+                }
+            }
+        }
+        if (servers.isEmpty()) return FALLBACK_RESOLV_CONF
+        return servers.joinToString(separator = "") { "nameserver $it\n" }
     }
 
     private fun extractAsset(ctx: Context, assetPath: String, dst: File, force: Boolean) {

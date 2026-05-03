@@ -30,6 +30,10 @@ static int g_trace_exec = 0;
 static int g_sync_usec = 0;
 static int g_stats = 0;
 static int g_selective_trace = 0;
+static int g_poll_wait = 0;
+static int g_rootfd_rewrite = 0;
+static int g_rootfs_fd = -1;
+static volatile sig_atomic_t g_trace_child_pgid = -1;
 static unsigned long long g_syscall_counts[512];
 static unsigned long long g_stop_count = 0;
 static struct timespec g_stats_start;
@@ -37,6 +41,26 @@ static int write_tracee_data(pid_t pid, unsigned long long addr, const void *val
 static const char *syscall_name(long nr);
 
 #define TRACE_LOG(...) do { if (g_trace_verbose) fprintf(stderr, __VA_ARGS__); } while (0)
+
+static void tracer_signal_handler(int sig) {
+    pid_t pgid = (pid_t)g_trace_child_pgid;
+    if (pgid > 0) {
+        kill(-pgid, SIGKILL);
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static void install_tracer_signal_handlers(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = tracer_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+}
 
 static int env_flag_enabled(const char *name) {
     const char *v = getenv(name);
@@ -261,6 +285,8 @@ static const char *syscall_name(long nr) {
         case 425: return "io_uring_setup";
         case 426: return "io_uring_enter";
         case 427: return "io_uring_register";
+        case 435: return "clone3";
+        case 436: return "close_range";
         case 440: return "process_madvise";
         case 441: return "epoll_pwait2";
         case 443: return "quotactl_fd";
@@ -325,6 +351,10 @@ static int syscall_completed_in_userland(long nr) {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1), \
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE)
 
+#define ERRNO_SYSCALL_NR(nr, err) \
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1), \
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((err) & SECCOMP_RET_DATA))
+
 static int install_selective_seccomp_trace_filter(void) {
     struct sock_filter filter[] = {
         BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (uint32_t)offsetof(struct seccomp_data, arch)),
@@ -366,7 +396,7 @@ static int install_selective_seccomp_trace_filter(void) {
         TRACE_SYSCALL_NR(439),  /* faccessat2 */
 
         /* Process startup, credentials, and Android-blocked compatibility. */
-        TRACE_SYSCALL_NR(99),   /* set_robust_list */
+        ERRNO_SYSCALL_NR(99, ENOSYS),   /* set_robust_list: glibc tolerates unavailable robust futex lists. */
         TRACE_SYSCALL_NR(143),  /* setregid */
         TRACE_SYSCALL_NR(144),  /* setgid */
         TRACE_SYSCALL_NR(145),  /* setreuid */
@@ -383,10 +413,12 @@ static int install_selective_seccomp_trace_filter(void) {
         TRACE_SYSCALL_NR(176),  /* getgid */
         TRACE_SYSCALL_NR(177),  /* getegid */
         TRACE_SYSCALL_NR(221),  /* execve */
-        TRACE_SYSCALL_NR(293),  /* rseq */
-        TRACE_SYSCALL_NR(425),  /* io_uring_setup */
-        TRACE_SYSCALL_NR(426),  /* io_uring_enter */
-        TRACE_SYSCALL_NR(427),  /* io_uring_register */
+        ERRNO_SYSCALL_NR(293, ENOSYS),  /* rseq */
+        ERRNO_SYSCALL_NR(425, ENOSYS),  /* io_uring_setup */
+        ERRNO_SYSCALL_NR(426, ENOSYS),  /* io_uring_enter */
+        ERRNO_SYSCALL_NR(427, ENOSYS),  /* io_uring_register */
+        ERRNO_SYSCALL_NR(435, ENOSYS),  /* clone3 */
+        ERRNO_SYSCALL_NR(436, ENOSYS),  /* close_range */
 
         BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
     };
@@ -401,6 +433,7 @@ static int install_selective_seccomp_trace_filter(void) {
 }
 
 #undef TRACE_SYSCALL_NR
+#undef ERRNO_SYSCALL_NR
 
 static long syscall_remap_number(long nr) {
     return nr;
@@ -647,6 +680,9 @@ static int set_trace_options(pid_t pid) {
                 PTRACE_O_TRACEFORK |
                 PTRACE_O_TRACEVFORK |
                 PTRACE_O_TRACECLONE;
+#ifdef PTRACE_O_EXITKILL
+    opts |= PTRACE_O_EXITKILL;
+#endif
     if (ptrace(PTRACE_SETOPTIONS, pid, NULL, (void *)opts) != 0) {
         TRACE_LOG("pdocker-direct-trace: PTRACE_SETOPTIONS pid=%d failed: %s\n",
                   (int)pid, strerror(errno));
@@ -743,6 +779,19 @@ static int should_rewrite_path(const char *rootfs, const char *path) {
     return 1;
 }
 
+static int path_has_parent_segment(const char *path) {
+    if (!path) return 0;
+    const char *p = path;
+    while (*p) {
+        while (*p == '/') p++;
+        if (p[0] == '.' && p[1] == '.' && (p[2] == '/' || p[2] == '\0')) {
+            return 1;
+        }
+        while (*p && *p != '/') p++;
+    }
+    return 0;
+}
+
 static void trace_interesting_path(pid_t pid, const char *context, int arg_index, const char *path) {
     if (!g_trace_paths) return;
     if (!path) return;
@@ -779,6 +828,47 @@ static int rewrite_path_arg_scratch(pid_t pid, struct user_pt_regs *regs, int ar
     return 1;
 }
 
+static int rewrite_at_path_arg(pid_t pid, struct user_pt_regs *regs, int dirfd_index,
+                               int path_index, const char *rootfs, const char *context,
+                               unsigned long long scratch_offset) {
+    char original[PATH_MAX];
+    if (read_tracee_string(pid, regs->regs[path_index], original, sizeof(original)) < 0) {
+        return 0;
+    }
+    trace_interesting_path(pid, context, path_index, original);
+    if (!should_rewrite_path(rootfs, original)) return 0;
+
+    if (g_rootfd_rewrite &&
+        g_rootfs_fd >= 0 &&
+        original[0] == '/' &&
+        original[1] != '\0' &&
+        original[1] != '/' &&
+        !path_has_parent_segment(original)) {
+        regs->regs[dirfd_index] = (unsigned long long)g_rootfs_fd;
+        regs->regs[path_index] = regs->regs[path_index] + 1;
+        TRACE_LOG("pdocker-direct-trace: pid=%d rootfd-rewrite %s %s -> fd=%d %s\n",
+                  (int)pid, context, original, g_rootfs_fd, original + 1);
+        return 1;
+    }
+
+    char rewritten[PATH_MAX];
+    if (snprintf(rewritten, sizeof(rewritten), "%s%s", rootfs, original) >= (int)sizeof(rewritten)) {
+        fprintf(stderr, "pdocker-direct-trace: pid=%d path too long for %s: %s\n",
+                (int)pid, context, original);
+        return 0;
+    }
+    unsigned long long scratch = (regs->sp - scratch_offset) & ~15ULL;
+    if (write_tracee_string(pid, scratch, rewritten) != 0) {
+        fprintf(stderr, "pdocker-direct-trace: pid=%d path rewrite failed for %s: %s -> %s (%s)\n",
+                (int)pid, context, original, rewritten, strerror(errno));
+        return 0;
+    }
+    regs->regs[path_index] = scratch;
+    TRACE_LOG("pdocker-direct-trace: pid=%d rewrite %s %s -> %s\n",
+              (int)pid, context, original, rewritten);
+    return 1;
+}
+
 static int rewrite_path_arg(pid_t pid, struct user_pt_regs *regs, int arg_index,
                             const char *rootfs, const char *context) {
     return rewrite_path_arg_scratch(pid, regs, arg_index, rootfs, context, 8192u);
@@ -789,6 +879,15 @@ static int rewrite_path_args(pid_t pid, struct user_pt_regs *regs, int arg_a, in
     int rewrote = 0;
     rewrote |= rewrite_path_arg_scratch(pid, regs, arg_a, rootfs, context, 16384u);
     rewrote |= rewrite_path_arg_scratch(pid, regs, arg_b, rootfs, context, 8192u);
+    return rewrote;
+}
+
+static int rewrite_at_path_args(pid_t pid, struct user_pt_regs *regs,
+                                int dirfd_a, int path_a, int dirfd_b, int path_b,
+                                const char *rootfs, const char *context) {
+    int rewrote = 0;
+    rewrote |= rewrite_at_path_arg(pid, regs, dirfd_a, path_a, rootfs, context, 16384u);
+    rewrote |= rewrite_at_path_arg(pid, regs, dirfd_b, path_b, rootfs, context, 8192u);
     return rewrote;
 }
 
@@ -1416,17 +1515,17 @@ static int rewrite_syscall_paths(pid_t pid, struct user_pt_regs *regs, TraceeSta
         case 291: /* statx(dirfd, pathname, flags, mask, statxbuf) */
         case 437: /* openat2(dirfd, pathname, how, size) */
         case 439: /* faccessat2(dirfd, pathname, mode, flags) */
-            return rewrite_path_arg(pid, regs, 1, rootfs, syscall_name(nr));
+            return rewrite_at_path_arg(pid, regs, 0, 1, rootfs, syscall_name(nr), 8192u);
         case 78:  /* readlinkat(dirfd, pathname, buf, bufsiz) */
             if (rewrite_proc_self_exe_readlinkat(pid, regs, state, rootfs)) return 1;
             return rewrite_path_arg(pid, regs, 1, rootfs, syscall_name(nr));
         case 36:  /* symlinkat(target, newdirfd, linkpath) */
-            return rewrite_path_arg(pid, regs, 2, rootfs, syscall_name(nr));
+            return rewrite_at_path_arg(pid, regs, 1, 2, rootfs, syscall_name(nr), 8192u);
         case 37:  /* linkat(olddirfd, oldpath, newdirfd, newpath, flags) */
-            return rewrite_path_args(pid, regs, 1, 3, rootfs, syscall_name(nr));
+            return rewrite_at_path_args(pid, regs, 0, 1, 2, 3, rootfs, syscall_name(nr));
         case 38:  /* renameat(olddirfd, oldpath, newdirfd, newpath) */
         case 276: /* renameat2(olddirfd, oldpath, newdirfd, newpath, flags) */
-            return rewrite_path_args(pid, regs, 1, 3, rootfs, syscall_name(nr));
+            return rewrite_at_path_args(pid, regs, 0, 1, 2, 3, rootfs, syscall_name(nr));
         case 43:  /* statfs(pathname, buf) */
             return rewrite_path_arg(pid, regs, 0, rootfs, syscall_name(nr));
         case 49:  /* chdir(pathname) */
@@ -1434,7 +1533,7 @@ static int rewrite_syscall_paths(pid_t pid, struct user_pt_regs *regs, TraceeSta
         case 221: /* execve(pathname, argv, envp) */
             return rewrite_execve_arg(pid, regs, state, rootfs, loader, libpath);
         case 281: /* execveat(dirfd, pathname, argv, envp, flags) */
-            return rewrite_path_arg(pid, regs, 1, rootfs, syscall_name(nr));
+            return rewrite_at_path_arg(pid, regs, 0, 1, rootfs, syscall_name(nr), 8192u);
         default:
             return 0;
     }
@@ -1476,6 +1575,16 @@ static int handle_syscall_entry(pid_t pid, struct user_pt_regs *regs, TraceeStat
             state->emulated_nr = state->last_nr;
         } else {
             fprintf(stderr, "pdocker-direct-trace: pid=%d setregs io_uring emulation failed: %s\n",
+                    (int)pid, strerror(errno));
+        }
+    } else if (state->last_nr == 57 && (int)regs->regs[0] == g_rootfs_fd) {
+        forced_emulation = 1;
+        state->emulated_result = 0;
+        if (complete_emulated_syscall(pid, regs, state->emulated_result) == 0) {
+            if (completed_in_userland) *completed_in_userland = 1;
+            state->emulated_nr = state->last_nr;
+        } else {
+            fprintf(stderr, "pdocker-direct-trace: pid=%d setregs close(rootfs_fd) emulation failed: %s\n",
                     (int)pid, strerror(errno));
         }
     } else if (state->last_nr == 37 &&
@@ -1554,12 +1663,14 @@ static int handle_syscall_entry(pid_t pid, struct user_pt_regs *regs, TraceeStat
 }
 
 static int trace_and_exec(char *const exec_argv[], const char *rootfs, const char *libpath) {
+#define TRACE_RETURN(rc_) do { g_trace_child_pgid = -1; return (rc_); } while (0)
     pid_t child = fork();
     if (child < 0) {
         perror("pdocker-direct-executor: fork tracer");
         return 126;
     }
     if (child == 0) {
+        setpgid(0, 0);
         if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) != 0) {
             perror("pdocker-direct-executor: PTRACE_TRACEME");
             _exit(126);
@@ -1573,15 +1684,18 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
         perror("pdocker-direct-executor: execve loader");
         _exit(126);
     }
+    setpgid(child, child);
+    g_trace_child_pgid = child;
+    install_tracer_signal_handlers();
 
     int status = 0;
     if (waitpid(child, &status, 0) < 0) {
         perror("pdocker-direct-executor: wait initial tracee");
-        return 126;
+        TRACE_RETURN(126);
     }
     if (!WIFSTOPPED(status)) {
         fprintf(stderr, "pdocker-direct-trace: child did not stop before exec status=0x%x\n", status);
-        return 126;
+        TRACE_RETURN(126);
     }
 
     TraceeState tracees[MAX_TRACEES];
@@ -1589,7 +1703,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
     TraceeState *child_state = add_tracee(tracees, child);
     if (!child_state) {
         fprintf(stderr, "pdocker-direct-trace: tracee table exhausted before start\n");
-        return 126;
+        TRACE_RETURN(126);
     }
     int root_opts = set_trace_options(child);
     if (g_trace_exec) {
@@ -1607,21 +1721,33 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
     }
     if (continue_tracee(child, 0) != 0) {
         perror("pdocker-direct-trace: initial PTRACE_SYSCALL");
-        return 126;
+        TRACE_RETURN(126);
     }
 
     while (1) {
-        pid_t got = waitpid(-1, &status, __WALL | WNOHANG);
+        int wait_flags = __WALL | (g_poll_wait ? WNOHANG : 0);
+        pid_t got = waitpid(-1, &status, wait_flags);
         if (got < 0) {
             if (errno == EINTR) {
                 continue;
             }
             if (errno == ECHILD && root_done) {
                 print_syscall_stats("echild-root-done", root_rc);
-                return root_rc;
+                TRACE_RETURN(root_rc);
+            }
+            if (errno == ECHILD) {
+                int alive = prune_dead_tracees(tracees, getpid());
+                if (alive == 0) {
+                    fprintf(stderr,
+                            "pdocker-direct-trace: no waitable tracees remain before root exit was observed\n");
+                    print_syscall_stats("echild-no-live-tracees", 126);
+                    TRACE_RETURN(126);
+                }
+                usleep(1000);
+                continue;
             }
             perror("pdocker-direct-trace: waitpid");
-            return 126;
+            TRACE_RETURN(126);
         }
         if (got == 0) {
             idle_loops++;
@@ -1632,13 +1758,13 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
             }
             if (root_done && alive == 0) {
                 print_syscall_stats("root-done-idle", root_rc);
-                return root_rc;
+                TRACE_RETURN(root_rc);
             }
             if (!root_done && alive == 0) {
                 fprintf(stderr,
                         "pdocker-direct-trace: no live tracees remain before root exit was observed\n");
                 print_syscall_stats("no-live-tracees", 126);
-                return 126;
+                TRACE_RETURN(126);
             }
             usleep(1000);
             continue;
@@ -1666,7 +1792,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
             }
             if (root_done && tracee_count(tracees) == 0) {
                 print_syscall_stats("root-exited", root_rc);
-                return root_rc;
+                TRACE_RETURN(root_rc);
             }
             continue;
         }
@@ -1685,7 +1811,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
             }
             if (root_done && tracee_count(tracees) == 0) {
                 print_syscall_stats("root-signaled", root_rc);
-                return root_rc;
+                TRACE_RETURN(root_rc);
             }
             continue;
         }
@@ -1794,6 +1920,19 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                         suppressible = 1;
                     } else {
                         fprintf(stderr, "pdocker-direct-trace: pid=%d setregs direct io_uring SIGSYS emulation failed: %s\n",
+                                (int)got, strerror(errno));
+                    }
+                } else if (!suppressible && current_nr == 57 && (int)regs.regs[0] == g_rootfs_fd) {
+                    state->last_nr = current_nr;
+                    for (int i = 0; i < 6; ++i) state->last_args[i] = regs.regs[i];
+                    state->emulated_result = 0;
+                    if (complete_emulated_syscall(got, &regs, state->emulated_result) == 0) {
+                        state->last_emulated_nr = current_nr;
+                        state->emulated_nr = -1;
+                        state->in_syscall = 0;
+                        suppressible = 1;
+                    } else {
+                        fprintf(stderr, "pdocker-direct-trace: pid=%d setregs direct close(rootfs_fd) SIGSYS emulation failed: %s\n",
                                 (int)got, strerror(errno));
                     }
                 }
@@ -1924,7 +2063,8 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
     }
     fprintf(stderr, "pdocker-direct-trace: ptrace loop failed: %s\n", strerror(errno));
     print_syscall_stats("ptrace-loop-failed", 126);
-    return 126;
+    TRACE_RETURN(126);
+#undef TRACE_RETURN
 }
 
 static int run_command(int argc, char **argv) {
@@ -1942,6 +2082,8 @@ static int run_command(int argc, char **argv) {
     g_trace_paths = env_flag_enabled("PDOCKER_DIRECT_TRACE_PATHS") || trace_syscall_logs;
     g_trace_exec = env_flag_enabled("PDOCKER_DIRECT_TRACE_EXEC");
     g_stats = env_flag_enabled("PDOCKER_DIRECT_STATS");
+    g_poll_wait = env_flag_enabled("PDOCKER_DIRECT_POLL_WAIT");
+    g_rootfd_rewrite = env_flag_enabled("PDOCKER_DIRECT_ROOTFD_REWRITE");
     const char *trace_mode = getenv("PDOCKER_DIRECT_TRACE_MODE");
     g_selective_trace = !trace_mode || strcmp(trace_mode, "syscall") != 0;
     const char *sync_env = getenv("PDOCKER_DIRECT_SYNC_USEC");
@@ -2004,6 +2146,25 @@ static int run_command(int argc, char **argv) {
         perror("pdocker-direct-executor: chdir rootfs/workdir");
         free(env_items);
         return 126;
+    }
+    if (g_rootfs_fd >= 0) {
+        close(g_rootfs_fd);
+        g_rootfs_fd = -1;
+    }
+    if (g_rootfd_rewrite) {
+        int rootfd = open(rootfs, O_RDONLY | O_DIRECTORY);
+        if (rootfd < 0) {
+            perror("pdocker-direct-executor: open rootfs fd");
+            free(env_items);
+            return 126;
+        }
+        int high_rootfd = fcntl(rootfd, F_DUPFD, 1000);
+        if (high_rootfd >= 0) {
+            close(rootfd);
+            g_rootfs_fd = high_rootfd;
+        } else {
+            g_rootfs_fd = rootfd;
+        }
     }
 
     char ldpath[PATH_MAX];

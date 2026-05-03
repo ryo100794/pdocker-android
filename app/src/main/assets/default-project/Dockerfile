@@ -43,8 +43,7 @@ RUN if [ "$CODE_SERVER_VERSION" = "latest" ]; then \
       curl -fsSL https://code-server.dev/install.sh | sh -s -- --version "$CODE_SERVER_VERSION"; \
     fi
 
-RUN npm install -g npm@latest \
-    && npm install -g "$CODEX_NPM_PACKAGE"
+RUN npm install -g "$CODEX_NPM_PACKAGE"
 
 RUN mkdir -p /workspace "$CODE_SERVER_USER_DATA_DIR/User" "$CODE_SERVER_EXTENSIONS_DIR" \
     && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension Continue.continue || true \
