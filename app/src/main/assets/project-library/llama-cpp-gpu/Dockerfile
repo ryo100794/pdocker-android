@@ -1,7 +1,8 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG LLAMA_CPP_REF=master
+ARG LLAMA_CPP_BUILD_JOBS=2
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -14,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       cmake \
       curl \
       git \
+      glslc \
       glslang-tools \
       jq \
       libopenblas-dev \
@@ -24,11 +26,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       procps \
       python3 \
       python3-pip \
+      spirv-headers \
+      spirv-tools \
       vulkan-tools \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /opt/llama.cpp \
     && cd /opt/llama.cpp \
+    && git config --global --add safe.directory /opt/llama.cpp \
     && if [ "$LLAMA_CPP_REF" != "master" ]; then git fetch --depth 1 origin "$LLAMA_CPP_REF" && git checkout "$LLAMA_CPP_REF"; fi \
     && cmake -B build -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
@@ -36,7 +41,8 @@ RUN git clone --depth 1 https://github.com/ggml-org/llama.cpp /opt/llama.cpp \
       -DGGML_VULKAN=ON \
       -DGGML_BLAS=ON \
       -DGGML_BLAS_VENDOR=OpenBLAS \
-    && cmake --build build --config Release
+    && jobs="${LLAMA_CPP_BUILD_JOBS:-2}" \
+    && cmake --build build --config Release --target llama-server --parallel "$jobs"
 
 COPY scripts/pdocker-gpu-profile.sh /usr/local/bin/pdocker-gpu-profile
 COPY scripts/start-llama-server.sh /usr/local/bin/start-llama-server

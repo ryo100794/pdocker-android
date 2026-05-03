@@ -36,6 +36,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 import org.json.JSONArray
 import org.json.JSONObject
@@ -132,7 +134,7 @@ class MainActivity : AppCompatActivity() {
             if (text.isEmpty()) return
             pending.append(text)
             if (!ready) return
-            scheduleFlush(24L)
+            scheduleFlush(8L)
         }
 
         private fun scheduleFlush(delayMs: Long) {
@@ -144,7 +146,7 @@ class MainActivity : AppCompatActivity() {
                 val text = pending.toString()
                 pending.clear()
                 flush(text)
-                if (pending.isNotEmpty()) scheduleFlush(24L)
+                if (pending.isNotEmpty()) scheduleFlush(8L)
             }, delayMs)
         }
 
@@ -205,6 +207,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val ui = Handler(Looper.getMainLooper())
+    private val logIo: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "pdocker-job-log-writer").apply { isDaemon = true }
+    }
     private val tabs = listOf(Tab.Overview, Tab.Library, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers, Tab.Sessions)
     private val pollTask = object : Runnable {
         override fun run() {
@@ -381,6 +386,7 @@ class MainActivity : AppCompatActivity() {
         toolTabs.clear()
         liveJobViews.clear()
         ui.removeCallbacks(jobTickerTask)
+        logIo.shutdown()
         super.onDestroy()
     }
 
@@ -822,12 +828,30 @@ class MainActivity : AppCompatActivity() {
             val elapsed = ((now - op.startedAtMs).coerceAtLeast(0L) / 1000L)
             val idle = ((now - op.updatedAtMs).coerceAtLeast(0L) / 1000L)
             val value = getString(R.string.daemon_operation_status_fmt, op.status, elapsed, jobActivityFrame())
+            val job = daemonOperationJob(op)
             val detail = listOf(
                 getString(R.string.daemon_operation_kind_fmt, op.kind),
                 op.detail.ifBlank { "-" },
                 getString(R.string.daemon_operation_idle_fmt, idle),
-            ).joinToString("\n")
-            addWidget(op.title, value, detail, detailLines = 4)
+                job?.let { getString(R.string.action_open_job_log_fmt, it.title) }.orEmpty(),
+            ).filter { it.isNotBlank() }.joinToString("\n")
+            addWidget(op.title, value, detail, detailLines = 5, onClick = job?.let { activeJob ->
+                { openJobLog(activeJob) }
+            })
+        }
+    }
+
+    private fun daemonOperationJob(op: DaemonOperation): DockerJob? {
+        val running = dockerJobs.filter { it.exitCode == null }
+        val detail = op.detail.lowercase()
+        return running.firstOrNull { job ->
+            val haystack = "${job.title} ${job.detail} ${job.command} ${job.progress}".lowercase()
+            haystack.contains(op.kind.lowercase()) ||
+                detail.isNotBlank() && haystack.contains(detail.take(48))
+        } ?: running.firstOrNull {
+            it.command.startsWith("engine compose up:") || it.command.startsWith("engine docker build:")
+        } ?: dockerJobs.firstOrNull {
+            it.command.startsWith("engine compose up:") || it.command.startsWith("engine docker build:")
         }
     }
 
@@ -947,7 +971,7 @@ class MainActivity : AppCompatActivity() {
         )
         dockerJobs.add(0, job)
         trimDockerJobs()
-        appendPersistentJobLog(job.id, "[pdocker job] ${job.title}\n[pdocker command] ${job.command}\n\n")
+        appendPersistentJobLog(job.id, jobTerminalPrelude(job))
         saveDockerJobs()
         renderContent()
         openLiveJobLog(job, switchTo = true)
@@ -1310,30 +1334,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatContainers(containers: JSONArray): String {
         val columns = listOf(
-            "CONTAINER ID" to 14,
-            "IMAGE" to 28,
-            "STATUS" to 14,
-            "PORTS" to 32,
+            "CONTAINER ID" to 12,
+            "IMAGE" to 25,
+            "STATUS" to 13,
+            "PORTS" to 30,
         )
         fun cell(value: String, width: Int): String {
             val compact = value.replace('\n', ' ').replace('\r', ' ')
-            val clipped = if (compact.length > width - 1) compact.take(width - 2) + "…" else compact
+            val clipped = if (compact.length > width) compact.take(width - 3) + "..." else compact
             return clipped.padEnd(width)
         }
-        val header = columns.joinToString("") { (title, width) -> cell(title, width) } + "NAMES"
+        val separator = "  "
+        val header = columns.joinToString(separator) { (title, width) -> cell(title, width) } + separator + "NAMES"
         if (containers.length() == 0) return "$header\n"
         val lines = mutableListOf(header)
         for (i in 0 until containers.length()) {
             val obj = containers.optJSONObject(i) ?: continue
             val names = obj.optJSONArray("Names")
             val name = names?.optString(0).orEmpty().trim('/').ifBlank { obj.optString("Id").take(12) }
-            lines += buildString {
-                append(cell(obj.optString("Id").take(12), columns[0].second))
-                append(cell(obj.optString("Image"), columns[1].second))
-                append(cell(obj.optString("Status"), columns[2].second))
-                append(cell(formatPortsForPs(obj.optJSONArray("Ports")), columns[3].second))
-                append(name)
-            }
+            lines += listOf(
+                cell(obj.optString("Id").take(12), columns[0].second),
+                cell(obj.optString("Image"), columns[1].second),
+                cell(obj.optString("Status"), columns[2].second),
+                cell(formatPortsForPs(obj.optJSONArray("Ports")), columns[3].second),
+                name,
+            ).joinToString(separator)
         }
         return lines.joinToString("\n")
     }
@@ -1846,9 +1871,11 @@ class MainActivity : AppCompatActivity() {
         )
         val persistedLog = readJobLogText(job)
         if (persistedLog.isNotBlank()) {
-            terminal.write(persistedLog)
+            terminal.write(ensureJobTerminalPrelude(job, persistedLog))
         } else if (job.output.isNotEmpty()) {
-            terminal.write(job.output.joinToString("\r\n") + "\r\n")
+            terminal.write(jobTerminalPrelude(job) + job.output.joinToString("\r\n") + "\r\n")
+        } else {
+            terminal.write(jobTerminalPrelude(job))
         }
         updateLiveJobView(job)
         if (switchTo) switchTool(toolTabs.lastIndex) else renderToolChrome()
@@ -1954,6 +1981,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun terminalRecordText(text: String): String =
         normalizeTerminalNewlines(if (text.endsWith("\n") || text.endsWith("\r")) text else "$text\r\n")
+
+    private fun jobTerminalPrelude(job: DockerJob): String =
+        terminalRecordText(
+            listOf(
+                "[pdocker] job=${job.title} group=${job.group}",
+                "[pdocker] command=${job.command}",
+                "",
+            ).joinToString("\n")
+        )
+
+    private fun ensureJobTerminalPrelude(job: DockerJob, text: String): String =
+        if ("[pdocker] command=" in text.take(2048) || "[pdocker command]" in text.take(2048)) text else jobTerminalPrelude(job) + text
 
     private fun normalizeTerminalNewlines(text: String): String {
         val out = StringBuilder(text.length + 8)
@@ -2062,7 +2101,7 @@ class MainActivity : AppCompatActivity() {
                 while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
             }
         if (terminalBackfill.isNotEmpty()) {
-            val text = terminalBackfill.joinToString("\r\n") + "\r\n"
+            val text = terminalRecordText(terminalBackfill.joinToString("\n"))
             appendLiveJobTerminal(jobId, text)
             appendPersistentJobLog(jobId, text)
         }
@@ -2169,10 +2208,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun appendPersistentJobLog(jobId: String, text: String) {
         if (text.isEmpty()) return
-        runCatching {
-            val file = jobLogFile(jobId)
-            file.parentFile?.mkdirs()
-            FileOutputStream(file, true).use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        logIo.execute {
+            runCatching {
+                val file = jobLogFile(jobId)
+                file.parentFile?.mkdirs()
+                FileOutputStream(file, true).use { it.write(bytes) }
+            }
         }
     }
 

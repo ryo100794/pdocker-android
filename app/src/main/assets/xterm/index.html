@@ -460,8 +460,17 @@
     }, { passive: false });
   });
 
+  const isNearBottom = () => {
+    const buffer = term.buffer && term.buffer.active;
+    if (!buffer) return true;
+    return (buffer.baseY - buffer.viewportY) <= 1;
+  };
   window.pdockerRecv = (b64) => {
-    term.write(dec.decode(fromB64(b64), { stream: true }));
+    const followTail = readOnly ? !selectionActive : isNearBottom();
+    term.write(dec.decode(fromB64(b64), { stream: true }), () => {
+      if (followTail) term.scrollToBottom();
+      refreshSelectionMarkers();
+    });
   };
 
   const pushResize = () => {
@@ -514,7 +523,7 @@
       event.preventDefault();
       return;
     }
-    if (selectionActive || mods.select) {
+    if (!readOnly && (selectionActive || mods.select)) {
       selectionDrag = nearestSelectionHandle(cell);
       updateSelection(cell, selectionDrag);
       event.preventDefault();
@@ -531,7 +540,7 @@
       event.preventDefault();
       return;
     }
-    if (event.touches.length === 1 && selectionActive) {
+    if (event.touches.length === 1 && selectionActive && selectionDrag) {
       updateSelection(cellFromTouch(event.touches[0]), selectionDrag || 'end');
       event.preventDefault();
       return;

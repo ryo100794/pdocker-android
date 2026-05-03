@@ -5,6 +5,7 @@ services:
       context: .
       args:
         LLAMA_CPP_REF: "${LLAMA_CPP_REF:-master}"
+        LLAMA_CPP_BUILD_JOBS: "${LLAMA_CPP_BUILD_JOBS:-}"
     image: pdocker/llama-cpp-gpu:latest
     container_name: pdocker-llama-cpp
     gpus: all

@@ -7,6 +7,12 @@ It includes:
 - `llama-server` built from `ggml-org/llama.cpp`.
 - Vulkan-oriented build flags (`GGML_VULKAN=ON`) for Android GPU passthrough.
 - CPU fallback with OpenMP/OpenBLAS packages available.
+- A server-only CMake build target so templates do not spend time compiling
+  unrelated llama.cpp tools and examples.
+- Ubuntu 24.04 Vulkan headers, which are new enough for the current
+  llama.cpp Vulkan backend.
+- The `glslc` shader compiler required by llama.cpp's Vulkan CMake checks.
+- SPIR-V headers/tools used by llama.cpp's Vulkan backend source generation.
 - `scripts/pdocker-gpu-profile.sh`, which writes a local GPU profile and
   JSON diagnostics based on the runtime environment.
 - `models/` and `workspace/` bind directories for GGUF models and experiments.
@@ -37,6 +43,10 @@ has a visible running state.
 The entrypoint adds `--jinja` by default because the bundled Qwen3 GGUF uses a
 chat template. Override `LLAMA_EXTRA_ARGS` if you need different llama-server
 options.
+
+The image build defaults llama.cpp CMake parallelism to two jobs to avoid
+swap-heavy Android builds. Set `LLAMA_CPP_BUILD_JOBS` if you need to cap it
+further or raise it on a faster device.
 
 The GPU profile action writes:
 

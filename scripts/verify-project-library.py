@@ -68,10 +68,16 @@ def main() -> int:
 
     expectations = {
         "compose gpus all": "gpus: all" in llama_compose,
+        "compose exposes build parallelism": "LLAMA_CPP_BUILD_JOBS" in llama_compose,
         "compose model volume": "./models:/models" in llama_compose,
+        "Dockerfile modern Vulkan headers": "FROM ubuntu:24.04" in llama_dockerfile,
         "Dockerfile llama.cpp source": "ggml-org/llama.cpp" in llama_dockerfile,
         "Dockerfile Vulkan build": "-DGGML_VULKAN=ON" in llama_dockerfile,
+        "Dockerfile Vulkan shader compiler": "glslc" in llama_dockerfile,
+        "Dockerfile SPIR-V headers": "spirv-headers" in llama_dockerfile and "spirv-tools" in llama_dockerfile,
         "Dockerfile OpenBLAS build": "-DGGML_BLAS=ON" in llama_dockerfile,
+        "Dockerfile server-only build target": "--target llama-server" in llama_dockerfile and "--parallel" in llama_dockerfile,
+        "Dockerfile bounded build jobs": "ARG LLAMA_CPP_BUILD_JOBS=2" in llama_dockerfile and 'jobs="${LLAMA_CPP_BUILD_JOBS:-2}"' in llama_dockerfile,
         "Dockerfile log directory": "/workspace/logs" in llama_dockerfile and "/var/log/pdocker" in llama_dockerfile,
         "profile Vulkan detection": "PDOCKER_VULKAN_PASSTHROUGH" in profile,
         "profile CUDA compat detection": "PDOCKER_CUDA_COMPAT" in profile,
