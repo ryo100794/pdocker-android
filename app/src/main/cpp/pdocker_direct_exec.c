@@ -30,7 +30,6 @@ static int g_trace_exec = 0;
 static int g_sync_usec = 0;
 static int g_stats = 0;
 static int g_selective_trace = 0;
-static int g_poll_wait = 0;
 static int g_rootfd_rewrite = 0;
 static int g_validate_tracees = 0;
 static int g_rootfs_fd = -1;
@@ -1714,7 +1713,6 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
     int events = 0;
     int root_done = 0;
     int root_rc = 126;
-    int idle_loops = 0;
     if (g_stats) {
         memset(g_syscall_counts, 0, sizeof(g_syscall_counts));
         g_stop_count = 0;
@@ -1726,8 +1724,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
     }
 
     while (1) {
-        int wait_flags = __WALL | (g_poll_wait ? WNOHANG : 0);
-        pid_t got = waitpid(-1, &status, wait_flags);
+        pid_t got = waitpid(-1, &status, __WALL);
         if (got < 0) {
             if (errno == EINTR) {
                 continue;
@@ -1738,25 +1735,17 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
             }
             if (errno == ECHILD) {
                 int alive = prune_dead_tracees(tracees, getpid());
-                if (alive == 0) {
-                    fprintf(stderr,
-                            "pdocker-direct-trace: no waitable tracees remain before root exit was observed\n");
-                    print_syscall_stats("echild-no-live-tracees", 126);
-                    TRACE_RETURN(126);
-                }
-                usleep(1000);
-                continue;
+                fprintf(stderr,
+                        "pdocker-direct-trace: no waitable tracees remain before root exit was observed (tracked=%d)\n",
+                        alive);
+                print_syscall_stats("echild-no-waitable-tracees", 126);
+                TRACE_RETURN(126);
             }
             perror("pdocker-direct-trace: waitpid");
             TRACE_RETURN(126);
         }
         if (got == 0) {
-            idle_loops++;
             int alive = prune_dead_tracees(tracees, getpid());
-            if (g_trace_verbose &&
-                (idle_loops == 5000 || (idle_loops > 5000 && idle_loops % 30000 == 0))) {
-                dump_active_tracees(tracees, getpid(), "idle wait");
-            }
             if (root_done && alive == 0) {
                 print_syscall_stats("root-done-idle", root_rc);
                 TRACE_RETURN(root_rc);
@@ -1767,10 +1756,8 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
                 print_syscall_stats("no-live-tracees", 126);
                 TRACE_RETURN(126);
             }
-            usleep(1000);
             continue;
         }
-        idle_loops = 0;
         TraceeState *state = find_tracee(tracees, got);
         if (!state) {
             state = add_tracee(tracees, got);
@@ -2083,7 +2070,6 @@ static int run_command(int argc, char **argv) {
     g_trace_paths = env_flag_enabled("PDOCKER_DIRECT_TRACE_PATHS") || trace_syscall_logs;
     g_trace_exec = env_flag_enabled("PDOCKER_DIRECT_TRACE_EXEC");
     g_stats = env_flag_enabled("PDOCKER_DIRECT_STATS");
-    g_poll_wait = env_flag_enabled("PDOCKER_DIRECT_POLL_WAIT");
     g_rootfd_rewrite = env_flag_enabled("PDOCKER_DIRECT_ROOTFD_REWRITE");
     g_validate_tracees = env_flag_enabled("PDOCKER_DIRECT_VALIDATE_TRACEES");
     const char *trace_mode = getenv("PDOCKER_DIRECT_TRACE_MODE");

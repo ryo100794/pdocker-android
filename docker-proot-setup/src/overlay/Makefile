@@ -11,8 +11,7 @@
 # cleanly against the NDK.
 
 # Resolve the project root from this Makefile's own location, so the build
-# works regardless of where the repo is cloned (previously hardcoded to
-# /root/tl/docker-proot-setup).
+# works regardless of where the repo is cloned.
 PREFIX ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 LIBDIR ?= $(PREFIX)/lib
 

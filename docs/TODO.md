@@ -75,8 +75,8 @@ or closes.
   is supplied; do not download or bundle external PRoot/fakechroot.
 - [doing] Profile remaining hot trapped syscalls after `newfstatat/openat` and
   decide which can be safely handled with fewer ptrace stops. Current tuning
-  adds seccomp errno returns for probe syscalls and a blocking
-  `waitpid(__WALL)` loop. On SOG15, the
+  adds seccomp errno returns for probe syscalls and uses a blocking
+  `waitpid(__WALL)` path with the old 1ms polling wait removed. On SOG15, the
   filesystem-heavy `npm install -g @openai/codex --dry-run` profile improved
   from about 19.4s with the old polling wait loop to about 1.8-2.4s with the
   blocking wait loop at roughly the same 9.9k traced stops.
@@ -94,6 +94,9 @@ or closes.
   `O_TRUNC`/`creat` copy up metadata without copying discarded file content,
   and copy-up uses `copy_file_range` when available. Reusable microbench:
   `docker-proot-setup/src/overlay/bench_cow.sh`.
+- [done] Keep COW terminology independent from PRoot. `libcow` is an
+  LD_PRELOAD libc hook shim; it does not use ptrace or waitpid. PRoot-era COW
+  comments and the diagnostic `proot-cow` driver label were renamed.
 - [next] Profile large apt/npm template layers separately from ptrace. The
   remaining long spans are package-manager file churn and snapshot extraction,
   not just syscall interception.

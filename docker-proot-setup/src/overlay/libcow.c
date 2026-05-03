@@ -77,11 +77,11 @@ static long  (*real_syscall) (long, ...);
 /* ---------- fd → abs-path tracking ----------
  *
  * Overlayfs emulation via fd-based metadata calls (fchmod/fchown/...)
- * needs to know which path an fd refers to. /proc/self/fd is unreliable
- * under PRoot (returns internal .l2s indirection for hardlinks), so we
- * track it ourselves for writable opens: remember the abs path the caller
- * used; on close, clear it. dup/dup2/dup3 copy the entry. Read-only opens
- * can be tracked with PDOCKER_COW_TRACK_READONLY_FDS=1 for strict tests.
+ * needs to know which path an fd refers to. /proc/self/fd can be unreliable
+ * under userspace path translators, so we track writable opens ourselves:
+ * remember the abs path the caller used; on close, clear it. dup/dup2/dup3
+ * copy the entry. Read-only opens can be tracked with
+ * PDOCKER_COW_TRACK_READONLY_FDS=1 for strict tests.
  *
  * Table indexed by fd value up to FD_TABLE_MAX. Entries above that are
  * not tracked (fallback path used instead).
@@ -556,9 +556,9 @@ int utimensat(int dirfd, const char *path,
 /* ---------- fd-based metadata (emulated via fd-table path) ----------
  *
  * These are emulated rather than forwarded: we look up fd→path in our
- * own fd table (populated at open()-time, since /proc/self/fd is
- * unreliable inside PRoot — it returns internal .l2s indirection paths
- * for hardlinks). We break_hardlink on the remembered path, then apply
+ * own fd table (populated at open()-time, since /proc/self/fd can expose
+ * translated or otherwise non-container paths under external userspace
+ * runners). We break_hardlink on the remembered path, then apply
  * the change via the path-based syscall. The caller's fd remains bound
  * to the (now-stale) lower inode, but the visible effect on the path
  * matches overlayfs semantics.
@@ -688,9 +688,8 @@ int fremovexattr(int fd, const char *name) {
  * intercepts those and routes metadata ops through break_hardlink.
  * Unknown/unrelated syscall numbers pass through untouched.
  *
- * We can't hook seccomp/ptrace-level syscalls (that would require a
- * kernel mechanism PRoot can't provide), but the `syscall(3)` libc
- * entrypoint covers the common case of "I want to bypass the wrapper".
+ * This does not hook kernel-level syscall stops; it only covers the common
+ * libc entrypoint case of "I want to bypass the wrapper".
  */
 long syscall(long number, ...) {
     va_list ap;

@@ -204,7 +204,7 @@ class RuntimeBackend:
     @property
     def driver_name(self):
         if self.kind == "proot":
-            return "proot-cow"
+            return "external-cow"
         if self.kind == "direct":
             return "pdocker-direct"
         return "chroot-cow"
@@ -587,7 +587,7 @@ def _flatten_merged_usr(dst_rootfs):
 
 def _install_libcow(dst_rootfs):
     """Install CoW shim inside the rootfs so LD_PRELOAD resolves it after
-    proot's path translation. Pick musl vs glibc variant by sniffing the
+    userspace rootfs path translation. Pick musl vs glibc variant by sniffing the
     rootfs linker — the glibc shim links against ld-linux-* and explodes
     inside an alpine rootfs that ships ld-musl-*.
     """
@@ -2559,7 +2559,7 @@ def create_container(config, name=None):
 
     # Prepare rootfs. Default path materializes an overlayfs-like merged tree
     # with libcow break-on-write. Experimental cow_bind mode keeps the image
-    # rootfs read-only and gives proot an upperdir at start time.
+    # rootfs read-only and supplies an upperdir to the runtime at start time.
     dst_rootfs = os.path.join(cdir, "rootfs")
     img_d = image_dir(norm_img)
     img_rootfs = os.path.join(img_d, "rootfs")
@@ -2882,9 +2882,8 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         record_event("container", "die", cid, attrs)
         raise RuntimeError(fault)
 
-    # Use the nested-proot runner so we get overlayfs-like CoW and
-    # avoid the PRoot-in-PRoot chroot exec failures. env is passed via
-    # build_run_argv (which applies LD_PRELOAD=/.libcow.so inside).
+    # build_run_argv applies LD_PRELOAD=/.libcow.so for libcow materialized
+    # rootfs mode, or passes lower/upper metadata for cow_bind-capable runtimes.
     argv = build_run_argv(rootfs, full, env, workdir=workdir, binds=binds, cow_bind=cow, mode="start")
 
     # Open the log fd, hand it to Popen, then close *our* copy. Popen has
