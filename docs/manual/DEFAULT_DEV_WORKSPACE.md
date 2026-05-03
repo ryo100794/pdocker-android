@@ -43,6 +43,11 @@ default-project/
 
 - `compose.yaml` starts code-server on `0.0.0.0:18080`, offset from common
   Android/Termux development ports.
+- The compose header includes `# pdocker.service-url: 18080=VS Code`. pdocker
+  reads this comment as UI metadata and uses it to label the browser shortcut;
+  the Compose service definition remains standard.
+- The header also includes `# pdocker.auto-open: VS Code`, which asks pdocker to
+  open that declared service after compose up reports a healthy listener.
 - `compose.yaml` requests `gpus: all`, which maps to pdocker's experimental
   Vulkan passthrough / CUDA-compatible API negotiation.
 - `OPENAI_API_KEY`, `GITHUB_TOKEN`, and `CODE_SERVER_PASSWORD` are passed
@@ -51,7 +56,8 @@ default-project/
   local-only development convenience. Set `CODE_SERVER_PASSWORD` before exposing
   the service outside the device.
 - pdocker's current networking model is host-style. Container cards expose
-  known service URLs such as `http://127.0.0.1:18080/`.
+  local browser URLs from Compose ports and `pdocker.service-url` header
+  comments.
 
 ## Source references
 

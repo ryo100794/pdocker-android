@@ -21,5 +21,8 @@ Run from the pdocker UI:
 4. Open logs or shell from the `Containers` tab.
 
 The app's current runtime uses host-style networking, so the code-server process
-binds to `0.0.0.0:18080` inside the container by default. Container cards expose
-the local browser URL when this service is present.
+binds to `0.0.0.0:18080` inside the container by default. The compose header
+comment `# pdocker.service-url: 18080=VS Code` labels the local browser
+shortcut without changing standard Compose behavior. `# pdocker.auto-open: VS Code`
+marks that declared service as the one pdocker may open automatically after
+compose up.

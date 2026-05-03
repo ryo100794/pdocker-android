@@ -1,3 +1,4 @@
+# pdocker.service-url: 18081=llama.cpp
 services:
   llama-cpp:
     build:

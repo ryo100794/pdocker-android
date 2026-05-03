@@ -52,6 +52,8 @@ def main() -> int:
         "ANTHROPIC_API_KEY",
         "gpus: all",
         "18080:18080",
+        "# pdocker.service-url: 18080=VS Code",
+        "# pdocker.auto-open: VS Code",
     ):
         if token not in dev_compose + dev_dockerfile + dev_workspace_extensions:
             fail(f"dev-workspace missing {token}")
@@ -79,6 +81,7 @@ def main() -> int:
         "start shows diagnostics": "LLAMA_GPU_DIAGNOSTICS" in start and "llama.cpp gpu diagnostics" in start,
         "start passes gpu layers": "--n-gpu-layers" in start,
         "llama default port offset": "18081:18081" in llama_compose and "18081" in start,
+        "llama service shortcut comment": "# pdocker.service-url: 18081=llama.cpp" in llama_compose,
         "llama default 8b model": "Qwen/Qwen3-8B-GGUF" in llama_compose and "Qwen3-8B-Q4_K_M.gguf" in llama_compose,
         "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start and "-C -" in start,
         "llama default chat template": "--jinja" in start,

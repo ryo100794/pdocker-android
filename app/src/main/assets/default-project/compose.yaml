@@ -1,3 +1,5 @@
+# pdocker.service-url: 18080=VS Code
+# pdocker.auto-open: VS Code
 services:
   dev:
     build:

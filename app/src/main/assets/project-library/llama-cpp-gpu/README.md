@@ -19,6 +19,9 @@ Usage from pdocker:
 4. Run compose up and let the default Qwen3 8B GGUF download complete.
 5. Open the service on port `18081`.
 
+The compose header comment `# pdocker.service-url: 18081=llama.cpp` labels the
+local browser shortcut without changing standard Compose behavior.
+
 By default, first compose up downloads an 8B-class Apache-2.0 model in GGUF
 form:
 

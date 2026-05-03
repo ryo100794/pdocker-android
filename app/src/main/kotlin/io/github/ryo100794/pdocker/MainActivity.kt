@@ -128,6 +128,14 @@ class MainActivity : AppCompatActivity() {
         val dependsOn: MutableList<String> = mutableListOf(),
         var gpus: String = "",
         var hasHealthcheck: Boolean = false,
+        val serviceLinks: MutableList<ComposeServiceLink> = mutableListOf(),
+    )
+
+    private data class ComposeServiceLink(
+        val port: Int?,
+        val label: String,
+        val url: String?,
+        val autoOpen: Boolean = false,
     )
 
     private data class ProjectSummary(
@@ -150,6 +158,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
         private const val MAX_JOB_HISTORY = 20
         private const val MAX_JOB_LINES = 200
+        private const val PDOCKER_SERVICE_URL_LABEL_PREFIX = "io.github.ryo100794.pdocker.service-url."
         private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
         private const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
     }
@@ -819,20 +828,11 @@ class MainActivity : AppCompatActivity() {
                 if (started.isSuccess) {
                     emit("Container $containerName Started")
                     out.appendLine("Container $containerName Started")
-                    service.ports
-                        .mapNotNull { port -> composeHostPort(port) }
-                        .distinct()
-                        .forEach { hostPort ->
-                            val label = when (hostPort) {
-                                18080 -> "VS Code"
-                                18081 -> "llama.cpp"
-                                else -> "${service.name}:$hostPort"
-                            }
-                            val url = "http://127.0.0.1:$hostPort/"
-                            val line = "Service URL $label $url"
-                            emit(line)
-                            out.appendLine(line)
-                        }
+                    composeServiceUrls(service).forEach { (label, url) ->
+                        val line = "Service URL $label $url"
+                        emit(line)
+                        out.appendLine(line)
+                    }
                 } else {
                     val message = started.exceptionOrNull()?.message.orEmpty()
                     if (!isRuntimeBackendBlocked(message)) {
@@ -884,11 +884,13 @@ class MainActivity : AppCompatActivity() {
             .map { File(dir, it) }
             .firstOrNull { it.isFile }
             ?: return emptyList()
+        val lines = file.readLines()
+        val serviceLinks = parseComposeHeaderServiceLinks(lines)
         val services = mutableListOf<ComposeService>()
         var inServices = false
         var current: ComposeService? = null
         var blockKey: String? = null
-        file.readLines().forEach { raw ->
+        lines.forEach { raw ->
             val line = raw.substringBefore('#').trimEnd()
             if (line.isBlank()) return@forEach
             val indent = raw.takeWhile { it == ' ' }.length
@@ -901,7 +903,10 @@ class MainActivity : AppCompatActivity() {
             }
             if (!inServices) return@forEach
             if (indent == 2 && trimmed.endsWith(":")) {
-                current = ComposeService(trimmed.removeSuffix(":")).also { services += it }
+                current = ComposeService(
+                    name = trimmed.removeSuffix(":"),
+                    serviceLinks = serviceLinks.toMutableList(),
+                ).also { services += it }
                 blockKey = null
                 return@forEach
             }
@@ -942,6 +947,45 @@ class MainActivity : AppCompatActivity() {
         return services
     }
 
+    private fun parseComposeHeaderServiceLinks(lines: List<String>): List<ComposeServiceLink> {
+        val links = mutableListOf<ComposeServiceLink>()
+        val autoOpenLabels = mutableSetOf<String>()
+        for (raw in lines) {
+            val trimmed = raw.trim()
+            if (trimmed.isBlank()) continue
+            if (!trimmed.startsWith("#")) break
+            val comment = trimmed.removePrefix("#").trim()
+            comment.removePrefix("pdocker.auto-open:")
+                .takeIf { it != comment }
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { autoOpenLabels += it }
+            val rest = comment
+                .removePrefix("pdocker.service-url:")
+                .takeIf { it != comment }
+                ?.trim()
+                ?: continue
+            parseComposeServiceLink(rest)?.let { links += it }
+        }
+        return links.distinct().map { link ->
+            if (link.label in autoOpenLabels) link.copy(autoOpen = true) else link
+        }
+    }
+
+    private fun parseComposeServiceLink(value: String): ComposeServiceLink? {
+        val left = value.substringBefore('=', "").trim()
+        val right = value.substringAfter('=', "").trim()
+        if (left.isBlank() || right.isBlank()) return null
+        val port = left.toIntOrNull()
+        return if (port != null) {
+            if (port !in 1..65535) return null
+            ComposeServiceLink(port, right, null)
+        } else {
+            if (!right.startsWith("http://") && !right.startsWith("https://")) return null
+            ComposeServiceLink(null, left, right)
+        }
+    }
+
     private fun ComposeService.toContainerConfig(imageName: String, projectDir: File): JSONObject {
         val exposedPorts = JSONObject()
         val portBindings = JSONObject()
@@ -972,12 +1016,21 @@ class MainActivity : AppCompatActivity() {
         if (gpus.isNotBlank() && gpus != "null") {
             hostConfig.put("DeviceRequests", JSONArray().put(JSONObject().put("Driver", "pdocker-gpu").put("Count", -1)))
         }
+        val labels = JSONObject()
+        serviceLinks.forEachIndexed { index, link ->
+            if (link.port != null) {
+                labels.put("$PDOCKER_SERVICE_URL_LABEL_PREFIX${link.port}", link.label)
+            } else if (!link.url.isNullOrBlank()) {
+                labels.put("${PDOCKER_SERVICE_URL_LABEL_PREFIX}url.$index", "${link.label}=${link.url}")
+            }
+        }
         return JSONObject()
             .put("Image", imageName)
             .put("Cmd", JSONArray(command))
             .put("WorkingDir", workingDir)
             .put("Env", JSONArray(environment.map { (k, v) -> "$k=$v" }))
             .put("ExposedPorts", exposedPorts)
+            .put("Labels", labels)
             .put("HostConfig", hostConfig)
     }
 
@@ -1708,8 +1761,22 @@ class MainActivity : AppCompatActivity() {
         val urls = liveJobServiceLinks(job)
         if (urls.isEmpty()) return
         appendEngineJobOutput(job.id, urls.joinToString("\n") { (label, url) -> "Open $label $url" })
-        val vscode = urls.firstOrNull { it.first == "VS Code" } ?: return
-        openServiceWhenReady(job.id, vscode.first, vscode.second)
+        val autoOpen = liveJobAutoOpenService(job) ?: return
+        openServiceWhenReady(job.id, autoOpen.first, autoOpen.second)
+    }
+
+    private fun liveJobAutoOpenService(job: DockerJob): Pair<String, String>? {
+        val composeDir = job.command
+            .takeIf { it.startsWith("engine compose up:") }
+            ?.removePrefix("engine compose up:")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it) }
+            ?: return null
+        return parseComposeServices(composeDir)
+            .asSequence()
+            .mapNotNull { composeServiceAutoOpenUrl(it) }
+            .firstOrNull()
     }
 
     private fun openServiceWhenReady(jobId: String, label: String, url: String) {
@@ -2158,17 +2225,40 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun projectServiceUrls(services: List<ComposeService>): List<Pair<String, String>> =
-        services.flatMap { service ->
-            service.ports.mapNotNull { port ->
-                val hostPort = composeHostPort(port) ?: return@mapNotNull null
-                val label = when (hostPort) {
-                    18080 -> "VS Code"
-                    18081 -> "llama.cpp"
-                    else -> "${service.name}:$hostPort"
-                }
-                label to "http://127.0.0.1:$hostPort/"
+        services.flatMap(::composeServiceUrls).distinctBy { it.second }
+
+    private fun composeServiceUrls(service: ComposeService): List<Pair<String, String>> {
+        val urls = mutableListOf<Pair<String, String>>()
+        service.ports
+            .mapNotNull { port -> composeHostPort(port) }
+            .distinct()
+            .forEach { hostPort ->
+                val link = service.serviceLinks.firstOrNull { it.port == hostPort }
+                val label = link?.label?.takeIf { it.isNotBlank() } ?: "${service.name}:$hostPort"
+                val url = link?.url?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:$hostPort/"
+                urls += label to url
             }
-        }.distinctBy { it.second }
+        service.serviceLinks
+            .filter { it.port == null && !it.url.isNullOrBlank() }
+            .forEach { link -> urls += link.label to link.url.orEmpty() }
+        return urls.distinctBy { it.second }
+    }
+
+    private fun composeServiceAutoOpenUrl(service: ComposeService): Pair<String, String>? {
+        service.ports
+            .mapNotNull { port -> composeHostPort(port) }
+            .distinct()
+            .forEach { hostPort ->
+                val link = service.serviceLinks.firstOrNull { it.port == hostPort && it.autoOpen }
+                if (link != null) {
+                    val url = link.url?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:$hostPort/"
+                    return link.label to url
+                }
+            }
+        return service.serviceLinks
+            .firstOrNull { it.autoOpen && it.port == null && !it.url.isNullOrBlank() }
+            ?.let { it.label to it.url.orEmpty() }
+    }
 
     private fun projectServiceHealthSummary(urls: List<Pair<String, String>>): String {
         if (urls.isEmpty()) return "-"
@@ -2408,31 +2498,63 @@ class MainActivity : AppCompatActivity() {
         val ports = pdockerNetwork?.optJSONObject("Ports")
             ?: dockerNetwork?.optJSONObject("Ports")
             ?: return emptyList()
-        val labels = mapOf(
-            "18080/tcp" to "VS Code",
-            "18081/tcp" to "llama.cpp",
-        )
+        val labels = containerServiceLabels(state)
         val urls = mutableListOf<Pair<String, String>>()
         val iter = ports.keys()
         while (iter.hasNext()) {
             val key = iter.next()
             val value = ports.opt(key)
-            val label = labels[key] ?: key
+            val port = _splitPortKey(key)
+            val label = port?.let { labels[it] } ?: key
             if (value is JSONArray && value.length() > 0) {
                 for (i in 0 until value.length()) {
                     val binding = value.optJSONObject(i) ?: continue
                     val host = browserHost(binding.optString("HostIp"))
-                    val port = binding.optString("HostPort")
-                    if (port.isBlank()) continue
-                    urls += label to "http://$host:$port/"
+                    val hostPort = binding.optString("HostPort")
+                    if (hostPort.isBlank()) continue
+                    urls += label to "http://$host:$hostPort/"
                 }
             } else {
-                _splitPortKey(key)?.let { port ->
-                    urls += label to "http://127.0.0.1:$port/"
+                _splitPortKey(key)?.let { exposedPort ->
+                    urls += label to "http://127.0.0.1:$exposedPort/"
                 }
             }
         }
+        containerExplicitServiceUrls(state).forEach { urls += it }
         return urls.distinctBy { it.second }
+    }
+
+    private fun containerServiceLabels(state: JSONObject?): Map<Int, String> {
+        val labels = state?.optJSONObject("Labels") ?: return emptyMap()
+        val out = mutableMapOf<Int, String>()
+        val iter = labels.keys()
+        while (iter.hasNext()) {
+            val key = iter.next()
+            if (!key.startsWith(PDOCKER_SERVICE_URL_LABEL_PREFIX)) continue
+            val suffix = key.removePrefix(PDOCKER_SERVICE_URL_LABEL_PREFIX)
+            val port = suffix.toIntOrNull() ?: continue
+            val label = labels.optString(key).takeIf { it.isNotBlank() } ?: continue
+            out[port] = label
+        }
+        return out
+    }
+
+    private fun containerExplicitServiceUrls(state: JSONObject?): List<Pair<String, String>> {
+        val labels = state?.optJSONObject("Labels") ?: return emptyList()
+        val urls = mutableListOf<Pair<String, String>>()
+        val iter = labels.keys()
+        while (iter.hasNext()) {
+            val key = iter.next()
+            if (!key.startsWith(PDOCKER_SERVICE_URL_LABEL_PREFIX)) continue
+            if (key.removePrefix(PDOCKER_SERVICE_URL_LABEL_PREFIX).toIntOrNull() != null) continue
+            val raw = labels.optString(key)
+            val label = raw.substringBefore('=', "").trim()
+            val url = raw.substringAfter('=', "").trim()
+            if (label.isNotBlank() && (url.startsWith("http://") || url.startsWith("https://"))) {
+                urls += label to url
+            }
+        }
+        return urls
     }
 
     private fun browserHost(host: String): String =
@@ -2583,9 +2705,27 @@ class MainActivity : AppCompatActivity() {
                 val original = runCatching { file.readText() }.getOrNull() ?: return@forEach
                 val migrated = replacements.entries.fold(original) { text, (from, to) ->
                     text.replace(from, to)
-                }
+                }.let { text -> migrateComposeHeaderServiceLinks(file, text) }
                 if (migrated != original) file.writeText(migrated)
             }
+    }
+
+    private fun migrateComposeHeaderServiceLinks(file: File, text: String): String {
+        if (file.name !in setOf("compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml")) {
+            return text
+        }
+        val additions = mutableListOf<String>()
+        if ("18080:18080" in text && "pdocker.service-url: 18080=" !in text) {
+            additions += "# pdocker.service-url: 18080=VS Code"
+        }
+        if ("18080:18080" in text && "pdocker.auto-open: VS Code" !in text) {
+            additions += "# pdocker.auto-open: VS Code"
+        }
+        if ("18081:18081" in text && "pdocker.service-url: 18081=" !in text) {
+            additions += "# pdocker.service-url: 18081=llama.cpp"
+        }
+        if (additions.isEmpty()) return text
+        return additions.joinToString("\n", postfix = "\n") + text
     }
 
     private fun copyAssetTree(assetPath: String, dest: File) {
