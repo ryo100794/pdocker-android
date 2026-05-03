@@ -21,6 +21,10 @@ and installs:
 - code-server, used as a VS Code-compatible browser IDE server.
 - Continue VS Code extension (`Continue.continue`).
 - OpenAI Codex CLI (`npm install -g @openai/codex`).
+- OpenAI Codex VS Code extension (`OpenAI.chatgpt`; the Marketplace ID keeps
+  the historical `chatgpt` suffix).
+- Workspace tasks `Codex: start` and `Codex: version`, so Codex is available
+  from `Tasks: Run Task` even when the side panel is hidden by code-server.
 - Common development tools: git, Python, Node/npm, ripgrep, jq, SSH client,
   vim, nano, Vulkan tools, and shell utilities.
 - Common IDE extensions for Python, YAML, Docker, formatting, linting, Jupyter,
@@ -36,6 +40,8 @@ default-project/
 ├── README.md
 ├── continue/config.yaml
 ├── scripts/start-code-server.sh
+├── workspace/.vscode/extensions.json
+├── workspace/.vscode/tasks.json
 └── vscode/settings.json
 ```
 
@@ -62,6 +68,7 @@ default-project/
 ## Source references
 
 - Codex CLI install path: `npm install -g @openai/codex`.
+- Codex VS Code extension ID: `OpenAI.chatgpt`.
 - code-server supports command-line extension installation with
   `code-server --install-extension <extension id>`.
 - Continue extension marketplace ID: `Continue.continue`.

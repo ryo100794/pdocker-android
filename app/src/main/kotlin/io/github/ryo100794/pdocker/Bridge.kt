@@ -3,13 +3,17 @@ package io.github.ryo100794.pdocker
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.LocalSocket
+import android.net.LocalSocketAddress
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
+import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONObject
 
 /**
  * Bridge between xterm.js (WebView) and a PTY child.
@@ -28,12 +32,17 @@ class Bridge(
     private val onOutput: ((ByteArray) -> Unit)? = null,
 ) {
     private var fd: Int = -1
+    private var engineSocket: LocalSocket? = null
     private var reader: Thread? = null
     private val alive = AtomicBoolean(false)
 
     @JavascriptInterface
     fun start(cmdline: String) {
         if (alive.get()) return
+        if (cmdline.startsWith(ENGINE_EXEC_PREFIX)) {
+            startEngineExec(cmdline.removePrefix(ENGINE_EXEC_PREFIX).trim())
+            return
+        }
         val shell = detectShell()
         // Pass the requested cmdline to `sh -c` so xterm.js doesn't need
         // to tokenize.
@@ -88,8 +97,16 @@ class Bridge(
 
     @JavascriptInterface
     fun input(b64: String) {
-        if (!alive.get() || fd < 0) return
         val bytes = Base64.decode(b64, Base64.DEFAULT)
+        val socket = engineSocket
+        if (socket != null) {
+            runCatching {
+                socket.outputStream.write(bytes)
+                socket.outputStream.flush()
+            }
+            return
+        }
+        if (!alive.get() || fd < 0) return
         PtyNative.write(fd, bytes)
     }
 
@@ -116,7 +133,134 @@ class Bridge(
         alive.set(false)
         if (fd >= 0) PtyNative.close(fd)
         fd = -1
+        runCatching { engineSocket?.close() }
+        engineSocket = null
         reader?.interrupt()
+    }
+
+    private fun startEngineExec(containerId: String) {
+        if (containerId.isBlank()) {
+            sendTerminalText("[pdocker] missing container id\n")
+            return
+        }
+        alive.set(true)
+        reader = Thread({
+            runCatching {
+                sendTerminalText("[pdocker] Engine exec -it: $containerId\n")
+                val execId = createEngineExec(containerId)
+                val socket = startEngineExecStream(execId)
+                engineSocket = socket
+                val buffer = ByteArray(4096)
+                while (alive.get()) {
+                    val n = socket.inputStream.read(buffer)
+                    if (n <= 0) break
+                    val chunk = buffer.copyOf(n)
+                    onOutput?.invoke(chunk)
+                    sendTerminalBytes(chunk)
+                }
+            }.onFailure {
+                sendTerminalText("\n[pdocker] Engine exec failed: ${it.message.orEmpty()}\n")
+            }
+            alive.set(false)
+        }, "engine-exec-reader").also { it.start() }
+    }
+
+    private fun createEngineExec(containerId: String): String {
+        val payload = JSONObject()
+            .put("AttachStdin", true)
+            .put("AttachStdout", true)
+            .put("AttachStderr", true)
+            .put("Tty", true)
+            .put("Cmd", listOf("sh"))
+        val response = engineRequest(
+            "POST",
+            "/containers/$containerId/exec",
+            payload.toString().toByteArray(Charsets.UTF_8),
+        )
+        val text = response.body.toString(Charsets.UTF_8)
+        check(response.status in 200..299) { text.ifBlank { "HTTP ${response.status}" } }
+        return JSONObject(text).getString("Id")
+    }
+
+    private fun startEngineExecStream(execId: String): LocalSocket {
+        val payload = JSONObject()
+            .put("Detach", false)
+            .put("Tty", true)
+        val body = payload.toString().toByteArray(Charsets.UTF_8)
+        val socket = connectEngineSocket()
+        val header = buildString {
+            append("POST /exec/$execId/start HTTP/1.1\r\n")
+            append("Host: pdocker\r\n")
+            append("Connection: Upgrade\r\n")
+            append("Upgrade: tcp\r\n")
+            append("Content-Type: application/json\r\n")
+            append("Content-Length: ").append(body.size).append("\r\n")
+            append("\r\n")
+        }.toByteArray(Charsets.UTF_8)
+        socket.outputStream.write(header)
+        socket.outputStream.write(body)
+        socket.outputStream.flush()
+        val head = readHttpHead(socket.inputStream)
+        check(head.startsWith("HTTP/1.1 101") || head.startsWith("HTTP/1.0 101")) { head.lineSequence().firstOrNull().orEmpty() }
+        return socket
+    }
+
+    private data class EngineResponse(val status: Int, val body: ByteArray)
+
+    private fun engineRequest(method: String, path: String, body: ByteArray = ByteArray(0)): EngineResponse {
+        connectEngineSocket().use { socket ->
+            val header = buildString {
+                append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
+                append("Host: pdocker\r\n")
+                append("Connection: close\r\n")
+                if (body.isNotEmpty()) {
+                    append("Content-Type: application/json\r\n")
+                    append("Content-Length: ").append(body.size).append("\r\n")
+                }
+                append("\r\n")
+            }.toByteArray(Charsets.UTF_8)
+            socket.outputStream.write(header)
+            if (body.isNotEmpty()) socket.outputStream.write(body)
+            socket.outputStream.flush()
+            val head = readHttpHead(socket.inputStream)
+            val status = head.lineSequence().firstOrNull()
+                ?.split(' ')
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+                ?: 0
+            return EngineResponse(status, socket.inputStream.readBytes())
+        }
+    }
+
+    private fun connectEngineSocket(): LocalSocket =
+        LocalSocket().apply {
+            val sock = File(activity.filesDir, "pdocker/pdockerd.sock")
+            connect(LocalSocketAddress(sock.absolutePath, LocalSocketAddress.Namespace.FILESYSTEM))
+        }
+
+    private fun readHttpHead(input: InputStream): String {
+        val bytes = ArrayList<Byte>(512)
+        var matched = 0
+        val marker = byteArrayOf('\r'.code.toByte(), '\n'.code.toByte(), '\r'.code.toByte(), '\n'.code.toByte())
+        while (true) {
+            val b = input.read()
+            if (b < 0) break
+            bytes += b.toByte()
+            matched = if (b.toByte() == marker[matched]) matched + 1 else if (b == '\r'.code) 1 else 0
+            if (matched == marker.size) break
+        }
+        return bytes.toByteArray().toString(Charsets.UTF_8)
+    }
+
+    private fun sendTerminalText(text: String) {
+        sendTerminalBytes(text.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun sendTerminalBytes(bytes: ByteArray) {
+        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        activity.runOnUiThread {
+            webView.evaluateJavascript("window.pdockerRecv('$b64')", null)
+        }
     }
 
     private fun detectShell(): String {
@@ -124,5 +268,9 @@ class Bridge(
         // fall back to /system/bin/sh for the scaffold phase.
         val bundled = File(activity.applicationInfo.nativeLibraryDir, "libpdocker-sh.so")
         return if (bundled.exists()) bundled.absolutePath else "/system/bin/sh"
+    }
+
+    companion object {
+        const val ENGINE_EXEC_PREFIX = "pdocker-engine-exec:"
     }
 }

@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Codex: start",
+      "type": "shell",
+      "command": "codex",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true
+      }
+    },
+    {
+      "label": "Codex: version",
+      "type": "shell",
+      "command": "codex --version",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}

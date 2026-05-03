@@ -62,7 +62,7 @@
     <string name="storage_scanning">scanning...</string>
     <string name="detail_storage_scanning">Calculating pdocker storage usage</string>
     <string name="storage_total_fmt">pdocker %1$s / filesystem %2$s</string>
-    <string name="storage_detail_fmt">layers %1$s, images %2$s, containers %3$s, free %4$s</string>
+    <string name="storage_detail_fmt">layers %1$s, image views %2$s, container private %3$s, free %4$s</string>
     <string name="section_project_dashboard">Project dashboard</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, files %3$d, containers %4$d</string>
     <string name="project_dashboard_services_fmt">Services: %1$s</string>
@@ -147,6 +147,8 @@
     <string name="action_container_restart_fmt">Restart: %1$s</string>
     <string name="action_container_logs_fmt">Logs: %1$s</string>
     <string name="action_browse_container_files_fmt">Browse files: %1$s</string>
+    <string name="action_container_terminal_fmt">Terminal (-it): %1$s</string>
+    <string name="detail_container_terminal">Open logs then attach an interactive shell</string>
     <string name="action_open_service_fmt">Open %1$s</string>
     <string name="action_open_gpu_diagnostics">Open GPU diagnostics</string>
     <string name="log_no_preview">No log preview</string>

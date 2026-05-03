@@ -47,7 +47,7 @@ RUN if [ "$CODE_SERVER_VERSION" = "latest" ]; then \
 RUN npm install -g "$CODEX_NPM_PACKAGE" "$CLAUDE_CODE_NPM_PACKAGE"
 
 RUN mkdir -p /workspace "$CODE_SERVER_USER_DATA_DIR/User" "$CODE_SERVER_EXTENSIONS_DIR" \
-    && for ext in Continue.continue openai.chatgpt Anthropic.claude-code; do \
+    && for ext in Continue.continue OpenAI.chatgpt Anthropic.claude-code; do \
          code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension "$ext"; \
        done \
     && for ext in redhat.vscode-yaml ms-azuretools.vscode-docker; do \

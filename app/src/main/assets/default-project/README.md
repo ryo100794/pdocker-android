@@ -7,7 +7,8 @@ It includes:
 - code-server for browser-based VS Code sessions.
 - Continue VS Code extension.
 - OpenAI Codex CLI through `npm install -g @openai/codex`.
-- OpenAI ChatGPT/Codex VS Code extension (`openai.chatgpt`).
+- OpenAI Codex VS Code extension (`OpenAI.chatgpt`; the Marketplace ID keeps
+  the historical `chatgpt` suffix).
 - Claude Code CLI through `npm install -g @anthropic-ai/claude-code`.
 - Claude Code VS Code extension (`Anthropic.claude-code`).
 - Common development tools: git, Python, Node/npm, ripgrep, jq, vim, nano.
@@ -26,3 +27,7 @@ comment `# pdocker.service-url: 18080=VS Code` labels the local browser
 shortcut without changing standard Compose behavior. `# pdocker.auto-open: VS Code`
 marks that declared service as the one pdocker may open automatically after
 compose up.
+
+If the Codex side panel is not obvious in code-server, open the command
+palette and run `Tasks: Run Task`, then choose `Codex: start`. That task starts
+the Codex CLI in a VS Code terminal inside `/workspace`.

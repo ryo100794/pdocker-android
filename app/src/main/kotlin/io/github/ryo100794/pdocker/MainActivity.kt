@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.system.Os
 import android.text.TextUtils
 import android.util.Base64
 import android.view.Gravity
@@ -76,8 +77,13 @@ class MainActivity : AppCompatActivity() {
         val fsFreeBytes: Long,
         val pdockerBytes: Long,
         val layersBytes: Long,
-        val imagesBytes: Long,
-        val containersBytes: Long,
+        val imageViewBytes: Long,
+        val containerPrivateBytes: Long,
+    )
+
+    private data class DiskUsage(
+        val bytes: Long,
+        val inodeKeys: Set<String>,
     )
 
     private data class DockerJob(
@@ -631,7 +637,13 @@ class MainActivity : AppCompatActivity() {
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
                 openDockerInteractiveTerminal(
                     getString(R.string.terminal_container_fmt, name),
-                    "docker logs --tail 80 ${dir.name}; printf '\\n# attach shell\\n'; docker exec -it ${dir.name} sh",
+                    dir.name,
+                    name,
+                )
+            }
+            addAction(getString(R.string.action_container_terminal_fmt, name), getString(R.string.detail_container_terminal)) {
+                openDockerInteractiveTerminal(
+                    getString(R.string.terminal_container_fmt, name),
                     name,
                 )
             }
@@ -746,8 +758,8 @@ class MainActivity : AppCompatActivity() {
             getString(
                 R.string.storage_detail_fmt,
                 formatBytes(metrics.layersBytes),
-                formatBytes(metrics.imagesBytes),
-                formatBytes(metrics.containersBytes),
+                formatBytes(metrics.imageViewBytes),
+                formatBytes(metrics.containerPrivateBytes),
                 formatBytes(metrics.fsFreeBytes),
             ),
             detailLines = 4,
@@ -762,13 +774,20 @@ class MainActivity : AppCompatActivity() {
         if (!force && storageMetrics != null && now - lastStorageMetricsAt < 30_000L) return
         storageMetricsScanning = true
         thread(isDaemon = true, name = "pdocker-storage-metrics") {
+            val layerUsage = diskUsage(layerRoot)
+            val imageUsage = diskUsage(imageRoot, excludeInodes = layerUsage.inodeKeys)
+            val containerUsage = diskUsage(
+                containerRoot,
+                excludeInodes = layerUsage.inodeKeys + imageUsage.inodeKeys,
+            )
+            val pdockerUsage = diskUsage(pdockerHome)
             val metrics = StorageMetrics(
                 fsTotalBytes = pdockerHome.totalSpace,
                 fsFreeBytes = pdockerHome.freeSpace,
-                pdockerBytes = directorySize(pdockerHome),
-                layersBytes = directorySize(layerRoot),
-                imagesBytes = directorySize(imageRoot),
-                containersBytes = directorySize(containerRoot),
+                pdockerBytes = pdockerUsage.bytes,
+                layersBytes = layerUsage.bytes,
+                imageViewBytes = imageUsage.bytes,
+                containerPrivateBytes = containerUsage.bytes,
             )
             ui.post {
                 storageMetrics = metrics
@@ -779,15 +798,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun directorySize(root: File): Long {
-        if (!root.exists()) return 0L
-        var total = 0L
+    private fun diskUsage(root: File, excludeInodes: Set<String> = emptySet()): DiskUsage {
+        if (!root.exists()) return DiskUsage(0L, emptySet())
+        var bytes = 0L
+        val seen = HashSet<String>()
         runCatching {
             root.walkTopDown().forEach { file ->
-                if (file.isFile) total += runCatching { file.length() }.getOrDefault(0L)
+                val stat = runCatching { Os.lstat(file.absolutePath) }.getOrNull() ?: return@forEach
+                val key = "${stat.st_dev}:${stat.st_ino}"
+                if (key in excludeInodes || !seen.add(key)) return@forEach
+                bytes += stat.st_blocks * 512L
             }
         }
-        return total
+        return DiskUsage(bytes, seen)
     }
 
     private fun startDaemon() {
@@ -1235,12 +1258,24 @@ class MainActivity : AppCompatActivity() {
                 obj.optString("Id").take(12).padEnd(14),
                 obj.optString("Image").take(20).padEnd(21),
                 obj.optString("Status").take(12).padEnd(13),
-                obj.optString("Ports").take(21).padEnd(22),
+                formatPortsForPs(obj.optJSONArray("Ports")).take(21).padEnd(22),
                 name,
             ).joinToString("")
             lines += line
         }
         return lines.joinToString("\n")
+    }
+
+    private fun formatPortsForPs(ports: JSONArray?): String {
+        if (ports == null || ports.length() == 0) return ""
+        return (0 until ports.length()).mapNotNull { i ->
+            val port = ports.optJSONObject(i) ?: return@mapNotNull null
+            val privatePort = port.optInt("PrivatePort", -1).takeIf { it > 0 } ?: return@mapNotNull null
+            val type = port.optString("Type").ifBlank { "tcp" }
+            val publicPort = port.optInt("PublicPort", -1)
+            val ip = port.optString("IP").ifBlank { "127.0.0.1" }
+            if (publicPort > 0) "$ip:$publicPort->$privatePort/$type" else "$privatePort/$type"
+        }.joinToString(", ")
     }
 
     private fun openTextTool(group: String, title: String, text: String) {
@@ -1354,13 +1389,11 @@ class MainActivity : AppCompatActivity() {
         renderContent()
     }
 
-    private fun openDockerInteractiveTerminal(title: String, command: String, group: String = workspaceGroup()) {
+    private fun openDockerInteractiveTerminal(title: String, containerId: String, group: String = workspaceGroup()) {
         startDaemon()
-        val wrapped = dockerCommand("$command; status=\$?; printf '\\n[pdocker] container console exited: %s\\n' \"\$status\"; exit \"\$status\"")
-        val launchCommand = terminalSessionCommand(title, group, wrapped)
         openTerminal(
             title,
-            launchCommand,
+            "${Bridge.ENGINE_EXEC_PREFIX}$containerId",
             group,
             contextualize = false,
         )
@@ -2894,7 +2927,7 @@ class MainActivity : AppCompatActivity() {
                         "    && code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension redhat.vscode-yaml || true \\\n" +
                         "    && code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension ms-azuretools.vscode-docker || true",
                     "RUN mkdir -p /workspace \"\$CODE_SERVER_USER_DATA_DIR/User\" \"\$CODE_SERVER_EXTENSIONS_DIR\" \\\n" +
-                        "    && for ext in Continue.continue openai.chatgpt Anthropic.claude-code; do \\\n" +
+                        "    && for ext in Continue.continue OpenAI.chatgpt Anthropic.claude-code; do \\\n" +
                         "         code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension \"\$ext\"; \\\n" +
                         "       done \\\n" +
                         "    && for ext in redhat.vscode-yaml ms-azuretools.vscode-docker; do \\\n" +
@@ -2902,6 +2935,7 @@ class MainActivity : AppCompatActivity() {
                         "       done",
                 )
             }
+            text = text.replace("openai.chatgpt", "OpenAI.chatgpt")
             dockerfile.writeText(text)
         }
 
@@ -2931,10 +2965,55 @@ class MainActivity : AppCompatActivity() {
                 {
                   "recommendations": [
                     "Continue.continue",
-                    "openai.chatgpt",
+                    "OpenAI.chatgpt",
                     "Anthropic.claude-code",
                     "redhat.vscode-yaml",
                     "ms-azuretools.vscode-docker"
+                  ]
+                }
+                """.trimIndent() + "\n",
+            )
+        } else {
+            val original = extensions.readText()
+            val migrated = original.replace("openai.chatgpt", "OpenAI.chatgpt")
+            if (migrated != original) extensions.writeText(migrated)
+        }
+
+        val tasks = File(project, "workspace/.vscode/tasks.json")
+        if (!tasks.exists()) {
+            tasks.parentFile?.mkdirs()
+            tasks.writeText(
+                """
+                {
+                  "version": "2.0.0",
+                  "tasks": [
+                    {
+                      "label": "Codex: start",
+                      "type": "shell",
+                      "command": "codex",
+                      "options": {
+                        "cwd": "/workspace"
+                      },
+                      "problemMatcher": [],
+                      "presentation": {
+                        "reveal": "always",
+                        "panel": "new",
+                        "focus": true
+                      }
+                    },
+                    {
+                      "label": "Codex: version",
+                      "type": "shell",
+                      "command": "codex --version",
+                      "options": {
+                        "cwd": "/workspace"
+                      },
+                      "problemMatcher": [],
+                      "presentation": {
+                        "reveal": "always",
+                        "panel": "shared"
+                      }
+                    }
                   ]
                 }
                 """.trimIndent() + "\n",

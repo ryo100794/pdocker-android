@@ -2832,6 +2832,12 @@ def reconcile_container_state(state):
         proc = running_containers.get(cid)
     if proc is not None and proc.poll() is None:
         return state
+    pid = int(st.get("Pid") or 0)
+    if pid > 0 and _pid_alive(pid):
+        st["Running"] = True
+        st["Status"] = "running"
+        state["State"] = st
+        return state
     st["Running"] = False
     st["Status"] = "exited"
     st["ExitCode"] = st.get("ExitCode", 0) if st.get("ExitCode", 0) else -129
@@ -2839,6 +2845,34 @@ def reconcile_container_state(state):
     state["State"] = st
     save_container_state(cid, state)
     return state
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def _signal_pid_group(pid, sig):
+    try:
+        os.killpg(os.getpgid(pid), sig)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        try:
+            os.kill(pid, sig)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return False
 
 
 def list_containers(all_=False):
@@ -3005,22 +3039,49 @@ def stop_container(cid, timeout=10):
     with running_lock:
         proc = running_containers.get(cid)
     state = load_container_state(cid)
+    pid = int(((state or {}).get("State") or {}).get("Pid") or 0)
+    stopped = False
     if proc and proc.poll() is None:
         try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            _signal_pid_group(proc.pid, signal.SIGTERM)
             try:
                 proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                _signal_pid_group(proc.pid, signal.SIGKILL)
                 proc.wait()
                 if state:
                     record_event("container", "kill", cid,
                                  _container_event_attrs(state))
+            stopped = True
             if state:
                 record_event("container", "stop", cid,
                              _container_event_attrs(state))
         except Exception as e:
             log(f"stop {cid} error: {e}")
+    elif pid > 0 and _pid_alive(pid):
+        _signal_pid_group(pid, signal.SIGTERM)
+        deadline = time.time() + timeout
+        while time.time() < deadline and _pid_alive(pid):
+            time.sleep(0.05)
+        if _pid_alive(pid):
+            _signal_pid_group(pid, signal.SIGKILL)
+            if state:
+                record_event("container", "kill", cid,
+                             _container_event_attrs(state))
+        stopped = True
+        if state:
+            record_event("container", "stop", cid,
+                         _container_event_attrs(state))
+    if state:
+        state["State"]["Running"] = False
+        state["State"]["Status"] = "exited"
+        state["State"]["Pid"] = 0
+        state["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+        if stopped and not state["State"].get("ExitCode"):
+            state["State"]["ExitCode"] = 143
+        save_container_state(cid, state)
+    with running_lock:
+        running_containers.pop(cid, None)
 
 
 def remove_container(cid, force=False):
@@ -3176,6 +3237,16 @@ def spawn_in_container(cid, cmd, env=None, workdir=None, tty=False,
     if fault:
         raise RuntimeError(fault)
     argv = build_run_argv(rootfs, list(cmd), e, workdir=wd, cow_bind=cow, mode="exec")
+    if tty:
+        import pty
+        master, slave = pty.openpty()
+        proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave,
+                                close_fds=True)
+        os.close(slave)
+        proc.stdout = os.fdopen(master, "rb", buffering=0)
+        proc.stderr = None
+        proc.stdin = os.fdopen(os.dup(master), "wb", buffering=0)
+        return proc
     return subprocess.Popen(argv, stdin=stdin, stdout=stdout, stderr=stderr)
 
 

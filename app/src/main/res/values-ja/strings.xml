@@ -62,7 +62,7 @@
     <string name="storage_scanning">計算中...</string>
     <string name="detail_storage_scanning">pdocker の使用容量を計算しています</string>
     <string name="storage_total_fmt">pdocker %1$s / ファイルシステム %2$s</string>
-    <string name="storage_detail_fmt">layers %1$s, images %2$s, containers %3$s, 空き %4$s</string>
+    <string name="storage_detail_fmt">layers %1$s, image views %2$s, container private %3$s, 空き %4$s</string>
     <string name="section_project_dashboard">プロジェクトダッシュボード</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$d</string>
     <string name="project_dashboard_services_fmt">サービス: %1$s</string>
@@ -147,6 +147,8 @@
     <string name="action_container_restart_fmt">再起動: %1$s</string>
     <string name="action_container_logs_fmt">ログ: %1$s</string>
     <string name="action_browse_container_files_fmt">ファイルを表示: %1$s</string>
+    <string name="action_container_terminal_fmt">ターミナル (-it): %1$s</string>
+    <string name="detail_container_terminal">ログを表示してから対話シェルに接続</string>
     <string name="action_open_service_fmt">%1$s を開く</string>
     <string name="action_open_gpu_diagnostics">GPU診断を開く</string>
     <string name="log_no_preview">ログプレビューなし</string>

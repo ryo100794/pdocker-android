@@ -172,10 +172,12 @@
 <script src="xterm.js"></script>
 <script src="xterm-addon-fit.js"></script>
 <script>
+  const readOnly = !!(window.PdockerBridge && PdockerBridge.readOnly && PdockerBridge.readOnly());
+  const initialFontSize = readOnly ? 10 : 12;
   const term = new Terminal({
     termName: 'xterm-256color',
     fontFamily: '"Noto Sans Mono CJK JP","Droid Sans Mono","Roboto Mono",monospace',
-    fontSize: 12,
+    fontSize: initialFontSize,
     lineHeight: 1.22,
     letterSpacing: 0,
     cursorBlink: true,
@@ -213,7 +215,6 @@
   const mods = { esc: false, ctrl: false, alt: false, select: false };
   const keybar = document.getElementById('keybar');
   const termHost = document.getElementById('term');
-  const readOnly = !!(window.PdockerBridge && PdockerBridge.readOnly && PdockerBridge.readOnly());
   if (readOnly) {
     document.body.classList.add('readonly-log');
     term.options.disableStdin = true;
@@ -222,7 +223,7 @@
   const endHandle = document.getElementById('selectionEnd');
   const selectionStatus = document.getElementById('selectionStatus');
   const selectionMenu = document.getElementById('selectionMenu');
-  let fontSize = 12;
+  let fontSize = initialFontSize;
   let pinch = null;
   let longPressTimer = null;
   let selectionStartCell = null;

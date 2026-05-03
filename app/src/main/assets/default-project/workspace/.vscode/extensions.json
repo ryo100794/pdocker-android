@@ -1,7 +1,7 @@
 {
   "recommendations": [
     "Continue.continue",
-    "openai.chatgpt",
+    "OpenAI.chatgpt",
     "Anthropic.claude-code",
     "redhat.vscode-yaml",
     "ms-azuretools.vscode-docker"
