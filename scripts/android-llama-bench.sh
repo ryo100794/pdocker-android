@@ -10,11 +10,12 @@ PREDICT="${PDOCKER_LLAMA_BENCH_PREDICT:-8}"
 REPEAT="${PDOCKER_LLAMA_BENCH_REPEAT:-1}"
 PROMPT="${PDOCKER_LLAMA_BENCH_PROMPT:-Repeat exactly: pdocker-ok}"
 OUT="${PDOCKER_LLAMA_BENCH_OUT:-$ROOT/docs/test/llama-bench-latest.json}"
+MODE="${PDOCKER_LLAMA_BENCH_MODE:-server-current}"
 DEVICE_BENCH_DIR="${PDOCKER_LLAMA_DEVICE_BENCH_DIR:-files/pdocker/bench}"
 
 usage() {
   cat <<EOF
-Usage: $0 [--predict N] [--repeat N] [--prompt TEXT] [--local-port PORT] [--remote-port PORT] [--out PATH]
+Usage: $0 [--predict N] [--repeat N] [--prompt TEXT] [--mode LABEL] [--local-port PORT] [--remote-port PORT] [--out PATH]
 
 Benchmarks the currently running pdocker llama.cpp server over adb forward.
 The benchmark intentionally works against the UI/Engine-started container so
@@ -28,6 +29,7 @@ Environment:
   PDOCKER_LLAMA_BENCH_PREDICT generated tokens per run (default: $PREDICT)
   PDOCKER_LLAMA_BENCH_REPEAT  number of measured runs (default: $REPEAT)
   PDOCKER_LLAMA_BENCH_PROMPT  prompt text
+  PDOCKER_LLAMA_BENCH_MODE    result mode label (default: $MODE)
   PDOCKER_LLAMA_BENCH_OUT     local JSON result path
 EOF
 }
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --predict) PREDICT="$2"; shift ;;
     --repeat) REPEAT="$2"; shift ;;
     --prompt) PROMPT="$2"; shift ;;
+    --mode) MODE="$2"; shift ;;
     --local-port) LOCAL_PORT="$2"; shift ;;
     --remote-port) REMOTE_PORT="$2"; shift ;;
     --out) OUT="$2"; shift ;;
@@ -59,7 +62,10 @@ if ! curl -fsS --max-time 5 "$BASE_URL/" >/dev/null; then
   exit 1
 fi
 
-python3 - "$BASE_URL" "$PREDICT" "$REPEAT" "$PROMPT" "$OUT" <<'PY'
+PROFILE_JSON="$TMP/profile.json"
+"$ADB" shell "run-as $PKG sh -c 'cat files/pdocker/projects/llama-cpp-gpu/profiles/pdocker-gpu-diagnostics.json 2>/dev/null || true'" > "$PROFILE_JSON" || true
+
+python3 - "$BASE_URL" "$PREDICT" "$REPEAT" "$PROMPT" "$OUT" "$MODE" "$PROFILE_JSON" <<'PY'
 import json
 import statistics
 import sys
@@ -67,9 +73,13 @@ import time
 import urllib.error
 import urllib.request
 
-base_url, predict_s, repeat_s, prompt, out_path = sys.argv[1:6]
+base_url, predict_s, repeat_s, prompt, out_path, mode, profile_path = sys.argv[1:8]
 predict = int(predict_s)
 repeat = int(repeat_s)
+try:
+    gpu_profile = json.load(open(profile_path, encoding="utf-8"))
+except Exception:
+    gpu_profile = {}
 
 
 def post_json(path, body, timeout):
@@ -133,7 +143,8 @@ result = {
     "schema": "pdocker.llama.bench.v1",
     "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     "endpoint": base_url,
-    "mode": "cpu-fallback-baseline",
+    "mode": mode,
+    "gpu_profile": gpu_profile,
     "prompt": prompt,
     "n_predict": predict,
     "repeat": repeat,

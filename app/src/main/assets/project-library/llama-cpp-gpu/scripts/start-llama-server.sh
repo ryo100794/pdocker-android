@@ -3,7 +3,8 @@ set -euo pipefail
 
 profile="${LLAMA_GPU_PROFILE:-/profiles/pdocker-gpu.env}"
 diagnostics="${LLAMA_GPU_DIAGNOSTICS:-/profiles/pdocker-gpu-diagnostics.json}"
-if [[ ! -f "$profile" || ! -f "$diagnostics" ]]; then
+refresh="${LLAMA_GPU_PROFILE_REFRESH:-auto}"
+if [[ "$refresh" = "always" || ! -f "$profile" || ! -f "$diagnostics" || ( "$refresh" = "auto" && "${PDOCKER_GPU_AUTO:-}" = "1" ) ]]; then
   LLAMA_GPU_DIAGNOSTICS="$diagnostics" pdocker-gpu-profile "$profile" >/dev/null || true
 fi
 if [[ -f "$profile" ]]; then

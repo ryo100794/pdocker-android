@@ -179,7 +179,17 @@ def _env_flag(name):
 
 def _runner_supports_cow_bind():
     if DIRECT_EXECUTOR and os.path.exists(DIRECT_EXECUTOR):
-        return True
+        try:
+            proc = subprocess.run(
+                [DIRECT_EXECUTOR, "--pdocker-direct-probe"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=3,
+            )
+            output = proc.stdout.decode("utf-8", "replace")
+            return proc.returncode == 0 and "cow-bind=1" in output
+        except (OSError, subprocess.SubprocessError):
+            return False
     if not RUNNER:
         return False
     try:
@@ -463,6 +473,8 @@ for d in [IMAGES_DIR, LAYERS_DIR, CONTAINERS_DIR, META_DIR, LOGS_DIR, VOLUMES_DI
 # In-memory state for running processes
 running_containers = {}  # container_id -> Popen
 running_lock = threading.Lock()
+health_monitors = set()
+health_lock = threading.Lock()
 
 # Container create-time payloads (remembered until start)
 container_configs = {}  # container_id -> dict
@@ -1739,7 +1751,9 @@ def _gpu_request_modes(state):
     hc = state.get("HostConfig") or {}
     if hc.get("Runtime") in ("nvidia", "pdocker-gpu", "vulkan", "cuda"):
         modes.add("vulkan")
-        if hc.get("Runtime") in ("nvidia", "cuda"):
+        if hc.get("Runtime") == "pdocker-gpu":
+            modes.add("opencl")
+        if hc.get("Runtime") in ("nvidia", "pdocker-gpu", "cuda"):
             modes.add("cuda-compat")
     for req in hc.get("DeviceRequests") or []:
         driver = (req.get("Driver") or "").lower()
@@ -1748,13 +1762,15 @@ def _gpu_request_modes(state):
             caps.extend(str(c).lower() for c in group)
         opts = {str(k).lower(): str(v).lower()
                 for k, v in (req.get("Options") or {}).items()}
-        if driver in ("nvidia", "cuda") or "gpu" in caps:
+        if driver in ("nvidia", "cuda", "pdocker-gpu") or "gpu" in caps:
             modes.add("vulkan")
             modes.add("cuda-compat")
-        if driver == "vulkan" or "vulkan" in caps or opts.get("pdocker.gpu") == "vulkan":
+        if driver in ("pdocker-gpu", "vulkan", "android-vulkan") or "vulkan" in caps or opts.get("pdocker.gpu") in ("1", "true", "auto", "vulkan"):
             modes.add("vulkan")
-        if "cuda" in caps or opts.get("pdocker.cuda") in ("1", "true", "compat"):
+        if driver in ("pdocker-gpu", "cuda") or "cuda" in caps or opts.get("pdocker.cuda") in ("1", "true", "compat"):
             modes.add("cuda-compat")
+        if driver in ("pdocker-gpu", "opencl") or "opencl" in caps or opts.get("pdocker.opencl") in ("1", "true", "auto", "opencl"):
+            modes.add("opencl")
     labels = state.get("Labels") or {}
     label_mode = labels.get("io.pdocker.gpu") or labels.get("pdocker.gpu")
     if label_mode:
@@ -1763,6 +1779,8 @@ def _gpu_request_modes(state):
                 modes.add("vulkan")
             elif part in ("cuda", "cuda-compat"):
                 modes.add("cuda-compat")
+            elif part == "opencl":
+                modes.add("opencl")
     return modes
 
 
@@ -1787,6 +1805,11 @@ def _gpu_env(state):
             "CUDA_VISIBLE_DEVICES": "0",
             "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
         })
+    if "opencl" in modes:
+        env.update({
+            "PDOCKER_OPENCL_PASSTHROUGH": "1",
+            "OCL_ICD_VENDORS": "/etc/OpenCL/vendors",
+        })
     return env
 
 
@@ -1808,6 +1831,8 @@ def _gpu_binds(state):
         ("/vendor/lib64/libvulkan.so", "/vendor/lib64/libvulkan.so", True),
         ("/vendor/lib64/egl", "/vendor/lib64/egl", True),
         ("/vendor/lib64/hw", "/vendor/lib64/hw", True),
+        ("/vendor/lib64/libOpenCL.so", "/vendor/lib64/libOpenCL.so", True),
+        ("/system/vendor/lib64/libOpenCL.so", "/system/vendor/lib64/libOpenCL.so", True),
         ("/system/etc/vulkan", "/system/etc/vulkan", True),
         ("/vendor/etc/vulkan", "/vendor/etc/vulkan", True),
     ]
@@ -2782,6 +2807,9 @@ def create_container(config, name=None):
         final_ep = img_c.get("Entrypoint") or []
     final_env = list(img_c.get("Env") or []) + list(config.get("Env") or [])
     final_wd = config.get("WorkingDir") or img_c.get("WorkingDir") or "/"
+    final_healthcheck = config.get("Healthcheck")
+    if final_healthcheck is None:
+        final_healthcheck = img_c.get("Healthcheck")
     gpu_env = [f"{k}={v}" for k, v in _gpu_env({
         "HostConfig": config.get("HostConfig") or {},
         "Labels": config.get("Labels") or {},
@@ -2848,6 +2876,7 @@ def create_container(config, name=None):
             "AttachStderr": config.get("AttachStderr", True),
             "Tty": config.get("Tty", False),
             "OpenStdin": config.get("OpenStdin", False),
+            "Healthcheck": final_healthcheck,
         },
         "NetworkSettings": {
             "IPAddress": virtual_ip,
@@ -2861,6 +2890,12 @@ def create_container(config, name=None):
             }
         },
     }
+    if _container_healthcheck(state):
+        state["State"]["Health"] = {
+            "Status": "starting",
+            "FailingStreak": 0,
+            "Log": [],
+        }
 
     # resolv.conf and hosts are container-local runtime files. In cow_bind
     # mode they live in upperdir so the pristine image rootfs stays read-only.
@@ -2893,6 +2928,15 @@ def create_container(config, name=None):
                     "api_version": "1.3.0",
                 },
             }, indent=2) + "\n",
+        )
+    if "opencl" in state.get("PdockerGpu", {}).get("Modes", []):
+        opencl_lib = "/vendor/lib64/libOpenCL.so" \
+            if os.path.exists("/vendor/lib64/libOpenCL.so") else "/system/vendor/lib64/libOpenCL.so"
+        _write_container_file(
+            state,
+            cdir,
+            "etc/OpenCL/vendors/pdocker-android.icd",
+            opencl_lib + "\n",
         )
 
     # Volumes/bind mounts are applied at run-time via proot -b in
@@ -2953,12 +2997,14 @@ def reconcile_container_state(state):
     with running_lock:
         proc = running_containers.get(cid)
     if proc is not None and proc.poll() is None:
+        _start_health_monitor(cid)
         return state
     pid = int(st.get("Pid") or 0)
     if pid > 0 and _pid_alive(pid):
         st["Running"] = True
         st["Status"] = "running"
         state["State"] = st
+        _start_health_monitor(cid)
         return state
     st["Running"] = False
     st["Status"] = "exited"
@@ -2967,6 +3013,134 @@ def reconcile_container_state(state):
     state["State"] = st
     save_container_state(cid, state)
     return state
+
+
+def _container_healthcheck(state):
+    cfg = state.get("Config") or {}
+    hc = cfg.get("Healthcheck")
+    test = (hc or {}).get("Test") or []
+    if not hc or not test or test[0] == "NONE":
+        return None
+    return hc
+
+
+def _health_command(healthcheck):
+    test = list((healthcheck or {}).get("Test") or [])
+    if not test or test[0] == "NONE":
+        return None
+    if test[0] == "CMD-SHELL":
+        return ["/bin/sh", "-c", test[1] if len(test) > 1 else ""]
+    if test[0] == "CMD":
+        return test[1:]
+    return test
+
+
+def _health_seconds(value, default):
+    try:
+        value = int(value or 0)
+    except (TypeError, ValueError):
+        return default
+    if value <= 0:
+        return default
+    # Docker Engine serializes Healthcheck interval/timeout as nanoseconds.
+    if value > 1000000:
+        return max(1, value / 1000000000.0)
+    return max(1, value)
+
+
+def _set_health(cid, status, exit_code=None, output="", started_at=None, ended_at=None):
+    state = load_container_state(cid)
+    if not state:
+        return
+    st = state.setdefault("State", {})
+    health = st.setdefault("Health", {
+        "Status": "starting",
+        "FailingStreak": 0,
+        "Log": [],
+    })
+    if exit_code is not None:
+        if exit_code == 0:
+            health["FailingStreak"] = 0
+        else:
+            health["FailingStreak"] = int(health.get("FailingStreak") or 0) + 1
+        log_entry = {
+            "Start": started_at or time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime()),
+            "End": ended_at or time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime()),
+            "ExitCode": exit_code,
+            "Output": (output or "")[-4096:],
+        }
+        entries = list(health.get("Log") or [])
+        entries.append(log_entry)
+        health["Log"] = entries[-5:]
+    health["Status"] = status
+    st["Health"] = health
+    save_container_state(cid, state)
+
+
+def _start_health_monitor(cid):
+    state = load_container_state(cid)
+    if not state or not state.get("State", {}).get("Running"):
+        return
+    healthcheck = _container_healthcheck(state)
+    if not healthcheck:
+        return
+    with health_lock:
+        if cid in health_monitors:
+            return
+        health_monitors.add(cid)
+
+    def monitor():
+        interval = _health_seconds(healthcheck.get("Interval"), 30)
+        timeout = _health_seconds(healthcheck.get("Timeout"), 5)
+        start_period = _health_seconds(healthcheck.get("StartPeriod"), 2)
+        retries = int(healthcheck.get("Retries") or 3)
+        time.sleep(start_period)
+        try:
+            while True:
+                current = load_container_state(cid)
+                if not current or not current.get("State", {}).get("Running"):
+                    return
+                cmd = _health_command(_container_healthcheck(current))
+                if not cmd:
+                    return
+                started = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+                rc = 1
+                output = ""
+                try:
+                    proc = spawn_in_container(cid, cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                    if proc is None:
+                        output = "container missing"
+                    else:
+                        out, _ = proc.communicate(timeout=timeout)
+                        rc = proc.returncode
+                        output = out.decode("utf-8", "replace") if isinstance(out, bytes) else str(out or "")
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    output = f"healthcheck timed out after {timeout:.1f}s"
+                    rc = 1
+                except Exception as exc:
+                    output = str(exc)
+                    rc = 1
+                ended = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+                latest = load_container_state(cid) or {}
+                prior = ((latest.get("State") or {}).get("Health") or {})
+                failing = int(prior.get("FailingStreak") or 0)
+                if rc == 0:
+                    status = "healthy"
+                elif failing + 1 >= retries:
+                    status = "unhealthy"
+                else:
+                    status = "starting"
+                _set_health(cid, status, rc, output, started, ended)
+                time.sleep(interval)
+        finally:
+            with health_lock:
+                health_monitors.discard(cid)
+
+    threading.Thread(target=monitor, daemon=True, name=f"pdocker-health-{cid[:12]}").start()
 
 
 def _pid_alive(pid):
@@ -3055,7 +3229,8 @@ def list_containers(all_=False, filters=None):
         img = state.get("Image", "").replace("docker.io/library/", "").replace("docker.io/", "")
         status = st.get("Status", "exited")
         if running:
-            docker_status = "Up"
+            health_status = ((st.get("Health") or {}).get("Status") or "").strip()
+            docker_status = f"Up ({health_status})" if health_status else "Up"
         elif status == "created":
             docker_status = "Created"
         else:
@@ -3175,8 +3350,15 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     state["State"]["Status"] = "running"
     state["State"]["Pid"] = proc.pid
     state["State"]["StartedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+    if _container_healthcheck(state):
+        state["State"]["Health"] = {
+            "Status": "starting",
+            "FailingStreak": 0,
+            "Log": [],
+        }
     save_container_state(cid, state)
     record_event("container", "start", cid, _container_event_attrs(state))
+    _start_health_monitor(cid)
 
     def watcher():
         rc = proc.wait()
@@ -3397,13 +3579,14 @@ def spawn_in_container(cid, cmd, env=None, workdir=None, tty=False,
     cdir, cow, rootfs = _container_runtime(state)
     wd = workdir or state.get("WorkingDir", "/")
     e = _container_env(state, env)
-    fault = runtime_preflight(rootfs, e, workdir=wd, cow_bind=cow)
+    binds = _effective_binds(state) + _gpu_binds(state)
+    fault = runtime_preflight(rootfs, e, workdir=wd, binds=binds, cow_bind=cow)
     if fault:
         raise RuntimeError(fault)
     fault = runtime_process_unavailable_message()
     if fault:
         raise RuntimeError(fault)
-    argv = build_run_argv(rootfs, list(cmd), e, workdir=wd, cow_bind=cow, mode="exec")
+    argv = build_run_argv(rootfs, list(cmd), e, workdir=wd, binds=binds, cow_bind=cow, mode="exec")
     if tty:
         import pty
         try:
@@ -3439,13 +3622,14 @@ def exec_in_container(cid, cmd, env=None, workdir=None, tty=False):
     cdir, cow, rootfs = _container_runtime(state)
     wd = workdir or state.get("WorkingDir", "/")
     e = _container_env(state, env)
-    fault = runtime_preflight(rootfs, e, workdir=wd, cow_bind=cow)
+    binds = _effective_binds(state) + _gpu_binds(state)
+    fault = runtime_preflight(rootfs, e, workdir=wd, binds=binds, cow_bind=cow)
     if fault:
         raise RuntimeError(fault)
     fault = runtime_process_unavailable_message()
     if fault:
         raise RuntimeError(fault)
-    argv = build_run_argv(rootfs, list(cmd), e, workdir=wd, cow_bind=cow, mode="exec")
+    argv = build_run_argv(rootfs, list(cmd), e, workdir=wd, binds=binds, cow_bind=cow, mode="exec")
     return subprocess.run(argv, capture_output=True)
 
 

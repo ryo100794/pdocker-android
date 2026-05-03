@@ -80,6 +80,7 @@ def main() -> int:
         "Dockerfile server-only build target": "--target llama-server" in llama_dockerfile and "--parallel" in llama_dockerfile,
         "Dockerfile bounded build jobs": "ARG LLAMA_CPP_BUILD_JOBS=2" in llama_dockerfile and 'jobs="${LLAMA_CPP_BUILD_JOBS:-2}"' in llama_dockerfile,
         "Dockerfile log directory": "/workspace/logs" in llama_dockerfile and "/var/log/pdocker" in llama_dockerfile,
+        "Dockerfile llama healthcheck": "HEALTHCHECK" in llama_dockerfile and "/health" in llama_dockerfile and "/v1/models" in llama_dockerfile,
         "profile Vulkan detection": "PDOCKER_VULKAN_PASSTHROUGH" in profile,
         "profile CUDA compat detection": "PDOCKER_CUDA_COMPAT" in profile,
         "profile CPU fallback": re.search(r'backend="cpu"', profile) is not None,

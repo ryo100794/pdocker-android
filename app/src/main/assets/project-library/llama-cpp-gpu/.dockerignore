@@ -1,0 +1,6 @@
+models/
+workspace/
+profiles/
+logs/
+*.gguf
+*.gguf.*

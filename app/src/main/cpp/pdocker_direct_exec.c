@@ -41,6 +41,17 @@ static struct timespec g_stats_start;
 static int write_tracee_data(pid_t pid, unsigned long long addr, const void *value, size_t len);
 static const char *syscall_name(long nr);
 
+#define MAX_BIND_MAPS 96
+
+typedef struct {
+    char host[PATH_MAX];
+    char guest[PATH_MAX];
+    int readonly;
+} BindMap;
+
+static BindMap g_bind_maps[MAX_BIND_MAPS];
+static int g_bind_map_count = 0;
+
 #define TRACE_LOG(...) do { if (g_trace_verbose) fprintf(stderr, __VA_ARGS__); } while (0)
 
 static void tracer_signal_handler(int sig) {
@@ -146,6 +157,79 @@ static int file_starts_with(const char *path, const char *magic) {
     size_t n = fread(buf, 1, sizeof(buf), f);
     fclose(f);
     return n >= strlen(magic) && memcmp(buf, magic, strlen(magic)) == 0;
+}
+
+static void trim_trailing_slashes(char *path) {
+    size_t len = strlen(path);
+    while (len > 1 && path[len - 1] == '/') {
+        path[len - 1] = '\0';
+        len--;
+    }
+}
+
+static int parse_bind_spec(const char *spec) {
+    if (!spec || !spec[0] || g_bind_map_count >= MAX_BIND_MAPS) return 0;
+    char tmp[PATH_MAX * 2];
+    snprintf(tmp, sizeof(tmp), "%s", spec);
+    char *host = tmp;
+    char *guest = strchr(tmp, ':');
+    if (!guest) return 0;
+    *guest++ = '\0';
+    char *opts = strchr(guest, ':');
+    if (opts) *opts++ = '\0';
+    if (!host[0] || !guest[0] || guest[0] != '/') return 0;
+
+    BindMap *m = &g_bind_maps[g_bind_map_count];
+    char resolved[PATH_MAX];
+    if (realpath(host, resolved)) {
+        snprintf(m->host, sizeof(m->host), "%s", resolved);
+    } else {
+        snprintf(m->host, sizeof(m->host), "%s", host);
+    }
+    snprintf(m->guest, sizeof(m->guest), "%s", guest);
+    trim_trailing_slashes(m->host);
+    trim_trailing_slashes(m->guest);
+    m->readonly = opts && strstr(opts, "ro");
+    g_bind_map_count++;
+    return 1;
+}
+
+static int bind_guest_match(const BindMap *m, const char *guest, const char **suffix) {
+    size_t glen = strlen(m->guest);
+    if (strcmp(m->guest, "/") == 0) {
+        *suffix = guest;
+        return 1;
+    }
+    if (strncmp(guest, m->guest, glen) != 0) return 0;
+    if (guest[glen] != '\0' && guest[glen] != '/') return 0;
+    *suffix = guest + glen;
+    return 1;
+}
+
+static int resolve_bind_path(const char *guest, char *out, size_t out_len) {
+    int best = -1;
+    size_t best_len = 0;
+    const char *best_suffix = NULL;
+    for (int i = 0; i < g_bind_map_count; ++i) {
+        const char *suffix = NULL;
+        if (!bind_guest_match(&g_bind_maps[i], guest, &suffix)) continue;
+        size_t len = strlen(g_bind_maps[i].guest);
+        if (len >= best_len) {
+            best = i;
+            best_len = len;
+            best_suffix = suffix;
+        }
+    }
+    if (best < 0) return 0;
+    const char *host = g_bind_maps[best].host;
+    if (!best_suffix || !best_suffix[0]) {
+        if (snprintf(out, out_len, "%s", host) >= (int)out_len) return -ENAMETOOLONG;
+    } else if (strcmp(host, "/") == 0) {
+        if (snprintf(out, out_len, "%s", best_suffix) >= (int)out_len) return -ENAMETOOLONG;
+    } else {
+        if (snprintf(out, out_len, "%s%s", host, best_suffix) >= (int)out_len) return -ENAMETOOLONG;
+    }
+    return 1;
 }
 
 static int resolve_guest_program(const char *rootfs, const char *program, char *out, size_t out_len) {
@@ -823,6 +907,22 @@ static int should_rewrite_path(const char *rootfs, const char *path) {
     return 1;
 }
 
+static int resolve_guest_host_path(const char *rootfs, const char *guest,
+                                   char *out, size_t out_len, int *is_bind) {
+    if (is_bind) *is_bind = 0;
+    if (!should_rewrite_path(rootfs, guest)) return 0;
+    int bind_rc = resolve_bind_path(guest, out, out_len);
+    if (bind_rc < 0) return bind_rc;
+    if (bind_rc > 0) {
+        if (is_bind) *is_bind = 1;
+        return 1;
+    }
+    if (snprintf(out, out_len, "%s%s", rootfs, guest) >= (int)out_len) {
+        return -ENAMETOOLONG;
+    }
+    return 1;
+}
+
 static int path_has_parent_segment(const char *path) {
     if (!path) return 0;
     const char *p = path;
@@ -854,8 +954,10 @@ static int rewrite_path_arg_scratch(pid_t pid, struct user_pt_regs *regs, int ar
         return 0;
     }
     trace_interesting_path(pid, context, arg_index, original);
-    if (!should_rewrite_path(rootfs, original)) return 0;
-    if (snprintf(rewritten, sizeof(rewritten), "%s%s", rootfs, original) >= (int)sizeof(rewritten)) {
+    int bind_path = 0;
+    int resolved = resolve_guest_host_path(rootfs, original, rewritten, sizeof(rewritten), &bind_path);
+    if (resolved == 0) return 0;
+    if (resolved < 0) {
         fprintf(stderr, "pdocker-direct-trace: pid=%d path too long for %s: %s\n",
                 (int)pid, context, original);
         return 0;
@@ -880,9 +982,18 @@ static int rewrite_at_path_arg(pid_t pid, struct user_pt_regs *regs, int dirfd_i
         return 0;
     }
     trace_interesting_path(pid, context, path_index, original);
-    if (!should_rewrite_path(rootfs, original)) return 0;
+    char rewritten[PATH_MAX];
+    int bind_path = 0;
+    int resolved = resolve_guest_host_path(rootfs, original, rewritten, sizeof(rewritten), &bind_path);
+    if (resolved == 0) return 0;
+    if (resolved < 0) {
+        fprintf(stderr, "pdocker-direct-trace: pid=%d path too long for %s: %s\n",
+                (int)pid, context, original);
+        return 0;
+    }
 
-    if (g_rootfd_rewrite &&
+    if (!bind_path &&
+        g_rootfd_rewrite &&
         g_rootfs_fd >= 0 &&
         original[0] == '/' &&
         original[1] != '\0' &&
@@ -895,12 +1006,6 @@ static int rewrite_at_path_arg(pid_t pid, struct user_pt_regs *regs, int dirfd_i
         return 1;
     }
 
-    char rewritten[PATH_MAX];
-    if (snprintf(rewritten, sizeof(rewritten), "%s%s", rootfs, original) >= (int)sizeof(rewritten)) {
-        fprintf(stderr, "pdocker-direct-trace: pid=%d path too long for %s: %s\n",
-                (int)pid, context, original);
-        return 0;
-    }
     unsigned long long scratch = (regs->sp - scratch_offset) & ~15ULL;
     if (write_tracee_string(pid, scratch, rewritten) != 0) {
         fprintf(stderr, "pdocker-direct-trace: pid=%d path rewrite failed for %s: %s -> %s (%s)\n",
@@ -1156,9 +1261,7 @@ static int resolve_tracee_host_path(pid_t pid, int dirfd, unsigned long long pat
     if (guest[0] == '\0') return -ENOENT;
 
     if (guest[0] == '/') {
-        if (!should_rewrite_path(rootfs, guest)) return 0;
-        if (snprintf(out, out_len, "%s%s", rootfs, guest) >= (int)out_len) return -ENAMETOOLONG;
-        return 1;
+        return resolve_guest_host_path(rootfs, guest, out, out_len, NULL);
     }
 
     char proc_path[64];
@@ -2243,7 +2346,7 @@ static int run_command(int argc, char **argv) {
             env_items[env_count] = value_after(&i, argc, argv, "--env");
             env_count += 1;
         } else if (strcmp(argv[i], "--bind") == 0) {
-            (void)value_after(&i, argc, argv, "--bind");
+            parse_bind_spec(value_after(&i, argc, argv, "--bind"));
             bind_count += 1;
         } else if (strcmp(argv[i], "--cow-upper") == 0 ||
                    strcmp(argv[i], "--cow-lower") == 0 ||
@@ -2273,10 +2376,27 @@ static int run_command(int argc, char **argv) {
     rootfs = rootfs_abs;
 
     char cwd[PATH_MAX];
-    if (snprintf(cwd, sizeof(cwd), "%s/%s", rootfs, workdir[0] == '/' ? workdir + 1 : workdir) >= (int)sizeof(cwd)) {
-        fprintf(stderr, "pdocker-direct-executor: workdir path too long\n");
-        free(env_items);
-        return 126;
+    if (workdir[0] == '/') {
+        int bind_path = 0;
+        int resolved = resolve_guest_host_path(rootfs, workdir, cwd, sizeof(cwd), &bind_path);
+        if (resolved < 0) {
+            fprintf(stderr, "pdocker-direct-executor: workdir path too long\n");
+            free(env_items);
+            return 126;
+        }
+        if (resolved == 0) {
+            if (snprintf(cwd, sizeof(cwd), "%s/%s", rootfs, workdir + 1) >= (int)sizeof(cwd)) {
+                fprintf(stderr, "pdocker-direct-executor: workdir path too long\n");
+                free(env_items);
+                return 126;
+            }
+        }
+    } else {
+        if (snprintf(cwd, sizeof(cwd), "%s/%s", rootfs, workdir) >= (int)sizeof(cwd)) {
+            fprintf(stderr, "pdocker-direct-executor: workdir path too long\n");
+            free(env_items);
+            return 126;
+        }
     }
     if (chdir(cwd) != 0 && chdir(rootfs) != 0) {
         perror("pdocker-direct-executor: chdir rootfs/workdir");
@@ -2480,7 +2600,8 @@ loader_found:
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--pdocker-direct-probe") == 0) {
         puts("pdocker-direct-executor:1");
-        puts("cow-bind=1");
+        puts("cow-bind=0");
+        puts("bind-path-rewrite=1");
         if (getenv("PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC")) {
             puts("process-exec=1");
         } else {

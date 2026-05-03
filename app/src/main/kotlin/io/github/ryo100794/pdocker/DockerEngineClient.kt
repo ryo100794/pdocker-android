@@ -275,15 +275,88 @@ class DockerEngineClient(private val socket: File) {
 
         private fun createTar(root: File): ByteArray {
             val out = ByteArrayOutputStream()
+            val ignore = DockerIgnore.load(root)
             root.walkTopDown()
+                .onEnter { dir ->
+                    dir == root || !ignore.excludes(root, dir, isDir = true)
+                }
                 .filter { it != root }
                 .filter { it.isFile }
                 .forEach { file ->
                     val rel = root.toPath().relativize(file.toPath()).joinToString("/")
+                    if (ignore.excludes(rel, isDir = false)) return@forEach
                     writeTarEntry(out, rel, file.readBytes(), file.lastModified() / 1000)
                 }
             out.write(ByteArray(1024))
             return out.toByteArray()
+        }
+
+        private data class DockerIgnore(val rules: List<Rule>) {
+            data class Rule(val pattern: String, val directoryOnly: Boolean, val basenameOnly: Boolean, val negated: Boolean)
+
+            fun excludes(root: File, file: File, isDir: Boolean): Boolean {
+                val rel = root.toPath().relativize(file.toPath()).joinToString("/")
+                return excludes(rel, isDir)
+            }
+
+            fun excludes(rel: String, isDir: Boolean): Boolean {
+                val normalized = rel.trim('/').replace('\\', '/')
+                if (normalized.isEmpty()) return false
+                var excluded = false
+                rules.forEach { rule ->
+                    if (rule.matches(normalized, isDir)) excluded = !rule.negated
+                }
+                return excluded
+            }
+
+            private fun Rule.matches(rel: String, isDir: Boolean): Boolean {
+                if (directoryOnly && !isDir && !rel.startsWith("$pattern/")) return false
+                val target = if (basenameOnly) rel.substringAfterLast('/') else rel
+                if (glob(pattern, target)) return true
+                return !basenameOnly && rel.startsWith("$pattern/")
+            }
+
+            private fun glob(pattern: String, value: String): Boolean {
+                val regex = buildString {
+                    append('^')
+                    pattern.forEach { ch ->
+                        when (ch) {
+                            '*' -> append("[^/]*")
+                            '?' -> append("[^/]")
+                            '.', '(', ')', '+', '$', '^', '[', ']', '{', '}', '|', '\\' -> append('\\').append(ch)
+                            else -> append(ch)
+                        }
+                    }
+                    append('$')
+                }.toRegex()
+                return regex.matches(value)
+            }
+
+            companion object {
+                fun load(root: File): DockerIgnore {
+                    val file = File(root, ".dockerignore")
+                    if (!file.isFile) return DockerIgnore(emptyList())
+                    val rules = file.readLines()
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() && !it.startsWith("#") }
+                        .mapNotNull { raw ->
+                            val negated = raw.startsWith("!")
+                            val body = (if (negated) raw.drop(1) else raw)
+                                .trim()
+                                .trimStart('/')
+                            if (body.isBlank()) return@mapNotNull null
+                            val directoryOnly = body.endsWith("/")
+                            val pattern = body.trimEnd('/').replace('\\', '/')
+                            Rule(
+                                pattern = pattern,
+                                directoryOnly = directoryOnly,
+                                basenameOnly = "/" !in pattern,
+                                negated = negated,
+                            )
+                        }
+                    return DockerIgnore(rules)
+                }
+            }
         }
 
         private fun writeTarEntry(out: ByteArrayOutputStream, name: String, data: ByteArray, mtime: Long) {

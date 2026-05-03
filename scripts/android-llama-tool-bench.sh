@@ -10,12 +10,13 @@ PROMPT_TOKENS="${PDOCKER_LLAMA_TOOL_PROMPT:-16}"
 GEN_TOKENS="${PDOCKER_LLAMA_TOOL_GEN:-8}"
 REPEAT="${PDOCKER_LLAMA_TOOL_REPEAT:-3}"
 THREADS="${PDOCKER_LLAMA_THREADS:-8}"
+GPU_LAYERS="${PDOCKER_LLAMA_GPU_LAYERS:-0}"
 OUT="${PDOCKER_LLAMA_TOOL_OUT:-$ROOT/docs/test/llama-bench-tool-cpu-p16-n8-r3.json}"
 DEVICE_BENCH_DIR="${PDOCKER_LLAMA_DEVICE_BENCH_DIR:-files/pdocker/bench}"
 
 usage() {
   cat <<EOF
-Usage: $0 [--container NAME] [--model PATH] [--prompt-tokens N] [--gen-tokens N] [--repeat N] [--threads N] [--out PATH]
+Usage: $0 [--container NAME] [--model PATH] [--prompt-tokens N] [--gen-tokens N] [--repeat N] [--threads N] [--gpu-layers N] [--out PATH]
 
 Runs the official llama.cpp llama-bench tool inside the running pdocker llama
 container. If the image was built with only llama-server, this script builds
@@ -26,6 +27,7 @@ Defaults match the recorded CPU fallback baseline:
   generated tokens: $GEN_TOKENS
   repetitions: $REPEAT
   threads: $THREADS
+  gpu layers: $GPU_LAYERS
 EOF
 }
 
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --gen-tokens) GEN_TOKENS="$2"; shift ;;
     --repeat) REPEAT="$2"; shift ;;
     --threads) THREADS="$2"; shift ;;
+    --gpu-layers) GPU_LAYERS="$2"; shift ;;
     --out) OUT="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -60,7 +63,7 @@ echo "[pdocker llama-bench] ensuring llama-bench target"
 run_as "$docker_cmd_prefix; docker exec $(printf "%q" "$CONTAINER") sh -lc 'test -x /opt/llama.cpp/build/bin/llama-bench || (cd /opt/llama.cpp && cmake --build build --target llama-bench --parallel 2)'"
 
 echo "[pdocker llama-bench] running official llama-bench"
-run_as "$docker_cmd_prefix; docker exec $(printf "%q" "$CONTAINER") sh -lc '/opt/llama.cpp/build/bin/llama-bench -m $(printf "%q" "$MODEL") -p $(printf "%q" "$PROMPT_TOKENS") -n $(printf "%q" "$GEN_TOKENS") -r $(printf "%q" "$REPEAT") -ngl 0 -t $(printf "%q" "$THREADS") -o json'" > "$OUT"
+run_as "$docker_cmd_prefix; docker exec $(printf "%q" "$CONTAINER") sh -lc '/opt/llama.cpp/build/bin/llama-bench -m $(printf "%q" "$MODEL") -p $(printf "%q" "$PROMPT_TOKENS") -n $(printf "%q" "$GEN_TOKENS") -r $(printf "%q" "$REPEAT") -ngl $(printf "%q" "$GPU_LAYERS") -t $(printf "%q" "$THREADS") -o json'" > "$OUT"
 
 DEVICE_NAME="$(basename "$OUT")"
 "$ADB" push "$OUT" "/data/local/tmp/$DEVICE_NAME" >/dev/null

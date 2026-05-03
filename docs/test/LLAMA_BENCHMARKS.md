@@ -18,6 +18,49 @@ bash scripts/android-llama-bench.sh --predict 8 --repeat 1
 Use the same prompt, token count, and model when comparing CPU fallback with
 future Vulkan/CUDA-compatible runs.
 
+## 2026-05-03 Vulkan-Requested Result
+
+- Local path: `docs/test/llama-bench-vulkan-requested-repeat3.json`.
+- Device path: `files/pdocker/bench/llama-bench-vulkan-requested-repeat3.json`.
+- Mode: Vulkan requested through Docker-compatible `gpus: all`.
+- Engine state: `PdockerGpu.Modes=["cuda-compat","vulkan"]` during the HTTP
+  run; subsequent OpenCL wiring expands this to include `opencl`.
+- Container health: `docker ps` reports `Up (healthy)` after the healthcheck
+  settles.
+- HTTP generation speed: 0.171 tokens/s mean, 0.162 min, 0.185 max.
+- Mean wall time: 58.58s for 8 generated tokens.
+
+This is slower than the CPU fallback baseline. The request path and profile are
+working, but acceleration is not active: `llama-server` still reports CPU model,
+KV, and compute buffers. After fixing the direct runtime COW mis-detection, the
+Vulkan ICD file is visible in the container, but `vulkaninfo --summary` fails
+because Android's `/system/lib64/libvulkan.so` depends on Android/Bionic
+libraries such as `android.hardware.configstore@1.0.so` that are not loadable
+from the Ubuntu/glibc process.
+
+Official `llama-bench` with `-p 16 -n 8 -r 2 -ngl 999 -t 8` is stored at
+`docs/test/llama-bench-tool-vulkan-requested-p16-n8-r2.json`:
+
+- Prompt processing: 1.76 tokens/s average.
+- Token generation: 0.248 tokens/s average.
+
+## 2026-05-03 OpenCL Probe
+
+OpenCL was probed after the Vulkan check. The device exposes
+`/vendor/lib64/libOpenCL.so`, and pdocker now maps an OpenCL request into:
+
+- `PdockerGpu.Modes` containing `opencl`
+- `PDOCKER_OPENCL_PASSTHROUGH=1`
+- `OCL_ICD_VENDORS=/etc/OpenCL/vendors`
+- `/etc/OpenCL/vendors/pdocker-android.icd`
+
+The library is visible inside the container, but `ctypes.CDLL` fails with
+`liblog.so: cannot open shared object file`. `readelf -d` shows the Android
+OpenCL library depends on Bionic/Android libraries (`liblog.so`,
+`libcutils.so`, `libc++.so`, `libc.so`, `libm.so`, `libdl.so`). So the OpenCL
+result matches Vulkan: passthrough metadata and file exposure work, but direct
+loading from a glibc container is not yet a working GPU backend.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.

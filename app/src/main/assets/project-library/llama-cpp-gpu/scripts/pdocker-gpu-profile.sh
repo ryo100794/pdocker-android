@@ -54,18 +54,14 @@ vulkan_env_signal="false"
 vulkan_icd_signal="false"
 vulkaninfo_signal="false"
 nvidia_device_signal="false"
+mode="${PDOCKER_GPU_MODE:-${PDOCKER_GPU:-auto}}"
+mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
 
-if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" || -e /dev/nvidia0 ]]; then
-  backend="cuda-compat"
-  ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
-  reason="PDOCKER_CUDA_COMPAT or NVIDIA device signal is present"
-  if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
-    cuda_signal="true"
-  fi
-  if [[ -e /dev/nvidia0 ]]; then
-    nvidia_device_signal="true"
-  fi
-elif [[ "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" || -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
+if [[ "$mode" = "cpu" || "$mode" = "off" || "$mode" = "none" || "${PDOCKER_GPU_AUTO:-}" = "0" ]]; then
+  backend="cpu"
+  ngl="0"
+  reason="PDOCKER_GPU_MODE requests CPU-only execution"
+elif [[ "$mode" = "vulkan" || "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" || -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
   backend="vulkan"
   ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
   reason="Vulkan passthrough environment or ICD file is present"
@@ -74,6 +70,19 @@ elif [[ "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" || -n "${VK_ICD_FILENAMES:-}" ||
   fi
   if [[ -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
     vulkan_icd_signal="true"
+  fi
+  if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
+    cuda_signal="true"
+  fi
+elif [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || "${PDOCKER_CUDA_COMPAT:-}" = "1" || -e /dev/nvidia0 ]]; then
+  backend="cuda-compat"
+  ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
+  reason="PDOCKER_CUDA_COMPAT or NVIDIA device signal is present"
+  if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
+    cuda_signal="true"
+  fi
+  if [[ -e /dev/nvidia0 ]]; then
+    nvidia_device_signal="true"
   fi
 elif command -v vulkaninfo >/dev/null 2>&1 && vulkaninfo --summary >/dev/null 2>&1; then
   backend="vulkan"
@@ -95,6 +104,7 @@ cat > "$diagnostics" <<EOF
   "backend": "$(json_escape "$backend")",
   "recommendation": "$(json_escape "$backend")",
   "reason": "$(json_escape "$reason")",
+  "mode": "$(json_escape "$mode")",
   "threads": $(json_int_or_string "$threads"),
   "ctx": $(json_int_or_string "$ctx"),
   "n_gpu_layers": $(json_int_or_string "$ngl"),

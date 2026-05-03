@@ -1,0 +1,124 @@
+{
+  "schema": "pdocker.llama.bench.v1",
+  "timestamp_utc": "2026-05-03T23:39:09Z",
+  "endpoint": "http://127.0.0.1:28081",
+  "mode": "vulkan-requested",
+  "gpu_profile": {
+    "backend": "vulkan",
+    "recommendation": "vulkan",
+    "reason": "Vulkan passthrough environment or ICD file is present",
+    "mode": "auto",
+    "threads": 8,
+    "ctx": 4096,
+    "n_gpu_layers": 999,
+    "mem_total_kb": 11434000,
+    "signals": {
+      "pdocker_cuda_compat": true,
+      "pdocker_vulkan_passthrough": true,
+      "vk_icd_filenames": "/etc/vulkan/icd.d/pdocker-android.json",
+      "pdocker_icd_file": true,
+      "vulkaninfo_summary": false,
+      "nvidia_device": false
+    },
+    "outputs": {
+      "env": "/profiles/pdocker-gpu.env",
+      "diagnostics": "/profiles/pdocker-gpu-diagnostics.json"
+    }
+  },
+  "prompt": "Repeat exactly: pdocker-ok",
+  "n_predict": 8,
+  "repeat": 3,
+  "models": {
+    "models": [
+      {
+        "name": "model.gguf",
+        "model": "model.gguf",
+        "modified_at": "",
+        "size": "",
+        "digest": "",
+        "type": "model",
+        "description": "",
+        "tags": [
+          ""
+        ],
+        "capabilities": [
+          "completion"
+        ],
+        "parameters": "",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "",
+          "families": [
+            ""
+          ],
+          "parameter_size": "",
+          "quantization_level": ""
+        }
+      }
+    ],
+    "object": "list",
+    "data": [
+      {
+        "id": "model.gguf",
+        "aliases": [],
+        "tags": [],
+        "object": "model",
+        "created": 1777851373,
+        "owned_by": "llamacpp",
+        "meta": {
+          "vocab_type": 2,
+          "n_vocab": 151936,
+          "n_ctx_train": 40960,
+          "n_embd": 4096,
+          "n_params": 8190735360,
+          "size": 5021827072
+        }
+      }
+    ]
+  },
+  "summary": {
+    "predicted_tokens_per_second_mean": 0.1707647123804712,
+    "predicted_tokens_per_second_min": 0.1623030280307879,
+    "predicted_tokens_per_second_max": 0.18464303135850302,
+    "wall_seconds_mean": 58.58063971734373
+  },
+  "runs": [
+    {
+      "index": 0,
+      "http_status": 200,
+      "wall_seconds": 53.85720893798862,
+      "prompt_tokens": 6,
+      "prompt_seconds": 5.370550000000001,
+      "prompt_tokens_per_second": 1.1172040107623986,
+      "predicted_tokens": 8,
+      "predicted_seconds": 48.382782,
+      "predicted_tokens_per_second": 0.16534807775212265,
+      "content_preview": "\n\nOkay, I need to figure out"
+    },
+    {
+      "index": 1,
+      "http_status": 200,
+      "wall_seconds": 64.01361466303933,
+      "prompt_tokens": 6,
+      "prompt_seconds": 8.546177,
+      "prompt_tokens_per_second": 0.7020683049274548,
+      "predicted_tokens": 8,
+      "predicted_seconds": 49.290516000000004,
+      "predicted_tokens_per_second": 0.1623030280307879,
+      "content_preview": "\n\nOkay, I need to figure out"
+    },
+    {
+      "index": 2,
+      "http_status": 200,
+      "wall_seconds": 57.871095551003236,
+      "prompt_tokens": 6,
+      "prompt_seconds": 8.333762,
+      "prompt_tokens_per_second": 0.719962965105075,
+      "predicted_tokens": 8,
+      "predicted_seconds": 43.326845,
+      "predicted_tokens_per_second": 0.18464303135850302,
+      "content_preview": "\n\nOkay, I need to figure out"
+    }
+  ]
+}

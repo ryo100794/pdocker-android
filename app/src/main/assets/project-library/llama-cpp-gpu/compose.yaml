@@ -13,11 +13,13 @@ services:
     environment:
       PDOCKER_GPU: "auto"
       PDOCKER_GPU_AUTO: "1"
+      PDOCKER_GPU_MODE: "${PDOCKER_GPU_MODE:-auto}"
       LLAMA_ARG_MODEL: "${LLAMA_ARG_MODEL:-/models/model.gguf}"
       LLAMA_ARG_CTX: "${LLAMA_ARG_CTX:-4096}"
       LLAMA_ARG_PORT: "${LLAMA_ARG_PORT:-18081}"
       LLAMA_ARG_THREADS: "${LLAMA_ARG_THREADS:-}"
       LLAMA_ARG_N_GPU_LAYERS: "${LLAMA_ARG_N_GPU_LAYERS:-}"
+      LLAMA_GPU_PROFILE_REFRESH: "${LLAMA_GPU_PROFILE_REFRESH:-auto}"
       LLAMA_EXTRA_ARGS: "${LLAMA_EXTRA_ARGS:-}"
       LLAMA_LOG_FILE: "${LLAMA_LOG_FILE:-/workspace/logs/llama-server.log}"
       LLAMA_MODEL_URL: "${LLAMA_MODEL_URL:-https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf}"

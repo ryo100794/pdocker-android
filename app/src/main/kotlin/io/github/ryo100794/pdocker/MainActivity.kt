@@ -1264,7 +1264,22 @@ class MainActivity : AppCompatActivity() {
             .put("Binds", binds)
             .put("PortBindings", portBindings)
         if (gpus.isNotBlank() && gpus != "null") {
-            hostConfig.put("DeviceRequests", JSONArray().put(JSONObject().put("Driver", "pdocker-gpu").put("Count", -1)))
+            hostConfig.put(
+                "DeviceRequests",
+                JSONArray().put(
+                    JSONObject()
+                        .put("Driver", "pdocker-gpu")
+                        .put("Count", -1)
+                        .put("Capabilities", JSONArray().put(JSONArray().put("gpu")))
+                        .put(
+                            "Options",
+                            JSONObject()
+                                .put("pdocker.gpu", "vulkan")
+                                .put("pdocker.cuda", "compat")
+                                .put("pdocker.opencl", "opencl"),
+                        ),
+                ),
+            )
         }
         val labels = JSONObject()
         serviceLinks.forEachIndexed { index, link ->

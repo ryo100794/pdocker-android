@@ -51,6 +51,19 @@ or closes.
   llama.cpp `llama-bench` binary. Latest CPU fallback tool result with
   `-p 16 -n 8 -r 3 -ngl 0 -t 8`: prompt processing about 2.40 tokens/s,
   generation about 0.228 tokens/s, backend `BLAS`/OpenBLAS CPU.
+- [done] Add llama healthcheck support end-to-end. The template now declares a
+  Dockerfile `HEALTHCHECK`, pdockerd carries image healthchecks into container
+  state, runs a lightweight monitor, and `docker ps` reports `Up (healthy)`.
+- [done] Test Vulkan-requested llama mode. `gpus: all` now reaches
+  `DeviceRequests`, `PdockerGpu.Modes`, GPU env, and the profile selects
+  Vulkan with `-ngl 999`, but measured HTTP generation is slower than CPU
+  baseline and `vulkaninfo` fails to load Android's Bionic-dependent
+  `libvulkan.so` from the Ubuntu/glibc container. Recorded in
+  `docs/test/LLAMA_BENCHMARKS.md`.
+- [done] Probe OpenCL after Vulkan. pdocker now records `opencl` mode, injects
+  OpenCL ICD metadata, and binds the host OpenCL library when present. The
+  library is visible but fails to load because Android/Bionic dependencies
+  such as `liblog.so` are not available to the glibc container.
 - [next] Add a UI/device health card that checks the real 18080 listener and
   links to the container logs rather than relying on placeholder state.
 - [next] Prevent duplicate container names after interrupted compose attempts.
@@ -541,8 +554,9 @@ Temporary behavior:
 
 - `--gpus all`, Vulkan env, CUDA-compatible env, and GPU diagnostics are
   negotiation signals, not a complete runtime.
-- Current benchmark has CPU/GLES first-pass coverage; Vulkan/cuVK remains
-  pending.
+- Current benchmark has CPU/GLES first-pass coverage. Vulkan/OpenCL request
+  plumbing exists, but both hit the Android Bionic library boundary when loaded
+  from an Ubuntu/glibc container. cuVK remains pending.
 
 Real implementation needed:
 
@@ -551,7 +565,9 @@ Real implementation needed:
 3. Implement minimal container-facing Vulkan passthrough validation.
 4. Implement CUDA-compatible shim API only as a real library/runtime, not just
    env variables.
-5. Add UI recommendation based on measured CPU/GPU crossover size.
+5. Decide the GPU ABI bridge: Bionic sidecar process, native Android GPU
+   service, or container-facing shim that marshals to an Android process.
+6. Add UI recommendation based on measured CPU/GPU crossover size.
 
 Acceptance:
 

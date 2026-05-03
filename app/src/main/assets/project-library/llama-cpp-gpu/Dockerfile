@@ -51,5 +51,6 @@ RUN chmod +x /usr/local/bin/pdocker-gpu-profile /usr/local/bin/start-llama-serve
 
 WORKDIR /workspace
 EXPOSE 18081
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=6 CMD curl -fsS http://127.0.0.1:18081/health >/dev/null || curl -fsS http://127.0.0.1:18081/v1/models >/dev/null
 
 CMD ["/usr/local/bin/start-llama-server"]
