@@ -82,6 +82,14 @@ class MainActivity : AppCompatActivity() {
         var output: MutableList<String> = mutableListOf(),
     )
 
+    private data class LiveJobView(
+        val header: TextView,
+        val progress: TextView,
+        val services: LinearLayout,
+        val log: TextView,
+        val scroll: ScrollView,
+    )
+
     private data class ComposeService(
         val name: String,
         var image: String = "",
@@ -144,6 +152,7 @@ class MainActivity : AppCompatActivity() {
     private var currentToolGroup: String? = null
     private val dockerJobs = mutableListOf<DockerJob>()
     private val dockerJobBuffers = mutableMapOf<String, String>()
+    private val liveJobViews = mutableMapOf<String, LiveJobView>()
     private val serviceHealth = mutableMapOf<String, String>()
     private val serviceHealthCheckedAt = mutableMapOf<String, Long>()
     private val serviceHealthInFlight = mutableSetOf<String>()
@@ -271,6 +280,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         toolTabs.forEach { it.bridge?.close() }
         toolTabs.clear()
+        liveJobViews.clear()
         super.onDestroy()
     }
 
@@ -655,7 +665,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun waitForEngine(timeoutMs: Long = 30_000): Boolean {
+    private fun waitForEngine(timeoutMs: Long = 90_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
             runCatching {
@@ -697,6 +707,7 @@ class MainActivity : AppCompatActivity() {
         trimDockerJobs()
         saveDockerJobs()
         renderContent()
+        openLiveJobLog(job, switchTo = true)
         thread(isDaemon = true, name = "engine-action") {
             val output = StringBuilder()
             val result = runCatching {
@@ -713,7 +724,8 @@ class MainActivity : AppCompatActivity() {
             appendUniqueLines(output, finalOutput)
             ui.post {
                 finishEngineJob(job.id, exitCode, output.toString())
-                openTextTool(group, title, output.toString())
+                val finished = dockerJobs.firstOrNull { it.id == job.id }
+                if (finished != null) handleEngineJobFinished(finished)
                 renderContent()
                 refreshStatus()
             }
@@ -723,7 +735,7 @@ class MainActivity : AppCompatActivity() {
     private fun runImageBuild(dir: File, title: String) {
         runEngineJob(title, workspaceGroup(), "engine docker build: ${dir.absolutePath}") { emit ->
             emit("Service ${dir.name} Building")
-            buildImage(dir, "local/${dir.name}:latest")
+            buildImageStreaming(dir, "local/${dir.name}:latest") { line -> emit(line) }
         }
     }
 
@@ -741,9 +753,15 @@ class MainActivity : AppCompatActivity() {
                     val line = "Service ${service.name} Building"
                     emit(line)
                     out.appendLine(line)
-                    val built = runCatching { buildImage(contextDir, image) }
+                    val buildOutput = StringBuilder()
+                    val built = runCatching {
+                        buildImageStreaming(contextDir, image) { buildLine ->
+                            emit(buildLine)
+                            buildOutput.appendLine(buildLine)
+                        }
+                    }
                     if (built.isSuccess) {
-                        out.append(built.getOrThrow())
+                        out.append(buildOutput)
                     } else {
                         val message = built.exceptionOrNull()?.message.orEmpty()
                         if (!isRuntimeBackendBlocked(message)) throw built.exceptionOrNull() ?: IllegalStateException(message)
@@ -774,6 +792,20 @@ class MainActivity : AppCompatActivity() {
                 if (started.isSuccess) {
                     emit("Container $containerName Started")
                     out.appendLine("Container $containerName Started")
+                    service.ports
+                        .mapNotNull { port -> composeHostPort(port) }
+                        .distinct()
+                        .forEach { hostPort ->
+                            val label = when (hostPort) {
+                                18080 -> "VS Code"
+                                18081 -> "llama.cpp"
+                                else -> "${service.name}:$hostPort"
+                            }
+                            val url = "http://127.0.0.1:$hostPort/"
+                            val line = "Service URL $label $url"
+                            emit(line)
+                            out.appendLine(line)
+                        }
                 } else {
                     val message = started.exceptionOrNull()?.message.orEmpty()
                     if (!isRuntimeBackendBlocked(message)) {
@@ -1345,9 +1377,27 @@ class MainActivity : AppCompatActivity() {
                 }
             } else {
                 addAction(getString(R.string.action_retry_job_fmt, job.title), job.command) {
-                    openDockerTerminal(job.title, job.command, job.group)
+                    retryDockerJob(job)
                 }
             }
+        }
+    }
+
+    private fun retryDockerJob(job: DockerJob) {
+        when {
+            job.command.startsWith("engine compose up:") -> {
+                val dir = File(job.command.removePrefix("engine compose up:").trim())
+                runComposeUp(dir, job.title)
+            }
+            job.command.startsWith("engine docker build:") -> {
+                val dir = File(job.command.removePrefix("engine docker build:").trim())
+                runImageBuild(dir, job.title)
+            }
+            job.command.startsWith("engine action:") -> {
+                openJobLog(job)
+                appendEngineJobOutput(job.id, "Retry for this Engine API action is not wired yet; use the visible action button instead.")
+            }
+            else -> openDockerTerminal(job.title, job.command, job.group)
         }
     }
 
@@ -1363,10 +1413,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openJobLog(job: DockerJob) {
-        val key = "job-log:${job.id}"
-        val existing = toolTabs.indexOfFirst { it.key == key }
+        val existing = toolTabs.indexOfFirst { it.key == job.toolKey }
         if (existing >= 0) {
             switchTool(existing)
+            return
+        }
+        if (job.exitCode == null) {
+            openLiveJobLog(job, switchTo = true)
             return
         }
         val log = listOf(
@@ -1391,9 +1444,86 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.terminal_job_log_fmt, job.title),
             ToolKind.Editor,
             view,
-            key = key,
+            key = job.toolKey,
         )
         switchTool(toolTabs.lastIndex)
+    }
+
+    private fun openLiveJobLog(job: DockerJob, switchTo: Boolean) {
+        val existing = toolTabs.indexOfFirst { it.key == job.toolKey }
+        if (existing >= 0) {
+            updateLiveJobView(job)
+            if (switchTo) switchTool(existing)
+            return
+        }
+        val header = TextView(this).apply {
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(18, 14, 18, 4)
+        }
+        val progress = TextView(this).apply {
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
+            setPadding(18, 0, 18, 6)
+        }
+        val services = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(14, 2, 14, 8)
+        }
+        val log = TextView(this).apply {
+            textSize = 12f
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPadding(18, 10, 18, 18)
+        }
+        val scroll = ScrollView(this).apply {
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(header)
+                addView(progress)
+                addView(services)
+                addView(log)
+            })
+        }
+        liveJobViews[job.id] = LiveJobView(header, progress, services, log, scroll)
+        toolTabs += ToolTab(
+            job.group,
+            getString(R.string.terminal_job_log_fmt, job.title),
+            ToolKind.Editor,
+            scroll,
+            key = job.toolKey,
+        )
+        updateLiveJobView(job)
+        if (switchTo) switchTool(toolTabs.lastIndex) else renderToolChrome()
+    }
+
+    private fun updateLiveJobView(job: DockerJob) {
+        val live = liveJobViews[job.id] ?: return
+        live.header.text = listOf(job.title, jobStatusText(job)).joinToString("  ")
+        live.progress.text = listOf(job.progress, job.command)
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+        live.log.text = job.output.joinToString("\n")
+        live.services.removeAllViews()
+        liveJobServiceLinks(job).forEach { (label, url) ->
+            live.services.addView(Button(this).apply {
+                text = label
+                isAllCaps = false
+                setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            })
+        }
+        live.scroll.post { live.scroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun liveJobServiceLinks(job: DockerJob): List<Pair<String, String>> {
+        val composeDir = job.command
+            .takeIf { it.startsWith("engine compose up:") }
+            ?.removePrefix("engine compose up:")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it) }
+            ?: return emptyList()
+        return projectServiceUrls(parseComposeServices(composeDir))
     }
 
     private fun stopDockerJob(jobId: String) {
@@ -1411,6 +1541,7 @@ class MainActivity : AppCompatActivity() {
         job.progress = getString(R.string.job_stopped)
         while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
         saveDockerJobs()
+        updateLiveJobView(job)
         renderContent()
     }
 
@@ -1444,6 +1575,7 @@ class MainActivity : AppCompatActivity() {
                         while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
                     }
                 }
+            updateLiveJobView(job)
             saveDockerJobs()
             if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles)) {
                 renderContent()
@@ -1454,11 +1586,15 @@ class MainActivity : AppCompatActivity() {
     private fun appendEngineJobOutput(jobId: String, line: String) {
         ui.post {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
-            val cleaned = line.trim()
-            if (cleaned.isBlank()) return@post
-            updateDockerJobProgress(job, cleaned)
-            job.output += cleaned
-            while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+            line.replace("\r", "").lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .forEach { cleaned ->
+                    updateDockerJobProgress(job, cleaned)
+                    job.output += cleaned
+                    while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+                }
+            updateLiveJobView(job)
             saveDockerJobs()
             if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
                 renderContent()
@@ -1479,7 +1615,44 @@ class MainActivity : AppCompatActivity() {
                 if (job.output.lastOrNull() != line) job.output += line
                 while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
             }
-        saveDockerJobs()
+            saveDockerJobs()
+            updateLiveJobView(job)
+    }
+
+    private fun handleEngineJobFinished(job: DockerJob) {
+        updateLiveJobView(job)
+        if (job.exitCode != 0 || !job.command.startsWith("engine compose up:")) return
+        val urls = liveJobServiceLinks(job)
+        if (urls.isEmpty()) return
+        appendEngineJobOutput(job.id, urls.joinToString("\n") { (label, url) -> "Open $label $url" })
+        val vscode = urls.firstOrNull { it.first == "VS Code" } ?: return
+        openServiceWhenReady(job.id, vscode.first, vscode.second)
+    }
+
+    private fun openServiceWhenReady(jobId: String, label: String, url: String) {
+        thread(isDaemon = true, name = "pdocker-service-open") {
+            repeat(45) { attempt ->
+                val result = probeServiceUrl(url)
+                if (result.startsWith("HTTP ")) {
+                    ui.post {
+                        serviceHealth[url] = result
+                        serviceHealthCheckedAt[url] = System.currentTimeMillis()
+                        appendEngineJobOutput(jobId, "$label ready: $url ($result)")
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    }
+                    return@thread
+                }
+                if (attempt == 0 || attempt % 5 == 4) {
+                    ui.post {
+                        serviceHealth[url] = result
+                        serviceHealthCheckedAt[url] = System.currentTimeMillis()
+                        appendEngineJobOutput(jobId, "$label waiting: $url ($result)")
+                    }
+                }
+                Thread.sleep(1000)
+            }
+            ui.post { appendEngineJobOutput(jobId, "$label not reachable yet: $url") }
+        }
     }
 
     private fun updateDockerJobProgress(job: DockerJob, line: String) {

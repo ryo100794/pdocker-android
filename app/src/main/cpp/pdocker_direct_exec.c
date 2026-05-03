@@ -1786,12 +1786,14 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
         }
         if (WIFSIGNALED(status)) {
             int sig = WTERMSIG(status);
-            fprintf(stderr,
-                    "pdocker-direct-trace: pid=%d signaled sig=%d events=%d last_syscall=%ld(%s) args=%llx,%llx,%llx,%llx,%llx,%llx active=%d\n",
-                    (int)got, sig, events, state->last_nr, syscall_name(state->last_nr),
-                    state->last_args[0], state->last_args[1], state->last_args[2],
-                    state->last_args[3], state->last_args[4], state->last_args[5],
-                    tracee_count(tracees) - 1);
+            if (got == child || g_trace_verbose) {
+                fprintf(stderr,
+                        "pdocker-direct-trace: pid=%d signaled sig=%d events=%d last_syscall=%ld(%s) args=%llx,%llx,%llx,%llx,%llx,%llx active=%d\n",
+                        (int)got, sig, events, state->last_nr, syscall_name(state->last_nr),
+                        state->last_args[0], state->last_args[1], state->last_args[2],
+                        state->last_args[3], state->last_args[4], state->last_args[5],
+                        tracee_count(tracees) - 1);
+            }
             remove_tracee(tracees, got);
             if (got == child) {
                 root_done = 1;
@@ -2309,10 +2311,9 @@ loader_found:
     for (int i = command_index + 1; i < argc; ++i) nargv[n++] = argv[i];
     nargv[n] = NULL;
 
-    fprintf(stderr,
+    TRACE_LOG(
             "pdocker-direct-executor: mode=%s rootfs=%s workdir=%s env=%d bind=%d argv0=%s\n",
             mode, rootfs, workdir, env_count, bind_count, cmd0);
-    fflush(stderr);
     if (use_syscall_tracer) {
         int rc = trace_and_exec(nargv, rootfs, libpath);
         free(nargv);

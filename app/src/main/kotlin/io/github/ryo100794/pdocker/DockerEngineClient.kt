@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.URLEncoder
 import java.util.Locale
 
@@ -58,8 +59,8 @@ class DockerEngineClient(private val socket: File) {
         return resp
     }
 
-    fun postJson(path: String, json: JSONObject): Response {
-        val resp = request("POST", path, json.toString().toByteArray(Charsets.UTF_8))
+    fun postJson(path: String, json: JSONObject, timeoutMs: Int = 30_000): Response {
+        val resp = request("POST", path, json.toString().toByteArray(Charsets.UTF_8), timeoutMs = timeoutMs)
         require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }
         return resp
     }
@@ -71,19 +72,72 @@ class DockerEngineClient(private val socket: File) {
     }
 
     fun buildImage(contextDir: File, tag: String, dockerfile: String = "Dockerfile"): String {
+        return buildImageStreaming(contextDir, tag, dockerfile) {}
+    }
+
+    fun buildImageStreaming(
+        contextDir: File,
+        tag: String,
+        dockerfile: String = "Dockerfile",
+        onLine: (String) -> Unit,
+    ): String {
         val tar = createTar(contextDir)
         val path = "/build?t=${encodeQuery(tag)}&dockerfile=${encodeQuery(dockerfile)}"
-        val resp = request("POST", path, tar, "application/x-tar", timeoutMs = 900_000)
-        require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }
-        val text = decodeJsonStream(resp.text)
+        val text = requestJsonStream("POST", path, tar, "application/x-tar", timeoutMs = 900_000, onLine = onLine)
         require(!text.lines().any { it.startsWith("ERROR:") || it == "build failed" }) { text }
         return text
+    }
+
+    private fun requestJsonStream(
+        method: String,
+        path: String,
+        body: ByteArray,
+        contentType: String,
+        timeoutMs: Int,
+        onLine: (String) -> Unit,
+    ): String {
+        LocalSocket().use { ls ->
+            ls.connect(LocalSocketAddress(socket.absolutePath, LocalSocketAddress.Namespace.FILESYSTEM))
+            ls.soTimeout = timeoutMs
+            val header = buildString {
+                append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
+                append("Host: pdocker\r\n")
+                append("Connection: close\r\n")
+                if (body.isNotEmpty()) {
+                    append("Content-Type: ").append(contentType).append("\r\n")
+                    append("Content-Length: ").append(body.size).append("\r\n")
+                }
+                append("\r\n")
+            }.toByteArray(Charsets.UTF_8)
+            ls.outputStream.write(header)
+            if (body.isNotEmpty()) ls.outputStream.write(body)
+            ls.outputStream.flush()
+
+            val head = readHttpHead(ls.inputStream)
+            val (status, _) = parseHead(head)
+            if (status !in 200..299) {
+                val error = ls.inputStream.readBytes().toString(Charsets.UTF_8)
+                error(error.ifBlank { "HTTP $status" })
+            }
+
+            val output = StringBuilder()
+            val pending = StringBuilder()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val n = ls.inputStream.read(buffer)
+                if (n < 0) break
+                pending.append(String(buffer, 0, n, Charsets.UTF_8))
+                consumeJsonLines(pending, output, onLine)
+            }
+            consumeJsonLines(pending.append('\n'), output, onLine)
+            return output.toString()
+        }
     }
 
     fun createContainer(name: String?, config: JSONObject): String {
         val path = if (name.isNullOrBlank()) "/containers/create"
         else "/containers/create?name=${encodeQuery(name)}"
-        val resp = postJson(path, config)
+        val resp = postJson(path, config, timeoutMs = 900_000)
         return JSONObject(resp.text).getString("Id")
     }
 
@@ -104,15 +158,7 @@ class DockerEngineClient(private val socket: File) {
             text.lineSequence()
                 .map { it.trim() }
                 .filter { it.isNotEmpty() }
-                .map { line ->
-                    runCatching {
-                        val obj = JSONObject(line)
-                        obj.optString("stream")
-                            .ifBlank { obj.optString("status") }
-                            .ifBlank { obj.optString("error") }
-                            .ifBlank { line }
-                    }.getOrDefault(line)
-                }
+                .map { line -> decodeJsonLine(line) }
                 .joinToString("")
 
         private fun parse(raw: ByteArray): Response {
@@ -120,6 +166,11 @@ class DockerEngineClient(private val socket: File) {
             val split = raw.indexOf(marker)
             val headBytes = if (split >= 0) raw.copyOfRange(0, split) else raw
             val body = if (split >= 0) raw.copyOfRange(split + marker.size, raw.size) else ByteArray(0)
+            val (status, headers) = parseHead(headBytes)
+            return Response(status, headers, body)
+        }
+
+        private fun parseHead(headBytes: ByteArray): Pair<Int, Map<String, String>> {
             val lines = headBytes.toString(Charsets.ISO_8859_1).split("\r\n")
             val status = lines.firstOrNull()?.split(" ")?.getOrNull(1)?.toIntOrNull() ?: 0
             val headers = lines.drop(1)
@@ -128,7 +179,57 @@ class DockerEngineClient(private val socket: File) {
                     if (pos <= 0) null else line.substring(0, pos).lowercase() to line.substring(pos + 1).trim()
                 }
                 .toMap()
-            return Response(status, headers, body)
+            return status to headers
+        }
+
+        private fun readHttpHead(input: InputStream): ByteArray {
+            val out = ByteArrayOutputStream()
+            var state = 0
+            while (true) {
+                val b = input.read()
+                if (b < 0) break
+                out.write(b)
+                if (state == 3 && b == '\n'.code) break
+                state = when {
+                    state == 0 && b == '\r'.code -> 1
+                    state == 1 && b == '\n'.code -> 2
+                    state == 2 && b == '\r'.code -> 3
+                    b == '\r'.code -> 1
+                    else -> 0
+                }
+            }
+            return out.toByteArray()
+        }
+
+        private fun decodeJsonLine(line: String): String =
+            runCatching {
+                val obj = JSONObject(line)
+                obj.optString("stream")
+                    .ifBlank { obj.optString("status") }
+                    .ifBlank { obj.optString("error") }
+                    .ifBlank { line }
+            }.getOrDefault(line)
+
+        private fun consumeJsonLines(
+            pending: StringBuilder,
+            output: StringBuilder,
+            onLine: (String) -> Unit,
+        ) {
+            while (true) {
+                val next = pending.indexOf("\n")
+                if (next < 0) return
+                val rawLine = pending.substring(0, next).trim()
+                pending.delete(0, next + 1)
+                if (rawLine.isBlank()) continue
+                val decoded = decodeJsonLine(rawLine)
+                decoded.replace("\r", "").lineSequence()
+                    .map { it.trimEnd() }
+                    .filter { it.isNotBlank() }
+                    .forEach { line ->
+                        output.appendLine(line)
+                        onLine(line)
+                    }
+            }
         }
 
         private fun ByteArray.indexOf(needle: ByteArray): Int {
