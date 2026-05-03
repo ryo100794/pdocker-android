@@ -161,6 +161,10 @@ Known gaps:
   exec reliably on-device, then promote full ADB smoke to required pass.
 - Full overlayfs semantics for deletions, rename, metadata operations, and
   merged directory listings in cow_bind mode.
+- Strict libcow xattr preservation and fchmod/fchown on read-only file
+  descriptors are opt-in performance/compatibility modes
+  (`PDOCKER_COW_COPY_XATTRS=1`, `PDOCKER_COW_TRACK_READONLY_FDS=1`) rather than
+  default hot-path behavior.
 
 ## Additional implementation plan
 

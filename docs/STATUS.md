@@ -113,9 +113,9 @@ What's been confirmed working on the current Android 15 test device:
 | pdockerd's `/tmp` blob staging EACCES | `PDOCKER_TMP_DIR=runtime/tmp` |
 | SELinux denies `link()` on app_data_file | `os.link` probe at startup → `PDOCKER_LINK_MODE=symlink` for tar extraction + clone |
 | SELinux denies `setxattr` in security.* | `_copy_no_xattr()` substitute that drops xattr/flag copy |
-| Files in app data have `exec_no_trans` SELinux deny | crane/docker/pdocker-direct/libcow shipped via jniLibs/arm64-v8a/lib*.so so they extract to `nativeLibraryDir` (the only exec-allowed location in app sandbox) |
+| Files in app data have `exec_no_trans` SELinux deny | crane/pdocker-direct/libcow shipped via jniLibs/arm64-v8a/lib*.so so they extract to `nativeLibraryDir` (the only exec-allowed location in app sandbox); upstream Docker CLI/Compose stay test-only and are not APK payload |
 | Android 15 rejects PRoot tracee memory rewrite during exec | no-PRoot runtime is selected by default; SDK28 compat uses the scratch `pdocker-direct` executor for real process tests |
-| bionic-built libcow.so won't load inside ubuntu (libdl.so vs libdl.so.2) | ship the host-glibc libcow build instead — pdockerd just `shutil.copy`s it into the container, container's own ld.so does the loading |
+| bionic-built libcow.so won't load inside ubuntu (libdl.so vs libdl.so.2) | ship the host-glibc libcow build instead — pdockerd just `shutil.copy`s it into the container, container's own ld.so does the loading. Fast defaults skip read-only fd tracking and xattr copy-up unless `PDOCKER_COW_TRACK_READONLY_FDS=1` or `PDOCKER_COW_COPY_XATTRS=1` is set. |
 
 ### 5. Gaps vs upstream Docker
 

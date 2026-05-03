@@ -102,7 +102,7 @@ if command -v setfattr >/dev/null 2>&1 && command -v getfattr >/dev/null 2>&1; t
         ln "$LOWER/xattr.txt" "$UPPER/xattr.txt"
         LOWER_SEED_BEFORE=$(getfattr -n user.seed --only-values "$LOWER/xattr.txt" 2>/dev/null || true)
         # container adds a NEW xattr — break_hardlink must occur AND preserve seed
-        LD_PRELOAD="$LIB" bash -c "setfattr -n user.new -v upperval '$UPPER/xattr.txt'" 2>/dev/null
+        PDOCKER_COW_COPY_XATTRS=1 LD_PRELOAD="$LIB" bash -c "setfattr -n user.new -v upperval '$UPPER/xattr.txt'" 2>/dev/null
         LOWER_SEED_AFTER=$(getfattr -n user.seed --only-values "$LOWER/xattr.txt" 2>/dev/null || true)
         LOWER_HAS_NEW=$(getfattr -n user.new --only-values "$LOWER/xattr.txt" 2>/dev/null || true)
         UPPER_HAS_SEED=$(getfattr -n user.seed --only-values "$UPPER/xattr.txt" 2>/dev/null || true)
@@ -130,7 +130,7 @@ echo "fd-mode" > "$LOWER/fchmod.txt"
 chmod 644 "$LOWER/fchmod.txt"
 ln "$LOWER/fchmod.txt" "$UPPER/fchmod.txt"
 LOWER_FMODE_BEFORE=$(stat -c %a "$LOWER/fchmod.txt")
-LD_PRELOAD="$LIB" python3 -c "
+PDOCKER_COW_TRACK_READONLY_FDS=1 LD_PRELOAD="$LIB" python3 -c "
 import os
 fd = os.open('$UPPER/fchmod.txt', os.O_RDONLY)
 os.fchmod(fd, 0o600)

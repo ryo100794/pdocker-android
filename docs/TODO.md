@@ -88,6 +88,12 @@ or closes.
 - [done] Optimize Python layer diff/snapshot by comparing against a compact
   prior-layer path index and re-hardlinking committed snapshot files. Tiny
   Android `RUN` layer snapshots dropped from about 3.0s to about 1.5-1.9s.
+- [done] Tune `libcow` copy-up hot paths. Read-only fd tracking is now opt-in
+  with `PDOCKER_COW_TRACK_READONLY_FDS=1`, xattr copy-up is opt-in with
+  `PDOCKER_COW_COPY_XATTRS=1`, `O_CREAT|O_EXCL` skips pre-open copy checks,
+  `O_TRUNC`/`creat` copy up metadata without copying discarded file content,
+  and copy-up uses `copy_file_range` when available. Reusable microbench:
+  `docker-proot-setup/src/overlay/bench_cow.sh`.
 - [next] Profile large apt/npm template layers separately from ptrace. The
   remaining long spans are package-manager file churn and snapshot extraction,
   not just syscall interception.

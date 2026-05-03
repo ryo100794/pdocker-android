@@ -79,14 +79,17 @@ static long  (*real_syscall) (long, ...);
  * Overlayfs emulation via fd-based metadata calls (fchmod/fchown/...)
  * needs to know which path an fd refers to. /proc/self/fd is unreliable
  * under PRoot (returns internal .l2s indirection for hardlinks), so we
- * track it ourselves: on every open/creat/openat, remember the abs path
- * the caller used; on close, clear it. dup/dup2/dup3 copy the entry.
+ * track it ourselves for writable opens: remember the abs path the caller
+ * used; on close, clear it. dup/dup2/dup3 copy the entry. Read-only opens
+ * can be tracked with PDOCKER_COW_TRACK_READONLY_FDS=1 for strict tests.
  *
  * Table indexed by fd value up to FD_TABLE_MAX. Entries above that are
  * not tracked (fallback path used instead).
  */
 #define FD_TABLE_MAX 4096
 static char *fd_paths[FD_TABLE_MAX];
+static int cow_copy_xattrs = 0;
+static int cow_track_readonly_fds = 0;
 
 static void fdtab_set(int fd, const char *abspath) {
     if (fd < 0 || fd >= FD_TABLE_MAX) return;
@@ -96,6 +99,7 @@ static void fdtab_set(int fd, const char *abspath) {
 
 static void fdtab_clear(int fd) {
     if (fd < 0 || fd >= FD_TABLE_MAX) return;
+    if (!fd_paths[fd]) return;
     free(fd_paths[fd]);
     fd_paths[fd] = NULL;
 }
@@ -103,6 +107,11 @@ static void fdtab_clear(int fd) {
 static const char *fdtab_get(int fd) {
     if (fd < 0 || fd >= FD_TABLE_MAX) return NULL;
     return fd_paths[fd];
+}
+
+static int env_enabled(const char *name) {
+    const char *v = getenv(name);
+    return v && v[0] && strcmp(v, "0") != 0 && strcmp(v, "false") != 0;
 }
 
 static void remember_open(int fd, const char *path) {
@@ -168,6 +177,10 @@ static void libcow_init(void) {
     real_syscall   = dlsym(RTLD_NEXT, "syscall");
 
     if (getenv("COW_DEBUG")) cow_debug = 1;
+    cow_track_readonly_fds = env_enabled("PDOCKER_COW_TRACK_READONLY_FDS") ||
+                             env_enabled("COW_TRACK_READONLY_FDS");
+    cow_copy_xattrs = env_enabled("PDOCKER_COW_COPY_XATTRS") ||
+                      env_enabled("COW_COPY_XATTRS");
     DBG("initialized");
 }
 
@@ -187,12 +200,70 @@ static int mode_write(const char *mode) {
     return 0;
 }
 
+static int mode_truncates(const char *mode) {
+    if (!mode || !mode[0]) return 0;
+    return mode[0] == 'w';
+}
+
+static void remember_open_for_flags(int fd, const char *path, int flags) {
+    if (fd < 0 || !path) return;
+    if (!cow_track_readonly_fds && !flags_write(flags)) return;
+    remember_open(fd, path);
+}
+
+static int copy_file_fallback(int sfd, int tfd) {
+    char buf[65536];
+    ssize_t n;
+    while ((n = read(sfd, buf, sizeof(buf))) > 0) {
+        ssize_t off = 0;
+        while (off < n) {
+            ssize_t w = write(tfd, buf + off, n - off);
+            if (w < 0) {
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            off += w;
+        }
+    }
+    return n < 0 ? -1 : 0;
+}
+
+static int copy_file_fast(int sfd, int tfd, off_t size) {
+#ifdef SYS_copy_file_range
+    if (size > 0 && real_syscall) {
+        off_t copied = 0;
+        while (copied < size) {
+            size_t want = (size_t)((size - copied) > (off_t)(1024 * 1024)
+                ? (1024 * 1024) : (size - copied));
+            long n = real_syscall(SYS_copy_file_range,
+                                  sfd, NULL, tfd, NULL, want, 0);
+            if (n > 0) {
+                copied += (off_t)n;
+                continue;
+            }
+            if (n == 0) return 0;
+            if (errno == EINTR) continue;
+            if (errno == ENOSYS || errno == EINVAL || errno == EXDEV ||
+                errno == EPERM || errno == ENOTSUP) {
+                if (lseek(sfd, 0, SEEK_SET) < 0) return -1;
+                if (lseek(tfd, 0, SEEK_SET) < 0) return -1;
+                if (ftruncate(tfd, 0) < 0) return -1;
+                return copy_file_fallback(sfd, tfd);
+            }
+            return -1;
+        }
+        return 0;
+    }
+#endif
+    return copy_file_fallback(sfd, tfd);
+}
+
 /*
  * Copy src to a temp file in the same dir, preserve mode, then
  * rename over src. Returns 0 on success, -1 on failure (errno set).
  * No-op and returns 0 if file is not a regular file or has nlink<=1.
  */
-static int break_hardlink(const char *path) {
+static int break_hardlink_copy(const char *path, int copy_data) {
     struct stat st;
     if (!path) return 0;
     if (stat(path, &st) < 0) {
@@ -222,36 +293,28 @@ static int break_hardlink(const char *path) {
         DBG("fchmod warn: %s", strerror(errno));
     }
 
-    int sfd = real_open(path, O_RDONLY, 0);
-    if (sfd < 0) {
-        int e = errno;
-        close(tfd); unlink(tmp);
-        errno = e; return -1;
-    }
-
-    char buf[65536];
-    ssize_t n;
-    while ((n = read(sfd, buf, sizeof(buf))) > 0) {
-        ssize_t off = 0;
-        while (off < n) {
-            ssize_t w = write(tfd, buf + off, n - off);
-            if (w < 0) {
-                if (errno == EINTR) continue;
-                int e = errno;
-                close(sfd); close(tfd); unlink(tmp);
-                errno = e; return -1;
-            }
-            off += w;
+    if (copy_data) {
+        int sfd = real_open(path, O_RDONLY, 0);
+        if (sfd < 0) {
+            int e = errno;
+            close(tfd); unlink(tmp);
+            errno = e; return -1;
         }
+
+        if (copy_file_fast(sfd, tfd, st.st_size) < 0) {
+            int e = errno;
+            close(sfd); close(tfd); unlink(tmp);
+            errno = e; return -1;
+        }
+        close(sfd);
     }
-    close(sfd);
     if (close(tfd) < 0) { int e = errno; unlink(tmp); errno = e; return -1; }
 
     /* Copy xattrs (SELinux context, POSIX capabilities, user.*, etc.)
      * from src to tmp before renaming. overlayfs does this transparently;
      * if we skip it, file caps and security contexts vanish on copy-up
      * — which breaks setuid-replacement binaries and SELinux-labeled files. */
-    ssize_t xl = llistxattr(path, NULL, 0);
+    ssize_t xl = cow_copy_xattrs ? llistxattr(path, NULL, 0) : 0;
     if (xl > 0) {
         char *names = malloc(xl);
         if (names) {
@@ -279,11 +342,17 @@ static int break_hardlink(const char *path) {
     return 0;
 }
 
+static int break_hardlink(const char *path) {
+    return break_hardlink_copy(path, 1);
+}
+
 
 static void maybe_break(const char *path, int flags) {
     if (!flags_write(flags)) return;
-    /* O_CREAT on non-existing file is fine; break_hardlink is no-op */
-    break_hardlink(path);
+    if (flags & O_TMPFILE) return;
+    if ((flags & O_CREAT) && (flags & O_EXCL)) return;
+    /* O_CREAT on an existing file still needs copy-up before open/truncate. */
+    break_hardlink_copy(path, !(flags & O_TRUNC));
 }
 
 /* ---------- intercepted symbols ---------- */
@@ -297,7 +366,7 @@ int open(const char *path, int flags, ...) {
     }
     maybe_break(path, flags);
     int fd = real_open(path, flags, mode);
-    if (fd >= 0) remember_open(fd, path);
+    if (fd >= 0) remember_open_for_flags(fd, path, flags);
     return fd;
 }
 
@@ -312,7 +381,7 @@ int open64(const char *path, int flags, ...) {
     maybe_break(path, flags);
     int fd = real_open64 ? real_open64(path, flags, mode)
                          : real_open  (path, flags, mode);
-    if (fd >= 0) remember_open(fd, path);
+    if (fd >= 0) remember_open_for_flags(fd, path, flags);
     return fd;
 }
 #endif
@@ -332,7 +401,7 @@ int openat(int dirfd, const char *path, int flags, ...) {
     }
     int fd = real_openat(dirfd, path, flags, mode);
     if (fd >= 0 && path && (path[0] == '/' || dirfd == AT_FDCWD)) {
-        remember_open(fd, path);
+        remember_open_for_flags(fd, path, flags);
     }
     return fd;
 }
@@ -351,7 +420,7 @@ int openat64(int dirfd, const char *path, int flags, ...) {
     int fd = real_openat64 ? real_openat64(dirfd, path, flags, mode)
                            : real_openat  (dirfd, path, flags, mode);
     if (fd >= 0 && path && (path[0] == '/' || dirfd == AT_FDCWD)) {
-        remember_open(fd, path);
+        remember_open_for_flags(fd, path, flags);
     }
     return fd;
 }
@@ -359,8 +428,9 @@ int openat64(int dirfd, const char *path, int flags, ...) {
 
 int creat(const char *path, mode_t mode) {
     /* creat = O_WRONLY|O_CREAT|O_TRUNC — but the file may exist and
-     * share inodes with the image, so break first. */
-    break_hardlink(path);
+     * share inodes with the image, so break first. O_TRUNC discards old
+     * content, so copy up metadata only. */
+    break_hardlink_copy(path, 0);
     int fd = real_creat(path, mode);
     if (fd >= 0) remember_open(fd, path);
     return fd;
@@ -368,7 +438,7 @@ int creat(const char *path, mode_t mode) {
 
 #ifdef __GLIBC__
 int creat64(const char *path, mode_t mode) {
-    break_hardlink(path);
+    break_hardlink_copy(path, 0);
     int fd = real_creat64 ? real_creat64(path, mode) : real_creat(path, mode);
     if (fd >= 0) remember_open(fd, path);
     return fd;
@@ -376,32 +446,32 @@ int creat64(const char *path, mode_t mode) {
 #endif
 
 int truncate(const char *path, off_t length) {
-    break_hardlink(path);
+    break_hardlink_copy(path, length != 0);
     return real_truncate(path, length);
 }
 
 #ifdef __GLIBC__
 int truncate64(const char *path, off_t length) {
-    break_hardlink(path);
+    break_hardlink_copy(path, length != 0);
     return real_truncate64 ? real_truncate64(path, length)
                            : real_truncate  (path, length);
 }
 #endif
 
 FILE *fopen(const char *path, const char *mode) {
-    if (mode_write(mode)) break_hardlink(path);
+    if (mode_write(mode)) break_hardlink_copy(path, !mode_truncates(mode));
     return real_fopen(path, mode);
 }
 
 #ifdef __GLIBC__
 FILE *fopen64(const char *path, const char *mode) {
-    if (mode_write(mode)) break_hardlink(path);
+    if (mode_write(mode)) break_hardlink_copy(path, !mode_truncates(mode));
     return real_fopen64 ? real_fopen64(path, mode) : real_fopen(path, mode);
 }
 #endif
 
 FILE *freopen(const char *path, const char *mode, FILE *stream) {
-    if (path && mode_write(mode)) break_hardlink(path);
+    if (path && mode_write(mode)) break_hardlink_copy(path, !mode_truncates(mode));
     return real_freopen(path, mode, stream);
 }
 
@@ -663,7 +733,7 @@ long syscall(long number, ...) {
 #endif
 #ifdef SYS_truncate
     case SYS_truncate:
-        break_hardlink((const char *)a0);
+        break_hardlink_copy((const char *)a0, a1 != 0);
         break;
 #endif
 #ifdef SYS_utimensat
