@@ -13,7 +13,7 @@ the `docker-proot-setup` backend. Compatibility here means three layers:
 
 For the product boundary, non-goals, and open design decisions around BuildKit,
 networking, volumes, cgroups, overlayfs, signals, TTY, and archive APIs, see
-[`DOCKER_COMPAT_SCOPE.md`](DOCKER_COMPAT_SCOPE.md). This file records what works
+[`../design/DOCKER_COMPAT_SCOPE.md`](../design/DOCKER_COMPAT_SCOPE.md). This file records what works
 and what is tested; the scope file records what pdocker is choosing to be.
 
 ## How to run the audit
@@ -21,7 +21,7 @@ and what is tested; the scope file records what pdocker is choosing to be.
 Fast offline audit:
 
 ```sh
-python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
+python3 scripts/compat-audit.py --output docs/test/compat-audit-latest.md
 ```
 
 Build-time fast gate:
@@ -39,20 +39,20 @@ python3 scripts/verify-ui-actions.py
 Full backend regression, including public image pulls and container runs:
 
 ```sh
-python3 scripts/compat-audit.py --full --output docs/compat-audit-latest.md
+python3 scripts/compat-audit.py --full --output docs/test/compat-audit-latest.md
 ```
 
 For iterative work, cap the long regression and record timeout as a test result:
 
 ```sh
-python3 scripts/compat-audit.py --full --full-timeout 90 --output docs/compat-audit-latest.md
+python3 scripts/compat-audit.py --full --full-timeout 90 --output docs/test/compat-audit-latest.md
 ```
 
 APK packaging verification:
 
 ```sh
 bash scripts/build-apk.sh
-python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
+python3 scripts/compat-audit.py --output docs/test/compat-audit-latest.md
 ```
 
 Backend-only regression remains available in the integrated backend tree:

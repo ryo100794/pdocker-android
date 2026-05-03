@@ -38,9 +38,8 @@ the notice asset is included and upstream license texts/notices are preserved.
   comparisons and upstream Docker CLI/Compose compatibility runs are
   command-supplied developer diagnostics only, not bundled app payloads.
 - crane is permissively licensed and remains in the app payload for registry
-  exchange. Docker CLI and Docker Compose notices are kept in repository docs
-  for test-tool redistribution only.
+  exchange. Docker CLI and Docker Compose notices are kept in this source
+  repository notice for test-tool redistribution only.
 - No external source in this inventory blocks distribution under the current
-  packaging model. The remaining release hygiene item is to add an explicit
-  top-level license for pdocker's own original code if this repository is to be
-  consumed by third parties.
+  packaging model. The top-level `LICENSE` file records the current license
+  status for pdocker's own original code.

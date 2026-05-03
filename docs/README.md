@@ -1,23 +1,71 @@
-# Documentation map
+# Documentation index
 
-Snapshot date: 2026-05-02.
+Snapshot date: 2026-05-03.
 
-Use this file to avoid duplicating the same status or plan in multiple docs.
+This tree is grouped by document purpose. When adding or updating docs, put the
+content in one category and link to it instead of copying the same status,
+command list, or TODO table into another file.
 
-| Topic | Canonical doc | Notes |
-|---|---|---|
-| Active TODOs and temporary workarounds | [`TODO.md`](TODO.md) | Update this whenever a workaround is added or removed. |
-| Docker compatibility, protocol coverage, gaps | [`COMPATIBILITY.md`](COMPATIBILITY.md) | Generated latest audit result: [`compat-audit-latest.md`](compat-audit-latest.md). |
-| Docker compatibility scope and non-goals | [`DOCKER_COMPAT_SCOPE.md`](DOCKER_COMPAT_SCOPE.md) | Product boundary, explicit out-of-scope areas, and discussion points. |
-| High-level implementation shape | [`STATUS.md`](STATUS.md) | Keep as a system summary; do not duplicate full API/gap tables here. |
-| Runtime replacement and PRoot retirement | [`RUNTIME_STRATEGY.md`](RUNTIME_STRATEGY.md) | Execution-backend strategy and acceptance criteria. |
-| Historical steering snapshot | [`REPLAN_2026-05-01.md`](REPLAN_2026-05-01.md) | Historical matrix only; live plan is `TODO.md`. |
-| Android GPU benchmark and cuVK direction | [`GPU_COMPAT.md`](GPU_COMPAT.md) | Backend request/env contract lives in `docker-proot-setup/docs/GPU_COMPAT.md`. |
-| Backend GPU request/env contract | [`../docker-proot-setup/docs/GPU_COMPAT.md`](../docker-proot-setup/docs/GPU_COMPAT.md) | Keep backend-specific behavior here. |
-| Backend network and port rewrite plan | [`../docker-proot-setup/docs/NETWORK_COMPAT.md`](../docker-proot-setup/docs/NETWORK_COMPAT.md) | Backend-specific metadata and future rewrite plan. |
-| Default dev workspace | [`DEFAULT_DEV_WORKSPACE.md`](DEFAULT_DEV_WORKSPACE.md) | Template contents and expected user flow. |
-| Android self-debug workflow | [`ANDROID_SELFDEBUG.md`](ANDROID_SELFDEBUG.md) | ADB/debugging procedure. |
-| Third-party licenses | [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | Distribution/license inventory. |
+## Manual
 
-When adding a new doc, prefer linking to the canonical source above instead of
-copying large status tables or TODO lists.
+User-facing operation notes.
+
+- [`manual/DEFAULT_DEV_WORKSPACE.md`](manual/DEFAULT_DEV_WORKSPACE.md): bundled
+  VS Code Server, Continue, Codex, Claude Code, and llama.cpp workspace flow.
+
+## Design
+
+Architecture, compatibility boundary, and feasibility decisions.
+
+- [`design/DOCKER_COMPAT_SCOPE.md`](design/DOCKER_COMPAT_SCOPE.md): Docker
+  compatibility scope, non-goals, and replacement strategies.
+- [`design/RUNTIME_STRATEGY.md`](design/RUNTIME_STRATEGY.md): direct runtime
+  direction and PRoot retirement plan.
+- [`design/API29_DIRECT_EXEC_FEASIBILITY.md`](design/API29_DIRECT_EXEC_FEASIBILITY.md):
+  API 29+ direct execution feasibility notes.
+- [`design/GPU_COMPAT.md`](design/GPU_COMPAT.md): Android GPU/Vulkan/cuVK
+  compatibility direction.
+- [`../docker-proot-setup/docs/GPU_COMPAT.md`](../docker-proot-setup/docs/GPU_COMPAT.md):
+  backend GPU request/env contract.
+- [`../docker-proot-setup/docs/NETWORK_COMPAT.md`](../docker-proot-setup/docs/NETWORK_COMPAT.md):
+  backend network metadata and port rewrite plan.
+
+## Build
+
+Build, packaging, and install commands.
+
+- [`build/BUILD.md`](build/BUILD.md): local environment setup, APK build, install,
+  and common build gates.
+
+## Test
+
+Repeatable checks, audits, and debug workflows.
+
+- [`test/COMPATIBILITY.md`](test/COMPATIBILITY.md): Docker API, file format,
+  protocol, and data exchange compatibility coverage.
+- [`test/compat-audit-latest.md`](test/compat-audit-latest.md): latest recorded
+  compatibility audit report.
+- [`test/ANDROID_SELFDEBUG.md`](test/ANDROID_SELFDEBUG.md): Android Wi-Fi ADB and
+  self-debug workflow.
+
+## Plan
+
+Current status, active TODOs, and historical steering.
+
+- [`plan/STATUS.md`](plan/STATUS.md): implementation status summary.
+- [`plan/TODO.md`](plan/TODO.md): live unfinished-work ledger and temporary
+  workaround tracker.
+- [`plan/REPLAN_2026-05-01.md`](plan/REPLAN_2026-05-01.md): historical replan
+  snapshot after UI/build/GPU steering.
+
+## License Notice
+
+Distribution and license inventory.
+
+- [`../LICENSE`](../LICENSE): license status for pdocker-android original code.
+- [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md): maintained source
+  license inventory.
+- [`license-notice/README.md`](license-notice/README.md): category index for
+  license notice files.
+- [`../app/src/main/assets/oss-licenses/THIRD_PARTY_NOTICES.md`](../app/src/main/assets/oss-licenses/THIRD_PARTY_NOTICES.md):
+  notice file bundled into the APK.

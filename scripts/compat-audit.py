@@ -38,7 +38,7 @@ elif FLAVOR == "modern":
     APK = ROOT / "app" / "build" / "outputs" / "apk" / "modern" / "debug" / "app-modern-debug.apk"
 else:
     APK = ROOT / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
-LICENSE_DOC = ROOT / "docs" / "THIRD_PARTY_LICENSES.md"
+LICENSE_DOC = ROOT / "THIRD_PARTY_NOTICES.md"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -235,7 +235,7 @@ def check_apk_payload() -> list[Check]:
 def check_license_inventory() -> list[Check]:
     checks: list[Check] = []
     if not LICENSE_DOC.exists():
-        return [Check("license inventory", "FAIL", "docs/THIRD_PARTY_LICENSES.md missing")]
+        return [Check("license inventory", "FAIL", "THIRD_PARTY_NOTICES.md missing")]
     text = LICENSE_DOC.read_text()
     required = [
         "Apache-2.0", "go-containerregistry", "xterm.js",
@@ -265,9 +265,9 @@ def check_ui_actions() -> list[Check]:
 
 
 def check_gpu_design_doc() -> list[Check]:
-    doc = ROOT / "docs" / "GPU_COMPAT.md"
+    doc = ROOT / "docs" / "design" / "GPU_COMPAT.md"
     if not doc.exists():
-        return [Check("gpu compatibility design", "FAIL", "docs/GPU_COMPAT.md missing")]
+        return [Check("gpu compatibility design", "FAIL", "docs/design/GPU_COMPAT.md missing")]
     text = doc.read_text()
     required = [
         "Vulkan-first compatibility stack",

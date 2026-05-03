@@ -5,7 +5,7 @@ implements today, (2) what works on the Android APK end-to-end, and
 (3) the known gaps vs upstream Docker Engine.
 
 For the active unfinished-work list, especially temporary accommodations that
-must become real implementations later, see [`docs/TODO.md`](TODO.md).
+must become real implementations later, see [`TODO.md`](TODO.md).
 
 ## At a glance
 
@@ -35,8 +35,8 @@ replacements:
 ### 2. Endpoint coverage in pdockerd
 
 Endpoint and protocol coverage is maintained in
-[`docs/COMPATIBILITY.md`](COMPATIBILITY.md) and the generated
-[`docs/compat-audit-latest.md`](compat-audit-latest.md). Keep those files as the
+[`../test/COMPATIBILITY.md`](../test/COMPATIBILITY.md) and the generated
+[`../test/compat-audit-latest.md`](../test/compat-audit-latest.md). Keep those files as the
 canonical API compatibility record; this status file only summarizes the system
 shape.
 
@@ -119,9 +119,9 @@ What's been confirmed working on the current Android 15 test device:
 
 ### 5. Gaps vs upstream Docker
 
-The detailed gap table lives in [`docs/COMPATIBILITY.md`](COMPATIBILITY.md).
+The detailed gap table lives in [`../test/COMPATIBILITY.md`](../test/COMPATIBILITY.md).
 The active implementation plan for closing those gaps lives in
-[`docs/TODO.md`](TODO.md).
+[`TODO.md`](TODO.md).
 
 ### 6. What it can do that mainline docker can't
 

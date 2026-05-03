@@ -12,5 +12,5 @@ CLI, or upstream Docker Compose plugin binaries. Optional external proot
 comparisons and upstream Docker CLI/Compose compatibility tools are
 developer-supplied diagnostics only and are not part of the shipped app payload.
 
-See `docs/THIRD_PARTY_LICENSES.md` in the source repository for the maintained
+See `THIRD_PARTY_NOTICES.md` in the source repository for the maintained
 license inventory and distribution notes.

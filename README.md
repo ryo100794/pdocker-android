@@ -70,33 +70,32 @@ Standalone Android APK wrapping the integrated `docker-proot-setup` backend.
   containers while snapshot and overlay semantics are moved into pdockerd and
   the direct executor.
 - **Runtime direction**: the default APK and integrated backend do not bundle
-  PRoot/talloc/proot-loader. See [`docs/RUNTIME_STRATEGY.md`](docs/RUNTIME_STRATEGY.md).
+  PRoot/talloc/proot-loader. See
+  [`docs/design/RUNTIME_STRATEGY.md`](docs/design/RUNTIME_STRATEGY.md).
 
-Current implementation status: [`docs/STATUS.md`](docs/STATUS.md)
+Current implementation status: [`docs/plan/STATUS.md`](docs/plan/STATUS.md)
 
 Compatibility and compliance records:
 
 - [`docs/README.md`](docs/README.md) is the documentation map and canonical
   ownership table.
-- [`docs/TODO.md`](docs/TODO.md) is the live unfinished-work ledger.
-- `python3 scripts/compat-audit.py --output docs/compat-audit-latest.md`
+- [`LICENSE`](LICENSE) records the repository license status.
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) is the maintained
+  third-party license inventory.
+- [`docs/plan/TODO.md`](docs/plan/TODO.md) is the live unfinished-work ledger.
+- `python3 scripts/compat-audit.py --output docs/test/compat-audit-latest.md`
 - `bash scripts/verify-fast.sh` for the build-time fast gate
 - `bash scripts/verify-heavy.sh --backend-quick` or `--backend-full` for slower backend regression
 - `python3 scripts/verify-project-library.py`
 - `python3 scripts/verify-ui-actions.py`
 
-## Build (aarch64 Android/Linux shell)
+## Build
+
+Build and install commands live in [`docs/build/BUILD.md`](docs/build/BUILD.md).
+
+Short form:
 
 ```sh
-git clone <this repo>
-cd pdocker-android
-bash scripts/setup-env.sh         # JDK / cmdline-tools / NDK (first run only)
-bash scripts/build-apk.sh         # -> app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Install (ADB over Wi-Fi to the same phone)
-
-```sh
-adb connect 127.0.0.1:5555        # pair once via Android's Wireless debugging
-adb install app/build/outputs/apk/debug/app-debug.apk
+bash scripts/setup-env.sh
+./gradlew assembleModernDebug
 ```

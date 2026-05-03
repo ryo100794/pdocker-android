@@ -19,7 +19,7 @@ or closes.
   only as test-staged compatibility tools.
 - [done] Document Docker compatibility scope, non-goals, and discussion points
   for BuildKit, network, volume, cgroup, overlayfs, signals, TTY, and archive
-  API in `docs/DOCKER_COMPAT_SCOPE.md`.
+  API in `docs/design/DOCKER_COMPAT_SCOPE.md`.
 - [done] Tiny SDK28 compat smoke: `docker build`, `docker compose up`, logs,
   exit code, and `compose down` pass with the scratch direct executor.
 - [done] Ubuntu `apt-get update` signature verification works under direct

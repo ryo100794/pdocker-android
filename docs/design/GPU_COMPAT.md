@@ -9,7 +9,7 @@ designed for Android devices where native Docker GPU runtimes such as
 Canonical split:
 
 - Backend request/env/inspect behavior lives in
-  [`docker-proot-setup/docs/GPU_COMPAT.md`](../docker-proot-setup/docs/GPU_COMPAT.md).
+  [`docker-proot-setup/docs/GPU_COMPAT.md`](../../docker-proot-setup/docs/GPU_COMPAT.md).
 - This document owns the Android benchmark philosophy, cuVK direction, UI
   diagnostics, and device-specific measurement notes.
 
