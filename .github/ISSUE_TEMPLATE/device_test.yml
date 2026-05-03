@@ -1,0 +1,52 @@
+name: Device test report
+description: Share Android device compatibility results.
+title: "Device test: "
+labels:
+  - device-test
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: "SOG15 / Pixel 8 / Galaxy ..."
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version and API level
+      placeholder: "Android 15, API 35"
+    validations:
+      required: true
+  - type: dropdown
+    id: flavor
+    attributes:
+      label: APK flavor
+      options:
+        - compat
+        - modern
+    validations:
+      required: true
+  - type: textarea
+    id: smoke
+    attributes:
+      label: Smoke results
+      description: Include install, app launch, pdockerd start, image pull, build, compose up, logs, and docker ps/container card observations.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: vscode
+    attributes:
+      label: VS Code / service port results
+      placeholder: "127.0.0.1:18080 opened / refused / not tested"
+  - type: textarea
+    id: bench
+    attributes:
+      label: Runtime benchmark output
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Thermal state, storage free space, network speed, or anything unusual.

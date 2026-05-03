@@ -153,6 +153,19 @@ VS Code port check, `docker ps` view, and runtime benchmark output.
 - Open an interactive container terminal tab.
 - Show storage metrics and prune action.
 
+## GitHub intake
+
+- `.github/ISSUE_TEMPLATE/bug_report.yml` collects device, flavor, route,
+  reproduction steps, expected/actual behavior, and redaction confirmation.
+- `.github/ISSUE_TEMPLATE/device_test.yml` collects Android device matrix
+  results.
+- `.github/ISSUE_TEMPLATE/compatibility_gap.yml` separates upstream Docker
+  behavior from pdocker-android behavior.
+- `.github/pull_request_template.md` keeps tests, route coverage, and secret
+  checks visible before merge.
+- `.github/RELEASE_TEMPLATE.md` keeps release notes aligned with compatibility,
+  device testing, known limits, signing, and security audit results.
+
 ## Boundaries to state publicly
 
 - This is Docker-compatible work, not upstream Docker.

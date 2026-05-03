@@ -1,0 +1,63 @@
+# Contributing
+
+pdocker-android is experimental and Android-device-dependent. Good
+contributions are small, reproducible, and clear about which route they tested:
+native UI, Engine API, test-staged Docker CLI, or Android direct executor.
+
+## Before Opening An Issue
+
+Please check:
+
+- [`README.md`](README.md) for the current project posture.
+- [`docs/plan/STATUS.md`](docs/plan/STATUS.md) for the implementation snapshot.
+- [`docs/plan/TODO.md`](docs/plan/TODO.md) for active work.
+- [`docs/test/COMPATIBILITY.md`](docs/test/COMPATIBILITY.md) for Docker API and
+  protocol coverage.
+
+## Useful Reports
+
+Include:
+
+- device model;
+- Android version and API level;
+- APK flavor (`compat` or `modern`);
+- whether the action was triggered from the UI, Engine API, or test-staged CLI;
+- relevant logs with secrets redacted;
+- whether the failure is reproducible after restarting the app.
+
+## Development Checks
+
+Fast local checks:
+
+```sh
+bash scripts/verify-fast.sh
+python3 scripts/verify-ui-actions.py
+python3 scripts/verify-project-library.py
+```
+
+APK checks:
+
+```sh
+./gradlew assembleCompatDebug
+./gradlew assembleCompatRelease
+```
+
+Device checks:
+
+```sh
+ANDROID_SERIAL=<host:port> bash scripts/android-device-smoke.sh --no-install
+ANDROID_SERIAL=<host:port> bash scripts/android-runtime-bench.sh
+```
+
+## Security
+
+Never paste secrets into issues, logs, screenshots, commits, or release assets.
+See [`SECURITY.md`](SECURITY.md) and
+[`docs/test/SECRET_AUDIT.md`](docs/test/SECRET_AUDIT.md).
+
+## Scope Discipline
+
+The product APK should not silently bundle external runtime components or
+upstream Docker CLI/Compose binaries. Test scripts may stage compatibility
+tools explicitly, but product behavior should go through Engine API/native app
+actions unless a design document says otherwise.

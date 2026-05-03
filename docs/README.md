@@ -11,6 +11,8 @@ standard files stay at the repository root:
 - [`../LICENSE`](../LICENSE): license status for original pdocker-android code.
 - [`../SECURITY.md`](../SECURITY.md): vulnerability reporting and secret
   handling policy.
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md): issue, pull request, testing, and
+  scope guidance for contributors.
 - [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md): maintained
   third-party license inventory and distribution notes.
 

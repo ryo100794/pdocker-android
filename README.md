@@ -142,6 +142,7 @@ Root-level standards:
 
 - [`LICENSE`](LICENSE): repository license status
 - [`SECURITY.md`](SECURITY.md): vulnerability reporting and secret handling
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): issue, PR, testing, and scope guidance
 - [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md): third-party inventory
 
 ## Suggested GitHub topics

@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a reproducible pdocker-android bug.
+title: "Bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing pdocker-android. Please remove tokens, passwords,
+        API keys, cookies, and private paths from logs before posting.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: APK version, release tag, or commit SHA.
+      placeholder: "v0.5.2 / b7d81fa / local build"
+    validations:
+      required: true
+  - type: dropdown
+    id: flavor
+    attributes:
+      label: APK flavor
+      options:
+        - compat
+        - modern
+        - unknown
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 8, Android 15, API 35"
+    validations:
+      required: true
+  - type: dropdown
+    id: route
+    attributes:
+      label: Trigger route
+      options:
+        - Native UI
+        - Engine API
+        - Test-staged Docker CLI
+        - ADB/debug receiver
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Paste short, redacted logs. Attach larger logs as files.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I removed secrets from logs and screenshots.
+          required: true
+        - label: I checked the current STATUS/TODO/COMPATIBILITY docs.
+          required: false

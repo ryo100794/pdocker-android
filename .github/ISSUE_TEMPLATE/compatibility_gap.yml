@@ -1,0 +1,52 @@
+name: Docker compatibility gap
+description: Report behavior that differs from upstream Docker.
+title: "Compatibility: "
+labels:
+  - compatibility
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dockerfile/build
+        - Compose
+        - Engine API
+        - Archive API
+        - Logs/TTY/exec
+        - Signals/process lifecycle
+        - Network/ports
+        - Volumes/storage
+        - Images/layers
+        - GPU extension
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: upstream
+    attributes:
+      label: Upstream Docker behavior
+      description: What does Docker do on a normal Linux host?
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: pdocker
+    attributes:
+      label: pdocker-android behavior
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproducer
+      description: Dockerfile, compose.yaml, Engine API request, or command.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: Related docs
+      placeholder: "docs/test/COMPATIBILITY.md section, if known"
