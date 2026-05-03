@@ -7,6 +7,12 @@ plugins {
     id("com.chaquo.python")
 }
 
+val syncPdockerdAsset by tasks.registering(Copy::class) {
+    from(rootProject.file("docker-proot-setup/bin/pdockerd"))
+    into(layout.projectDirectory.dir("src/main/assets/pdockerd"))
+    rename { "pdockerd" }
+}
+
 android {
     namespace = "io.github.ryo100794.pdocker"
     compileSdk = 34
@@ -110,6 +116,11 @@ android {
         buildConfig = true
     }
 }
+
+tasks.matching { it.name == "preBuild" || (it.name.startsWith("merge") && it.name.endsWith("Assets")) }
+    .configureEach {
+        dependsOn(syncPdockerdAsset)
+    }
 
 chaquopy {
     defaultConfig {

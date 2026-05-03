@@ -53,6 +53,7 @@ IMAGES_DIR = os.path.join(PDOCKER_HOME, "images")
 LAYERS_DIR = os.path.join(PDOCKER_HOME, "layers")
 CONTAINERS_DIR = os.path.join(PDOCKER_HOME, "containers")
 META_DIR = os.path.join(PDOCKER_HOME, "meta")
+BUILD_CACHE_DIR = os.path.join(META_DIR, "build-cache")
 LOGS_DIR = os.path.join(PDOCKER_HOME, "logs")
 VOLUMES_DIR = os.path.join(PDOCKER_HOME, "volumes")
 NETWORKS_DIR = os.path.join(PDOCKER_HOME, "networks")
@@ -177,6 +178,8 @@ def _env_flag(name):
 
 
 def _runner_supports_cow_bind():
+    if DIRECT_EXECUTOR and os.path.exists(DIRECT_EXECUTOR):
+        return True
     if not RUNNER:
         return False
     try:
@@ -803,6 +806,66 @@ def _layer_size(diff_id):
             return int((json.load(f) or {}).get("size", 0) or 0)
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return 0
+
+
+def _stable_json_hash(payload):
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
+def _build_cache_enabled():
+    return os.environ.get("PDOCKER_BUILD_CACHE", "1") != "0"
+
+
+def build_cache_key(kind, payload, parent_diff_ids, state=None):
+    """Return a deterministic cache key for a Dockerfile filesystem layer.
+
+    The cache intentionally follows Docker's coarse semantics: a RUN result is
+    reusable when the parent layer stack and command/config state match. It does
+    not try to inspect network freshness; users can invalidate by changing the
+    Dockerfile or clearing the build cache.
+    """
+    return _stable_json_hash({
+        "version": 1,
+        "kind": kind,
+        "payload": payload,
+        "parents": [d.split(":", 1)[-1] for d in parent_diff_ids],
+        "state": state or {},
+    })
+
+
+def _build_cache_path(key):
+    return os.path.join(BUILD_CACHE_DIR, f"{key}.json")
+
+
+def load_build_cache_entry(key):
+    if not _build_cache_enabled():
+        return None
+    try:
+        with open(_build_cache_path(key)) as f:
+            entry = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    did = str(entry.get("diff_id", "")).split(":", 1)[-1]
+    if not re.fullmatch(r"[A-Fa-f0-9]{64}", did or ""):
+        return None
+    if not _layer_exists(did):
+        return None
+    entry["diff_id"] = did
+    return entry
+
+
+def store_build_cache_entry(key, entry):
+    if not _build_cache_enabled():
+        return
+    os.makedirs(BUILD_CACHE_DIR, exist_ok=True)
+    data = dict(entry)
+    data["created"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    data["key"] = key
+    tmp = _build_cache_path(key) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+    os.replace(tmp, _build_cache_path(key))
 
 
 def _extract_layer_python(tar_path, tree):
@@ -4883,6 +4946,18 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
         emit(f"  layer sha256:{did[:12]} ({elapsed:.1f}s)")
         return did
 
+    def build_state_for_cache(extra=None):
+        state = {
+            "env": dict(sorted(env.items())),
+            "workdir": workdir,
+            "shell": list(shell),
+            "user": user,
+            "platform": PLATFORM,
+        }
+        if extra:
+            state.update(extra)
+        return state
+
     def rematerialize_build_rootfs():
         if not rootfs:
             return
@@ -5007,6 +5082,22 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
         elif instr == "RUN":
             emit(f"Step: RUN {args}")
             full_env = dict(env)
+            cache_key = build_cache_key(
+                "RUN", args, diff_ids,
+                build_state_for_cache({"run_env": dict(sorted(full_env.items()))}),
+            )
+            cached = load_build_cache_entry(cache_key)
+            if cached:
+                cached_did = cached["diff_id"]
+                emit(f"  Using cache sha256:{cached_did[:12]}")
+                merge_layers_into(rootfs, [cached_did])
+                diff_ids.append(cached_did)
+                last_snapshot_size[0] = _layer_size(cached_did)
+                for sub in ["proc", "sys", "dev", "tmp", "etc"]:
+                    os.makedirs(os.path.join(rootfs, sub), exist_ok=True)
+                _prepare_rootfs_runtime_files(rootfs)
+                record_layer(f"RUN {args}", size_delta=last_snapshot_size[0])
+                continue
             repaired_loader = ensure_rootfs_dynamic_loader(rootfs, diff_ids)
             if repaired_loader:
                 emit(f"  repaired dynamic loader from layer: {repaired_loader}")
@@ -5047,6 +5138,11 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 emit(f"RUN failed with exit code {proc.returncode}")
                 return fail_build()
             new_did = snapshot_layer("RUN", prev_diff_ids=diff_ids)
+            store_build_cache_entry(cache_key, {
+                "diff_id": new_did,
+                "size": last_snapshot_size[0] or _layer_size(new_did),
+                "created_by": f"RUN {args}",
+            })
             diff_ids.append(new_did)
             rematerialize_build_rootfs()
             record_layer(f"RUN {args}", size_delta=last_snapshot_size[0])
@@ -5276,6 +5372,14 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
             f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
         with open(os.path.join(dest, "layers.json"), "w") as f:
             json.dump(layers, f, indent=2)
+        if os.environ.get("PDOCKER_AUTO_PRUNE_UNREFERENCED_LAYERS", "0") == "1":
+            pruned = prune_unreferenced_layers(min_age_seconds=0)
+            deleted = len(pruned.get("Deleted") or [])
+            if deleted:
+                emit(
+                    "  build-profile prune-unreferenced-layers: "
+                    f"deleted={deleted} reclaimed={pruned.get('SpaceReclaimed', 0)}"
+                )
         shutil.rmtree(build_dir, ignore_errors=True)
         return norm_tag
     return fail_build()

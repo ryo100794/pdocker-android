@@ -119,6 +119,9 @@ def run_daemon(
     os.environ["TMPDIR"] = tmp_dir
     os.environ["PROOT_TMP_DIR"] = tmp_dir
     os.environ["PDOCKER_RUNTIME_PREFLIGHT"] = "1"
+    # Phones have tight app-data budgets. Keep successful rebuilds from
+    # accumulating old, unreferenced filesystem layers when a tag is replaced.
+    os.environ.setdefault("PDOCKER_AUTO_PRUNE_UNREFERENCED_LAYERS", "1")
 
     if runtime_backend:
         os.environ["PDOCKER_RUNTIME_BACKEND"] = runtime_backend
@@ -126,10 +129,16 @@ def run_daemon(
         os.environ["PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC"] = "1"
         os.environ.setdefault("PDOCKER_DIRECT_TRACE_SYSCALLS", "0")
         os.environ.setdefault("PDOCKER_DIRECT_TRACE_MODE", "seccomp")
+        # Direct execution supports pdockerd's lower/upper cow_bind contract.
+        # Prefer that over materializing a full container rootfs for every
+        # create; large development images otherwise spend tens of seconds in
+        # rootfs preparation before the process can even start.
+        os.environ.setdefault("PDOCKER_USE_COW_BIND", "1")
     else:
         os.environ.pop("PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC", None)
         os.environ.pop("PDOCKER_DIRECT_TRACE_SYSCALLS", None)
         os.environ.pop("PDOCKER_DIRECT_TRACE_MODE", None)
+        os.environ.pop("PDOCKER_USE_COW_BIND", None)
 
     os.environ.setdefault("PDOCKER_RUNTIME_BACKEND", "no-proot")
     direct_executor = os.path.join(runtime_dir, "docker-bin", "pdocker-direct")

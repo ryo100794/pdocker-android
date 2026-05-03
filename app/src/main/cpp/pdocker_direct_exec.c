@@ -2429,6 +2429,7 @@ loader_found:
 int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--pdocker-direct-probe") == 0) {
         puts("pdocker-direct-executor:1");
+        puts("cow-bind=1");
         if (getenv("PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC")) {
             puts("process-exec=1");
         } else {

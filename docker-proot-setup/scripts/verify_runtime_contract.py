@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import os
+import shutil
 import tempfile
 import sys
 from pathlib import Path
@@ -284,6 +285,39 @@ def test_direct_run_requires_real_executor() -> None:
         ok("direct Dockerfile RUN fails instead of recording fake layers")
 
 
+def test_build_cache_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("build_cache", "no-proot", home_path)
+        parent = ["a" * 64]
+        state = {
+            "env": {"A": "B"},
+            "workdir": "/work",
+            "shell": ["/bin/sh", "-c"],
+            "user": "",
+            "platform": "linux/arm64",
+        }
+        key1 = mod.build_cache_key("RUN", "echo hi", parent, state)
+        key2 = mod.build_cache_key("RUN", "echo hi", parent, dict(reversed(state.items())))
+        if key1 != key2:
+            fail("build cache key should be stable for equivalent state")
+        key3 = mod.build_cache_key("RUN", "echo hi", ["b" * 64], state)
+        if key1 == key3:
+            fail("build cache key must include parent layer stack")
+        did = "c" * 64
+        layer_tree = Path(mod.LAYERS_DIR) / did / "tree"
+        layer_tree.mkdir(parents=True)
+        (layer_tree / "marker").write_text("cached\n")
+        mod.store_build_cache_entry(key1, {"diff_id": did, "size": 7})
+        entry = mod.load_build_cache_entry(key1)
+        if not entry or entry.get("diff_id") != did:
+            fail("stored build cache entry was not reusable")
+        shutil.rmtree(layer_tree.parent)
+        if mod.load_build_cache_entry(key1) is not None:
+            fail("build cache must ignore entries whose layer was pruned")
+        ok("Dockerfile RUN cache keys and layer validation work")
+
+
 def main() -> int:
     test_direct_backend_contract()
     test_direct_executor_probe_contract()
@@ -292,6 +326,7 @@ def main() -> int:
     test_default_no_proot_runtime_path()
     test_dockerfile_unknown_instruction_rejected()
     test_direct_run_requires_real_executor()
+    test_build_cache_contract()
     return 0
 
 

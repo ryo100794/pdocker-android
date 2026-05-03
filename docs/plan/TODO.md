@@ -64,6 +64,11 @@ or closes.
 - [done] Add Docker-compatible build/system prune paths for interrupted build
   cleanup. Test-staged upstream Docker CLI can still exercise these paths, but
   product APK UI should use Engine API/native actions.
+- [done] Stop repeated Android UI rebuilds from growing the shared layer pool
+  with stale copies. Successful tag replacement now prunes unreferenced layer
+  store entries by default in the APK, and Dockerfile `RUN` snapshots have a
+  parent-layer/build-state cache so an unchanged dev-workspace build can reuse
+  the prior apt/npm layer instead of generating another multi-GB layer.
 - [done] Add tracer process cleanup: `PTRACE_O_EXITKILL` where available,
   separate child process group, and SIGINT/SIGTERM/SIGHUP/SIGQUIT handling so
   aborted direct runs do not leave tracee process leftovers.
@@ -94,6 +99,11 @@ or closes.
   `O_TRUNC`/`creat` copy up metadata without copying discarded file content,
   and copy-up uses `copy_file_range` when available. Reusable microbench:
   `docker-proot-setup/src/overlay/bench_cow.sh`.
+- [done] Enable direct `cow_bind` container create/start in packaged APKs and
+  sync the backend asset during Gradle builds so stale pdockerd code cannot be
+  shipped accidentally. On SOG15, dev-workspace container create dropped from
+  about 77.35s with full rootfs materialization to about 1.10s with lower/upper
+  sharing; a fresh `pdocker-dev` create/start measured about 0.382s/0.389s.
 - [done] Keep COW terminology independent from PRoot. `libcow` is an
   LD_PRELOAD libc hook shim; it does not use ptrace or waitpid. PRoot-era COW
   comments and the diagnostic `proot-cow` driver label were renamed.

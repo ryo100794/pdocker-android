@@ -100,6 +100,16 @@ What's been confirmed working on the current Android 15 test device:
   `filesDir/pdocker/projects/imports/`; writable container layers can be edited
   directly, and read-only lower-layer files can be copied into the container's
   writable overlay before editing.
+- Android direct execution now advertises and uses pdockerd's `cow_bind`
+  lower/upper contract for container create/start. Large images are no longer
+  copied into every new container: SOG15 dev-workspace create measured about
+  77.35s before this path and about 1.10s after it; fresh `pdocker-dev`
+  create/start measured about 0.382s/0.389s. Gradle builds also sync the
+  current `docker-proot-setup/bin/pdockerd` into APK assets before packaging.
+- Successful Android UI rebuilds prune unreferenced layer-store entries after a
+  tag is replaced, and Dockerfile `RUN` snapshots now use a parent-stack cache
+  so unchanged apt/npm-heavy steps do not repeatedly create new multi-GB
+  layers.
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.
