@@ -204,10 +204,19 @@ class DockerEngineClient(private val socket: File) {
         private fun decodeJsonLine(line: String): String =
             runCatching {
                 val obj = JSONObject(line)
-                obj.optString("stream")
-                    .ifBlank { obj.optString("status") }
-                    .ifBlank { obj.optString("error") }
-                    .ifBlank { line }
+                val stream = obj.optString("stream")
+                if (stream.isNotEmpty()) return@runCatching stream
+                val error = obj.optString("error")
+                if (error.isNotEmpty()) return@runCatching "ERROR: $error\n"
+                val status = obj.optString("status")
+                val id = obj.optString("id")
+                val progress = obj.optString("progress")
+                val progressLine = listOf(id, status, progress)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" ")
+                    .trim()
+                if (progressLine.isNotEmpty()) return@runCatching "$progressLine\r"
+                line
             }.getOrDefault(line)
 
         private fun consumeJsonLines(

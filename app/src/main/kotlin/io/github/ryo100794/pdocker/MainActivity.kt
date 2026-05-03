@@ -94,22 +94,34 @@ class MainActivity : AppCompatActivity() {
     private class TerminalLogPane(val view: WebView) {
         private val pending = StringBuilder()
         private var ready = false
+        private var flushScheduled = false
 
         fun markReady() {
             ready = true
-            if (pending.isNotEmpty()) {
-                val text = pending.toString()
-                pending.clear()
-                write(text)
-            }
+            scheduleFlush(0L)
         }
 
         fun write(text: String) {
             if (text.isEmpty()) return
-            if (!ready) {
-                pending.append(text)
-                return
-            }
+            pending.append(text)
+            if (!ready) return
+            scheduleFlush(24L)
+        }
+
+        private fun scheduleFlush(delayMs: Long) {
+            if (flushScheduled) return
+            flushScheduled = true
+            view.postDelayed({
+                flushScheduled = false
+                if (!ready || pending.isEmpty()) return@postDelayed
+                val text = pending.toString()
+                pending.clear()
+                flush(text)
+                if (pending.isNotEmpty()) scheduleFlush(24L)
+            }, delayMs)
+        }
+
+        private fun flush(text: String) {
             val b64 = Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
             view.evaluateJavascript("window.pdockerRecv('$b64')", null)
         }
@@ -171,6 +183,12 @@ class MainActivity : AppCompatActivity() {
             ui.postDelayed(this, 3000)
         }
     }
+    private val jobTickerTask = object : Runnable {
+        override fun run() {
+            tickRunningJobs()
+            ui.postDelayed(this, 1000)
+        }
+    }
 
     private lateinit var status: TextView
     private lateinit var content: LinearLayout
@@ -188,6 +206,9 @@ class MainActivity : AppCompatActivity() {
     private val dockerJobBuffers = mutableMapOf<String, String>()
     private val dockerJobPendingCarriageReturn = mutableSetOf<String>()
     private val liveJobViews = mutableMapOf<String, LiveJobView>()
+    private var dockerJobsSaveScheduled = false
+    private var dockerJobsDirty = false
+    private var jobRenderScheduled = false
     private val ansiControlRegex = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
     private val serviceHealth = mutableMapOf<String, String>()
     private val serviceHealthCheckedAt = mutableMapOf<String, Long>()
@@ -306,17 +327,21 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         renderContent()
         ui.post(pollTask)
+        ui.post(jobTickerTask)
     }
 
     override fun onPause() {
         super.onPause()
         ui.removeCallbacks(pollTask)
+        ui.removeCallbacks(jobTickerTask)
+        flushDockerJobsSave()
     }
 
     override fun onDestroy() {
         toolTabs.forEach { it.bridge?.close() }
         toolTabs.clear()
         liveJobViews.clear()
+        ui.removeCallbacks(jobTickerTask)
         super.onDestroy()
     }
 
@@ -1500,13 +1525,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun jobStatusText(job: DockerJob): String {
         val elapsed = ((job.endedAt ?: System.currentTimeMillis()) - job.startedAt).coerceAtLeast(0) / 1000
+        val activity = if (job.exitCode == null) " ${jobActivityFrame()}" else ""
         return when {
-            job.exitCode == null -> getString(R.string.job_status_running_fmt, elapsed)
+            job.exitCode == null -> getString(R.string.job_status_running_fmt, elapsed) + activity
             job.exitCode == 0 -> getString(R.string.job_status_done_fmt, elapsed)
             job.exitCode == -129 -> getString(R.string.job_status_stopped_fmt, elapsed)
             job.exitCode == -130 -> getString(R.string.job_status_interrupted_fmt, elapsed)
             else -> getString(R.string.job_status_failed_fmt, job.exitCode ?: -1, elapsed)
         }
+    }
+
+    private fun jobProgressText(job: DockerJob): String {
+        val progress = job.progress.takeIf { it.isNotBlank() }
+        if (job.exitCode != null) return progress.orEmpty()
+        return progress ?: getString(R.string.job_activity_fmt, jobActivityFrame())
+    }
+
+    private fun jobActivityFrame(): String {
+        val frames = charArrayOf('|', '/', '-', '\\')
+        return frames[((System.currentTimeMillis() / 250L) % frames.size).toInt()].toString()
     }
 
     private fun openJobLog(job: DockerJob) {
@@ -1590,7 +1627,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateLiveJobView(job: DockerJob) {
         val live = liveJobViews[job.id] ?: return
         live.header.text = listOf(job.title, jobStatusText(job)).joinToString("  ")
-        live.progress.text = listOf(job.progress, job.command)
+        live.progress.text = listOf(jobProgressText(job), job.command)
             .filter { it.isNotBlank() }
             .joinToString("\n")
         live.services.removeAllViews()
@@ -1600,6 +1637,18 @@ class MainActivity : AppCompatActivity() {
                 isAllCaps = false
                 setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             })
+        }
+    }
+
+    private fun updateLiveJobViews() {
+        dockerJobs.forEach { updateLiveJobView(it) }
+    }
+
+    private fun tickRunningJobs() {
+        if (dockerJobs.none { it.exitCode == null }) return
+        updateLiveJobViews()
+        if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
+            renderContent()
         }
     }
 
@@ -1641,11 +1690,20 @@ class MainActivity : AppCompatActivity() {
             appendLiveJobTerminal(jobId, chunk)
             recordJobTerminalOutput(job, jobId, chunk)
             updateLiveJobView(job)
-            saveDockerJobs()
-            if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles)) {
+            scheduleDockerJobsSave()
+            scheduleJobRenderUpdate()
+        }
+    }
+
+    private fun scheduleJobRenderUpdate() {
+        if (jobRenderScheduled) return
+        jobRenderScheduled = true
+        ui.postDelayed({
+            jobRenderScheduled = false
+            if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
                 renderContent()
             }
-        }
+        }, 500L)
     }
 
     private fun appendEngineJobOutput(jobId: String, line: String) {
@@ -1655,15 +1713,24 @@ class MainActivity : AppCompatActivity() {
             appendLiveJobTerminal(jobId, text)
             recordJobTerminalOutput(job, jobId, text)
             updateLiveJobView(job)
-            saveDockerJobs()
-            if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
-                renderContent()
-            }
+            scheduleDockerJobsSave()
+            scheduleJobRenderUpdate()
         }
     }
 
     private fun terminalRecordText(text: String): String =
-        if (text.endsWith("\n") || text.endsWith("\r")) text else "$text\n"
+        normalizeTerminalNewlines(if (text.endsWith("\n") || text.endsWith("\r")) text else "$text\r\n")
+
+    private fun normalizeTerminalNewlines(text: String): String {
+        val out = StringBuilder(text.length + 8)
+        var previous = '\u0000'
+        text.forEach { ch ->
+            if (ch == '\n' && previous != '\r') out.append('\r')
+            out.append(ch)
+            previous = ch
+        }
+        return out.toString()
+    }
 
     private fun appendLiveJobTerminal(jobId: String, text: String) {
         liveJobViews[jobId]?.terminal?.write(text)
@@ -1844,6 +1911,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun trimDockerJobs() {
         while (dockerJobs.size > MAX_JOB_HISTORY) dockerJobs.removeAt(dockerJobs.lastIndex)
+    }
+
+    private fun scheduleDockerJobsSave() {
+        dockerJobsDirty = true
+        if (dockerJobsSaveScheduled) return
+        dockerJobsSaveScheduled = true
+        ui.postDelayed({
+            dockerJobsSaveScheduled = false
+            flushDockerJobsSave()
+        }, 1500L)
+    }
+
+    private fun flushDockerJobsSave() {
+        if (!dockerJobsDirty) return
+        dockerJobsDirty = false
+        saveDockerJobs()
     }
 
     private fun markInterruptedJob(job: DockerJob) {

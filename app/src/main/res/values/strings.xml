@@ -171,6 +171,7 @@
     <string name="job_status_failed_fmt">Failed (%1$d), %2$ds</string>
     <string name="job_status_stopped_fmt">Stopped, %1$ds</string>
     <string name="job_status_interrupted_fmt">Interrupted, %1$ds</string>
+    <string name="job_activity_fmt">Working %1$s</string>
     <string name="action_open_job_log_fmt">Open log: %1$s</string>
     <string name="action_stop_job_fmt">Stop %1$s</string>
     <string name="action_retry_job_fmt">Retry %1$s</string>
