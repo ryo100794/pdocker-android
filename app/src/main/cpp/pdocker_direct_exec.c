@@ -32,6 +32,7 @@ static int g_stats = 0;
 static int g_selective_trace = 0;
 static int g_rootfd_rewrite = 0;
 static int g_validate_tracees = 0;
+static int g_trace_stat_paths = 1;
 static int g_rootfs_fd = -1;
 static volatile sig_atomic_t g_trace_child_pgid = -1;
 static unsigned long long g_syscall_counts[512];
@@ -347,83 +348,97 @@ static int syscall_completed_in_userland(long nr) {
            syscall_emulate_success(nr);
 }
 
-#define TRACE_SYSCALL_NR(nr) \
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1), \
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE)
+#define ADD_STMT(code_, k_) do { \
+    filter[n++] = (struct sock_filter)BPF_STMT((code_), (k_)); \
+} while (0)
 
-#define ERRNO_SYSCALL_NR(nr, err) \
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1), \
-    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((err) & SECCOMP_RET_DATA))
+#define ADD_JUMP(code_, k_, jt_, jf_) do { \
+    filter[n++] = (struct sock_filter)BPF_JUMP((code_), (k_), (jt_), (jf_)); \
+} while (0)
+
+#define ADD_TRACE_SYSCALL(nr) do { \
+    ADD_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1); \
+    ADD_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRACE); \
+} while (0)
+
+#define ADD_ERRNO_SYSCALL(nr, err) do { \
+    ADD_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1); \
+    ADD_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | ((err) & SECCOMP_RET_DATA)); \
+} while (0)
 
 static int install_selective_seccomp_trace_filter(void) {
-    struct sock_filter filter[] = {
-        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (uint32_t)offsetof(struct seccomp_data, arch)),
-        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_AARCH64, 1, 0),
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-        BPF_STMT(BPF_LD | BPF_W | BPF_ABS, (uint32_t)offsetof(struct seccomp_data, nr)),
+    struct sock_filter filter[128];
+    size_t n = 0;
 
-        /* Path-bearing filesystem syscalls. */
-        TRACE_SYSCALL_NR(5),    /* setxattr */
-        TRACE_SYSCALL_NR(6),    /* lsetxattr */
-        TRACE_SYSCALL_NR(8),    /* getxattr */
-        TRACE_SYSCALL_NR(9),    /* lgetxattr */
-        TRACE_SYSCALL_NR(11),   /* listxattr */
-        TRACE_SYSCALL_NR(12),   /* llistxattr */
-        TRACE_SYSCALL_NR(14),   /* removexattr */
-        TRACE_SYSCALL_NR(15),   /* lremovexattr */
-        TRACE_SYSCALL_NR(17),   /* getcwd */
-        TRACE_SYSCALL_NR(33),   /* mknodat */
-        TRACE_SYSCALL_NR(34),   /* mkdirat */
-        TRACE_SYSCALL_NR(35),   /* unlinkat */
-        TRACE_SYSCALL_NR(36),   /* symlinkat */
-        TRACE_SYSCALL_NR(37),   /* linkat */
-        TRACE_SYSCALL_NR(38),   /* renameat */
-        TRACE_SYSCALL_NR(43),   /* statfs */
-        TRACE_SYSCALL_NR(48),   /* faccessat */
-        TRACE_SYSCALL_NR(49),   /* chdir */
-        TRACE_SYSCALL_NR(53),   /* fchmodat */
-        TRACE_SYSCALL_NR(54),   /* fchownat */
-        TRACE_SYSCALL_NR(55),   /* fchown */
-        TRACE_SYSCALL_NR(56),   /* openat */
-        TRACE_SYSCALL_NR(78),   /* readlinkat */
-        TRACE_SYSCALL_NR(79),   /* newfstatat */
-        TRACE_SYSCALL_NR(88),   /* utimensat */
-        TRACE_SYSCALL_NR(264),  /* name_to_handle_at */
-        TRACE_SYSCALL_NR(276),  /* renameat2 */
-        TRACE_SYSCALL_NR(281),  /* execveat */
-        TRACE_SYSCALL_NR(291),  /* statx */
-        TRACE_SYSCALL_NR(437),  /* openat2 */
-        TRACE_SYSCALL_NR(439),  /* faccessat2 */
+    ADD_STMT(BPF_LD | BPF_W | BPF_ABS, (uint32_t)offsetof(struct seccomp_data, arch));
+    ADD_JUMP(BPF_JMP | BPF_JEQ | BPF_K, AUDIT_ARCH_AARCH64, 1, 0);
+    ADD_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
+    ADD_STMT(BPF_LD | BPF_W | BPF_ABS, (uint32_t)offsetof(struct seccomp_data, nr));
 
-        /* Process startup, credentials, and Android-blocked compatibility. */
-        ERRNO_SYSCALL_NR(99, ENOSYS),   /* set_robust_list: glibc tolerates unavailable robust futex lists. */
-        TRACE_SYSCALL_NR(143),  /* setregid */
-        TRACE_SYSCALL_NR(144),  /* setgid */
-        TRACE_SYSCALL_NR(145),  /* setreuid */
-        TRACE_SYSCALL_NR(146),  /* setuid */
-        TRACE_SYSCALL_NR(147),  /* setresuid */
-        TRACE_SYSCALL_NR(148),  /* getresuid */
-        TRACE_SYSCALL_NR(149),  /* setresgid */
-        TRACE_SYSCALL_NR(150),  /* getresgid */
-        TRACE_SYSCALL_NR(151),  /* setfsuid */
-        TRACE_SYSCALL_NR(152),  /* setfsgid */
-        TRACE_SYSCALL_NR(159),  /* setgroups */
-        TRACE_SYSCALL_NR(174),  /* getuid */
-        TRACE_SYSCALL_NR(175),  /* geteuid */
-        TRACE_SYSCALL_NR(176),  /* getgid */
-        TRACE_SYSCALL_NR(177),  /* getegid */
-        TRACE_SYSCALL_NR(221),  /* execve */
-        ERRNO_SYSCALL_NR(293, ENOSYS),  /* rseq */
-        ERRNO_SYSCALL_NR(425, ENOSYS),  /* io_uring_setup */
-        ERRNO_SYSCALL_NR(426, ENOSYS),  /* io_uring_enter */
-        ERRNO_SYSCALL_NR(427, ENOSYS),  /* io_uring_register */
-        ERRNO_SYSCALL_NR(435, ENOSYS),  /* clone3 */
-        ERRNO_SYSCALL_NR(436, ENOSYS),  /* close_range */
+    /* Path-bearing filesystem syscalls. */
+    ADD_TRACE_SYSCALL(5);    /* setxattr */
+    ADD_TRACE_SYSCALL(6);    /* lsetxattr */
+    ADD_TRACE_SYSCALL(8);    /* getxattr */
+    ADD_TRACE_SYSCALL(9);    /* lgetxattr */
+    ADD_TRACE_SYSCALL(11);   /* listxattr */
+    ADD_TRACE_SYSCALL(12);   /* llistxattr */
+    ADD_TRACE_SYSCALL(14);   /* removexattr */
+    ADD_TRACE_SYSCALL(15);   /* lremovexattr */
+    ADD_TRACE_SYSCALL(17);   /* getcwd */
+    ADD_TRACE_SYSCALL(33);   /* mknodat */
+    ADD_TRACE_SYSCALL(34);   /* mkdirat */
+    ADD_TRACE_SYSCALL(35);   /* unlinkat */
+    ADD_TRACE_SYSCALL(36);   /* symlinkat */
+    ADD_TRACE_SYSCALL(37);   /* linkat */
+    ADD_TRACE_SYSCALL(38);   /* renameat */
+    ADD_TRACE_SYSCALL(43);   /* statfs */
+    ADD_TRACE_SYSCALL(48);   /* faccessat */
+    ADD_TRACE_SYSCALL(49);   /* chdir */
+    ADD_TRACE_SYSCALL(53);   /* fchmodat */
+    ADD_TRACE_SYSCALL(54);   /* fchownat */
+    ADD_TRACE_SYSCALL(55);   /* fchown */
+    ADD_TRACE_SYSCALL(56);   /* openat */
+    ADD_TRACE_SYSCALL(78);   /* readlinkat */
+    if (g_trace_stat_paths) {
+        ADD_TRACE_SYSCALL(79);   /* newfstatat */
+        ADD_TRACE_SYSCALL(291);  /* statx */
+    }
+    ADD_TRACE_SYSCALL(88);   /* utimensat */
+    ADD_TRACE_SYSCALL(264);  /* name_to_handle_at */
+    ADD_TRACE_SYSCALL(276);  /* renameat2 */
+    ADD_TRACE_SYSCALL(281);  /* execveat */
+    ADD_TRACE_SYSCALL(437);  /* openat2 */
+    ADD_TRACE_SYSCALL(439);  /* faccessat2 */
 
-        BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
-    };
+    /* Process startup, credentials, and Android-blocked compatibility. */
+    ADD_ERRNO_SYSCALL(99, ENOSYS);   /* set_robust_list: glibc tolerates unavailable robust futex lists. */
+    ADD_TRACE_SYSCALL(143);  /* setregid */
+    ADD_TRACE_SYSCALL(144);  /* setgid */
+    ADD_TRACE_SYSCALL(145);  /* setreuid */
+    ADD_TRACE_SYSCALL(146);  /* setuid */
+    ADD_TRACE_SYSCALL(147);  /* setresuid */
+    ADD_TRACE_SYSCALL(148);  /* getresuid */
+    ADD_TRACE_SYSCALL(149);  /* setresgid */
+    ADD_TRACE_SYSCALL(150);  /* getresgid */
+    ADD_TRACE_SYSCALL(151);  /* setfsuid */
+    ADD_TRACE_SYSCALL(152);  /* setfsgid */
+    ADD_TRACE_SYSCALL(159);  /* setgroups */
+    ADD_TRACE_SYSCALL(174);  /* getuid */
+    ADD_TRACE_SYSCALL(175);  /* geteuid */
+    ADD_TRACE_SYSCALL(176);  /* getgid */
+    ADD_TRACE_SYSCALL(177);  /* getegid */
+    ADD_TRACE_SYSCALL(221);  /* execve */
+    ADD_ERRNO_SYSCALL(293, ENOSYS);  /* rseq */
+    ADD_ERRNO_SYSCALL(425, ENOSYS);  /* io_uring_setup */
+    ADD_ERRNO_SYSCALL(426, ENOSYS);  /* io_uring_enter */
+    ADD_ERRNO_SYSCALL(427, ENOSYS);  /* io_uring_register */
+    ADD_ERRNO_SYSCALL(435, ENOSYS);  /* clone3 */
+    ADD_ERRNO_SYSCALL(436, ENOSYS);  /* close_range */
+
+    ADD_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW);
+
     struct sock_fprog prog = {
-        .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+        .len = (unsigned short)n,
         .filter = filter,
     };
     if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
@@ -432,8 +447,10 @@ static int install_selective_seccomp_trace_filter(void) {
     return prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog);
 }
 
-#undef TRACE_SYSCALL_NR
-#undef ERRNO_SYSCALL_NR
+#undef ADD_TRACE_SYSCALL
+#undef ADD_ERRNO_SYSCALL
+#undef ADD_JUMP
+#undef ADD_STMT
 
 static long syscall_remap_number(long nr) {
     return nr;
@@ -2074,6 +2091,7 @@ static int run_command(int argc, char **argv) {
     g_stats = env_flag_enabled("PDOCKER_DIRECT_STATS");
     g_rootfd_rewrite = env_flag_enabled("PDOCKER_DIRECT_ROOTFD_REWRITE");
     g_validate_tracees = env_flag_enabled("PDOCKER_DIRECT_VALIDATE_TRACEES");
+    g_trace_stat_paths = !env_flag_enabled("PDOCKER_DIRECT_UNTRACED_STAT_PATHS");
     const char *trace_mode = getenv("PDOCKER_DIRECT_TRACE_MODE");
     g_selective_trace = !trace_mode || strcmp(trace_mode, "syscall") != 0;
     const char *sync_env = getenv("PDOCKER_DIRECT_SYNC_USEC");

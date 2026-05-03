@@ -129,6 +129,7 @@ def main() -> int:
     require("project dashboard surfaces compose dependencies", "dependsOn" in main_src and "projectDependencySummary" in main_src and "project_dashboard_dependencies_fmt" in string_src)
     require("project dashboard surfaces compose healthchecks", "hasHealthcheck" in main_src and "projectHealthSummary" in main_src and "project_dashboard_health_fmt" in string_src)
     require("project dashboard surfaces llama model and gpu diagnostics", "projectModelSummary" in main_src and "projectGpuProfileSummary" in main_src and "pdocker-gpu-diagnostics.json" in main_src and "project_dashboard_models_fmt" in string_src and "action_open_gpu_diagnostics" in string_src)
+    require("default dev workspace migrates codex and claude code plugins", "migrateDefaultDevWorkspace" in main_src and "openai.chatgpt" in main_src and "Anthropic.claude-code" in main_src and "CLAUDE_CODE_NPM_PACKAGE" in main_src and "ANTHROPIC_API_KEY" in main_src)
 
     require("terminal font remains 12pt", "fontSize: 12" in xterm_src)
     require("terminal shortcut key palette is present", 'id="keybar"' in xterm_src and 'data-toggle="ctrl"' in xterm_src)

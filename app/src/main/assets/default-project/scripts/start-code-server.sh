@@ -16,6 +16,7 @@ port="${CODE_SERVER_PORT:-18080}"
 
 echo "code-server: http://0.0.0.0:$port"
 echo "codex: $(command -v codex || true)"
+echo "claude: $(command -v claude || true)"
 echo "continue config: /workspace/.continue/config.yaml"
 
 exec code-server \

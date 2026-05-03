@@ -1188,6 +1188,11 @@ def apply_dockerignore(context_dir, emit=None):
     return removed
 
 
+def _profile_add(profile, key, seconds):
+    if profile is not None:
+        profile[key] = profile.get(key, 0.0) + seconds
+
+
 def _delete_layer_index_path(index, rel_path):
     prefix = rel_path + os.sep
     for key in list(index.keys()):
@@ -1195,7 +1200,7 @@ def _delete_layer_index_path(index, rel_path):
             index.pop(key, None)
 
 
-def _build_layer_index(diff_ids, skip_paths=None):
+def _build_layer_index(diff_ids, skip_paths=None, profile=None):
     """Build the merged prior-layer path map without materializing a rootfs.
 
     `_snapshot_tree_as_layer` only needs to know whether a current path differs
@@ -1204,6 +1209,7 @@ def _build_layer_index(diff_ids, skip_paths=None):
     index applies whiteout semantics directly while walking layer trees, then
     points each live path at its source entry under LAYERS_DIR.
     """
+    start = time.perf_counter()
     skip_paths = set(skip_paths or [])
     index = {}
 
@@ -1244,10 +1250,15 @@ def _build_layer_index(diff_ids, skip_paths=None):
                 if _skipped(p_rel):
                     continue
                 index[p_rel] = os.path.join(root, name)
+    _profile_add(profile, "prev_index", time.perf_counter() - start)
+    if profile is not None:
+        profile["prev_paths"] = len(index)
     return index
 
 
-def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
+def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None,
+                            profile=None, changed_paths=None,
+                            deleted_paths=None):
     """Tar the contents of `src_tree`, compute diff_id, extract to LAYERS_DIR.
 
     When prev_diff_ids is given, emit only the *delta* vs. the materialized
@@ -1264,7 +1275,11 @@ def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
     import hashlib
     tmp_tar = os.path.join(PDOCKER_TMP, f"pdlayer_{uuid.uuid4().hex}.tar")
 
-    prev_index = _build_layer_index(prev_diff_ids, skip_paths) if prev_diff_ids else {}
+    prev_index = (
+        {}
+        if changed_paths is not None
+        else (_build_layer_index(prev_diff_ids, skip_paths, profile) if prev_diff_ids else {})
+    )
 
     def _skipped(p_rel):
         if p_rel in skip_paths:
@@ -1274,6 +1289,28 @@ def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
             if p_rel.startswith(sp + os.sep):
                 return True
         return False
+
+    def _add_changed_path(out, seen_paths, p_rel):
+        p_rel = os.path.normpath(p_rel.strip("/"))
+        if not p_rel or p_rel == "." or _skipped(p_rel) or p_rel in seen_paths:
+            return
+        sp = os.path.join(src_tree, p_rel)
+        if not os.path.lexists(sp):
+            return
+        if os.path.isdir(sp) and not os.path.islink(sp):
+            for root, dirs, files in os.walk(sp, followlinks=False):
+                rel = os.path.relpath(root, src_tree)
+                if rel != "." and not _skipped(rel) and rel not in seen_paths:
+                    seen_paths.add(rel)
+                    out.append(rel)
+                for name in list(dirs) + list(files):
+                    child = os.path.join(rel, name) if rel != "." else name
+                    if not _skipped(child) and child not in seen_paths:
+                        seen_paths.add(child)
+                        out.append(child)
+        else:
+            seen_paths.add(p_rel)
+            out.append(p_rel)
 
     # Walk src_tree and build file list (added/modified paths relative to
     # root). Three comparison modes:
@@ -1286,44 +1323,65 @@ def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
     import stat
     paths = []
     seen = set()
-    for root, dirs, files in os.walk(src_tree, followlinks=False):
-        rel = os.path.relpath(root, src_tree)
-        for name in list(dirs) + list(files):
-            p_rel = name if rel == "." else os.path.join(rel, name)
-            if _skipped(p_rel):
-                continue
-            sp = os.path.join(src_tree, p_rel)
-            bp = prev_index.get(p_rel)
-            seen.add(p_rel)
-            if bp is not None and os.path.lexists(bp):
-                try:
-                    sp_st = os.lstat(sp)
-                    bp_st = os.lstat(bp)
-                    if stat.S_ISLNK(sp_st.st_mode) and stat.S_ISLNK(bp_st.st_mode):
-                        if os.readlink(sp) == os.readlink(bp):
+    if changed_paths is not None:
+        walk_start = time.perf_counter()
+        for p_rel in changed_paths:
+            _add_changed_path(paths, seen, p_rel)
+        _profile_add(profile, "walk_current", time.perf_counter() - walk_start)
+    else:
+        walk_start = time.perf_counter()
+        for root, dirs, files in os.walk(src_tree, followlinks=False):
+            rel = os.path.relpath(root, src_tree)
+            for name in list(dirs) + list(files):
+                p_rel = name if rel == "." else os.path.join(rel, name)
+                if _skipped(p_rel):
+                    continue
+                sp = os.path.join(src_tree, p_rel)
+                bp = prev_index.get(p_rel)
+                seen.add(p_rel)
+                if bp is not None and os.path.lexists(bp):
+                    try:
+                        sp_st = os.lstat(sp)
+                        bp_st = os.lstat(bp)
+                        if stat.S_ISLNK(sp_st.st_mode) and stat.S_ISLNK(bp_st.st_mode):
+                            if os.readlink(sp) == os.readlink(bp):
+                                continue
+                        elif stat.S_ISDIR(sp_st.st_mode) and stat.S_ISDIR(bp_st.st_mode):
+                            # Unchanged dir — contents walked independently
                             continue
-                    elif stat.S_ISDIR(sp_st.st_mode) and stat.S_ISDIR(bp_st.st_mode):
-                        # Unchanged dir — contents walked independently
-                        continue
-                    elif sp_st.st_ino == bp_st.st_ino:
-                        continue
-                except OSError:
-                    pass
-            paths.append(p_rel)
+                        elif sp_st.st_ino == bp_st.st_ino:
+                            continue
+                    except OSError:
+                        pass
+                paths.append(p_rel)
+        _profile_add(profile, "walk_current", time.perf_counter() - walk_start)
 
     # Emit whiteouts for deletions (present in base, absent in src)
     whiteouts = []
-    for p_rel in prev_index:
-        if _skipped(p_rel):
-            continue
-        if p_rel not in seen and not os.path.lexists(os.path.join(src_tree, p_rel)):
-            whiteouts.append(p_rel)
+    whiteout_start = time.perf_counter()
+    if changed_paths is not None:
+        for p_rel in deleted_paths or []:
+            p_rel = os.path.normpath(p_rel.strip("/"))
+            if p_rel and p_rel != "." and not _skipped(p_rel):
+                whiteouts.append(p_rel)
+    else:
+        for p_rel in prev_index:
+            if _skipped(p_rel):
+                continue
+            if p_rel not in seen and not os.path.lexists(os.path.join(src_tree, p_rel)):
+                whiteouts.append(p_rel)
+    _profile_add(profile, "whiteouts", time.perf_counter() - whiteout_start)
+    if profile is not None:
+        profile["changed_paths"] = len(paths)
+        profile["whiteout_paths"] = len(whiteouts)
+        profile["seen_paths"] = len(seen)
 
     # Stage a tar build directory (we may need to inject whiteouts)
     stage = os.path.join(PDOCKER_TMP, f"pdstage_{uuid.uuid4().hex}")
     os.makedirs(stage, exist_ok=True)
     try:
         # Hardlink-copy the changed paths into stage
+        stage_start = time.perf_counter()
         for p_rel in paths:
             sp = os.path.join(src_tree, p_rel)
             dp = os.path.join(stage, p_rel)
@@ -1350,8 +1408,10 @@ def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
             wp = os.path.join(stage, parent, WHITEOUT_PREFIX + name)
             os.makedirs(os.path.join(stage, parent), exist_ok=True)
             open(wp, "wb").close()
+        _profile_add(profile, "stage", time.perf_counter() - stage_start)
 
         # Tar + digest
+        tar_start = time.perf_counter()
         r = subprocess.run(
             ["tar", "-cf", tmp_tar, "-C", stage, "--numeric-owner", "."],
             stderr=subprocess.PIPE,
@@ -1360,17 +1420,23 @@ def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
             raise RuntimeError(
                 f"snapshot tar failed: {r.stderr.decode('utf-8', 'replace')[:200]}"
             )
+        _profile_add(profile, "tar", time.perf_counter() - tar_start)
+        digest_start = time.perf_counter()
         diff_id = _sha256_file(tmp_tar)
+        _profile_add(profile, "digest", time.perf_counter() - digest_start)
 
         # Extract into layer storage (idempotent)
         if not _layer_exists(diff_id):
+            extract_start = time.perf_counter()
             _extract_layer_tar(tmp_tar, diff_id)
+            _profile_add(profile, "extract", time.perf_counter() - extract_start)
 
         # Re-hardlink src_tree files with the freshly extracted layer tree so
         # the next inode-based diff can skip them without rebuilding the whole
         # rootfs from all layers. This happens after RUN/COPY has completed,
         # so no traced process is still using the files.
         if os.environ.get("PDOCKER_DISABLE_SNAPSHOT_RELINK", "0") != "1":
+            relink_start = time.perf_counter()
             layer_tree = _layer_tree(diff_id)
             for lroot, _, lfiles in os.walk(layer_tree, followlinks=False):
                 rel = os.path.relpath(lroot, layer_tree)
@@ -1396,12 +1462,15 @@ def _snapshot_tree_as_layer(src_tree, prev_diff_ids=None, skip_paths=None):
                         except OSError:
                             pass
                         pass
+            _profile_add(profile, "relink", time.perf_counter() - relink_start)
     finally:
+        cleanup_start = time.perf_counter()
         shutil.rmtree(stage, ignore_errors=True)
         try:
             os.remove(tmp_tar)
         except OSError:
             pass
+        _profile_add(profile, "cleanup", time.perf_counter() - cleanup_start)
     return diff_id
 
 
@@ -4633,18 +4702,39 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
             "empty_layer": empty_layer,
         })
 
-    def snapshot_layer(label, prev_diff_ids=None):
+    def snapshot_layer(label, prev_diff_ids=None, changed_paths=None, deleted_paths=None):
         emit(f"  snapshotting layer: {label}")
-        start = time.time()
+        start = time.perf_counter()
+        profile = {}
         try:
             did = _snapshot_tree_as_layer(
                 rootfs, prev_diff_ids=prev_diff_ids, skip_paths=_BUILD_SKIP,
+                profile=profile, changed_paths=changed_paths,
+                deleted_paths=deleted_paths,
             )
         except Exception:
             cleanup_failed_build()
             raise
         last_snapshot_size[0] = _layer_size(did)
-        emit(f"  layer sha256:{did[:12]} ({time.time() - start:.1f}s)")
+        elapsed = time.perf_counter() - start
+        parts = [
+            f"prev-index={profile.get('prev_index', 0.0):.3f}s",
+            f"walk={profile.get('walk_current', 0.0):.3f}s",
+            f"whiteouts={profile.get('whiteouts', 0.0):.3f}s",
+            f"stage={profile.get('stage', 0.0):.3f}s",
+            f"tar={profile.get('tar', 0.0):.3f}s",
+            f"digest={profile.get('digest', 0.0):.3f}s",
+            f"extract={profile.get('extract', 0.0):.3f}s",
+            f"relink={profile.get('relink', 0.0):.3f}s",
+            f"cleanup={profile.get('cleanup', 0.0):.3f}s",
+            f"changed={int(profile.get('changed_paths', 0))}",
+            f"seen={int(profile.get('seen_paths', 0))}",
+            f"prev={int(profile.get('prev_paths', 0))}",
+            f"whiteout={int(profile.get('whiteout_paths', 0))}",
+            f"mode={'paths' if changed_paths is not None else 'scan'}",
+        ]
+        emit(f"  build-profile snapshot {label}: " + " ".join(parts))
+        emit(f"  layer sha256:{did[:12]} ({elapsed:.1f}s)")
         return did
 
     def rematerialize_build_rootfs():
@@ -4652,12 +4742,14 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
             return
         if os.environ.get("PDOCKER_REMATERIALIZE_AFTER_LAYER", "0") != "1":
             return
+        start = time.perf_counter()
         if os.path.exists(rootfs):
             shutil.rmtree(rootfs)
         materialize_container_rootfs(rootfs, diff_ids)
         for sub in ["proc", "sys", "dev", "tmp", "etc"]:
             os.makedirs(os.path.join(rootfs, sub), exist_ok=True)
         _prepare_rootfs_runtime_files(rootfs)
+        emit(f"  build-profile rematerialize: {time.perf_counter() - start:.3f}s")
 
     def cleanup_failed_build():
         if os.environ.get("PDOCKER_KEEP_FAILED_BUILD_ROOTFS", "0") == "1":
@@ -4729,11 +4821,15 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
             base_diff_ids = _load_image_manifest(img_d)
             if base_diff_ids:
                 emit("  materializing base layers")
+                start = time.perf_counter()
                 materialize_container_rootfs(rootfs, base_diff_ids)
+                emit(f"  build-profile materialize-base: {time.perf_counter() - start:.3f}s layers={len(base_diff_ids)}")
                 diff_ids = list(base_diff_ids)
             else:
                 emit("  cloning legacy base rootfs")
+                start = time.perf_counter()
                 clone_image_rootfs(os.path.join(img_d, "rootfs"), rootfs)
+                emit(f"  build-profile clone-legacy-base: {time.perf_counter() - start:.3f}s")
                 # Legacy base: can't attribute existing content to any
                 # prior diff_id. Snapshot whole rootfs as a single layer
                 # so subsequent RUN/COPY still layer diffs correctly.
@@ -4778,11 +4874,13 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 emit(fault)
                 emit("RUN skipped because the Android execution backend is unavailable")
                 return fail_build()
+            run_start = time.perf_counter()
             proc = subprocess.run(
                 build_run_argv(rootfs, build_run_command(args),
                                full_env, workdir=workdir, mode="build"),
                 capture_output=True,
             )
+            emit(f"  build-profile run-exec: {time.perf_counter() - run_start:.3f}s rc={proc.returncode}")
             if proc.stdout:
                 emit(proc.stdout.decode(errors="replace"))
             if proc.stderr:
@@ -4819,6 +4917,10 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 _ensure_rootfs_dir_path(rootfs, target)
             else:
                 _ensure_rootfs_dir_path(rootfs, os.path.dirname(target))
+            copy_changed = []
+            copy_deleted = []
+            copy_start = time.perf_counter()
+            copied = 0
             for s in srcs:
                 spath = os.path.join(context_dir, s)
                 if not os.path.exists(spath):
@@ -4827,6 +4929,7 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 if os.path.isdir(spath):
                     dst = target if dest.endswith("/") else target
                     if os.path.exists(dst):
+                        copy_deleted.append(os.path.relpath(dst, rootfs))
                         shutil.rmtree(dst)
                     shutil.copytree(spath, dst, copy_function=_copy_no_xattr)
                 else:
@@ -4836,8 +4939,14 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                     if os.path.lexists(dst):
                         os.remove(dst)
                     _copy_no_xattr(spath, dst)
+                copy_changed.append(os.path.relpath(dst, rootfs))
                 emit(f"  {s} -> {dest}")
-            new_did = snapshot_layer(instr, prev_diff_ids=diff_ids)
+                copied += 1
+            emit(f"  build-profile {instr.lower()}-copy: {time.perf_counter() - copy_start:.3f}s sources={copied}")
+            new_did = snapshot_layer(
+                instr, prev_diff_ids=diff_ids,
+                changed_paths=copy_changed, deleted_paths=copy_deleted,
+            )
             diff_ids.append(new_did)
             rematerialize_build_rootfs()
             record_layer(f"{instr} {args}", size_delta=last_snapshot_size[0])

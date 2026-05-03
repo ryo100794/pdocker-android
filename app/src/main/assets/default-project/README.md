@@ -7,6 +7,9 @@ It includes:
 - code-server for browser-based VS Code sessions.
 - Continue VS Code extension.
 - OpenAI Codex CLI through `npm install -g @openai/codex`.
+- OpenAI ChatGPT/Codex VS Code extension (`openai.chatgpt`).
+- Claude Code CLI through `npm install -g @anthropic-ai/claude-code`.
+- Claude Code VS Code extension (`Anthropic.claude-code`).
 - Common development tools: git, Python, Node/npm, ripgrep, jq, vim, nano.
 - Common editor extensions for Python, YAML, Docker, formatting, linting, and Git.
 

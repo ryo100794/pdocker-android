@@ -46,7 +46,7 @@
     <string name="action_host_shell">ホストシェル</string>
     <string name="detail_host_shell">診断用アプリホストシェル、コンテナではありません</string>
     <string name="action_default_dev_workspace">標準開発ワークスペース</string>
-    <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
+    <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex + Claude Code</string>
     <string name="section_inventory">インベントリ</string>
     <string name="section_jobs">ジョブ</string>
     <string name="widget_images">イメージ</string>
@@ -92,7 +92,7 @@
     <string name="action_new_compose">新規 compose.yaml</string>
     <string name="detail_new_compose">標準 Compose プロジェクトを作成または編集</string>
     <string name="action_default_dev_compose">標準開発 Compose</string>
-    <string name="detail_default_dev_compose">code-server, Continue, Codex CLI</string>
+    <string name="detail_default_dev_compose">code-server, Continue, Codex, Claude Code</string>
     <string name="action_compose_shell">Compose シェル</string>
     <string name="detail_open_at_fmt">%1$s で開く</string>
     <string name="message_no_compose_fmt">%1$s に Compose ファイルがありません。</string>
@@ -105,7 +105,7 @@
     <string name="action_new_dockerfile">新規 Dockerfile</string>
     <string name="detail_new_dockerfile">標準ビルドファイルを作成または編集</string>
     <string name="action_default_dev_image">標準開発イメージ</string>
-    <string name="detail_default_dev_image">code-server + extensions + @openai/codex</string>
+    <string name="detail_default_dev_image">code-server + extensions + Codex + Claude Code</string>
     <string name="action_build_shell">ビルドシェル</string>
     <string name="detail_build_shell">docker build 用のプロジェクトディレクトリを開く</string>
     <string name="message_no_dockerfile_fmt">%1$s に Dockerfile がありません。</string>

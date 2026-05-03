@@ -97,9 +97,14 @@ or closes.
 - [done] Keep COW terminology independent from PRoot. `libcow` is an
   LD_PRELOAD libc hook shim; it does not use ptrace or waitpid. PRoot-era COW
   comments and the diagnostic `proot-cow` driver label were renamed.
-- [next] Profile large apt/npm template layers separately from ptrace. The
-  remaining long spans are package-manager file churn and snapshot extraction,
-  not just syscall interception.
+- [doing] Profile large apt/npm template layers separately from ptrace. Build
+  logs now include `build-profile` timings for base materialization, RUN exec,
+  COPY work, and snapshot subphases (`prev-index`, `walk`, `stage`, `tar`,
+  `digest`, `extract`, `relink`). COPY/ADD snapshots now use touched-path mode
+  instead of scanning the whole rootfs, cutting the reusable microbench from
+  about 2.1-2.3s per COPY snapshot to about 0.2s. Remaining large RUN layers
+  still need a direct-runtime changed-path manifest so snapshot can avoid a
+  full rootfs walk after apt/npm.
 - [next] Revisit rootfs-fd path rewriting as an opt-in optimization only after
   fd lifetime handling is proven. A trial that rewrote absolute `*at` paths to
   `openat(rootfs_fd, relative)` made apt resolver cleanup hit
@@ -109,6 +114,10 @@ or closes.
   after apt Acquire DNS remains stable; a trial removed `statx` stops but made
   `apt-get update` report `Could not resolve 'ports.ubuntu.com'` despite
   `getent hosts` working.
+- [done] Measure whether `newfstatat/statx` can simply bypass ptrace. It cannot:
+  `PDOCKER_DIRECT_UNTRACED_STAT_PATHS=1` reduced an apt-cache probe to 73 stops
+  but broke PATH resolution (`apt-cache: not found`, `apt-get: not found`).
+  Keep it as a benchmark-only negative control, not a runtime default.
 
 ### Filesystem / Syscall Semantics
 
@@ -273,9 +282,19 @@ Real implementation needed:
 9. Reduce direct-runtime overhead for apt/npm-heavy Dockerfiles. Current
    selective seccomp/ptrace mediation is correct enough for tiny compose and
    `apt-get update`, but still needs full default workspace confirmation.
+   - `build-profile` log lines are the canonical build bottleneck record; keep
+     them in UI logs and test artifacts when measuring default workspace
+     builds.
+   - COPY/ADD now use path-scoped layer snapshots. Extend the same idea to RUN
+     by having `pdocker-direct` record mutated guest paths from traced
+     filesystem syscalls.
    - Continue tuning the child seccomp-BPF trace filter so path/credential/
      process syscalls trap, while hot syscalls such as `read`, `write`,
      `mmap`, `mprotect`, and `brk` run without ptrace stops.
+   - Do not simply untrace `newfstatat/statx`; apt and shell PATH lookup need
+     those path checks mediated. Optimize the handler path instead: reduce
+     register writes, cache read-only path classifications, and add a RUN
+     changed-path manifest so snapshot does not need a full post-RUN scan.
    - Keep path mediation on `openat`, `newfstatat`, `statx`, `execve`,
      `readlinkat`, `linkat`, `symlinkat`, `renameat`, `unlinkat`, and related
      filesystem syscalls.

@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CODE_SERVER_VERSION=latest
 ARG CODEX_NPM_PACKAGE=@openai/codex
+ARG CLAUDE_CODE_NPM_PACKAGE=@anthropic-ai/claude-code
 ARG NODE_MAJOR=22
 
 ENV LANG=C.UTF-8 \
@@ -43,12 +44,15 @@ RUN if [ "$CODE_SERVER_VERSION" = "latest" ]; then \
       curl -fsSL https://code-server.dev/install.sh | sh -s -- --version "$CODE_SERVER_VERSION"; \
     fi
 
-RUN npm install -g "$CODEX_NPM_PACKAGE"
+RUN npm install -g "$CODEX_NPM_PACKAGE" "$CLAUDE_CODE_NPM_PACKAGE"
 
 RUN mkdir -p /workspace "$CODE_SERVER_USER_DATA_DIR/User" "$CODE_SERVER_EXTENSIONS_DIR" \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension Continue.continue || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension redhat.vscode-yaml || true \
-    && code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension ms-azuretools.vscode-docker || true
+    && for ext in Continue.continue openai.chatgpt Anthropic.claude-code; do \
+         code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension "$ext"; \
+       done \
+    && for ext in redhat.vscode-yaml ms-azuretools.vscode-docker; do \
+         code-server --extensions-dir "$CODE_SERVER_EXTENSIONS_DIR" --install-extension "$ext" || true; \
+       done
 
 COPY scripts/start-code-server.sh /usr/local/bin/start-code-server
 COPY vscode/settings.json /workspace/.vscode-server/data/User/settings.json

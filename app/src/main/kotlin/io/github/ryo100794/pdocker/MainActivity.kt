@@ -2231,6 +2231,7 @@ class MainActivity : AppCompatActivity() {
         File(target, ".pdocker-template-id").writeText(template.id + "\n")
         File(target, ".pdocker-template-version").writeText(template.version.toString() + "\n")
         migrateProjectPorts(target)
+        if (template.id == "dev-workspace") migrateDefaultDevWorkspace(target)
         status.text = getString(
             R.string.status_library_install_report_fmt,
             template.name,
@@ -2410,8 +2411,78 @@ class MainActivity : AppCompatActivity() {
             copyAssetTree("default-project", target)
         }
         migrateProjectPorts(target)
+        migrateDefaultDevWorkspace(target)
         stamp.parentFile?.mkdirs()
-        stamp.writeText("2\n")
+        stamp.writeText("3\n")
+    }
+
+    private fun migrateDefaultDevWorkspace(project: File) {
+        val dockerfile = File(project, "Dockerfile")
+        if (dockerfile.isFile) {
+            var text = dockerfile.readText()
+            if (!text.contains("CLAUDE_CODE_NPM_PACKAGE")) {
+                text = text.replace(
+                    "ARG CODEX_NPM_PACKAGE=@openai/codex\n",
+                    "ARG CODEX_NPM_PACKAGE=@openai/codex\nARG CLAUDE_CODE_NPM_PACKAGE=@anthropic-ai/claude-code\n",
+                )
+                text = text.replace(
+                    "RUN npm install -g \"\$CODEX_NPM_PACKAGE\"",
+                    "RUN npm install -g \"\$CODEX_NPM_PACKAGE\" \"\$CLAUDE_CODE_NPM_PACKAGE\"",
+                )
+            }
+            if (!text.contains("Anthropic.claude-code")) {
+                text = text.replace(
+                    "RUN mkdir -p /workspace \"\$CODE_SERVER_USER_DATA_DIR/User\" \"\$CODE_SERVER_EXTENSIONS_DIR\" \\\n" +
+                        "    && code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension Continue.continue || true \\\n" +
+                        "    && code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension redhat.vscode-yaml || true \\\n" +
+                        "    && code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension ms-azuretools.vscode-docker || true",
+                    "RUN mkdir -p /workspace \"\$CODE_SERVER_USER_DATA_DIR/User\" \"\$CODE_SERVER_EXTENSIONS_DIR\" \\\n" +
+                        "    && for ext in Continue.continue openai.chatgpt Anthropic.claude-code; do \\\n" +
+                        "         code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension \"\$ext\"; \\\n" +
+                        "       done \\\n" +
+                        "    && for ext in redhat.vscode-yaml ms-azuretools.vscode-docker; do \\\n" +
+                        "         code-server --extensions-dir \"\$CODE_SERVER_EXTENSIONS_DIR\" --install-extension \"\$ext\" || true; \\\n" +
+                        "       done",
+                )
+            }
+            dockerfile.writeText(text)
+        }
+
+        val compose = File(project, "compose.yaml")
+        if (compose.isFile) {
+            var text = compose.readText()
+            if (!text.contains("CLAUDE_CODE_NPM_PACKAGE")) {
+                text = text.replace(
+                    "        CODEX_NPM_PACKAGE: \"@openai/codex\"\n",
+                    "        CODEX_NPM_PACKAGE: \"@openai/codex\"\n        CLAUDE_CODE_NPM_PACKAGE: \"@anthropic-ai/claude-code\"\n",
+                )
+            }
+            if (!text.contains("ANTHROPIC_API_KEY")) {
+                text = text.replace(
+                    "      OPENAI_API_KEY: \"\${OPENAI_API_KEY:-}\"\n",
+                    "      OPENAI_API_KEY: \"\${OPENAI_API_KEY:-}\"\n      ANTHROPIC_API_KEY: \"\${ANTHROPIC_API_KEY:-}\"\n",
+                )
+            }
+            compose.writeText(text)
+        }
+
+        val extensions = File(project, "workspace/.vscode/extensions.json")
+        if (!extensions.exists()) {
+            extensions.parentFile?.mkdirs()
+            extensions.writeText(
+                """
+                {
+                  "recommendations": [
+                    "Continue.continue",
+                    "openai.chatgpt",
+                    "Anthropic.claude-code",
+                    "redhat.vscode-yaml",
+                    "ms-azuretools.vscode-docker"
+                  ]
+                }
+                """.trimIndent() + "\n",
+            )
+        }
     }
 
     private fun migrateProjectPorts(project: File) {

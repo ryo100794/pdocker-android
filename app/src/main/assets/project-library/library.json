@@ -1,17 +1,17 @@
 {
-  "version": 1,
+  "version": 3,
   "templates": [
     {
       "id": "dev-workspace",
-      "name": "VS Code Server + Continue + Codex",
+      "name": "VS Code Server + Continue + Codex + Claude Code",
       "category": "development",
-      "description": "Browser VS Code, Continue, OpenAI Codex CLI, Python, Node/npm, Docker tooling, and common editor extensions.",
+      "description": "Browser VS Code, Continue, OpenAI Codex/ChatGPT, Claude Code, Python, Node/npm, Docker tooling, and common editor extensions.",
       "assetPath": "default-project",
       "projectDir": "default",
       "compose": "compose.yaml",
       "dockerfile": "Dockerfile",
       "gpu": "vulkan-cuda-compat",
-      "features": ["code-server", "continue", "codex", "vscode-extensions", "vulkan"]
+      "features": ["code-server", "continue", "codex", "claude-code", "vscode-extensions", "vulkan"]
     },
     {
       "id": "llama-cpp-gpu",

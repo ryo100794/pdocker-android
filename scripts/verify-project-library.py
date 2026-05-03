@@ -41,10 +41,21 @@ def main() -> int:
     dev_root = ASSETS / dev["assetPath"]
     dev_compose = read(dev_root / dev["compose"])
     dev_dockerfile = read(dev_root / dev["dockerfile"])
-    for token in ("code-server", "Continue.continue", "@openai/codex", "gpus: all", "18080:18080"):
-        if token not in dev_compose + dev_dockerfile:
+    dev_workspace_extensions = read(dev_root / "workspace" / ".vscode" / "extensions.json")
+    for token in (
+        "code-server",
+        "Continue.continue",
+        "@openai/codex",
+        "openai.chatgpt",
+        "@anthropic-ai/claude-code",
+        "Anthropic.claude-code",
+        "ANTHROPIC_API_KEY",
+        "gpus: all",
+        "18080:18080",
+    ):
+        if token not in dev_compose + dev_dockerfile + dev_workspace_extensions:
             fail(f"dev-workspace missing {token}")
-    ok("dev-workspace includes code-server, Continue, Codex, and GPU request")
+    ok("dev-workspace includes code-server, Continue, Codex, Claude Code, and GPU request")
 
     llama = templates["llama-cpp-gpu"]
     llama_root = ASSETS / llama["assetPath"]

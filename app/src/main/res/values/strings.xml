@@ -46,7 +46,7 @@
     <string name="action_host_shell">Host shell</string>
     <string name="detail_host_shell">Diagnostic app host shell, not a container</string>
     <string name="action_default_dev_workspace">Default dev workspace</string>
-    <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex</string>
+    <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex + Claude Code</string>
     <string name="section_inventory">Inventory</string>
     <string name="section_jobs">Jobs</string>
     <string name="widget_images">Images</string>
@@ -92,7 +92,7 @@
     <string name="action_new_compose">New compose.yaml</string>
     <string name="detail_new_compose">Create or edit default Compose project</string>
     <string name="action_default_dev_compose">Default dev compose</string>
-    <string name="detail_default_dev_compose">code-server, Continue, Codex CLI</string>
+    <string name="detail_default_dev_compose">code-server, Continue, Codex, Claude Code</string>
     <string name="action_compose_shell">Compose shell</string>
     <string name="detail_open_at_fmt">Open at %1$s</string>
     <string name="message_no_compose_fmt">No compose files under %1$s.</string>
@@ -105,7 +105,7 @@
     <string name="action_new_dockerfile">New Dockerfile</string>
     <string name="detail_new_dockerfile">Create or edit default build file</string>
     <string name="action_default_dev_image">Default dev image</string>
-    <string name="detail_default_dev_image">code-server + extensions + @openai/codex</string>
+    <string name="detail_default_dev_image">code-server + extensions + Codex + Claude Code</string>
     <string name="action_build_shell">Build shell</string>
     <string name="detail_build_shell">Open project directory for docker build</string>
     <string name="message_no_dockerfile_fmt">No Dockerfile found under %1$s.</string>
