@@ -77,6 +77,7 @@ def main() -> int:
     require("one-shot docker commands leave an interactive shell", "status=\\$?" in main_src and "exec sh" in main_src)
     require("docker actions create native job cards", "private data class DockerJob" in main_src and "renderDockerJobs" in main_src)
     require("docker jobs persist state to json", "jobs.json" in main_src and "saveDockerJobs()" in main_src)
+    require("docker jobs persist full log files", "logs/jobs/$jobId.log" in main_src and "appendPersistentJobLog" in main_src and "readJobLogText" in main_src)
     require("docker jobs capture terminal output", "onOutput: ((ByteArray) -> Unit)?" in main_src and "handleDockerJobOutput" in main_src)
     require("docker jobs record exit markers", "__PDOCKER_JOB_EXIT" in main_src and "job_status_failed_fmt" in string_src)
     require("docker jobs parse progress lines", "dockerJobProgressLine" in main_src and "snapshotting layer:" in main_src and "Successfully tagged" in main_src)
@@ -87,6 +88,7 @@ def main() -> int:
     require("job summaries tick while logs are quiet", "jobTickerTask" in main_src and "tickRunningJobs" in main_src and "job_activity_fmt" in string_src)
     require("job log ui batches expensive refreshes", "scheduleDockerJobsSave" in main_src and "scheduleJobRenderUpdate" in main_src and "postDelayed" in main_src)
     require("engine stream keeps terminal control characters", "decoded.split('\\n')" in engine_src and "decoded.replace(\"\\r\", \"\")" not in engine_src)
+    require("engine progress clears terminal line", '"\\r\\u001B[2K$progressLine\\r"' in engine_src)
     require("engine api jobs are persisted", "runEngineJob" in main_src and "appendEngineJobOutput" in main_src and "finishEngineJob" in main_src)
     require("engine jobs wait through slow daemon warmup", "private fun waitForEngine(timeoutMs: Long = 90_000)" in main_src)
     require("docker jobs expose retry actions", "action_retry_job_fmt" in main_src and "retryDockerJob(job)" in main_src)
@@ -149,6 +151,7 @@ def main() -> int:
     require("terminal selection menu touch does not steal button clicks", "selectionMenu.contains(event.target)" in xterm_src and "event.stopPropagation()" in xterm_src)
     require("terminal copy uses android clipboard bridge", "copyToClipboard" in bridge_src and "PdockerBridge.copyToClipboard" in xterm_src)
     require("terminal selection handles drag independently", "roleForVisualHandle" in xterm_src and "nearestSelectionHandle" in xterm_src and "pointer-events: auto" in xterm_src)
+    require("terminal selection accounts for scrollback viewport", "viewportY()" in xterm_src and "term.buffer.active.viewportY" in xterm_src and "cell.y - viewportY()" in xterm_src)
 
     require("code editor exposes whitespace", "VisibleWhitespaceTransformation" in editor_src)
     require("code editor keeps indent/outdent actions", "indentSelection()" in editor_src and "outdentSelection()" in editor_src)

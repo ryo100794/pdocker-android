@@ -215,7 +215,7 @@ class DockerEngineClient(private val socket: File) {
                     .filter { it.isNotBlank() }
                     .joinToString(" ")
                     .trim()
-                if (progressLine.isNotEmpty()) return@runCatching "$progressLine\r"
+                if (progressLine.isNotEmpty()) return@runCatching "\r\u001B[2K$progressLine\r"
                 line
             }.getOrDefault(line)
 

@@ -234,6 +234,7 @@
 
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const viewportY = () => term.buffer && term.buffer.active ? term.buffer.active.viewportY : 0;
   const setFontSize = (value) => {
     fontSize = clamp(Math.round(value * 10) / 10, 9, 24);
     term.options.fontSize = fontSize;
@@ -247,9 +248,10 @@
     const rect = screenRect();
     const cellWidth = rect.width / Math.max(term.cols, 1);
     const cellHeight = rect.height / Math.max(term.rows, 1);
+    const visibleY = clamp(Math.floor((touch.clientY - rect.top) / cellHeight), 0, Math.max(term.rows - 1, 0));
     return {
       x: clamp(Math.floor((touch.clientX - rect.left) / cellWidth), 0, Math.max(term.cols - 1, 0)),
-      y: clamp(Math.floor((touch.clientY - rect.top) / cellHeight), 0, Math.max(term.rows - 1, 0))
+      y: viewportY() + visibleY
     };
   };
   const cellToPoint = (cell) => {
@@ -257,9 +259,10 @@
     const cellWidth = rect.width / Math.max(term.cols, 1);
     const cellHeight = rect.height / Math.max(term.rows, 1);
     const hostRect = termHost.getBoundingClientRect();
+    const visibleY = cell.y - viewportY();
     return {
       left: rect.left - hostRect.left + (cell.x + 0.5) * cellWidth,
-      top: rect.top - hostRect.top + (cell.y + 1) * cellHeight
+      top: rect.top - hostRect.top + (visibleY + 1) * cellHeight
     };
   };
   const orderedSelection = () => {
@@ -320,8 +323,8 @@
     selectionActive = true;
     mods.select = true;
     allSelected = true;
-    selectionStartCell = { x: 0, y: 0 };
-    selectionEndCell = { x: Math.max(term.cols - 1, 0), y: Math.max(term.rows - 1, 0) };
+    selectionStartCell = { x: 0, y: viewportY() };
+    selectionEndCell = { x: Math.max(term.cols - 1, 0), y: viewportY() + Math.max(term.rows - 1, 0) };
     refreshModifiers();
     term.selectAll();
     refreshSelectionMarkers();

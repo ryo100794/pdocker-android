@@ -31,6 +31,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
@@ -170,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
         private const val MAX_JOB_HISTORY = 20
         private const val MAX_JOB_LINES = 200
+        private const val MAX_JOB_LOG_VIEW_BYTES = 256 * 1024
         private const val PDOCKER_SERVICE_URL_LABEL_PREFIX = "io.github.ryo100794.pdocker.service-url."
         private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
         private const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
@@ -766,6 +768,7 @@ class MainActivity : AppCompatActivity() {
         )
         dockerJobs.add(0, job)
         trimDockerJobs()
+        appendPersistentJobLog(job.id, "[pdocker job] ${job.title}\n[pdocker command] ${job.command}\n\n")
         saveDockerJobs()
         renderContent()
         openLiveJobLog(job, switchTo = true)
@@ -1562,7 +1565,7 @@ class MainActivity : AppCompatActivity() {
             job.progress,
             job.command,
             "",
-            job.output.joinToString("\n"),
+            readJobLogText(job).ifBlank { job.output.joinToString("\n") },
         ).joinToString("\n").trimEnd()
         val terminal = terminalLogPane()
         toolTabs += ToolTab(
@@ -1617,7 +1620,10 @@ class MainActivity : AppCompatActivity() {
             view,
             key = job.toolKey,
         )
-        if (job.output.isNotEmpty()) {
+        val persistedLog = readJobLogText(job)
+        if (persistedLog.isNotBlank()) {
+            terminal.write(persistedLog)
+        } else if (job.output.isNotEmpty()) {
             terminal.write(job.output.joinToString("\r\n") + "\r\n")
         }
         updateLiveJobView(job)
@@ -1676,6 +1682,7 @@ class MainActivity : AppCompatActivity() {
         dockerJobBuffers.remove(jobId)
         dockerJobPendingCarriageReturn.remove(jobId)
         job.output += "[pdocker] job stopped from UI"
+        appendPersistentJobLog(job.id, "[pdocker] job stopped from UI\n")
         job.progress = getString(R.string.job_stopped)
         while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
         saveDockerJobs()
@@ -1688,6 +1695,7 @@ class MainActivity : AppCompatActivity() {
         ui.post {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
             appendLiveJobTerminal(jobId, chunk)
+            appendPersistentJobLog(jobId, chunk)
             recordJobTerminalOutput(job, jobId, chunk)
             updateLiveJobView(job)
             scheduleDockerJobsSave()
@@ -1711,6 +1719,7 @@ class MainActivity : AppCompatActivity() {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
             val text = terminalRecordText(line)
             appendLiveJobTerminal(jobId, text)
+            appendPersistentJobLog(jobId, text)
             recordJobTerminalOutput(job, jobId, text)
             updateLiveJobView(job)
             scheduleDockerJobsSave()
@@ -1816,7 +1825,9 @@ class MainActivity : AppCompatActivity() {
                 while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
             }
         if (terminalBackfill.isNotEmpty()) {
-            appendLiveJobTerminal(jobId, terminalBackfill.joinToString("\r\n") + "\r\n")
+            val text = terminalBackfill.joinToString("\r\n") + "\r\n"
+            appendLiveJobTerminal(jobId, text)
+            appendPersistentJobLog(jobId, text)
         }
         saveDockerJobs()
         updateLiveJobView(job)
@@ -1910,7 +1921,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun trimDockerJobs() {
-        while (dockerJobs.size > MAX_JOB_HISTORY) dockerJobs.removeAt(dockerJobs.lastIndex)
+        while (dockerJobs.size > MAX_JOB_HISTORY) {
+            val removed = dockerJobs.removeAt(dockerJobs.lastIndex)
+            if (removed.exitCode != null) runCatching { jobLogFile(removed.id).delete() }
+        }
+    }
+
+    private fun jobLogFile(jobId: String): File =
+        File(pdockerHome, "logs/jobs/$jobId.log")
+
+    private fun appendPersistentJobLog(jobId: String, text: String) {
+        if (text.isEmpty()) return
+        runCatching {
+            val file = jobLogFile(jobId)
+            file.parentFile?.mkdirs()
+            FileOutputStream(file, true).use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        }
+    }
+
+    private fun readJobLogText(job: DockerJob): String {
+        val file = jobLogFile(job.id)
+        if (!file.isFile) return ""
+        return runCatching {
+            val bytes = file.readBytes()
+            val start = (bytes.size - MAX_JOB_LOG_VIEW_BYTES).coerceAtLeast(0)
+            val prefix = if (start > 0) "[pdocker] log truncated to last ${MAX_JOB_LOG_VIEW_BYTES / 1024} KiB\n" else ""
+            prefix + bytes.copyOfRange(start, bytes.size).toString(Charsets.UTF_8)
+        }.getOrDefault("")
     }
 
     private fun scheduleDockerJobsSave() {
