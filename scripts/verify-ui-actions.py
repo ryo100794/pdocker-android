@@ -81,6 +81,7 @@ def main() -> int:
     require("docker jobs record exit markers", "__PDOCKER_JOB_EXIT" in main_src and "job_status_failed_fmt" in string_src)
     require("docker jobs parse progress lines", "dockerJobProgressLine" in main_src and "snapshotting layer:" in main_src and "Successfully tagged" in main_src)
     require("docker jobs render logs through xterm", "TerminalLogPane" in main_src and "TerminalLogBridge" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/TerminalLogBridge.kt").read_text() and "terminalLogPane()" in main_src and "ToolKind.Terminal" in main_src)
+    require("log panes are readonly and do not summon keyboard", "fun readOnly(): Boolean = true" in (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/TerminalLogBridge.kt").read_text() and "body.readonly-log #keybar" in xterm_src and "term.options.disableStdin = true" in xterm_src and "inputmode', 'none'" in xterm_src and "if (!readOnly)" in xterm_src)
     require("docker jobs preserve carriage-return progress", "appendLiveJobTerminal(jobId, chunk)" in main_src and "recordJobTerminalOutput" in main_src and "text.endsWith(\"\\r\")" in main_src and "replace(\"\\r\", \"\")" not in main_src)
     require("engine job logs render terminal CRLF", "normalizeTerminalNewlines" in main_src and "\"$text\\r\\n\"" in main_src and "ch == '\\n' && previous != '\\r'" in main_src)
     require("job summaries tick while logs are quiet", "jobTickerTask" in main_src and "tickRunningJobs" in main_src and "job_activity_fmt" in string_src)

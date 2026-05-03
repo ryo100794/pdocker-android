@@ -84,6 +84,9 @@ class Bridge(
     fun initialCommand(): String = initialCommand
 
     @JavascriptInterface
+    fun readOnly(): Boolean = false
+
+    @JavascriptInterface
     fun input(b64: String) {
         if (!alive.get() || fd < 0) return
         val bytes = Base64.decode(b64, Base64.DEFAULT)

@@ -25,6 +25,9 @@ class TerminalLogBridge(private val activity: AppCompatActivity) {
     fun initialCommand(): String = ""
 
     @JavascriptInterface
+    fun readOnly(): Boolean = true
+
+    @JavascriptInterface
     fun input(_b64: String) {
         // Display-only pane.
     }

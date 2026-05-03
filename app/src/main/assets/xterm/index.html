@@ -42,6 +42,9 @@
   #keybar::-webkit-scrollbar {
     display: none;
   }
+  body.readonly-log #keybar {
+    display: none;
+  }
   .key {
     flex: 0 0 auto;
     min-width: 42px;
@@ -210,6 +213,11 @@
   const mods = { esc: false, ctrl: false, alt: false, select: false };
   const keybar = document.getElementById('keybar');
   const termHost = document.getElementById('term');
+  const readOnly = !!(window.PdockerBridge && PdockerBridge.readOnly && PdockerBridge.readOnly());
+  if (readOnly) {
+    document.body.classList.add('readonly-log');
+    term.options.disableStdin = true;
+  }
   const startHandle = document.getElementById('selectionStart');
   const endHandle = document.getElementById('selectionEnd');
   const selectionStatus = document.getElementById('selectionStatus');
@@ -381,17 +389,21 @@
     });
   };
   const focusTerm = () => {
+    if (readOnly) return;
     term.focus();
     tuneIme();
   };
   const sendInput = (data, raw = false) => {
+    if (readOnly) return;
     const payload = raw ? data : applyModifiers(data);
     PdockerBridge.input(toB64(enc.encode(payload)));
   };
 
-  term.onData((data) => {
-    sendInput(data);
-  });
+  if (!readOnly) {
+    term.onData((data) => {
+      sendInput(data);
+    });
+  }
 
   keybar.addEventListener('click', (event) => {
     const btn = event.target.closest('button');
@@ -465,7 +477,16 @@
     ta.setAttribute('autocorrect', 'off');
     ta.setAttribute('autocapitalize', 'off');
     ta.setAttribute('spellcheck', 'false');
-    ta.setAttribute('inputmode', 'text');
+    if (readOnly) {
+      ta.setAttribute('readonly', 'readonly');
+      ta.setAttribute('disabled', 'disabled');
+      ta.setAttribute('inputmode', 'none');
+      ta.blur();
+    } else {
+      ta.removeAttribute('readonly');
+      ta.removeAttribute('disabled');
+      ta.setAttribute('inputmode', 'text');
+    }
   };
 
   termHost.addEventListener('touchstart', (event) => {
@@ -532,7 +553,7 @@
     if (event.touches.length < 2) pinch = null;
     if (event.touches.length === 0) touchScroll = null;
     if (event.touches.length === 0) selectionDrag = null;
-    if (!selectionActive && event.touches.length === 0) focusTerm();
+    if (!readOnly && !selectionActive && event.touches.length === 0) focusTerm();
   }, { passive: false });
 
   termHost.addEventListener('touchcancel', () => {
@@ -567,8 +588,10 @@
     }
   }, true);
 
-  PdockerBridge.start(PdockerBridge.initialCommand());
-  term.focus();
+  if (!readOnly) {
+    PdockerBridge.start(PdockerBridge.initialCommand());
+    term.focus();
+  }
   setTimeout(() => { tuneIme(); pushResize(); }, 100);
   setTimeout(pushResize, 500);
 </script>
