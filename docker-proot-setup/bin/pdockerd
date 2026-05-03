@@ -470,12 +470,71 @@ container_configs = {}  # container_id -> dict
 # Exec sessions
 exec_sessions = {}  # exec_id -> dict
 
+# Active daemon operations. This is intentionally daemon-owned instead of
+# Android-UI-owned so adb/test-triggered builds are visible in the app too.
+active_operations = {}
+active_operations_lock = threading.Lock()
+
 # Docker event stream compatibility. Events are kept on disk so reconnecting
 # clients can replay recent state transitions, while active /events requests
 # wait on a condition for live updates.
 EVENTS_PATH = os.path.join(META_DIR, "events.jsonl")
 events_lock = threading.Lock()
 events_cond = threading.Condition(events_lock)
+
+
+def start_operation(kind, title, detail=""):
+    op_id = uuid.uuid4().hex
+    now = time.time()
+    with active_operations_lock:
+        active_operations[op_id] = {
+            "Id": op_id,
+            "Kind": kind,
+            "Title": title,
+            "Detail": detail,
+            "Status": "running",
+            "StartedAt": now,
+            "UpdatedAt": now,
+        }
+    return op_id
+
+
+def update_operation(op_id, detail=None, status=None):
+    if not op_id:
+        return
+    with active_operations_lock:
+        op = active_operations.get(op_id)
+        if not op:
+            return
+        if detail is not None:
+            op["Detail"] = detail
+        if status is not None:
+            op["Status"] = status
+        op["UpdatedAt"] = time.time()
+
+
+def finish_operation(op_id, status="done", detail=None):
+    if not op_id:
+        return
+    with active_operations_lock:
+        op = active_operations.get(op_id)
+        if not op:
+            return
+        if detail is not None:
+            op["Detail"] = detail
+        op["Status"] = status
+        op["UpdatedAt"] = time.time()
+        op["EndedAt"] = op["UpdatedAt"]
+        active_operations.pop(op_id, None)
+
+
+def list_active_operations():
+    with active_operations_lock:
+        return sorted(
+            (dict(op) for op in active_operations.values()),
+            key=lambda op: op.get("StartedAt", 0),
+            reverse=True,
+        )
 
 # Log
 def log(msg, **kwargs):
@@ -3769,6 +3828,10 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if path == "/system/operations" and method == "GET":
+            self._send_json(200, list_active_operations())
+            return
+
         # --- Images ---
         if path == "/images/json" and method == "GET":
             self._send_json(200, list_images())
@@ -4781,12 +4844,22 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         tag = query.get("t", [""])[0]
         dockerfile_name = query.get("dockerfile", ["Dockerfile"])[0]
         buildargs = json.loads(query.get("buildargs", ["{}"])[0])
+        op_id = start_operation(
+            "build",
+            f"build {tag or '<none>'}",
+            f"receiving {dockerfile_name}",
+        )
 
         self._send_stream_started()
 
         def emit(msg, newline=True):
             try:
                 text = msg + "\n" if newline else msg
+                clean = text.replace("\r", "\n").strip().split("\n")
+                for line in reversed(clean):
+                    if line.strip():
+                        update_operation(op_id, line.strip())
+                        break
                 self.wfile.write(json.dumps({"stream": text}).encode() + b"\r\n")
                 self.wfile.flush()
             except BrokenPipeError:
@@ -4821,12 +4894,15 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                                  {"name": result})
                     emit(f"Successfully built {result}")
                     emit(f"Successfully tagged {tag}")
+                    finish_operation(op_id, "done", f"Successfully tagged {tag}")
                 else:
                     emit("ERROR: build failed")
                     emit_error("build failed")
+                    finish_operation(op_id, "failed", "build failed")
         except Exception as e:
             emit(f"ERROR: {e}")
             emit_error(str(e))
+            finish_operation(op_id, "failed", str(e))
             log(traceback.format_exc())
 
 
@@ -4870,6 +4946,20 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
     # delta vs. the prior merged view. WORKDIR/ENV/CMD/... are
     # empty_layer (config-only).
     diff_ids = []
+    base_layer_count = [0]
+    prior_tag_diff_ids = []
+    prior_tag_fs_history = []
+    if tag:
+        prior_cfg = image_config(normalize_image(tag)) or {}
+        prior_tag_diff_ids = [
+            d.split(":", 1)[-1]
+            for d in ((prior_cfg.get("rootfs") or {}).get("diff_ids") or [])
+            if d
+        ]
+        prior_tag_fs_history = [
+            h for h in (prior_cfg.get("history") or [])
+            if not h.get("empty_layer")
+        ]
     # Paths that are build-time scaffolding, not real image content —
     # libcow is a runtime shim; resolv.conf/hosts are rewritten per run.
     _BUILD_SKIP = (
@@ -4958,6 +5048,56 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
             state.update(extra)
         return state
 
+    def run_changed_paths(command):
+        """Detect simple metadata-only RUN commands.
+
+        A command such as `RUN chmod +x /usr/local/bin/foo` changes one inode's
+        metadata. Treating it as an unknown RUN forces a full rootfs diff scan,
+        which is brutally expensive for the dev workspace image. Keep this
+        conservative: if parsing sees shell operators, env expansion, or
+        relative paths, fall back to a full scan.
+        """
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return None
+        if len(tokens) < 3 or tokens[0] != "chmod":
+            return None
+        changed = []
+        for token in tokens[1:]:
+            if token == "--":
+                continue
+            if token.startswith("-") or re.fullmatch(r"[ugoa]*[=+-][rwxXstugo,=+-]+", token) or re.fullmatch(r"[0-7]{3,4}", token):
+                continue
+            if not token.startswith("/") or any(ch in token for ch in "$`*?[];&|<>"):
+                return None
+            changed.append(token.lstrip("/"))
+        return changed or None
+
+    def prior_tag_layer(created_by, parent_diff_ids):
+        """Reuse a layer from the image currently stored at the same tag.
+
+        This is pdocker's lightweight equivalent of Docker's local build cache
+        import. It lets the first rebuild after an APK upgrade use the existing
+        dev-workspace image instead of rerunning apt/npm just to populate the
+        new metadata cache.
+        """
+        if not _build_cache_enabled() or not prior_tag_diff_ids:
+            return None
+        parents = [d.split(":", 1)[-1] for d in parent_diff_ids]
+        if prior_tag_diff_ids[:len(parents)] != parents:
+            return None
+        built_index = len(parents) - base_layer_count[0]
+        if built_index < 0 or built_index >= len(prior_tag_fs_history):
+            return None
+        hist = prior_tag_fs_history[built_index] or {}
+        if hist.get("created_by") != created_by:
+            return None
+        if len(prior_tag_diff_ids) <= len(parents):
+            return None
+        did = prior_tag_diff_ids[len(parents)]
+        return did if _layer_exists(did) else None
+
     def rematerialize_build_rootfs():
         if not rootfs:
             return
@@ -5015,6 +5155,148 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 pass
         return list(shell) + [value]
 
+    def try_reuse_existing_tag():
+        if not tag or not _build_cache_enabled():
+            return None
+        norm_tag = normalize_image(tag)
+        existing_dir = image_dir(norm_tag)
+        existing_rootfs = os.path.join(existing_dir, "rootfs")
+        existing_cfg = image_config(norm_tag) or {}
+        existing_diff_ids = _load_image_manifest(existing_dir)
+        if not existing_diff_ids or not os.path.isdir(existing_rootfs):
+            return None
+        history = [h.get("created_by", "") for h in (existing_cfg.get("history") or [])]
+        expected = []
+        copy_checks = []
+        cache_args = dict(buildargs or {})
+        cache_workdir = "/"
+        base_diff_ids = []
+
+        def cache_expand(value):
+            out = value
+            for k, v in cache_args.items():
+                out = out.replace("${" + k + "}", str(v)).replace("$" + k, str(v))
+            return out
+
+        def file_equal(src, dst):
+            try:
+                if os.path.islink(src) or os.path.islink(dst):
+                    return os.path.islink(src) and os.path.islink(dst) and os.readlink(src) == os.readlink(dst)
+                if os.path.isdir(src):
+                    for root, dirs, files in os.walk(src, followlinks=False):
+                        rel = os.path.relpath(root, src)
+                        dst_root = dst if rel == "." else os.path.join(dst, rel)
+                        if not os.path.isdir(dst_root):
+                            return False
+                        for name in files:
+                            if not file_equal(os.path.join(root, name), os.path.join(dst_root, name)):
+                                return False
+                    return True
+                if not os.path.isfile(src) or not os.path.isfile(dst):
+                    return False
+                if os.path.getsize(src) != os.path.getsize(dst):
+                    return False
+                with open(src, "rb") as a, open(dst, "rb") as b:
+                    while True:
+                        ca = a.read(1 << 20)
+                        cb = b.read(1 << 20)
+                        if ca != cb:
+                            return False
+                        if not ca:
+                            return True
+            except OSError:
+                return False
+
+        for original in lines:
+            line = cache_expand(original)
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            instr = parts[0].upper()
+            args = parts[1]
+            if instr == "FROM":
+                base = parse_from_base(args)
+                if not base:
+                    return None
+                base_diff_ids = _load_image_manifest(image_dir(normalize_image(base)))
+                if not base_diff_ids or existing_diff_ids[:len(base_diff_ids)] != base_diff_ids:
+                    return None
+                expected.append(f"FROM {base}")
+            elif instr == "ARG":
+                k, _, default = args.partition("=")
+                k = k.strip()
+                if k not in cache_args and default:
+                    cache_args[k] = default.strip()
+                expected.append(f"ARG {args}")
+            elif instr == "RUN":
+                expected.append(f"RUN {args}")
+            elif instr in ("COPY", "ADD"):
+                if re.search(r"(^|\s)--from(?:=|\s+)", args):
+                    return None
+                rest = args
+                rest = re.sub(r"--chown(?:=\S+|\s+\S+)\s+", "", rest)
+                rest = re.sub(r"--chmod(?:=\S+|\s+\S+)\s+", "", rest)
+                rest = re.sub(r"--link\s+", "", rest)
+                src_parts = shlex.split(rest)
+                if len(src_parts) < 2:
+                    return None
+                dest = src_parts[-1]
+                srcs = src_parts[:-1]
+                if not dest.startswith("/"):
+                    dest = os.path.join(cache_workdir, dest)
+                for s in srcs:
+                    spath = os.path.join(context_dir, s)
+                    if not os.path.exists(spath):
+                        return None
+                    dst = os.path.join(existing_rootfs, dest.lstrip("/"))
+                    if dest.endswith("/") or os.path.isdir(dst):
+                        dst = os.path.join(dst, os.path.basename(spath))
+                    copy_checks.append((spath, dst))
+                expected.append(f"{instr} {args}")
+            elif instr == "WORKDIR":
+                cache_workdir = args.strip()
+                if not cache_workdir.startswith("/"):
+                    cache_workdir = "/" + cache_workdir
+                expected.append(f"WORKDIR {cache_workdir}")
+            elif instr == "ENV":
+                expected.append(f"ENV {args}")
+            elif instr == "CMD":
+                expected.append(f"CMD {args}")
+            elif instr == "ENTRYPOINT":
+                expected.append(f"ENTRYPOINT {args}")
+            elif instr == "EXPOSE":
+                expected.append(f"EXPOSE {args}")
+            elif instr == "LABEL":
+                expected.append(f"LABEL {args}")
+            elif instr == "USER":
+                expected.append(f"USER {args}")
+            elif instr == "VOLUME":
+                expected.append(f"VOLUME {args}")
+            elif instr == "SHELL":
+                expected.append(f"SHELL {args}")
+            elif instr == "HEALTHCHECK":
+                expected.append(f"HEALTHCHECK {args}")
+            elif instr == "STOPSIGNAL":
+                expected.append(f"STOPSIGNAL {args}")
+            elif instr == "ONBUILD":
+                expected.append(f"ONBUILD {args}")
+            elif instr == "MAINTAINER":
+                expected.append(f"MAINTAINER {args}")
+            else:
+                return None
+
+        if history != expected:
+            return None
+        for src, dst in copy_checks:
+            if not file_equal(src, dst):
+                return None
+        return norm_tag
+
+    reusable_tag = try_reuse_existing_tag()
+    if reusable_tag:
+        emit(f"Using image cache for {reusable_tag}")
+        return reusable_tag
+
     for line in lines:
         line = expand(line)
         parts = line.split(None, 1)
@@ -5046,6 +5328,7 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 materialize_container_rootfs(rootfs, base_diff_ids)
                 emit(f"  build-profile materialize-base: {time.perf_counter() - start:.3f}s layers={len(base_diff_ids)}")
                 diff_ids = list(base_diff_ids)
+                base_layer_count[0] = len(base_diff_ids)
             else:
                 emit("  cloning legacy base rootfs")
                 start = time.perf_counter()
@@ -5055,6 +5338,7 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 # prior diff_id. Snapshot whole rootfs as a single layer
                 # so subsequent RUN/COPY still layer diffs correctly.
                 diff_ids = [snapshot_layer("legacy base")]
+                base_layer_count[0] = len(diff_ids)
             for sub in ["proc", "sys", "dev", "tmp", "etc"]:
                 os.makedirs(os.path.join(rootfs, sub), exist_ok=True)
             _prepare_rootfs_runtime_files(rootfs)
@@ -5098,6 +5382,23 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                 _prepare_rootfs_runtime_files(rootfs)
                 record_layer(f"RUN {args}", size_delta=last_snapshot_size[0])
                 continue
+            inline_did = prior_tag_layer(f"RUN {args}", diff_ids)
+            if inline_did:
+                emit(f"  Using inline cache sha256:{inline_did[:12]}")
+                merge_layers_into(rootfs, [inline_did])
+                diff_ids.append(inline_did)
+                last_snapshot_size[0] = _layer_size(inline_did)
+                for sub in ["proc", "sys", "dev", "tmp", "etc"]:
+                    os.makedirs(os.path.join(rootfs, sub), exist_ok=True)
+                _prepare_rootfs_runtime_files(rootfs)
+                store_build_cache_entry(cache_key, {
+                    "diff_id": inline_did,
+                    "size": last_snapshot_size[0],
+                    "created_by": f"RUN {args}",
+                    "source": "inline-tag",
+                })
+                record_layer(f"RUN {args}", size_delta=last_snapshot_size[0])
+                continue
             repaired_loader = ensure_rootfs_dynamic_loader(rootfs, diff_ids)
             if repaired_loader:
                 emit(f"  repaired dynamic loader from layer: {repaired_loader}")
@@ -5137,7 +5438,10 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit)
                     emit(fault)
                 emit(f"RUN failed with exit code {proc.returncode}")
                 return fail_build()
-            new_did = snapshot_layer("RUN", prev_diff_ids=diff_ids)
+            new_did = snapshot_layer(
+                "RUN", prev_diff_ids=diff_ids,
+                changed_paths=run_changed_paths(args),
+            )
             store_build_cache_entry(cache_key, {
                 "diff_id": new_did,
                 "size": last_snapshot_size[0] or _layer_size(new_did),

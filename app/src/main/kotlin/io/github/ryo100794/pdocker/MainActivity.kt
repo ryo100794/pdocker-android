@@ -81,6 +81,16 @@ class MainActivity : AppCompatActivity() {
         val containerPrivateBytes: Long,
     )
 
+    private data class DaemonOperation(
+        val id: String,
+        val kind: String,
+        val title: String,
+        val detail: String,
+        val status: String,
+        val startedAtMs: Long,
+        val updatedAtMs: Long,
+    )
+
     private data class DiskUsage(
         val bytes: Long,
         val inodeKeys: Set<String>,
@@ -199,6 +209,7 @@ class MainActivity : AppCompatActivity() {
     private val pollTask = object : Runnable {
         override fun run() {
             refreshStatus()
+            refreshDaemonOperationsAsync()
             ui.postDelayed(this, 3000)
         }
     }
@@ -240,6 +251,8 @@ class MainActivity : AppCompatActivity() {
     private var storageMetrics: StorageMetrics? = null
     private var storageMetricsScanning = false
     private var lastStorageMetricsAt = 0L
+    private var daemonOperations: List<DaemonOperation> = emptyList()
+    private var daemonOperationsRefreshing = false
 
     private val pdockerHome: File by lazy { File(filesDir, "pdocker") }
     private val imageRoot: File by lazy { File(pdockerHome, "images") }
@@ -480,6 +493,7 @@ class MainActivity : AppCompatActivity() {
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
         renderStorageMetrics()
+        renderDaemonOperations()
         renderProjectDashboard()
         renderDockerJobs()
     }
@@ -796,6 +810,51 @@ class MainActivity : AppCompatActivity() {
                 lastStorageMetricsAt = System.currentTimeMillis()
                 storageMetricsScanning = false
                 if (currentTab == Tab.Overview) renderContent()
+            }
+        }
+    }
+
+    private fun renderDaemonOperations() {
+        if (daemonOperations.isEmpty()) return
+        addSection(getString(R.string.section_daemon_operations))
+        val now = System.currentTimeMillis()
+        daemonOperations.take(5).forEach { op ->
+            val elapsed = ((now - op.startedAtMs).coerceAtLeast(0L) / 1000L)
+            val idle = ((now - op.updatedAtMs).coerceAtLeast(0L) / 1000L)
+            val value = getString(R.string.daemon_operation_status_fmt, op.status, elapsed, jobActivityFrame())
+            val detail = listOf(
+                getString(R.string.daemon_operation_kind_fmt, op.kind),
+                op.detail.ifBlank { "-" },
+                getString(R.string.daemon_operation_idle_fmt, idle),
+            ).joinToString("\n")
+            addWidget(op.title, value, detail, detailLines = 4)
+        }
+    }
+
+    private fun refreshDaemonOperationsAsync() {
+        if (daemonOperationsRefreshing) return
+        daemonOperationsRefreshing = true
+        thread(isDaemon = true, name = "pdocker-daemon-ops") {
+            val ops = runCatching {
+                val arr = engine.getArray("/system/operations")
+                (0 until arr.length()).mapNotNull { index ->
+                    val obj = arr.optJSONObject(index) ?: return@mapNotNull null
+                    DaemonOperation(
+                        id = obj.optString("Id"),
+                        kind = obj.optString("Kind", "operation"),
+                        title = obj.optString("Title", "operation"),
+                        detail = obj.optString("Detail"),
+                        status = obj.optString("Status", "running"),
+                        startedAtMs = (obj.optDouble("StartedAt", 0.0) * 1000.0).toLong(),
+                        updatedAtMs = (obj.optDouble("UpdatedAt", 0.0) * 1000.0).toLong(),
+                    )
+                }
+            }.getOrDefault(emptyList())
+            ui.post {
+                val changed = ops != daemonOperations
+                daemonOperations = ops
+                daemonOperationsRefreshing = false
+                if (changed && currentTab == Tab.Overview) renderContent()
             }
         }
     }
@@ -1816,7 +1875,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun tickRunningJobs() {
-        if (dockerJobs.none { it.exitCode == null }) return
+        if (dockerJobs.none { it.exitCode == null } && daemonOperations.isEmpty()) return
         updateLiveJobViews()
         if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
             scheduleJobRenderUpdate(0L)

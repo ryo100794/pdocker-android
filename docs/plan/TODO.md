@@ -69,6 +69,17 @@ or closes.
   store entries by default in the APK, and Dockerfile `RUN` snapshots have a
   parent-layer/build-state cache so an unchanged dev-workspace build can reuse
   the prior apt/npm layer instead of generating another multi-GB layer.
+- [done] Add a whole-image rebuild cache for unchanged Dockerfile/context/tag
+  pairs. On SOG15, the default VS Code workspace rebuild path measured 129s
+  before this pass, then 62s after RUN cache reuse exposed a remaining rootfs
+  re-merge bottleneck, and finally 0s wall-clock at shell-second resolution
+  once the existing tagged image was reused directly. Simple metadata-only
+  `RUN chmod ...` also uses touched-path snapshotting when the full image cache
+  is invalidated.
+- [done] Expose daemon-owned active operations through
+  `GET /system/operations` and render them in the Overview. Builds triggered
+  from ADB, tests, or the UI are now visible from the app because the state is
+  recorded in pdockerd rather than only in UI job memory.
 - [done] Add tracer process cleanup: `PTRACE_O_EXITKILL` where available,
   separate child process group, and SIGINT/SIGTERM/SIGHUP/SIGQUIT handling so
   aborted direct runs do not leave tracee process leftovers.
@@ -112,9 +123,9 @@ or closes.
   COPY work, and snapshot subphases (`prev-index`, `walk`, `stage`, `tar`,
   `digest`, `extract`, `relink`). COPY/ADD snapshots now use touched-path mode
   instead of scanning the whole rootfs, cutting the reusable microbench from
-  about 2.1-2.3s per COPY snapshot to about 0.2s. Remaining large RUN layers
-  still need a direct-runtime changed-path manifest so snapshot can avoid a
-  full rootfs walk after apt/npm.
+  about 2.1-2.3s per COPY snapshot to about 0.2s. Remaining non-cache large
+  RUN layers still need a direct-runtime changed-path manifest so snapshot can
+  avoid a full rootfs walk after apt/npm.
 - [next] Revisit rootfs-fd path rewriting as an opt-in optimization only after
   fd lifetime handling is proven. A trial that rewrote absolute `*at` paths to
   `openat(rootfs_fd, relative)` made apt resolver cleanup hit

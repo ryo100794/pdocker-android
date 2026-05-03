@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import json
 import os
 import shutil
 import tempfile
@@ -244,6 +245,17 @@ def seed_legacy_image(mod, image: str) -> None:
     (img_dir / "config.json").write_text('{"config":{"Env":[]}}')
 
 
+def seed_layered_image(mod, image: str, diff_ids: list[str], config: dict | None = None) -> None:
+    img_dir = Path(mod.image_dir(mod.normalize_image(image)))
+    rootfs = img_dir / "rootfs"
+    rootfs.mkdir(parents=True, exist_ok=True)
+    for did in diff_ids:
+        tree = Path(mod.LAYERS_DIR) / did / "tree"
+        tree.mkdir(parents=True, exist_ok=True)
+    mod._save_image_manifest(str(img_dir), diff_ids, config or {"config": {"Env": []}})
+    (img_dir / "config.json").write_text(json.dumps(config or {"config": {"Env": []}}))
+
+
 def test_dockerfile_unknown_instruction_rejected() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
@@ -285,6 +297,87 @@ def test_direct_run_requires_real_executor() -> None:
         ok("direct Dockerfile RUN fails instead of recording fake layers")
 
 
+def test_existing_tag_inline_run_cache() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("inline_cache", "no-proot", home_path)
+        base = "a" * 64
+        run = "b" * 64
+        base_tree = Path(mod.LAYERS_DIR) / base / "tree"
+        (base_tree / "bin").mkdir(parents=True)
+        (base_tree / "bin" / "sh").write_text("#!/bin/sh\n")
+        run_tree = Path(mod.LAYERS_DIR) / run / "tree"
+        (run_tree / "cached").mkdir(parents=True)
+        (run_tree / "cached" / "marker").write_text("reused\n")
+        seed_layered_image(mod, "ubuntu:22.04", [base])
+        cfg = {
+            "config": {"Env": []},
+            "rootfs": {"type": "layers", "diff_ids": [f"sha256:{base}", f"sha256:{run}"]},
+            "history": [{"created_by": "RUN echo cached"}],
+        }
+        seed_layered_image(mod, "local/cached:latest", [base, run], cfg)
+        ctx = home_path / "ctx"
+        ctx.mkdir()
+        dockerfile = ctx / "Dockerfile"
+        dockerfile.write_text("FROM ubuntu:22.04\nRUN echo cached\n")
+        output: list[str] = []
+        result = mod.execute_dockerfile_build(
+            str(dockerfile), str(ctx), "local/cached:latest", {}, output.append
+        )
+        if result != mod.normalize_image("local/cached:latest"):
+            fail(f"inline cache rebuild failed: {result!r}, output={output!r}")
+        joined = "\n".join(output)
+        if "Using inline cache" not in joined:
+            fail(f"existing tag inline cache was not used: {joined!r}")
+        final_diff_ids = mod._load_image_manifest(Path(mod.image_dir(result)))
+        if final_diff_ids != [base, run]:
+            fail(f"inline cache rebuilt unexpected layer stack: {final_diff_ids!r}")
+        ok("existing tagged image can seed Dockerfile RUN cache")
+
+
+def test_existing_tag_full_image_cache() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("image_cache", "no-proot", home_path)
+        base = "a" * 64
+        run = "b" * 64
+        copy = "c" * 64
+        seed_layered_image(mod, "ubuntu:22.04", [base])
+        dest = Path(mod.image_dir(mod.normalize_image("local/full-cache:latest")))
+        rootfs = dest / "rootfs"
+        (rootfs / "bin").mkdir(parents=True)
+        (rootfs / "bin" / "sh").write_text("#!/bin/sh\n")
+        (rootfs / "app").mkdir(parents=True)
+        (rootfs / "app" / "hello.txt").write_text("hello\n")
+        for did in (run, copy):
+            (Path(mod.LAYERS_DIR) / did / "tree").mkdir(parents=True, exist_ok=True)
+        cfg = {
+            "config": {"Env": []},
+            "rootfs": {"type": "layers", "diff_ids": [f"sha256:{base}", f"sha256:{run}", f"sha256:{copy}"]},
+            "history": [
+                {"created_by": "FROM ubuntu:22.04", "empty_layer": True},
+                {"created_by": "RUN echo prepared"},
+                {"created_by": "COPY hello.txt /app/hello.txt"},
+            ],
+        }
+        mod._save_image_manifest(str(dest), [base, run, copy], cfg)
+        (dest / "config.json").write_text(json.dumps(cfg))
+        ctx = home_path / "ctx"
+        ctx.mkdir()
+        (ctx / "hello.txt").write_text("hello\n")
+        dockerfile = ctx / "Dockerfile"
+        dockerfile.write_text("FROM ubuntu:22.04\nRUN echo prepared\nCOPY hello.txt /app/hello.txt\n")
+        output: list[str] = []
+        result = mod.execute_dockerfile_build(
+            str(dockerfile), str(ctx), "local/full-cache:latest", {}, output.append
+        )
+        if result != mod.normalize_image("local/full-cache:latest"):
+            fail(f"full image cache rebuild failed: {result!r}, output={output!r}")
+        if not any("Using image cache" in line for line in output):
+            fail(f"full image cache was not used: {output!r}")
+        ok("unchanged existing image skips full Dockerfile rebuild")
+
+
 def test_build_cache_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
@@ -318,6 +411,20 @@ def test_build_cache_contract() -> None:
         ok("Dockerfile RUN cache keys and layer validation work")
 
 
+def test_active_operations_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        mod = load_pdockerd_with_env("active_ops", "no-proot", Path(home))
+        op_id = mod.start_operation("build", "build local/test:latest", "receiving context")
+        mod.update_operation(op_id, "Step: FROM ubuntu:22.04")
+        ops = mod.list_active_operations()
+        if len(ops) != 1 or ops[0].get("Detail") != "Step: FROM ubuntu:22.04":
+            fail(f"active operation not visible: {ops!r}")
+        mod.finish_operation(op_id, "done", "Successfully tagged local/test:latest")
+        if mod.list_active_operations():
+            fail("finished operation should not remain active")
+        ok("daemon active operations are listed independently of UI jobs")
+
+
 def main() -> int:
     test_direct_backend_contract()
     test_direct_executor_probe_contract()
@@ -326,7 +433,10 @@ def main() -> int:
     test_default_no_proot_runtime_path()
     test_dockerfile_unknown_instruction_rejected()
     test_direct_run_requires_real_executor()
+    test_existing_tag_inline_run_cache()
+    test_existing_tag_full_image_cache()
     test_build_cache_contract()
+    test_active_operations_contract()
     return 0
 
 

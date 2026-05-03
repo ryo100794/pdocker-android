@@ -65,6 +65,10 @@
     <string name="detail_storage_scanning">pdocker の使用容量を計算しています</string>
     <string name="storage_total_fmt">pdocker %1$s / ファイルシステム %2$s</string>
     <string name="storage_detail_fmt">重複除外: 共有 layers %1$s, image views %2$s, container private %3$s, 空き %4$s</string>
+    <string name="section_daemon_operations">Daemon operations</string>
+    <string name="daemon_operation_status_fmt">%1$s %2$d秒 %3$s</string>
+    <string name="daemon_operation_kind_fmt">Kind: %1$s</string>
+    <string name="daemon_operation_idle_fmt">最終更新: %1$d秒前</string>
     <string name="section_project_dashboard">プロジェクトダッシュボード</string>
     <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$d</string>
     <string name="project_dashboard_services_fmt">サービス: %1$s</string>

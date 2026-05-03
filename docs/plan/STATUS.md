@@ -110,6 +110,15 @@ What's been confirmed working on the current Android 15 test device:
   tag is replaced, and Dockerfile `RUN` snapshots now use a parent-stack cache
   so unchanged apt/npm-heavy steps do not repeatedly create new multi-GB
   layers.
+- The default VS Code workspace rebuild now has a whole-image cache path for an
+  unchanged Dockerfile/context/tag. SOG15 measurements went from 129s, to 62s
+  with RUN cache reuse, to 0s at shell-second resolution with direct tagged
+  image reuse (`Using image cache for docker.io/pdocker/dev-workspace:latest`).
+  Simple metadata-only `RUN chmod ...` uses touched-path snapshotting when this
+  full-image cache is invalidated.
+- `GET /system/operations` reports active daemon-owned operations, and the
+  Overview renders them. This makes ADB/test-triggered builds visible in the UI
+  instead of only showing operations launched from Android job cards.
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.
