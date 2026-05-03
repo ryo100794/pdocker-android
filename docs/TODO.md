@@ -6,6 +6,95 @@ This is the working TODO list for unfinished items and deliberate temporary
 accommodations. Keep this file current whenever a workaround is added so it
 does not become product behavior by accident.
 
+## Active Task Board
+
+This board is the operating task list. Keep the detailed sections below as the
+source of context, but update this board first when work starts, gets blocked,
+or closes.
+
+### Runtime / Compose-Up
+
+- [done] Tiny SDK28 compat smoke: `docker build`, `docker compose up`, logs,
+  exit code, and `compose down` pass with the scratch direct executor.
+- [done] Ubuntu `apt-get update` signature verification works under direct
+  runtime path mediation.
+- [doing] Re-run default dev workspace `compose up --detach --build` after ADB
+  reconnect and verify `compose ps`, `compose logs`, and code-server process
+  state. Last command returned successfully once, but ADB went offline before
+  service verification.
+- [next] If default workspace starts, open/verify the real `18080` code-server
+  endpoint and record the container log path.
+- [next] If default workspace fails, capture the first failing syscall or
+  package-manager operation and add a focused direct-runtime smoke before
+  retrying the full template.
+- [next] Add `docker run --rm ubuntu:22.04 echo hi` as an Android smoke gate.
+
+### Performance
+
+- [done] Add repeatable Android runtime benchmark split:
+  `scripts/android-runtime-bench.sh`, optional `--apt-update`, optional
+  existing `--proot-cmd`.
+- [done] Establish baseline: all-syscall ptrace `apt-cache policy nodejs`
+  took about 22.5s / 15,839 stops.
+- [done] Add scratch seccomp-BPF selective tracing and switch default direct
+  trace mode to `seccomp`.
+- [done] Establish improved baseline: selective tracing `apt-cache policy
+  nodejs` took about 4.3s / 1,783 stops.
+- [doing] Keep default workspace build on `apt-get`; performance fixes belong
+  in syscall mediation, not Dockerfile shortcuts.
+- [next] Add benchmark output capture to a stable artifact file under
+  `files/pdocker/bench` so device runs can be compared over time.
+- [next] Add a regression threshold for stop count and wall-clock deltas in the
+  lightweight bench, with generous device variance.
+- [next] Run optional PRoot/proot-like comparison only when an existing command
+  is supplied; do not download or bundle external PRoot/fakechroot.
+- [next] Profile remaining hot trapped syscalls after `newfstatat/openat` and
+  decide which can be safely handled with fewer ptrace stops.
+
+### Filesystem / Syscall Semantics
+
+- [done] Add xattr path mediation so `ls`, `find`, and apt-key do not inspect
+  Android host paths after `statx`.
+- [done] Fix seccomp event emulation so user-space return values survive via a
+  one-shot syscall-exit stop.
+- [doing] Replace permissive syscall answers with Docker/Linux-compatible errno
+  behavior where package managers depend on it.
+- [next] Replace `linkat` copy fallback with an inode/hardlink/CoW storage
+  model.
+- [next] Replace `/proc/self/exe` rootfs temporary symlink mediation with direct
+  readlink emulation that does not mutate image state.
+- [next] Remove normal stderr diagnostics from direct runtime logs once default
+  workspace start is stable.
+
+### UI / Workflow
+
+- [done] Keep host shell diagnostic-only and keep normal Compose/Dockerfile
+  flows on widgets or Engine actions.
+- [doing] Keep job/task cards useful for build/compose failures, retries, and
+  logs.
+- [next] Surface default workspace service health only from the real container
+  listener, never from a placeholder process.
+- [next] Validate terminal text selection and copy on-device after the runtime
+  smoke is stable.
+
+### GPU / Models
+
+- [done] Keep llama.cpp and dev workspace templates standard Dockerfile/
+  Compose definitions.
+- [done] Add first-pass CPU/GLES GPU benchmark artifacts.
+- [next] Add Vulkan benchmark backend and device/thermal metadata.
+- [next] Verify llama.cpp compose after runtime service start works, including
+  model download/resume and docker logs.
+
+### Packaging / License
+
+- [done] Default no-PRoot packaging path exists.
+- [doing] Keep submodules committed as submodules and avoid unused external
+  code additions.
+- [next] Remove remaining PRoot/talloc payloads from default release packaging
+  once direct runtime covers process execution.
+- [next] Re-run third-party notice audit after packaging changes.
+
 ## P0: Real Android Container Execution
 
 Status: **SDK28 compat smoke works for tiny build/compose through scratch
