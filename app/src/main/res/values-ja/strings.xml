@@ -39,6 +39,8 @@
     <string name="detail_stop_pdockerd">前面サービスを停止</string>
     <string name="action_keep_resident">常駐を維持</string>
     <string name="detail_keep_resident">電池最適化除外を開く</string>
+    <string name="action_enable_notifications">通知を有効化</string>
+    <string name="detail_enable_notifications">前面デーモン通知の権限を Android に確認します</string>
     <string name="action_run_gpu_bench">GPU ベンチを実行</string>
     <string name="detail_run_gpu_bench">CPU 基準の JSONL/CSV ベンチ結果を書き出し</string>
     <string name="action_prune_build_cache">ビルドキャッシュを削除</string>

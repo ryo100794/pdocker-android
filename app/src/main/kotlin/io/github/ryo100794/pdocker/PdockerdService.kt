@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -26,6 +27,7 @@ import java.io.File
 class PdockerdService : Service() {
 
     private var pdockerThread: Thread? = null
+    private var startWakeLock: PowerManager.WakeLock? = null
     @Volatile private var stopFlag = false
     @Volatile private var userStopped = false
 
@@ -49,6 +51,7 @@ class PdockerdService : Service() {
         }
 
         userStopped = false
+        holdStartWakeLock()
         startInForeground()
         if (pdockerThread == null || !pdockerThread!!.isAlive) {
             startPdockerd()
@@ -66,6 +69,7 @@ class PdockerdService : Service() {
     override fun onDestroy() {
         stopFlag = true
         pdockerThread?.interrupt()
+        releaseStartWakeLock()
         if (!userStopped) {
             scheduleRestart()
         }
@@ -132,8 +136,35 @@ class PdockerdService : Service() {
                 )
             } catch (t: Throwable) {
                 Log.e(TAG, "pdockerd crashed", t)
+            } finally {
+                if (!stopFlag && !userStopped) {
+                    pdockerThread = null
+                    scheduleRestart()
+                    stopSelf()
+                }
             }
         }, "pdockerd").also { it.start() }
+    }
+
+    private fun holdStartWakeLock() {
+        runCatching {
+            val power = getSystemService(PowerManager::class.java) ?: return
+            val lock = startWakeLock ?: power.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "$packageName:pdockerd-start",
+            ).also { startWakeLock = it }
+            if (!lock.isHeld) {
+                lock.acquire(START_WAKELOCK_MS)
+            }
+        }.onFailure {
+            Log.w(TAG, "failed to acquire start wakelock", it)
+        }
+    }
+
+    private fun releaseStartWakeLock() {
+        runCatching {
+            startWakeLock?.takeIf { it.isHeld }?.release()
+        }
     }
 
     private fun scheduleRestart() {
@@ -146,11 +177,18 @@ class PdockerdService : Service() {
             PendingIntent.getService(applicationContext, 12, intent, pendingFlags)
         }
         val alarm = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-        alarm.set(
-            android.app.AlarmManager.RTC_WAKEUP,
-            System.currentTimeMillis() + RESTART_DELAY_MS,
-            pendingIntent,
-        )
+        val at = System.currentTimeMillis() + RESTART_DELAY_MS
+        runCatching {
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+                    alarm.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, at, pendingIntent)
+                else ->
+                    alarm.set(android.app.AlarmManager.RTC_WAKEUP, at, pendingIntent)
+            }
+        }.onFailure {
+            Log.w(TAG, "exact pdockerd restart alarm rejected; falling back to inexact alarm", it)
+            alarm.set(android.app.AlarmManager.RTC_WAKEUP, at, pendingIntent)
+        }
     }
 
     companion object {
@@ -158,6 +196,7 @@ class PdockerdService : Service() {
         const val ACTION_STOP = "io.github.ryo100794.pdocker.action.STOP"
         private const val NOTIF_ID = 1
         private const val RESTART_DELAY_MS = 2_000L
+        private const val START_WAKELOCK_MS = 30_000L
         private const val TAG = "pdockerd"
     }
 }

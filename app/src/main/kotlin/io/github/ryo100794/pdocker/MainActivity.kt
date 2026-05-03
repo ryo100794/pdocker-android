@@ -251,7 +251,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_NOSENSOR
-        requestNotificationPermission()
         seedDefaultProject()
         loadDockerJobs()
 
@@ -707,6 +706,9 @@ class MainActivity : AppCompatActivity() {
         }
         addAction(getString(R.string.action_keep_resident), getString(R.string.detail_keep_resident)) {
             requestBatteryOptimizationBypass()
+        }
+        addAction(getString(R.string.action_enable_notifications), getString(R.string.detail_enable_notifications)) {
+            requestNotificationPermission()
         }
         addAction(getString(R.string.action_run_gpu_bench), getString(R.string.detail_run_gpu_bench)) {
             runAndroidGpuBench()
@@ -1248,20 +1250,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatContainers(containers: JSONArray): String {
-        if (containers.length() == 0) return "CONTAINER ID   IMAGE   STATUS   PORTS   NAMES\n"
-        val lines = mutableListOf("CONTAINER ID   IMAGE                 STATUS       PORTS                 NAMES")
+        val columns = listOf(
+            "CONTAINER ID" to 14,
+            "IMAGE" to 28,
+            "STATUS" to 14,
+            "PORTS" to 32,
+        )
+        fun cell(value: String, width: Int): String {
+            val compact = value.replace('\n', ' ').replace('\r', ' ')
+            val clipped = if (compact.length > width - 1) compact.take(width - 2) + "…" else compact
+            return clipped.padEnd(width)
+        }
+        val header = columns.joinToString("") { (title, width) -> cell(title, width) } + "NAMES"
+        if (containers.length() == 0) return "$header\n"
+        val lines = mutableListOf(header)
         for (i in 0 until containers.length()) {
             val obj = containers.optJSONObject(i) ?: continue
             val names = obj.optJSONArray("Names")
             val name = names?.optString(0).orEmpty().trim('/').ifBlank { obj.optString("Id").take(12) }
-            val line = listOf(
-                obj.optString("Id").take(12).padEnd(14),
-                obj.optString("Image").take(20).padEnd(21),
-                obj.optString("Status").take(12).padEnd(13),
-                formatPortsForPs(obj.optJSONArray("Ports")).take(21).padEnd(22),
-                name,
-            ).joinToString("")
-            lines += line
+            lines += buildString {
+                append(cell(obj.optString("Id").take(12), columns[0].second))
+                append(cell(obj.optString("Image"), columns[1].second))
+                append(cell(obj.optString("Status"), columns[2].second))
+                append(cell(formatPortsForPs(obj.optJSONArray("Ports")), columns[3].second))
+                append(name)
+            }
         }
         return lines.joinToString("\n")
     }

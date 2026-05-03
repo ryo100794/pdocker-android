@@ -39,6 +39,8 @@
     <string name="detail_stop_pdockerd">Stop foreground service</string>
     <string name="action_keep_resident">Keep resident</string>
     <string name="detail_keep_resident">Open battery optimization exemption</string>
+    <string name="action_enable_notifications">Enable notifications</string>
+    <string name="detail_enable_notifications">Ask Android for foreground daemon notifications</string>
     <string name="action_run_gpu_bench">Run GPU benchmark</string>
     <string name="detail_run_gpu_bench">Write CPU reference JSONL/CSV benchmark results</string>
     <string name="action_prune_build_cache">Prune build cache</string>

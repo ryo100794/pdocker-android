@@ -9,17 +9,28 @@ cd "$ROOT"
 : "${ANDROID_HOME:=$HOME/android-sdk}"
 : "${ANDROID_NDK_HOME:=$HOME/android-ndk-r26d}"
 : "${PDOCKER_ANDROID_FLAVOR:=compat}"
+: "${PDOCKER_ANDROID_BUILD_TYPE:=debug}"
 export ANDROID_HOME ANDROID_NDK_HOME
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
+case "$PDOCKER_ANDROID_BUILD_TYPE" in
+    debug|release) ;;
+    *)
+        echo "ABORT: PDOCKER_ANDROID_BUILD_TYPE must be 'debug' or 'release' (got '$PDOCKER_ANDROID_BUILD_TYPE')" >&2
+        exit 2
+        ;;
+esac
+
+CAP_BUILD_TYPE="$(tr '[:lower:]' '[:upper:]' <<< "${PDOCKER_ANDROID_BUILD_TYPE:0:1}")${PDOCKER_ANDROID_BUILD_TYPE:1}"
+
 case "$PDOCKER_ANDROID_FLAVOR" in
     modern)
-        GRADLE_TASK=":app:assembleModernDebug"
-        APK="$ROOT/app/build/outputs/apk/modern/debug/app-modern-debug.apk"
+        GRADLE_TASK=":app:assembleModern${CAP_BUILD_TYPE}"
+        APK="$ROOT/app/build/outputs/apk/modern/$PDOCKER_ANDROID_BUILD_TYPE/app-modern-$PDOCKER_ANDROID_BUILD_TYPE.apk"
         ;;
     compat)
-        GRADLE_TASK=":app:assembleCompatDebug"
-        APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"
+        GRADLE_TASK=":app:assembleCompat${CAP_BUILD_TYPE}"
+        APK="$ROOT/app/build/outputs/apk/compat/$PDOCKER_ANDROID_BUILD_TYPE/app-compat-$PDOCKER_ANDROID_BUILD_TYPE.apk"
         ;;
     *)
         echo "ABORT: PDOCKER_ANDROID_FLAVOR must be 'modern' or 'compat' (got '$PDOCKER_ANDROID_FLAVOR')" >&2

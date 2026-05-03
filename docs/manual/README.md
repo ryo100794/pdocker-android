@@ -13,6 +13,7 @@ app, not why the architecture is shaped a certain way.
 | Document | Scope |
 |---|---|
 | [`DEFAULT_DEV_WORKSPACE.md`](DEFAULT_DEV_WORKSPACE.md) | Default VS Code Server, Continue, Codex, Claude Code, and llama.cpp workspace flow |
+| [`PROMOTION.md`](PROMOTION.md) | GitHub tagline, repository description, topics, release template, demo checklist, and public messaging |
 
 ## Maintenance
 

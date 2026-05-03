@@ -52,6 +52,24 @@ Build explicit debug variants:
 ./gradlew assembleModernDebug
 ```
 
+Build a fixed-signature compatibility APK by keeping the signing material
+outside Git and passing it through the environment:
+
+```sh
+export PDOCKER_SIGNING_STORE_FILE=$HOME/.pdocker/release.jks
+export PDOCKER_SIGNING_STORE_PASSWORD=...
+export PDOCKER_SIGNING_KEY_ALIAS=pdocker
+export PDOCKER_SIGNING_KEY_PASSWORD=...
+PDOCKER_ANDROID_FLAVOR=compat PDOCKER_ANDROID_BUILD_TYPE=release bash scripts/build-apk.sh
+```
+
+`*.jks`, `*.keystore`, `*.p12`, `*.pem`, `*.key`, `*.crt`, and local signing
+property files are ignored by Git. Do not commit signing certificates or
+private keys. A fixed release signature can reduce repeated install-time
+security prompts compared with debug-signed APK churn, but Android/Google Play
+Protect verification remains an OS/device policy and cannot be disabled by the
+app.
+
 Modern debug output:
 
 ```text
@@ -62,6 +80,12 @@ Compat debug output:
 
 ```text
 app/build/outputs/apk/compat/debug/app-compat-debug.apk
+```
+
+Compat release output:
+
+```text
+app/build/outputs/apk/compat/release/app-compat-release.apk
 ```
 
 ## Install Over Wi-Fi ADB

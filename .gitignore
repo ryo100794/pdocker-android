@@ -6,6 +6,15 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.crt
+keystore.properties
+signing.properties
+release-signing.properties
 app/src/main/assets/pdockerd/
 app/src/main/jniLibs/*/libcow.so
 app/src/main/jniLibs/*/libpdockerpty.so

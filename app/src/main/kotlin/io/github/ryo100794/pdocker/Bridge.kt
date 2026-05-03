@@ -171,7 +171,7 @@ class Bridge(
             .put("AttachStdout", true)
             .put("AttachStderr", true)
             .put("Tty", true)
-            .put("Cmd", listOf("sh"))
+            .put("Cmd", listOf("/bin/sh"))
         val response = engineRequest(
             "POST",
             "/containers/$containerId/exec",

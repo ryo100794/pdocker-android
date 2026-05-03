@@ -173,7 +173,7 @@
 <script src="xterm-addon-fit.js"></script>
 <script>
   const readOnly = !!(window.PdockerBridge && PdockerBridge.readOnly && PdockerBridge.readOnly());
-  const initialFontSize = readOnly ? 10 : 12;
+  const initialFontSize = readOnly ? 8 : 12;
   const term = new Terminal({
     termName: 'xterm-256color',
     fontFamily: '"Noto Sans Mono CJK JP","Droid Sans Mono","Roboto Mono",monospace',
@@ -237,7 +237,7 @@
   const distance = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   const viewportY = () => term.buffer && term.buffer.active ? term.buffer.active.viewportY : 0;
   const setFontSize = (value) => {
-    fontSize = clamp(Math.round(value * 10) / 10, 9, 24);
+    fontSize = clamp(Math.round(value * 10) / 10, 8, 24);
     term.options.fontSize = fontSize;
     pushResize();
   };

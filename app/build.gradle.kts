@@ -1,4 +1,5 @@
 import java.time.Instant
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -54,6 +55,28 @@ android {
         }
     }
 
+    val releaseSigningProps = Properties().apply {
+        val propsFile = rootProject.file("release-signing.properties")
+        if (propsFile.isFile) {
+            propsFile.inputStream().use(::load)
+        }
+    }
+    fun signingValue(name: String): String? =
+        providers.environmentVariable("PDOCKER_${name}").orNull
+            ?: releaseSigningProps.getProperty(name.lowercase().replace('_', '.'))
+
+    signingConfigs {
+        val storeFilePath = signingValue("SIGNING_STORE_FILE")
+        if (!storeFilePath.isNullOrBlank()) {
+            create("pdockerRelease") {
+                storeFile = file(storeFilePath)
+                storePassword = signingValue("SIGNING_STORE_PASSWORD")
+                keyAlias = signingValue("SIGNING_KEY_ALIAS")
+                keyPassword = signingValue("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -66,6 +89,7 @@ android {
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            signingConfigs.findByName("pdockerRelease")?.let { signingConfig = it }
         }
         getByName("debug") {
             isDebuggable = true

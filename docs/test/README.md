@@ -15,6 +15,7 @@ run it, and where the latest result is stored.
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | Docker API, data exchange, protocol, APK payload, and UI compatibility coverage |
 | [`compat-audit-latest.md`](compat-audit-latest.md) | Latest recorded compatibility audit result |
 | [`ANDROID_SELFDEBUG.md`](ANDROID_SELFDEBUG.md) | Android Wi-Fi ADB and self-debug workflow |
+| [`SECRET_AUDIT.md`](SECRET_AUDIT.md) | Repeatable secret, signing material, and remote URL audit before publication |
 
 ## Maintenance
 

@@ -34,6 +34,9 @@ Environment:
   PDOCKER_KEEP_TEST_CLI
                     keep staged test CLI/Compose after the smoke run
                     (default: 0)
+  PDOCKER_SMOKE_FORCE_STOP
+                    force-stop the app before the smoke run. This kills any
+                    running pdocker containers, so it is opt-in (default: 0)
 
 Modes:
   --quick       only install/start pdockerd and run docker version
@@ -137,8 +140,11 @@ fi
 
 trap 'cleanup_test_cli || true' EXIT
 
-run_adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
-run_as 'rm -f files/pdocker/pdockerd.sock' >/dev/null 2>&1 || true
+if [[ "${PDOCKER_SMOKE_FORCE_STOP:-0}" == "1" ]]; then
+  echo "[pdocker smoke] force-stopping app; running containers will stop"
+  run_adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
+  run_as 'rm -f files/pdocker/pdockerd.sock' >/dev/null 2>&1 || true
+fi
 run_adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
 run_adb shell am start \
   -n "$PKG/$CLASS_PREFIX.MainActivity" \
@@ -176,13 +182,13 @@ trap 'rm -rf "$TMP_PROJECT"; cleanup_test_cli || true' EXIT
 cat > "$TMP_PROJECT/Dockerfile" <<'EOF'
 FROM ubuntu:22.04
 RUN printf 'pdocker-smoke-build\n' > /pdocker-smoke.txt
-CMD ["/bin/sh", "-lc", "cat /pdocker-smoke.txt && sleep 2"]
+CMD ["/bin/sh", "-lc", "cat /pdocker-smoke.txt && sleep 300"]
 EOF
 cat > "$TMP_PROJECT/compose.yaml" <<'EOF'
 services:
   app:
     build: .
-    command: ["/bin/sh", "-lc", "cat /pdocker-smoke.txt && sleep 2"]
+    command: ["/bin/sh", "-lc", "cat /pdocker-smoke.txt && sleep 300"]
 EOF
 REMOTE_PROJECT="/data/local/tmp/pdocker-$PROJECT"
 run_adb shell "rm -rf '$REMOTE_PROJECT' && mkdir -p '$REMOTE_PROJECT'"
@@ -193,7 +199,7 @@ echo "[pdocker smoke] docker build"
 docker_cmd "cd pdocker/projects/$PROJECT && docker build -t local/pdocker-device-smoke:latest ."
 
 echo "[pdocker smoke] compose up/down"
-docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build --remove-orphans && CID=\$(docker compose ps -q app) && test -n \"\$CID\" && for i in \$(seq 1 10); do docker compose logs --tail=80 | grep -q pdocker-smoke-build && break; sleep 1; done && docker compose logs --tail=80 | grep -q pdocker-smoke-build && for i in \$(seq 1 10); do STATE=\$(docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' \"\$CID\"); echo \"compose container state: \$STATE\"; test \"\$STATE\" = 'exited 0' && break; sleep 1; done && test \"\$STATE\" = 'exited 0' && docker compose ps -a && docker compose down"
+docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build && CID=\$(docker compose ps -q app) && test -n \"\$CID\" && for i in \$(seq 1 10); do docker compose logs --tail=80 | grep -q pdocker-smoke-build && break; sleep 1; done && docker compose logs --tail=80 | grep -q pdocker-smoke-build && EXEC_OUT=\$(docker exec \"\$CID\" sh -lc 'echo pdocker-exec-ok' 2>&1) && echo \"\$EXEC_OUT\" && echo \"\$EXEC_OUT\" | grep -q pdocker-exec-ok && ! echo \"\$EXEC_OUT\" | grep -q '/vendor/xbin' && docker compose ps -a && docker compose down"
 
 echo "[pdocker smoke] checking UI-visible job state path"
 run_as 'ls -l files/pdocker/jobs.json >/dev/null 2>&1 || true; ls -ld files/pdocker/projects/device-smoke files/pdocker-runtime'

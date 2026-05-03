@@ -46,7 +46,7 @@ def main() -> int:
         "code-server",
         "Continue.continue",
         "@openai/codex",
-        "openai.chatgpt",
+        "OpenAI.chatgpt",
         "@anthropic-ai/claude-code",
         "Anthropic.claude-code",
         "ANTHROPIC_API_KEY",
