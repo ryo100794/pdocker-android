@@ -98,6 +98,7 @@ def main() -> int:
     require("container stop reconciles orphan runtime pid", "_pid_alive" in pdockerd_src and "_signal_pid_group" in pdockerd_src and 'state["State"]["Pid"] = 0' in pdockerd_src)
     require("engine exec allocates tty pty", "pty.openpty" in pdockerd_src and "proc.stdout = os.fdopen(master" in pdockerd_src and "proc.stdin = os.fdopen(os.dup(master)" in pdockerd_src)
     require("direct executor getcwd reads tracee cwd", '"/proc/%d/cwd"' in direct_src and "readlink(proc_cwd" in direct_src)
+    require("direct executor resolves initial argv from rootfs path", "resolve_guest_program(rootfs, cmd0, target" in direct_src and 'getenv("PATH")' not in direct_src)
     require("engine api jobs are persisted", "runEngineJob" in main_src and "appendEngineJobOutput" in main_src and "finishEngineJob" in main_src)
     require("streaming engine failures summarize instead of replaying full logs", "summarizeEngineFailure" in main_src and "finishOutput" in main_src and "No space left" in main_src)
     require("engine jobs wait through slow daemon warmup", "private fun waitForEngine(timeoutMs: Long = 90_000)" in main_src)

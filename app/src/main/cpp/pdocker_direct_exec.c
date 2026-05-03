@@ -2299,11 +2299,22 @@ loader_found:
 
     char target[PATH_MAX];
     const char *cmd0 = argv[command_index];
-    if (cmd0[0] == '/') {
+    if (strchr(cmd0, '/') == NULL) {
+        if (resolve_guest_program(rootfs, cmd0, target, sizeof(target)) != 0) {
+            fprintf(stderr, "pdocker-direct-executor: command not found in rootfs PATH: %s\n", cmd0);
+            free(env_items);
+            return 127;
+        }
+    } else if (cmd0[0] == '/') {
         if (snprintf(target, sizeof(target), "%s%s", rootfs, cmd0) >= (int)sizeof(target)) {
             fprintf(stderr, "pdocker-direct-executor: command path too long\n");
             free(env_items);
             return 126;
+        }
+        if (access(target, X_OK) != 0) {
+            fprintf(stderr, "pdocker-direct-executor: command not executable: %s\n", cmd0);
+            free(env_items);
+            return errno == ENOENT ? 127 : 126;
         }
     } else {
         if (snprintf(target, sizeof(target), "%s/%s", cwd, cmd0) >= (int)sizeof(target)) {
@@ -2311,19 +2322,11 @@ loader_found:
             free(env_items);
             return 126;
         }
-    }
-    if (access(target, F_OK) != 0 && strchr(cmd0, '/') == NULL) {
-        const char *path = getenv("PATH");
-        if (!path || !path[0]) path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-        char *copy = strdup(path);
-        char *save = NULL;
-        for (char *dir = strtok_r(copy, ":", &save); dir; dir = strtok_r(NULL, ":", &save)) {
-            if (snprintf(target, sizeof(target), "%s/%s/%s", rootfs, dir[0] == '/' ? dir + 1 : dir, cmd0) >= (int)sizeof(target)) {
-                continue;
-            }
-            if (access(target, X_OK) == 0) break;
+        if (access(target, X_OK) != 0) {
+            fprintf(stderr, "pdocker-direct-executor: command not executable: %s\n", cmd0);
+            free(env_items);
+            return errno == ENOENT ? 127 : 126;
         }
-        free(copy);
     }
 
     char libpath[PATH_MAX * 2];
