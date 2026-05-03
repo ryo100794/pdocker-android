@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
+import android.util.Base64
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -25,6 +26,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -86,9 +88,32 @@ class MainActivity : AppCompatActivity() {
         val header: TextView,
         val progress: TextView,
         val services: LinearLayout,
-        val log: TextView,
-        val scroll: ScrollView,
+        val terminal: TerminalLogPane,
     )
+
+    private class TerminalLogPane(val view: WebView) {
+        private val pending = StringBuilder()
+        private var ready = false
+
+        fun markReady() {
+            ready = true
+            if (pending.isNotEmpty()) {
+                val text = pending.toString()
+                pending.clear()
+                write(text)
+            }
+        }
+
+        fun write(text: String) {
+            if (text.isEmpty()) return
+            if (!ready) {
+                pending.append(text)
+                return
+            }
+            val b64 = Base64.encodeToString(text.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            view.evaluateJavascript("window.pdockerRecv('$b64')", null)
+        }
+    }
 
     private data class ComposeService(
         val name: String,
@@ -152,7 +177,9 @@ class MainActivity : AppCompatActivity() {
     private var currentToolGroup: String? = null
     private val dockerJobs = mutableListOf<DockerJob>()
     private val dockerJobBuffers = mutableMapOf<String, String>()
+    private val dockerJobPendingCarriageReturn = mutableSetOf<String>()
     private val liveJobViews = mutableMapOf<String, LiveJobView>()
+    private val ansiControlRegex = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
     private val serviceHealth = mutableMapOf<String, String>()
     private val serviceHealthCheckedAt = mutableMapOf<String, Long>()
     private val serviceHealthInFlight = mutableSetOf<String>()
@@ -1199,6 +1226,23 @@ class MainActivity : AppCompatActivity() {
         return webView
     }
 
+    private fun terminalLogPane(): TerminalLogPane {
+        lateinit var pane: TerminalLogPane
+        val webView = WebView(this).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            addJavascriptInterface(TerminalLogBridge(this@MainActivity), "PdockerBridge")
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    pane.markReady()
+                }
+            }
+        }
+        pane = TerminalLogPane(webView)
+        webView.loadUrl("file:///android_asset/xterm/index.html")
+        return pane
+    }
+
     private fun editorView(file: File): View {
         return CodeEditorView(this, file, MAX_INLINE_EDIT_BYTES, ::defaultEditorContent)
     }
@@ -1430,22 +1474,15 @@ class MainActivity : AppCompatActivity() {
             "",
             job.output.joinToString("\n"),
         ).joinToString("\n").trimEnd()
-        val view = ScrollView(this).apply {
-            addView(TextView(this@MainActivity).apply {
-                text = log
-                textSize = 12f
-                typeface = Typeface.MONOSPACE
-                setTextIsSelectable(true)
-                setPadding(18, 18, 18, 18)
-            })
-        }
+        val terminal = terminalLogPane()
         toolTabs += ToolTab(
             job.group,
             getString(R.string.terminal_job_log_fmt, job.title),
-            ToolKind.Editor,
-            view,
+            ToolKind.Terminal,
+            terminal.view,
             key = job.toolKey,
         )
+        terminal.write(log + "\r\n")
         switchTool(toolTabs.lastIndex)
     }
 
@@ -1470,29 +1507,29 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(14, 2, 14, 8)
         }
-        val log = TextView(this).apply {
-            textSize = 12f
-            typeface = Typeface.MONOSPACE
-            setTextIsSelectable(true)
-            setPadding(18, 10, 18, 18)
+        val terminal = terminalLogPane()
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(header)
+            addView(progress)
+            addView(services)
+            addView(terminal.view, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ))
         }
-        val scroll = ScrollView(this).apply {
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(header)
-                addView(progress)
-                addView(services)
-                addView(log)
-            })
-        }
-        liveJobViews[job.id] = LiveJobView(header, progress, services, log, scroll)
+        liveJobViews[job.id] = LiveJobView(header, progress, services, terminal)
         toolTabs += ToolTab(
             job.group,
             getString(R.string.terminal_job_log_fmt, job.title),
-            ToolKind.Editor,
-            scroll,
+            ToolKind.Terminal,
+            view,
             key = job.toolKey,
         )
+        if (job.output.isNotEmpty()) {
+            terminal.write(job.output.joinToString("\r\n") + "\r\n")
+        }
         updateLiveJobView(job)
         if (switchTo) switchTool(toolTabs.lastIndex) else renderToolChrome()
     }
@@ -1503,7 +1540,6 @@ class MainActivity : AppCompatActivity() {
         live.progress.text = listOf(job.progress, job.command)
             .filter { it.isNotBlank() }
             .joinToString("\n")
-        live.log.text = job.output.joinToString("\n")
         live.services.removeAllViews()
         liveJobServiceLinks(job).forEach { (label, url) ->
             live.services.addView(Button(this).apply {
@@ -1512,7 +1548,6 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             })
         }
-        live.scroll.post { live.scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun liveJobServiceLinks(job: DockerJob): List<Pair<String, String>> {
@@ -1537,6 +1572,7 @@ class MainActivity : AppCompatActivity() {
         job.status = getString(R.string.job_stopped)
         job.endedAt = System.currentTimeMillis()
         dockerJobBuffers.remove(jobId)
+        dockerJobPendingCarriageReturn.remove(jobId)
         job.output += "[pdocker] job stopped from UI"
         job.progress = getString(R.string.job_stopped)
         while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
@@ -1549,32 +1585,8 @@ class MainActivity : AppCompatActivity() {
         val chunk = bytes.toString(Charsets.UTF_8)
         ui.post {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
-            val text = dockerJobBuffers.getOrDefault(jobId, "") + chunk
-            val normalized = text.replace("\r", "")
-            val complete = normalized.endsWith("\n")
-            val rawLines = normalized.split("\n")
-            val lines = if (complete) rawLines else rawLines.dropLast(1)
-            dockerJobBuffers[jobId] = if (complete) "" else rawLines.last().takeLast(4096)
-            lines.map { it.trim() }
-                .filter { it.isNotBlank() }
-                .forEach { line ->
-                    val marker = Regex("__PDOCKER_JOB_EXIT:${Regex.escape(jobId)}:(\\d+)__").find(line)
-                    if (marker != null) {
-                        job.exitCode = marker.groupValues[1].toIntOrNull()
-                        job.status = if (job.exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
-                        job.progress = if (job.exitCode == 0) {
-                            getString(R.string.job_done)
-                        } else {
-                            getString(R.string.job_failed)
-                        }
-                        job.endedAt = System.currentTimeMillis()
-                        dockerJobBuffers.remove(jobId)
-                    } else {
-                        updateDockerJobProgress(job, line)
-                        job.output += line
-                        while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
-                    }
-                }
+            appendLiveJobTerminal(jobId, chunk)
+            recordJobTerminalOutput(job, jobId, chunk)
             updateLiveJobView(job)
             saveDockerJobs()
             if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles)) {
@@ -1586,14 +1598,9 @@ class MainActivity : AppCompatActivity() {
     private fun appendEngineJobOutput(jobId: String, line: String) {
         ui.post {
             val job = dockerJobs.firstOrNull { it.id == jobId } ?: return@post
-            line.replace("\r", "").lineSequence()
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .forEach { cleaned ->
-                    updateDockerJobProgress(job, cleaned)
-                    job.output += cleaned
-                    while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
-                }
+            val text = terminalRecordText(line)
+            appendLiveJobTerminal(jobId, text)
+            recordJobTerminalOutput(job, jobId, text)
             updateLiveJobView(job)
             saveDockerJobs()
             if (currentTab in setOf(Tab.Overview, Tab.Compose, Tab.Dockerfiles, Tab.Images, Tab.Containers)) {
@@ -1602,21 +1609,97 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun terminalRecordText(text: String): String =
+        if (text.endsWith("\n") || text.endsWith("\r")) text else "$text\n"
+
+    private fun appendLiveJobTerminal(jobId: String, text: String) {
+        liveJobViews[jobId]?.terminal?.write(text)
+    }
+
+    private fun recordJobTerminalOutput(job: DockerJob, jobId: String, text: String) {
+        var current = dockerJobBuffers.getOrDefault(jobId, "")
+        var index = 0
+        if (dockerJobPendingCarriageReturn.remove(jobId) && text.firstOrNull() != '\n') {
+            updateCurrentJobProgress(job, current)
+            current = ""
+        }
+        while (index < text.length) {
+            when (val ch = text[index]) {
+                '\r' -> {
+                    when {
+                        index + 1 >= text.length -> dockerJobPendingCarriageReturn += jobId
+                        text[index + 1] == '\n' -> Unit
+                        else -> {
+                            updateCurrentJobProgress(job, current)
+                            current = ""
+                        }
+                    }
+                }
+                '\n' -> {
+                    commitJobOutputLine(job, jobId, current)
+                    current = ""
+                }
+                '\u0000' -> Unit
+                else -> current += ch
+            }
+            index += 1
+        }
+        if (current.length > 4096) current = current.takeLast(4096)
+        dockerJobBuffers[jobId] = current
+        updateCurrentJobProgress(job, current)
+    }
+
+    private fun updateCurrentJobProgress(job: DockerJob, rawLine: String) {
+        val line = cleanTerminalLine(rawLine)
+        if (line.isNotBlank()) updateDockerJobProgress(job, line)
+    }
+
+    private fun commitJobOutputLine(job: DockerJob, jobId: String, rawLine: String) {
+        val line = cleanTerminalLine(rawLine)
+        if (line.isBlank()) return
+        val marker = Regex("__PDOCKER_JOB_EXIT:${Regex.escape(jobId)}:(\\d+)__").find(line)
+        if (marker != null) {
+            job.exitCode = marker.groupValues[1].toIntOrNull()
+            job.status = if (job.exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
+            job.progress = if (job.exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
+            job.endedAt = System.currentTimeMillis()
+            dockerJobBuffers.remove(jobId)
+            dockerJobPendingCarriageReturn.remove(jobId)
+            return
+        }
+        updateDockerJobProgress(job, line)
+        if (job.output.lastOrNull() != line) job.output += line
+        while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
+    }
+
+    private fun cleanTerminalLine(rawLine: String): String =
+        ansiControlRegex.replace(rawLine, "")
+            .filter { it >= ' ' || it == '\t' }
+            .trim()
+
     private fun finishEngineJob(jobId: String, exitCode: Int, output: String) {
         val job = dockerJobs.firstOrNull { it.id == jobId } ?: return
         job.exitCode = exitCode
         job.status = if (exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
         job.progress = if (exitCode == 0) getString(R.string.job_done) else getString(R.string.job_failed)
         job.endedAt = System.currentTimeMillis()
+        val existing = job.output.toMutableSet()
+        val terminalBackfill = mutableListOf<String>()
         output.lineSequence()
-            .map { it.trim() }
+            .map { cleanTerminalLine(it) }
             .filter { it.isNotBlank() }
             .forEach { line ->
-                if (job.output.lastOrNull() != line) job.output += line
+                if (job.output.lastOrNull() != line) {
+                    job.output += line
+                    if (existing.add(line)) terminalBackfill += line
+                }
                 while (job.output.size > MAX_JOB_LINES) job.output.removeAt(0)
             }
-            saveDockerJobs()
-            updateLiveJobView(job)
+        if (terminalBackfill.isNotEmpty()) {
+            appendLiveJobTerminal(jobId, terminalBackfill.joinToString("\r\n") + "\r\n")
+        }
+        saveDockerJobs()
+        updateLiveJobView(job)
     }
 
     private fun handleEngineJobFinished(job: DockerJob) {

@@ -222,13 +222,13 @@ class DockerEngineClient(private val socket: File) {
                 pending.delete(0, next + 1)
                 if (rawLine.isBlank()) continue
                 val decoded = decodeJsonLine(rawLine)
-                decoded.replace("\r", "").lineSequence()
-                    .map { it.trimEnd() }
-                    .filter { it.isNotBlank() }
-                    .forEach { line ->
-                        output.appendLine(line)
-                        onLine(line)
-                    }
+                val segments = decoded.split('\n')
+                segments.forEachIndexed { index, segment ->
+                    if (segment.isEmpty()) return@forEachIndexed
+                    val line = if (index < segments.lastIndex) "$segment\n" else segment
+                    output.append(line)
+                    onLine(line)
+                }
             }
         }
 
