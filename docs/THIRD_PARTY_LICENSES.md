@@ -8,8 +8,8 @@ the notice asset is included and upstream license texts/notices are preserved.
 
 | Component | Where used | License | Distribution condition | Status |
 |---|---|---|---|---|
-| Docker CLI | `vendor/lib/docker`, packaged as `libdocker.so` and exposed as `docker` at runtime | Apache-2.0 | Include license/notice; preserve Docker upstream notices. Export-control notice should remain visible to distributors. | OK with notice asset. |
-| Docker Compose plugin | `vendor/lib/docker-compose`, packaged as `libdocker-compose.so` and exposed as `docker-bin/cli-plugins/docker-compose` at runtime | Apache-2.0 | Include license/notice; preserve Docker Compose upstream notices. | OK with notice asset. |
+| Docker CLI | `vendor/lib/docker`, test/compatibility tool only; not packaged in the APK | Apache-2.0 | If redistributed separately, include license/notice and preserve Docker upstream notices. | OK: excluded from app payload. |
+| Docker Compose plugin | `vendor/lib/docker-compose`, test/compatibility tool only; not packaged in the APK | Apache-2.0 | If redistributed separately, include license/notice and preserve Docker Compose upstream notices. | OK: excluded from app payload. |
 | go-containerregistry / crane | `docker-proot-setup/docker-bin/crane`, packaged as `libcrane.so` | Apache-2.0 | Include license notice. | OK with notice asset. |
 | xterm.js | `app/src/main/assets/xterm/xterm.js`, `xterm.css` | MIT | Include copyright and license notice. | OK with notice asset. |
 | xterm-addon-fit | `app/src/main/assets/xterm/xterm-addon-fit.js` | MIT | Include copyright and license notice. | OK with notice asset. |
@@ -33,11 +33,13 @@ the notice asset is included and upstream license texts/notices are preserved.
 ## Compliance notes
 
 - The APK must include `assets/oss-licenses/THIRD_PARTY_NOTICES.md`.
-- The default APK staging path omits `libproot.so`, `libproot-loader.so`, and
-  `libtalloc.so`. Optional proot comparisons are command-supplied developer
-  diagnostics only, not bundled app payloads.
-- Docker CLI, Docker Compose, and crane are permissively licensed, but their
-  notices should stay available in documentation or the app notice asset.
+- The default APK staging path omits `libproot.so`, `libproot-loader.so`,
+  `libtalloc.so`, `libdocker.so`, and `libdocker-compose.so`. Optional proot
+  comparisons and upstream Docker CLI/Compose compatibility runs are
+  command-supplied developer diagnostics only, not bundled app payloads.
+- crane is permissively licensed and remains in the app payload for registry
+  exchange. Docker CLI and Docker Compose notices are kept in repository docs
+  for test-tool redistribution only.
 - No external source in this inventory blocks distribution under the current
   packaging model. The remaining release hygiene item is to add an explicit
   top-level license for pdocker's own original code if this repository is to be

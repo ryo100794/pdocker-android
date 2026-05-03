@@ -17,8 +17,6 @@ import java.io.File
  *   │   ├── crane          (-> nativeLibraryDir/libcrane.so)
  *   │   ├── pdocker-direct (-> nativeLibraryDir/libpdockerdirect.so)
  *   │   ├── pdocker-ld-linux-aarch64 (-> nativeLibraryDir/libpdocker-ld-linux-aarch64.so)
- *   │   ├── docker         (-> nativeLibraryDir/libdocker.so)
- *   │   ├── cli-plugins/docker-compose (-> nativeLibraryDir/libdocker-compose.so)
  *   ├── etc/resolv.conf    (DNS nameservers discovered from Android networks)
  *   └── lib/
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
@@ -65,15 +63,12 @@ nameserver 1.1.1.1
         java.nio.file.Files.deleteIfExists(File(dockerBin, "proot").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "proot-loader").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "pl").toPath())
-        linkTo(File(nativeDir, "libdocker.so"),        File(dockerBin, "docker"))
-        optionalLinkTo(
-            File(nativeDir, "libdocker-compose.so"),
-            File(dockerCliPlugins, "docker-compose"),
-        )
-        // A symlink named docker-compose pointing at the Docker CLI does not
-        // enter Compose mode; it produces "unknown shorthand flag: 'd' in -d"
-        // for `docker-compose up -d`. Keep only the supported v2 form:
-        // `docker compose ...`.
+        // The product APK intentionally does not bundle upstream Docker CLI or
+        // Compose plugin binaries. Host/device tests may stage those tools
+        // separately, but normal app UI must use pdockerd's Engine API and
+        // native orchestrator paths.
+        java.nio.file.Files.deleteIfExists(File(dockerBin, "docker").toPath())
+        java.nio.file.Files.deleteIfExists(File(dockerCliPlugins, "docker-compose").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "docker-compose").toPath())
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
         optionalLinkTo(File(nativeDir, "libpdocker-rootfs-shim.so"), File(lib, "pdocker-rootfs-shim.so"))

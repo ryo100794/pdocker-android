@@ -75,7 +75,8 @@ bash scripts/verify-heavy.sh --android-full --no-install
 ```
 
 While a full audit is running, the backend regression daemon usually listens at
-`/tmp/pdockerd-verify.sock`. You can inspect it with the bundled Docker CLI:
+`/tmp/pdockerd-verify.sock`. You can inspect it with the repository test Docker
+CLI:
 
 ```sh
 DOCKER_HOST=unix:///tmp/pdockerd-verify.sock docker-proot-setup/docker-bin/docker ps -a
@@ -88,9 +89,9 @@ is most useful for named or long-running containers created by the compose,
 exec, stats, and network parts of the regression.
 
 Latest recorded fast result: [compat-audit-latest.md](compat-audit-latest.md)
-has 55 PASS, 0 FAIL, and 0 SKIP. The reusable offline/API/APK/license/UI/GPU
-design checks pass, including native Docker job-card wiring, bundled Docker
-Compose plugin packaging, and the APK payload.
+records the reusable offline/API/APK/license/UI/GPU design checks. APK payload
+checks require that upstream Docker CLI and Docker Compose plugin binaries are
+absent from the shipped app; those tools are test-only compatibility aids.
 
 Latest Android Wi-Fi ADB quick smoke on `10.10.246.77:45033` passes:
 `docker version` negotiates with pdockerd API 1.43 and the staged native
@@ -120,9 +121,9 @@ suite and should be recorded separately when it is run to completion.
 | Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
 | Volumes/binds | Partial | Named volumes map to host directories; bind mounts are represented in runtime metadata and direct-run argv. No kernel mount propagation or tmpfs semantics. |
 | Dockerfile build | Partial | Dockerfiles use Docker's standard instruction surface only; pdocker-specific Dockerfile instructions are rejected instead of treated as extensions. Legacy builder supports common instructions and a practical `.dockerignore` subset on the backend host. On Android direct mode, real `RUN` works for the current supported subset. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
-| Compose | Partial | Compose v2.35.1 is bundled in the APK and `docker compose version` works on Android. Basic up/down flows work when the build/runtime path stays inside the supported subset; the default VS Code/Codex workspace has been built and started on-device through the direct runtime. |
+| Compose | Partial | Product APK uses pdockerd/native orchestration rather than bundled upstream Docker Compose. Test suites may stage upstream Docker CLI/Compose separately to verify Engine API compatibility. Basic up/down flows work when the build/runtime path stays inside the supported subset; the default VS Code/Codex workspace has been built and started on-device through the direct runtime. |
 | Events | Partial | `/events` now persists Docker-style JSONL lifecycle events and live-streams new events with basic `since`, `until`, and filter handling. It covers container/image/network/volume/build events, but does not yet reproduce every daemon-internal event emitted by Moby. |
-| APK data exchange | Good | APK includes pdockerd, Docker CLI, crane, libcow, pdocker-direct, xterm assets, and license notice asset. It omits PRoot, proot-loader, and talloc. |
+| APK data exchange | Good | APK includes pdockerd, crane, libcow, pdocker-direct, xterm assets, and license notice asset. It omits PRoot, proot-loader, talloc, upstream Docker CLI, and upstream Docker Compose. |
 
 ## Protocol coverage
 
@@ -134,8 +135,8 @@ The audit checks these protocol details directly or statically:
 - `application/vnd.docker.raw-stream` for logs/attach/exec.
 - `application/x-tar` for image save/load and container archive exchange.
 - `X-Docker-Container-Path-Stat` for `docker cp` stat behavior.
-- Docker CLI `docker version` negotiation when the bundled CLI is executable
-  on the current host.
+- Docker CLI `docker version` negotiation when the repository test CLI is
+  executable on the current host.
 - Docker event JSON objects over `/events`, including `Type`, `Action`,
   `Actor`, `time`, `timeNano`, `since`/`until`, and common filters.
 

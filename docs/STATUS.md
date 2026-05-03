@@ -63,14 +63,10 @@ What's been confirmed working on the current Android 15 test device:
   metadata-only port publishing. They also expose direct start/stop/restart,
   log, file-browser, known-service URL, and grouped interactive console
   actions.
-- Main UI action wiring → Docker-backed actions start pdockerd before opening
-  the PTY tool tab, wait for `docker version`, export
-  `DOCKER_BUILDKIT=0` / `COMPOSE_DOCKER_CLI_BUILD=0`, and append an
-  interactive shell after one-shot commands. The APK now ships the Docker
-  Compose v2 plugin as `docker-bin/cli-plugins/docker-compose`, so Compose
-  actions do not depend on host-side plugins. Compose actions run
-  `docker compose up -d --build` followed by `ps` and recent logs, so the UI
-  does not stay pinned to foreground logs.
+- Main UI action wiring → product actions start pdockerd and use Engine
+  API/native orchestration for image pull, Dockerfile build, Compose-style
+  create/start, logs, and lifecycle state. Upstream Docker CLI/Compose binaries
+  are not packaged in the APK; they remain host/test compatibility tools only.
 - Main UI job tracking → Docker-backed actions also create native upper-pane
   job cards backed by `filesDir/pdocker/jobs.json`. The cards show
   running/done/failed status, elapsed time, command context, parsed
@@ -170,7 +166,6 @@ pdocker-android/
 │   ├── jniLibs/arm64-v8a/             — auto-generated, .gitignored
 │   │   ├── libcow.so                 — host-glibc CoW shim (loaded inside container)
 │   │   ├── libcrane.so               — crane 0.20.3 (static Go)
-│   │   ├── libdocker.so              — docker CLI 29.4 (stripped, 26 MB)
 │   │   ├── libpdockerpty.so          — Termux-native build (Android JNI lib)
 │   │   └── libpdockerdirect.so       — Android direct userspace executor
 │   ├── python/pdockerd_bridge.py     — Chaquopy entry: env setup + CONNECT proxy + runpy

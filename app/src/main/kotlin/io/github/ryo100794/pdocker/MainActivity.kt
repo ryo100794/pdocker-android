@@ -579,13 +579,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderSessions() {
         addSection(getString(R.string.section_sessions))
-        addAction(getString(R.string.action_docker_it), getString(R.string.detail_docker_it)) {
-            openDockerTerminal(getString(R.string.terminal_docker_interactive), "docker ps -a; printf '\\nUse: docker exec -it <container> sh\\n'")
-        }
-        addAction(getString(R.string.action_compose_session), getString(R.string.detail_compose_session)) {
-            projectRoot.mkdirs()
-            openDockerTerminal(getString(R.string.action_compose_session), "cd ${shellQuote(projectRoot.absolutePath)} && docker compose ps")
-        }
         addAction(getString(R.string.action_text_editor), getString(R.string.detail_text_editor)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
         }
@@ -615,7 +608,10 @@ class MainActivity : AppCompatActivity() {
         }
         addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
             startDaemon()
-            openDockerTerminal(getString(R.string.action_docker_console), "docker ps -a; printf '\\nUse docker commands for diagnostics.\\n'")
+            openTerminal(
+                getString(R.string.action_docker_console),
+                "printf '[pdocker] upstream Docker CLI is not packaged in this APK.\\n[pdocker] Use UI Engine actions; test suites may stage Docker CLI separately.\\n'; sh",
+            )
         }
         addAction(getString(R.string.action_host_shell), getString(R.string.detail_host_shell)) {
             openTerminal(getString(R.string.terminal_host_shell), "sh")

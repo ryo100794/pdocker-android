@@ -14,6 +14,9 @@ or closes.
 
 ### Runtime / Compose-Up
 
+- [done] Remove upstream Docker CLI/Compose from APK payload. Product UI must
+  use Engine API/native orchestration; upstream Docker CLI/Compose are allowed
+  only as test-staged compatibility tools.
 - [done] Document Docker compatibility scope, non-goals, and discussion points
   for BuildKit, network, volume, cgroup, overlayfs, signals, TTY, and archive
   API in `docs/DOCKER_COMPAT_SCOPE.md`.
@@ -59,8 +62,8 @@ or closes.
   after build-prune removed transient roots, the old script could report a
   false PASS on `rootfs dynamic loader not found`.
 - [done] Add Docker-compatible build/system prune paths for interrupted build
-  cleanup. `docker builder prune -f` and `docker system prune -f` pass through
-  the bundled Docker CLI on Android.
+  cleanup. Test-staged upstream Docker CLI can still exercise these paths, but
+  product APK UI should use Engine API/native actions.
 - [done] Add tracer process cleanup: `PTRACE_O_EXITKILL` where available,
   separate child process group, and SIGINT/SIGTERM/SIGHUP/SIGQUIT handling so
   aborted direct runs do not leave tracee process leftovers.

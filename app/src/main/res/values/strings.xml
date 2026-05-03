@@ -41,8 +41,8 @@
     <string name="detail_keep_resident">Open battery optimization exemption</string>
     <string name="action_run_gpu_bench">Run GPU benchmark</string>
     <string name="detail_run_gpu_bench">Write CPU reference JSONL/CSV benchmark results</string>
-    <string name="action_docker_console">Docker console</string>
-    <string name="detail_docker_console">Diagnostic Docker CLI console</string>
+    <string name="action_docker_console">Engine diagnostics</string>
+    <string name="detail_docker_console">Diagnostic shell without bundled Docker CLI</string>
     <string name="action_host_shell">Host shell</string>
     <string name="detail_host_shell">Diagnostic app host shell, not a container</string>
     <string name="action_default_dev_workspace">Default dev workspace</string>

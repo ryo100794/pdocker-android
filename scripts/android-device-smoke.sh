@@ -28,6 +28,12 @@ Environment:
   ADB               adb executable (default: adb)
   PDOCKER_PACKAGE   Android package (default: $PKG)
   PDOCKER_APK       debug APK path (default: $APK)
+  PDOCKER_STAGE_TEST_CLI
+                    stage repository Docker CLI/Compose into app files for
+                    compatibility tests (default: 1)
+  PDOCKER_KEEP_TEST_CLI
+                    keep staged test CLI/Compose after the smoke run
+                    (default: 0)
 
 Modes:
   --quick       only install/start pdockerd and run docker version
@@ -59,6 +65,26 @@ remote_quote() {
 
 run_as() {
   run_adb shell "run-as $PKG sh -c $(remote_quote "$1")"
+}
+
+stage_test_cli() {
+  [[ "${PDOCKER_STAGE_TEST_CLI:-1}" != "0" ]] || return 0
+  local docker_bin="$ROOT/docker-proot-setup/docker-bin/docker"
+  local compose_bin="$ROOT/vendor/lib/docker-compose"
+  if [[ ! -x "$docker_bin" || ! -x "$compose_bin" ]]; then
+    echo "test Docker CLI/Compose binaries missing; run backend fetch/build first" >&2
+    return 1
+  fi
+  echo "[pdocker smoke] staging test-only Docker CLI/Compose outside APK"
+  run_adb push "$docker_bin" /data/local/tmp/pdocker-test-docker >/dev/null
+  run_adb push "$compose_bin" /data/local/tmp/pdocker-test-docker-compose >/dev/null
+  run_as "mkdir -p files/pdocker-runtime/docker-bin/cli-plugins && cp /data/local/tmp/pdocker-test-docker files/pdocker-runtime/docker-bin/docker && cp /data/local/tmp/pdocker-test-docker-compose files/pdocker-runtime/docker-bin/cli-plugins/docker-compose && chmod 755 files/pdocker-runtime/docker-bin/docker files/pdocker-runtime/docker-bin/cli-plugins/docker-compose"
+}
+
+cleanup_test_cli() {
+  [[ "${PDOCKER_STAGE_TEST_CLI:-1}" != "0" ]] || return 0
+  [[ "${PDOCKER_KEEP_TEST_CLI:-0}" != "1" ]] || return 0
+  run_as "rm -f files/pdocker-runtime/docker-bin/docker files/pdocker-runtime/docker-bin/cli-plugins/docker-compose" >/dev/null 2>&1 || true
 }
 
 wait_for_socket() {
@@ -109,6 +135,8 @@ if [[ "$INSTALL" -eq 1 ]]; then
   run_adb install -r "$APK" >/dev/null
 fi
 
+trap 'cleanup_test_cli || true' EXIT
+
 run_adb shell am force-stop "$PKG" >/dev/null 2>&1 || true
 run_as 'rm -f files/pdocker/pdockerd.sock' >/dev/null 2>&1 || true
 run_adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
@@ -117,6 +145,7 @@ run_adb shell am start \
   -a "$ACTION_PREFIX.action.SMOKE_START" >/dev/null
 
 wait_for_socket
+stage_test_cli
 
 echo "[pdocker smoke] docker version"
 docker_cmd 'docker version'
@@ -143,7 +172,7 @@ fi
 
 echo "[pdocker smoke] creating tiny project"
 TMP_PROJECT="$(mktemp -d)"
-trap 'rm -rf "$TMP_PROJECT"' EXIT
+trap 'rm -rf "$TMP_PROJECT"; cleanup_test_cli || true' EXIT
 cat > "$TMP_PROJECT/Dockerfile" <<'EOF'
 FROM ubuntu:22.04
 RUN printf 'pdocker-smoke-build\n' > /pdocker-smoke.txt

@@ -14,9 +14,10 @@ Standalone Android APK wrapping the integrated `docker-proot-setup` backend.
   shortcut palette for Esc/Ctrl/Alt, arrows, Tab, Enter, Backspace, Delete,
   paging, common Ctrl chords, and shell punctuation.
 - **Workspace UI**: top-level tabs for Compose, Dockerfile, images,
-  containers, and PTY-backed sessions, so normal UI use does not require
-  typing the bundled `docker` command directly. Sessions also surface recent
-  editable project/imported files as editor shortcuts.
+  containers, and PTY-backed sessions. Normal UI use goes through pdockerd's
+  Engine API/native orchestrator; the product APK does not bundle upstream
+  Docker CLI or Docker Compose binaries. Sessions also surface recent editable
+  project/imported files as editor shortcuts.
 - **Resizable split workspace**: the main screen has a draggable upper/lower
   split. The upper pane stays on Compose/Dockerfile/container status and
   control; the lower pane keeps grouped multi-tabs for consoles and editors.
@@ -39,12 +40,10 @@ Standalone Android APK wrapping the integrated `docker-proot-setup` backend.
   context, parsed build/compose/pull progress, a small log tail, log tabs, stop
   controls for running jobs, retry actions, and restart-safe log fallback when
   a persisted job no longer has a live PTY tab.
-- **Persistent command actions**: UI actions such as `docker ps`, `docker pull`,
-  `docker build`, and `docker compose up` start pdockerd, run in PTY-backed
-  lower tabs, export the legacy builder/Compose environment expected by
-  pdockerd, and leave an interactive shell open when the command exits.
-  Compose actions use `docker compose up -d --build` so the UI does not stay
-  pinned to foreground logs.
+- **Persistent job actions**: UI actions such as image pull, Dockerfile build,
+  and Compose up start pdockerd and use Engine API/native orchestration. Test
+  scripts may stage upstream Docker CLI/Compose separately, but those binaries
+  are not part of the shipped APK.
 - **Network visibility**: container cards show the synthetic container IP,
   exposed/published ports, metadata-only port-publishing warnings, and planned
   port-hook rewrite count from pdockerd, so unsupported networking is visible

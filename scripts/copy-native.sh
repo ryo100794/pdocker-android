@@ -36,6 +36,8 @@ cp "$SUB/docker-bin/crane" "$JNI_DIR/libcrane.so"
 rm -f "$JNI_DIR/libproot.so" "$JNI_DIR/libproot-loader.so" "$JNI_DIR/libtalloc.so" \
       "$COMPAT_JNI_DIR/libproot.so" "$COMPAT_JNI_DIR/libproot-loader.so" \
       "$COMPAT_JNI_DIR/libtalloc.so"
+rm -f "$JNI_DIR/libdocker.so" "$JNI_DIR/libdocker-compose.so" \
+      "$COMPAT_JNI_DIR/libdocker.so" "$COMPAT_JNI_DIR/libdocker-compose.so"
 # libcow.so is LD_PRELOAD'd inside the *container* rootfs (typically
 # glibc — ubuntu/debian — or musl — alpine). A bionic-targeted shim
 # fails to load there ("libdl.so" vs "libdl.so.2", ld-android-* vs
@@ -52,23 +54,14 @@ if [[ -n "${PDOCKER_GLIBC_LOADER:-}" && -f "${PDOCKER_GLIBC_LOADER:-}" ]]; then
 else
     rm -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so"
 fi
-# docker CLI and Compose plugin (Go static) so the WebView terminal can
-# drive pdockerd via DOCKER_HOST=unix://... pdocker/pdockerd.sock without
-# us building a custom client.
-cp "$ROOT/vendor/lib/docker" "$JNI_DIR/libdocker.so"
-cp "$ROOT/vendor/lib/docker-compose" "$JNI_DIR/libdocker-compose.so"
-
-chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libcow.so" "$JNI_DIR/libdocker.so" \
-           "$JNI_DIR/libdocker-compose.so"
+chmod 0755 "$JNI_DIR/libcrane.so" "$JNI_DIR/libcow.so"
 [[ -f "$JNI_DIR/libpdocker-rootfs-shim.so" ]] && chmod 0755 "$JNI_DIR/libpdocker-rootfs-shim.so"
 [[ -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so" ]] && chmod 0755 "$JNI_DIR/libpdocker-ld-linux-aarch64.so"
 echo "staged crane -> $JNI_DIR/libcrane.so"
-echo "skipped external proot/talloc/proot-loader payloads"
+echo "skipped external proot/talloc/proot-loader/docker-cli/docker-compose payloads"
 echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
 [[ -f "$JNI_DIR/libpdocker-rootfs-shim.so" ]] && echo "staged rootfs shim (glibc) -> $JNI_DIR/libpdocker-rootfs-shim.so"
 [[ -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so" ]] && echo "staged glibc loader -> $JNI_DIR/libpdocker-ld-linux-aarch64.so"
-echo "staged docker CLI -> $JNI_DIR/libdocker.so"
-echo "staged docker compose plugin -> $JNI_DIR/libdocker-compose.so"
 
 # --- jniLibs sanity ---
 # libpdockerpty.so and libpdockerdirect.so are built natively by

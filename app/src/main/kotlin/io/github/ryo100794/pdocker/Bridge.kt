@@ -38,16 +38,15 @@ class Bridge(
         // Pass the requested cmdline to `sh -c` so xterm.js doesn't need
         // to tokenize.
         val argv = arrayOf("sh", "-c", cmdline)
-        // Stage runtime so docker/crane/proot symlinks exist + sock path
-        // is predictable. PdockerdRuntime.prepare is idempotent.
+        // Stage runtime so crane/direct-runtime symlinks exist and the socket
+        // path is predictable. PdockerdRuntime.prepare is idempotent.
         val runtime = PdockerdRuntime.prepare(activity)
         val sock = File(activity.filesDir, "pdocker/pdockerd.sock")
         val env = arrayOf(
             "TERM=xterm-256color",
             "HOME=${activity.filesDir}",
-            // docker CLI lives at runtime/docker-bin/docker (symlink into
-            // nativeLibraryDir/libdocker.so). Putting docker-bin first on
-            // PATH means the user can just type `docker ps` in xterm.
+            // Product APKs do not bundle upstream Docker CLI; docker-bin is
+            // still first so pdocker-native helpers staged there are visible.
             "PATH=${runtime.absolutePath}/docker-bin:/system/bin:/system/xbin",
             "DOCKER_HOST=unix://${sock.absolutePath}",
             "DOCKER_BUILDKIT=0",
@@ -59,8 +58,8 @@ class Bridge(
             "PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC=${if (BuildConfig.PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC) "1" else "0"}",
             "PDOCKER_DIRECT_TRACE_SYSCALLS=0",
             "PDOCKER_DIRECT_TRACE_MODE=seccomp",
-            // Docker Compose is a CLI plugin; point Docker at the runtime
-            // plugin dir so `docker compose ...` works on Android too.
+            // Test-only Docker CLI staging may use this config path. Normal UI
+            // actions use Engine API/native orchestration instead.
             "DOCKER_CONFIG=${runtime.absolutePath}/docker-bin"
         )
         fd = PtyNative.open(shell, argv, env)

@@ -185,8 +185,6 @@ def check_apk_payload() -> list[Check]:
         names = set(zf.namelist())
         required = [
             "lib/arm64-v8a/libcrane.so",
-            "lib/arm64-v8a/libdocker.so",
-            "lib/arm64-v8a/libdocker-compose.so",
             "lib/arm64-v8a/libcow.so",
             "lib/arm64-v8a/libpdockerpty.so",
             "lib/arm64-v8a/libpdockerdirect.so",
@@ -216,6 +214,13 @@ def check_apk_payload() -> list[Check]:
                 checks.append(Check(f"legacy apk payload: {name}", "PASS" if name in names else "FAIL"))
             else:
                 checks.append(Check(f"no-proot apk payload omits: {name}", "PASS" if name not in names else "FAIL"))
+        cli_payload = [
+            "lib/arm64-v8a/libdocker.so",
+            "lib/arm64-v8a/libdocker-compose.so",
+        ]
+        for name in cli_payload:
+            checks.append(Check(f"apk payload omits upstream Docker CLI component: {name}",
+                                "PASS" if name not in names else "FAIL"))
         if "lib/arm64-v8a/libproot.so" in names:
             data = zf.read("lib/arm64-v8a/libproot.so")
             checks.append(Check("apk payload: proot advertises --cow-bind",
@@ -233,7 +238,7 @@ def check_license_inventory() -> list[Check]:
         return [Check("license inventory", "FAIL", "docs/THIRD_PARTY_LICENSES.md missing")]
     text = LICENSE_DOC.read_text()
     required = [
-        "Docker CLI", "Docker Compose", "Apache-2.0", "go-containerregistry", "xterm.js",
+        "Apache-2.0", "go-containerregistry", "xterm.js",
         "MIT", "Chaquopy", "AndroidX", "Kotlin",
     ]
     for token in required:

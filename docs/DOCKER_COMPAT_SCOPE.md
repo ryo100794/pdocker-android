@@ -23,8 +23,9 @@ Compatibility has three tiers:
    - `docker pull`, `images`, `ps`, `logs`, `build`, `run`, `exec`, `cp`,
      `compose up/down/ps/logs` for the supported runtime subset.
    - Long-running service containers such as code-server and llama.cpp.
-   - UI-first workflows where the bundled Docker CLI is an implementation
-     detail rather than the main user interface.
+   - UI-first workflows where upstream Docker CLI/Compose binaries are not part
+     of the shipped APK. Test suites may stage them separately to validate
+     Engine API compatibility.
 
 3. **May expose pdocker-specific limitations explicitly**
    - Unsupported resource isolation, kernel networking, mount propagation, or
@@ -82,8 +83,9 @@ These are not product goals for the default unrooted Android app:
 ## BuildKit Position
 
 Recommended near-term stance: **do not implement BuildKit**. Keep using the
-Docker CLI legacy builder protocol against pdockerd and make the supported
-Dockerfile subset increasingly correct.
+the Engine API legacy builder protocol against pdockerd and make the supported
+Dockerfile subset increasingly correct. Upstream Docker CLI can remain a
+test-only compatibility client, not an app payload.
 
 Rationale:
 

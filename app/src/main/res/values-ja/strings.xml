@@ -41,8 +41,8 @@
     <string name="detail_keep_resident">電池最適化除外を開く</string>
     <string name="action_run_gpu_bench">GPU ベンチを実行</string>
     <string name="detail_run_gpu_bench">CPU 基準の JSONL/CSV ベンチ結果を書き出し</string>
-    <string name="action_docker_console">Docker コンソール</string>
-    <string name="detail_docker_console">診断用 Docker CLI コンソール</string>
+    <string name="action_docker_console">Engine 診断</string>
+    <string name="detail_docker_console">本家 Docker CLI を同梱しない診断シェル</string>
     <string name="action_host_shell">ホストシェル</string>
     <string name="detail_host_shell">診断用アプリホストシェル、コンテナではありません</string>
     <string name="action_default_dev_workspace">標準開発ワークスペース</string>
