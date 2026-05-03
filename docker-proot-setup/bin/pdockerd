@@ -3361,14 +3361,29 @@ def spawn_in_container(cid, cmd, env=None, workdir=None, tty=False,
     argv = build_run_argv(rootfs, list(cmd), e, workdir=wd, cow_bind=cow, mode="exec")
     if tty:
         import pty
-        master, slave = pty.openpty()
-        proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave,
-                                close_fds=True)
-        os.close(slave)
-        proc.stdout = os.fdopen(master, "rb", buffering=0)
-        proc.stderr = None
-        proc.stdin = os.fdopen(os.dup(master), "wb", buffering=0)
-        return proc
+        try:
+            master, slave = pty.openpty()
+            proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave,
+                                    close_fds=True)
+            os.close(slave)
+            proc.stdout = os.fdopen(master, "rb", buffering=0)
+            proc.stderr = None
+            proc.stdin = os.fdopen(os.dup(master), "wb", buffering=0)
+            return proc
+        except OSError as exc:
+            # Android app sandboxes can fail pty.openpty() with
+            # "out of pty devices" even though a plain stdin/stdout pipe still
+            # works. Keep docker exec -it usable; callers asked for a raw TTY
+            # stream, and raw pipe bytes are the least surprising fallback.
+            log(f"pty unavailable for exec, falling back to pipes: {exc}")
+            proc = subprocess.Popen(
+                argv,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+            proc._pdocker_pipe_tty_fallback = True
+            return proc
     return subprocess.Popen(argv, stdin=stdin, stdout=stdout, stderr=stderr)
 
 
@@ -3592,6 +3607,8 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                     chunk = self.rfile.read(4096)
                     if not chunk:
                         break
+                    if getattr(proc, "_pdocker_pipe_tty_fallback", False):
+                        chunk = chunk.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
                     try:
                         proc.stdin.write(chunk)
                         proc.stdin.flush()

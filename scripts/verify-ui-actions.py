@@ -105,6 +105,8 @@ def main() -> int:
     require("unchanged dockerfiles can skip full image rebuild", "try_reuse_existing_tag" in pdockerd_src and "Using image cache" in pdockerd_src and "file_equal" in pdockerd_src)
     require("container stop reconciles orphan runtime pid", "_pid_alive" in pdockerd_src and "_signal_pid_group" in pdockerd_src and 'state["State"]["Pid"] = 0' in pdockerd_src)
     require("engine exec allocates tty pty", "pty.openpty" in pdockerd_src and "proc.stdout = os.fdopen(master" in pdockerd_src and "proc.stdin = os.fdopen(os.dup(master)" in pdockerd_src)
+    require("engine exec it falls back when pty is unavailable", "pty unavailable for exec" in pdockerd_src and "falling back to pipes" in pdockerd_src and "stderr=subprocess.STDOUT" in pdockerd_src)
+    require("engine exec pipe fallback maps terminal enter", "_pdocker_pipe_tty_fallback" in pdockerd_src and 'replace(b"\\r", b"\\n")' in pdockerd_src)
     require("direct executor getcwd reads tracee cwd", '"/proc/%d/cwd"' in direct_src and "readlink(proc_cwd" in direct_src)
     require("direct executor resolves initial argv from rootfs path", "resolve_guest_program(rootfs, cmd0, target" in direct_src and 'getenv("PATH")' not in direct_src)
     require("engine api jobs are persisted", "runEngineJob" in main_src and "appendEngineJobOutput" in main_src and "finishEngineJob" in main_src)
@@ -152,6 +154,7 @@ def main() -> int:
     require("template install records version stamp", ".pdocker-template-id" in main_src and ".pdocker-template-version" in main_src and "obj.optInt(\"version\", libraryVersion)" in main_src)
     require("android device smoke script exists", "docker compose up --detach --build" in android_smoke_src and "run-as" in android_smoke_src and "docker version" in android_smoke_src)
     require("android device smoke covers engine exec path", "docker exec \\\"\\$CID\\\" sh -lc 'echo pdocker-exec-ok'" in android_smoke_src and "pdocker-exec-ok" in android_smoke_src and "'/vendor/xbin'" in android_smoke_src and "sleep 300" in android_smoke_src)
+    require("android device smoke covers engine api it stream", "engine_exec_it_smoke" in android_smoke_src and "/containers/$container_ref/exec" in android_smoke_src and "/exec/%s/start" in android_smoke_src and "pdocker-it-ok" in android_smoke_src)
     require("android device smoke avoids orphan cleanup side effects", "--remove-orphans" not in android_smoke_src)
     require("android device smoke does not force-stop by default", "PDOCKER_SMOKE_FORCE_STOP" in android_smoke_src and '== "1"' in android_smoke_src and "force-stopping app; running containers will stop" in android_smoke_src)
 
