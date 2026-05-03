@@ -8,6 +8,7 @@ Use this file to avoid duplicating the same status or plan in multiple docs.
 |---|---|---|
 | Active TODOs and temporary workarounds | [`TODO.md`](TODO.md) | Update this whenever a workaround is added or removed. |
 | Docker compatibility, protocol coverage, gaps | [`COMPATIBILITY.md`](COMPATIBILITY.md) | Generated latest audit result: [`compat-audit-latest.md`](compat-audit-latest.md). |
+| Docker compatibility scope and non-goals | [`DOCKER_COMPAT_SCOPE.md`](DOCKER_COMPAT_SCOPE.md) | Product boundary, explicit out-of-scope areas, and discussion points. |
 | High-level implementation shape | [`STATUS.md`](STATUS.md) | Keep as a system summary; do not duplicate full API/gap tables here. |
 | Runtime replacement and PRoot retirement | [`RUNTIME_STRATEGY.md`](RUNTIME_STRATEGY.md) | Execution-backend strategy and acceptance criteria. |
 | Historical steering snapshot | [`REPLAN_2026-05-01.md`](REPLAN_2026-05-01.md) | Historical matrix only; live plan is `TODO.md`. |

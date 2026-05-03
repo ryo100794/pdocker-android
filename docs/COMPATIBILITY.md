@@ -11,6 +11,11 @@ the `docker-proot-setup` backend. Compatibility here means three layers:
 - Protocol: HTTP over Unix domain socket, API version negotiation, hijacked
   raw streams, tar content types, and Docker-specific headers.
 
+For the product boundary, non-goals, and open design decisions around BuildKit,
+networking, volumes, cgroups, overlayfs, signals, TTY, and archive APIs, see
+[`DOCKER_COMPAT_SCOPE.md`](DOCKER_COMPAT_SCOPE.md). This file records what works
+and what is tested; the scope file records what pdocker is choosing to be.
+
 ## How to run the audit
 
 Fast offline audit:
