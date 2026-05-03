@@ -43,10 +43,14 @@ or closes.
   `/v1/models` reports the loaded 8.19B GGUF, and `docker logs` streams the
   real llama-server output.
 - [done] Record a repeatable llama.cpp CPU fallback baseline with
-  `scripts/android-llama-bench.sh`. Latest SOG15 8B Qwen3 Q4_K_M result:
-  8 generated tokens in 34.09s generation time, about 0.235 tokens/s, with
-  the full JSON stored in `docs/test/llama-bench-latest.json` and copied to
-  `files/pdocker/bench/llama-bench-latest.json` on device.
+  `scripts/android-llama-bench.sh`. Latest SOG15 8B Qwen3 Q4_K_M HTTP result:
+  3 repetitions of 8 generated tokens averaged about 0.260 tokens/s, with
+  the full JSON stored in `docs/test/llama-bench-cpu-repeat3.json` and copied
+  to `files/pdocker/bench/llama-bench-cpu-repeat3.json` on device.
+- [done] Add and run `scripts/android-llama-tool-bench.sh` for the official
+  llama.cpp `llama-bench` binary. Latest CPU fallback tool result with
+  `-p 16 -n 8 -r 3 -ngl 0 -t 8`: prompt processing about 2.40 tokens/s,
+  generation about 0.228 tokens/s, backend `BLAS`/OpenBLAS CPU.
 - [next] Add a UI/device health card that checks the real 18080 listener and
   links to the container logs rather than relying on placeholder state.
 - [next] Prevent duplicate container names after interrupted compose attempts.
