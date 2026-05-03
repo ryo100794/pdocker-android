@@ -15,7 +15,7 @@ android {
         applicationId = "io.github.ryo100794.pdocker"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
+        versionCode = 22
         versionName = "0.5.2"
         buildConfigField("String", "BUILD_TIME_UTC", "\"${Instant.now()}\"")
 

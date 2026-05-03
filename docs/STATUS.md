@@ -19,15 +19,15 @@ must become real implementations later, see [`docs/TODO.md`](TODO.md).
 
 ### 1. The "no kernel features" trick
 
-Kernel namespaces, mount, cgroups, netlink, fuse — none of them are
-available in either Termux+PRoot Ubuntu or Android app sandboxes. So
-the entire stack is built on user-space replacements:
+Kernel namespaces, mount, cgroups, netlink, fuse — none of them are available
+inside a regular Android app sandbox. So the stack is built on user-space
+replacements:
 
 | upstream Docker bits | what we use instead |
 |---|---|
 | containerd snapshotter (overlayfs) | content-addressable layer pool + per-container hardlink-clone tree |
 | overlayfs CoW | `libcow.so` LD_PRELOAD shim — break_hardlink on `open(O_WRONLY/RDWR/TRUNC)`, `truncate`, `chmod`, etc. |
-| runc (kernel ns + cgroups) | nested `proot -0 -r` (ptrace-based path translation) |
+| runc (kernel ns + cgroups) | Android `pdocker-direct` userspace executor (seccomp/ptrace path mediation) |
 | dockerd | pdockerd — Python HTTP server speaking Docker Engine API 1.43 over unix socket |
 | BuildKit | legacy builder path (FROM/RUN/COPY/ADD/WORKDIR/ENV/ARG/CMD/ENTRYPOINT in pdockerd) |
 | containerd image pull | `crane export` → tarball → Python tarfile extract |
@@ -115,15 +115,11 @@ What's been confirmed working on the current Android 15 test device:
 | crane (pure-Go) reads `/etc/resolv.conf` — Android app sandbox doesn't have it | in-process Python HTTP CONNECT proxy in pdockerd_bridge → `HTTPS_PROXY` env (uses bionic getaddrinfo) |
 | Go x509 default certFiles list misses Android | `SSL_CERT_DIR=/system/etc/security/cacerts` |
 | pdockerd's `/tmp` blob staging EACCES | `PDOCKER_TMP_DIR=runtime/tmp` |
-| proot expects Termux tmpdir → noisy warnings | `TMPDIR=runtime/tmp` (since 0.5.2) |
 | SELinux denies `link()` on app_data_file | `os.link` probe at startup → `PDOCKER_LINK_MODE=symlink` for tar extraction + clone |
 | SELinux denies `setxattr` in security.* | `_copy_no_xattr()` substitute that drops xattr/flag copy |
-| Files in app data have `exec_no_trans` SELinux deny | crane/proot/libcow shipped via jniLibs/arm64-v8a/lib*.so so they extract to `nativeLibraryDir` (the only exec-allowed location in app sandbox) |
-| proot `libtalloc.so.2` SONAME doesn't fit `lib*.so` jniLibs filter | patchelf `--replace-needed` on proot + `--set-soname` on libtalloc to use the bare `libtalloc.so` form |
-| proot fails execve "No such file or directory" without its loader | bundle Termux's `proot/loader` (18 KB static aarch64) and set `PROOT_LOADER` |
-| Android 15 rejects PRoot tracee memory rewrite during exec | no-PRoot runtime is selected by default; APK now stages `pdocker-direct`, but it advertises `process-exec=0`, so quick Engine/helper smoke passes and full Dockerfile/Compose runtime smoke fails honestly until syscall/filesystem mediation lands |
+| Files in app data have `exec_no_trans` SELinux deny | crane/docker/pdocker-direct/libcow shipped via jniLibs/arm64-v8a/lib*.so so they extract to `nativeLibraryDir` (the only exec-allowed location in app sandbox) |
+| Android 15 rejects PRoot tracee memory rewrite during exec | no-PRoot runtime is selected by default; SDK28 compat uses the scratch `pdocker-direct` executor for real process tests |
 | bionic-built libcow.so won't load inside ubuntu (libdl.so vs libdl.so.2) | ship the host-glibc libcow build instead — pdockerd just `shutil.copy`s it into the container, container's own ld.so does the loading |
-| proot cow_bind rollout | bundled self-built proot now advertises `--cow-bind`; `PDOCKER_USE_COW_BIND=1` switches pdockerd to lower/upper storage, with current syscall coverage limited to write-open copy-up |
 
 ### 5. Gaps vs upstream Docker
 
@@ -134,7 +130,7 @@ The active implementation plan for closing those gaps lives in
 ### 6. What it can do that mainline docker can't
 
 - Run as a normal Android app, no root, no Termux — single APK install on Android 8+ (API 26).
-- Run on Termux+PRoot Ubuntu without dockerd (no namespace/mount/netlink kernel features).
+- Run in a regular app sandbox without dockerd (no namespace/mount/netlink kernel features).
 - Pull and execute aarch64 Linux containers on a phone, with TLS DNS via the system resolver (HTTP CONNECT proxy in the daemon process).
 
 ## File map (Android APK)
@@ -176,9 +172,7 @@ pdocker-android/
 │   │   ├── libcrane.so               — crane 0.20.3 (static Go)
 │   │   ├── libdocker.so              — docker CLI 29.4 (stripped, 26 MB)
 │   │   ├── libpdockerpty.so          — Termux-native build (Android JNI lib)
-│   │   ├── libproot.so               — self-built proot + minimal --cow-bind, NEEDED patched -> libtalloc.so
-│   │   ├── libproot-loader.so        — proot's static bootstrap loader
-│   │   └── libtalloc.so              — Termux libtalloc 2.4.3, SONAME patched
+│   │   └── libpdockerdirect.so       — Android direct userspace executor
 │   ├── python/pdockerd_bridge.py     — Chaquopy entry: env setup + CONNECT proxy + runpy
 │   └── assets/
 │       ├── pdockerd/pdockerd         — 132 KB Python script (extracted on first launch)
@@ -188,11 +182,11 @@ pdocker-android/
 │       └── project-library/llama-cpp-gpu/
 │                                      — llama.cpp GPU/CPU workspace template
 │       └── xterm/{index.html,xterm.js,xterm.css,xterm-addon-fit.js}
-├── docker-proot-setup/                — git submodule
+├── docker-proot-setup/                — integrated backend source
 │   └── bin/pdockerd                   — the actual daemon (3500 LOC)
 └── scripts/
     ├── build-native-termux.sh         — Termux clang → libpdockerpty.so
-    ├── copy-native.sh                 — submodule + vendor/ → jniLibs
+    ├── copy-native.sh                 — backend + vendor/ → jniLibs
     ├── fetch-xterm.sh                 — pull xterm.js + FitAddon CDN
     └── build-apk.sh                   — orchestrator
 ```

@@ -1,0 +1,708 @@
+#!/usr/bin/env bash
+# pdocker - Docker-compatible CLI for PRoot environments
+# Uses crane (image pull) + chroot (execution) — no daemon required
+#
+# Commands: pull, run, exec, ps, images, rm, rmi, build, inspect, logs, save, load
+# Supports: --name, -v, -e, -w, --rm, --net, --entrypoint
+# See `pdocker help` for full usage.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+BIN_DIR="$PROJECT_DIR/docker-bin"
+LIB_DIR="$PROJECT_DIR/lib"
+
+CRANE="$BIN_DIR/crane"
+LIBCOW="$LIB_DIR/libcow.so"        # CoW shim — glibc variant (debian/ubuntu)
+LIBCOW_MUSL="$LIB_DIR/libcow-musl.so"  # CoW shim — musl variant (alpine)
+                               # on top of a `cp -al` hardlinked rootfs.
+
+# Pick an optional legacy execution backend. This script no longer auto-finds
+# Termux/system proot; set PDOCKER_RUNNER explicitly for diagnostic comparison.
+proot_runnable() {
+    # The bundled proot is built for Android (bionic interpreter
+    # /system/bin/linker64) and will ENOENT at exec time on a regular
+    # Ubuntu host even though the +x bit is set. Verify with --version.
+    local p="$1"
+    [[ -z "$p" ]] && return 1
+    if ! [[ -x "$p" ]] && ! command -v "$p" >/dev/null 2>&1; then
+        return 1
+    fi
+    "$p" --version >/dev/null 2>&1
+}
+
+find_runner() {
+    local candidates=(
+        "${PDOCKER_RUNNER:-}"
+    )
+    for c in "${candidates[@]}"; do
+        if proot_runnable "$c"; then
+            echo "$c"; return
+        fi
+    done
+    echo ""
+}
+RUNNER="$(find_runner)"
+
+# Hidden probe used by verify_all.sh to assert which proot we pick.
+if [[ "${1:-}" == "__which_runner" ]]; then
+    echo "$RUNNER"
+    exit 0
+fi
+
+# Storage layout
+: "${PDOCKER_HOME:=$HOME/.pdocker}"
+IMAGES_DIR="$PDOCKER_HOME/images"      # Unpacked rootfs per image (shared)
+CONTAINERS_DIR="$PDOCKER_HOME/containers"  # Per-container rootfs (copy or overlay-like)
+META_DIR="$PDOCKER_HOME/meta"           # Metadata (image tags, container info)
+LOGS_DIR="$PDOCKER_HOME/logs"
+
+mkdir -p "$IMAGES_DIR" "$CONTAINERS_DIR" "$META_DIR" "$LOGS_DIR"
+
+PLATFORM="${PDOCKER_PLATFORM:-linux/$(dpkg --print-architecture 2>/dev/null || uname -m)}"
+# Normalize arm64/aarch64
+PLATFORM="${PLATFORM//aarch64/arm64}"
+
+# ---- Helpers ----
+
+die() { echo "Error: $*" >&2; exit 1; }
+log() { [[ "${PDOCKER_QUIET:-}" != "1" ]] && echo "$*" >&2 || true; }
+
+# Normalize image name:  ubuntu → docker.io/library/ubuntu:latest
+# Returns the normalized name on stdout.
+normalize_image() {
+    local img="$1"
+    # Add :latest if no tag and no digest
+    if [[ "$img" != *:* && "$img" != *@* ]]; then
+        img="${img}:latest"
+    fi
+    # Add library/ for official images (no / in name part)
+    local name="${img%:*}"
+    local tag="${img#*:}"
+    if [[ "$name" != */* ]]; then
+        name="library/$name"
+    fi
+    # Add docker.io/ prefix
+    if [[ "$name" != *.*/*  && "$name" != *:*/* ]]; then
+        name="docker.io/$name"
+    fi
+    echo "${name}:${tag}"
+}
+
+# Convert image name to safe filesystem path:  docker.io/library/ubuntu:22.04 → docker.io_library_ubuntu_22.04
+image_to_path() {
+    echo "$1" | tr '/:' '__'
+}
+
+image_dir() { echo "$IMAGES_DIR/$(image_to_path "$1")"; }
+
+image_exists() { [[ -d "$(image_dir "$1")/rootfs" ]]; }
+
+# Container dir
+container_dir() { echo "$CONTAINERS_DIR/$1"; }
+
+# Pick a random container name
+gen_name() {
+    local adj=(happy clever brave fast quiet swift bold calm eager fair)
+    local noun=(fox bear wolf eagle tiger hawk otter lynx)
+    local a="${adj[$((RANDOM % ${#adj[@]}))]}"
+    local n="${noun[$((RANDOM % ${#noun[@]}))]}"
+    echo "${a}_${n}_$RANDOM"
+}
+
+# ---- Commands ----
+
+cmd_pull() {
+    local image="${1:?Usage: pdocker pull IMAGE[:TAG]}"
+    local norm_img
+    norm_img="$(normalize_image "$image")"
+
+    local dir
+    dir="$(image_dir "$norm_img")"
+
+    if [[ -d "$dir/rootfs" && "${2:-}" != "--force" ]]; then
+        log "Image $norm_img already exists (use --force to re-pull)"
+        return 0
+    fi
+
+    log "Pulling $norm_img ($PLATFORM)..."
+    mkdir -p "$dir/rootfs"
+
+    # Fetch image config (for CMD/ENTRYPOINT/ENV/WORKDIR)
+    "$CRANE" config --platform "$PLATFORM" "$norm_img" > "$dir/config.json" 2>/dev/null \
+        || die "failed to fetch config for $norm_img"
+
+    # Export flattened rootfs via crane + tar
+    "$CRANE" export --platform "$PLATFORM" "$norm_img" - \
+        | tar x -C "$dir/rootfs" 2>/dev/null \
+        || die "failed to export $norm_img"
+
+    # Record original image name
+    echo "$norm_img" > "$dir/image_ref"
+    echo "$image" > "$dir/original_name"
+    date -Iseconds > "$dir/pulled_at"
+
+    log "Pulled $norm_img"
+}
+
+cmd_images() {
+    printf "%-40s %-20s %-15s %-10s\n" "REPOSITORY" "TAG" "CREATED" "SIZE"
+    for d in "$IMAGES_DIR"/*; do
+        [[ -d "$d" ]] || continue
+        [[ -f "$d/image_ref" ]] || continue
+        local ref name tag size created
+        ref=$(cat "$d/image_ref")
+        name="${ref%:*}"
+        tag="${ref##*:}"
+        # Strip docker.io/library/ prefix for display
+        name="${name#docker.io/library/}"
+        name="${name#docker.io/}"
+        size=$(du -sh "$d/rootfs" 2>/dev/null | cut -f1)
+        created=$(cat "$d/pulled_at" 2>/dev/null | cut -c1-10)
+        printf "%-40s %-20s %-15s %-10s\n" "$name" "$tag" "$created" "$size"
+    done
+}
+
+cmd_rmi() {
+    for img in "$@"; do
+        local norm_img
+        norm_img="$(normalize_image "$img")"
+        local dir
+        dir="$(image_dir "$norm_img")"
+        if [[ -d "$dir" ]]; then
+            rm -rf "$dir"
+            log "Removed $norm_img"
+        else
+            log "Image $norm_img not found"
+        fi
+    done
+}
+
+# Prepare a container rootfs from an image.
+# Uses cp -al (hardlinks) when possible to save disk space, copy otherwise.
+prepare_container_rootfs() {
+    local image="$1"
+    local container="$2"
+
+    local img_rootfs cdir
+    img_rootfs="$(image_dir "$image")/rootfs"
+    cdir="$(container_dir "$container")"
+
+    if [[ ! -d "$img_rootfs" ]]; then
+        die "image $image not found locally (run pdocker pull first)"
+    fi
+
+    mkdir -p "$cdir"
+    log "Creating container rootfs..."
+    # Clone rootfs: hardlink regular files (cheap, CoW'd by libcow.so
+    # on write), re-create symlinks as symlinks, mkdir dirs. We can't
+    # use plain `cp -al` because PRoot rejects hardlinks on symlinks
+    # ("Operation not permitted") and silently drops them.
+    #
+    # Also: modern Debian/Ubuntu images use merged-usr — top-level
+    # /bin /lib /sbin are symlinks to usr/*. The kernel follows these
+    # fine after chroot, but PRoot's faked path-translation doesn't
+    # follow them during ld.so library resolution, so binaries fail
+    # with "libtinfo.so.6: cannot open shared object file". We work
+    # around it by resolving those top-level merged-usr symlinks into
+    # real directories that hardlink to the usr/* contents. The /usr
+    # copies and top-level copies share inodes (cheap).
+    python3 - "$img_rootfs" "$cdir/rootfs" <<'PYEOF'
+import os, shutil, stat, sys
+src, dst = sys.argv[1], sys.argv[2]
+os.makedirs(dst, exist_ok=True)
+
+# merged-usr symlinks that PRoot fails to follow during dlopen
+MERGED_USR = {"bin", "lib", "lib32", "lib64", "libx32", "sbin"}
+
+def clone_tree(s_root, d_root):
+    for root, dirs, files in os.walk(s_root, followlinks=False):
+        rel = os.path.relpath(root, s_root)
+        dstroot = d_root if rel == "." else os.path.join(d_root, rel)
+        os.makedirs(dstroot, exist_ok=True)
+        for name in dirs + files:
+            s = os.path.join(root, name)
+            d = os.path.join(dstroot, name)
+            try:
+                st = os.lstat(s)
+            except FileNotFoundError:
+                continue
+            if stat.S_ISLNK(st.st_mode):
+                if os.path.lexists(d): continue
+                os.symlink(os.readlink(s), d)
+            elif stat.S_ISREG(st.st_mode):
+                try: os.link(s, d)
+                except FileExistsError: pass
+                except OSError:
+                    try:
+                        shutil.copy2(s, d, follow_symlinks=False)
+                    except FileNotFoundError:
+                        # Broken package-manager links can disappear from
+                        # Android/PRoot views while walking. Docker ignores
+                        # such transient source entries during copy-up.
+                        pass
+        dirs[:] = [x for x in dirs if not os.path.islink(os.path.join(root, x))]
+
+clone_tree(src, dst)
+
+# Flatten merged-usr symlinks: if /bin is symlink to usr/bin, replace
+# it with a real dir and hardlink-clone usr/bin contents into it.
+for top in MERGED_USR:
+    link_path = os.path.join(dst, top)
+    if not os.path.islink(link_path):
+        continue
+    target = os.readlink(link_path)
+    if target.startswith("/"):
+        abs_target = os.path.join(dst, target.lstrip("/"))
+    else:
+        abs_target = os.path.normpath(os.path.join(dst, target))
+    if not os.path.isdir(abs_target):
+        continue
+    os.unlink(link_path)
+    os.makedirs(link_path)
+    clone_tree(abs_target, link_path)
+PYEOF
+
+    # Install CoW shim inside the rootfs so LD_PRELOAD can find it
+    # after chroot. Hidden dotfile avoids clashing with image paths.
+    # Pick the variant that matches the rootfs libc — glibc shim on
+    # alpine fails because it requests ld-linux-* (musl supplies
+    # ld-musl-* instead). Both variants build from the same source.
+    is_musl=0
+    for d in lib usr/lib; do
+        if compgen -G "$cdir/rootfs/$d/ld-musl-*.so.1" >/dev/null 2>&1; then
+            is_musl=1
+            break
+        fi
+    done
+    if [[ "$is_musl" -eq 1 && -f "$LIBCOW_MUSL" ]]; then
+        cp "$LIBCOW_MUSL" "$cdir/rootfs/.libcow.so"
+        chmod 0755 "$cdir/rootfs/.libcow.so"
+    elif [[ "$is_musl" -eq 0 && -f "$LIBCOW" ]]; then
+        cp "$LIBCOW" "$cdir/rootfs/.libcow.so"
+        chmod 0755 "$cdir/rootfs/.libcow.so"
+    fi
+
+    # Ensure essential dirs exist
+    for d in proc sys dev tmp etc; do
+        mkdir -p "$cdir/rootfs/$d"
+    done
+
+    # Bind-mount resolv.conf content (copy since we can't real mount)
+    if [[ -f /etc/resolv.conf ]]; then
+        cp /etc/resolv.conf "$cdir/rootfs/etc/resolv.conf" 2>/dev/null || true
+    fi
+
+    # /etc/hosts
+    if [[ ! -f "$cdir/rootfs/etc/hosts" ]]; then
+        cat > "$cdir/rootfs/etc/hosts" <<EOF
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   $container
+EOF
+    fi
+}
+
+# Parse JSON array like ["a","b"] or shell form like 'a b' from image config
+parse_cmd_from_config() {
+    local config="$1"
+    local field="$2"  # "Cmd" or "Entrypoint"
+    python3 -c "
+import json, sys
+with open('$config') as f:
+    c = json.load(f)
+v = c.get('config', {}).get('$field') or []
+if isinstance(v, list):
+    print(' '.join(repr(x) if ' ' in x else x for x in v))
+else:
+    print(v)
+" 2>/dev/null || echo ""
+}
+
+cmd_run() {
+    local name=""
+    local volumes=()
+    local envvars=()
+    local workdir=""
+    local auto_rm=false
+    local entrypoint_override=""
+    local interactive=false
+    local detach=false
+    local image=""
+    local cmd_args=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --name)          name="$2"; shift 2 ;;
+            --name=*)        name="${1#--name=}"; shift ;;
+            -v|--volume)     volumes+=("$2"); shift 2 ;;
+            -e|--env)        envvars+=("$2"); shift 2 ;;
+            -w|--workdir)    workdir="$2"; shift 2 ;;
+            --rm)            auto_rm=true; shift ;;
+            --entrypoint)    entrypoint_override="$2"; shift 2 ;;
+            -it|-ti)         interactive=true; shift ;;
+            -i|--interactive) interactive=true; shift ;;
+            -t|--tty)        shift ;;
+            -d|--detach)     detach=true; shift ;;
+            -p|--publish)    log "Warning: -p $2 ignored (host network only)"; shift 2 ;;
+            --net|--network) log "Warning: --network ignored (host network only)"; shift 2 ;;
+            -h|--hostname)   shift 2 ;;
+            --)              shift; break ;;
+            -*)              log "Warning: unknown flag '$1' ignored"; shift ;;
+            *)               image="$1"; shift; cmd_args=("$@"); break ;;
+        esac
+    done
+
+    [[ -z "$image" ]] && die "no image specified"
+    [[ -z "$name" ]] && name="$(gen_name)"
+
+    local norm_img
+    norm_img="$(normalize_image "$image")"
+
+    # Auto-pull if not present
+    if ! image_exists "$norm_img"; then
+        cmd_pull "$image"
+    fi
+
+    # Prepare container rootfs
+    prepare_container_rootfs "$norm_img" "$name"
+    local cdir
+    cdir="$(container_dir "$name")"
+    local rootfs="$cdir/rootfs"
+
+    # Load image config for defaults
+    local config="$(image_dir "$norm_img")/config.json"
+    local img_cmd img_ep img_wd
+    img_cmd=$(python3 -c "
+import json
+c=json.load(open('$config'))
+v=c.get('config',{}).get('Cmd') or []
+print('\x01'.join(v) if isinstance(v,list) else str(v))
+" 2>/dev/null || echo "")
+    img_ep=$(python3 -c "
+import json
+c=json.load(open('$config'))
+v=c.get('config',{}).get('Entrypoint') or []
+print('\x01'.join(v) if isinstance(v,list) else str(v))
+" 2>/dev/null || echo "")
+    img_wd=$(python3 -c "
+import json
+c=json.load(open('$config'))
+print(c.get('config',{}).get('WorkingDir') or '/')
+" 2>/dev/null || echo "/")
+
+    # Image env
+    local img_env
+    img_env=$(python3 -c "
+import json
+c=json.load(open('$config'))
+for e in (c.get('config',{}).get('Env') or []):
+    print(e)
+" 2>/dev/null || echo "")
+
+    # Determine final command
+    local final_cmd=()
+    if [[ -n "$entrypoint_override" ]]; then
+        final_cmd=("$entrypoint_override")
+    elif [[ -n "$img_ep" ]]; then
+        IFS=$'\x01' read -ra ep_parts <<< "$img_ep"
+        final_cmd=("${ep_parts[@]}")
+    fi
+    if [[ ${#cmd_args[@]} -gt 0 ]]; then
+        final_cmd+=("${cmd_args[@]}")
+    elif [[ -n "$img_cmd" && -z "$entrypoint_override" ]]; then
+        IFS=$'\x01' read -ra cmd_parts <<< "$img_cmd"
+        final_cmd+=("${cmd_parts[@]}")
+    fi
+
+    [[ ${#final_cmd[@]} -eq 0 ]] && final_cmd=("/bin/sh")
+
+    # Working dir
+    [[ -z "$workdir" ]] && workdir="$img_wd"
+
+    # Env for the *inner* container process. Must be applied INSIDE
+    # the fake root (via `env` after proot), not on the host — because
+    # LD_PRELOAD=/.libcow.so only resolves once / is the container
+    # rootfs. PDOCKER_NO_COW=1 disables the CoW shim.
+    local inner_env=(HOME=/root "TERM=${TERM:-xterm}")
+    if [[ -f "$rootfs/.libcow.so" && "${PDOCKER_NO_COW:-}" != "1" ]]; then
+        inner_env+=("LD_PRELOAD=/.libcow.so")
+    fi
+    while IFS= read -r e; do
+        [[ -z "$e" ]] && continue
+        inner_env+=("$e")
+    done <<< "$img_env"
+    for e in "${envvars[@]}"; do
+        inner_env+=("$e")
+    done
+
+    # Handle volumes: copy files in/out is not ideal; use bind where we can
+    # In proot, bind mount doesn't work, so we symlink when possible or copy
+    for v in "${volumes[@]}"; do
+        local src="${v%%:*}"
+        local dst="${v#*:}"
+        dst="${dst%%:*}"  # strip read-only modes
+        local full_dst="$rootfs$dst"
+        mkdir -p "$(dirname "$full_dst")"
+        rm -rf "$full_dst" 2>/dev/null || true
+        # Use symlink since real bind mount is not available in proot
+        ln -s "$src" "$full_dst" 2>/dev/null || cp -r "$src" "$full_dst"
+    done
+
+    # Save metadata
+    cat > "$cdir/config.json" <<EOF
+{
+  "name": "$name",
+  "image": "$norm_img",
+  "workdir": "$workdir",
+  "created": "$(date -Iseconds)",
+  "status": "running",
+  "cmd": "${final_cmd[*]}"
+}
+EOF
+
+    # Execute: prefer nested proot (fakes chroot via path translation)
+    # since GNU chroot fails in PRoot-in-PRoot nesting.
+    #
+    # We use -r (plain rootfs), NOT -R. -R auto-binds host /etc/hosts,
+    # /etc/resolv.conf, /etc/passwd, etc. into the guest, which leaks
+    # host files and makes writes escape the container (writes to
+    # /etc/hosts end up on the real host). We bind only the kernel
+    # pseudo-filesystems needed for most tools to function, since we
+    # can't mount a fresh procfs/sysfs without namespaces.
+    #
+    # `/usr/bin/env` runs inside the fake root and applies LD_PRELOAD
+    # there — setting it on the host would fail because /.libcow.so
+    # only exists inside the container rootfs.
+    local -a run_cmd
+    if [[ -n "$RUNNER" ]]; then
+        run_cmd=("$RUNNER" -0 -r "$rootfs"
+                 -b /proc -b /sys -b /dev
+                 -w "$workdir"
+                 /usr/bin/env -i "${inner_env[@]}" "${final_cmd[@]}")
+    else
+        run_cmd=(env -i "${inner_env[@]}" chroot "$rootfs" "${final_cmd[@]}")
+    fi
+
+    local log_file="$LOGS_DIR/$name.log"
+    local exit_code=0
+
+    if $detach; then
+        (
+            "${run_cmd[@]}" > "$log_file" 2>&1 &
+            echo $! > "$cdir/pid"
+        )
+        log "Container $name started (detached)"
+        echo "$name"
+    else
+        "${run_cmd[@]}" 2>&1 | tee "$log_file" >&2
+        exit_code="${PIPESTATUS[0]}"
+        sed -i "s/\"status\": \"running\"/\"status\": \"stopped\"/" "$cdir/config.json" 2>/dev/null || true
+    fi
+
+    # Auto-cleanup
+    if $auto_rm; then
+        rm -rf "$cdir"
+    fi
+
+    return "$exit_code"
+}
+
+cmd_exec() {
+    local container="${1:?Usage: pdocker exec CONTAINER CMD [ARGS]}"
+    shift
+    local cdir
+    cdir="$(container_dir "$container")"
+    [[ -d "$cdir/rootfs" ]] || die "container $container not found"
+    chroot "$cdir/rootfs" "$@"
+}
+
+cmd_ps() {
+    local show_all=false
+    [[ "${1:-}" == "-a" || "${1:-}" == "--all" ]] && show_all=true
+
+    printf "%-25s %-30s %-10s %-20s\n" "NAME" "IMAGE" "STATUS" "CREATED"
+    for d in "$CONTAINERS_DIR"/*; do
+        [[ -d "$d" ]] || continue
+        [[ -f "$d/config.json" ]] || continue
+        local name image status created
+        name=$(basename "$d")
+        image=$(python3 -c "import json; print(json.load(open('$d/config.json')).get('image',''))" 2>/dev/null || echo "")
+        status=$(python3 -c "import json; print(json.load(open('$d/config.json')).get('status',''))" 2>/dev/null || echo "")
+        created=$(python3 -c "import json; print(json.load(open('$d/config.json')).get('created','')[:19])" 2>/dev/null || echo "")
+        if ! $show_all && [[ "$status" != "running" ]]; then
+            continue
+        fi
+        # Strip registry prefix for display
+        image="${image#docker.io/library/}"
+        image="${image#docker.io/}"
+        printf "%-25s %-30s %-10s %-20s\n" "$name" "$image" "$status" "$created"
+    done
+}
+
+cmd_rm() {
+    local force=false
+    while [[ "${1:-}" == -* ]]; do
+        case "$1" in
+            -f|--force) force=true; shift ;;
+            *) shift ;;
+        esac
+    done
+    for c in "$@"; do
+        local cdir
+        cdir="$(container_dir "$c")"
+        if [[ -d "$cdir" ]]; then
+            # If running and not force, refuse
+            if [[ -f "$cdir/config.json" ]] && ! $force; then
+                local st
+                st=$(python3 -c "import json; print(json.load(open('$cdir/config.json')).get('status',''))" 2>/dev/null)
+                if [[ "$st" == "running" ]]; then
+                    die "container $c is running (use -f to force)"
+                fi
+            fi
+            rm -rf "$cdir"
+            log "Removed container $c"
+        else
+            log "Container $c not found"
+        fi
+    done
+}
+
+cmd_logs() {
+    local container="${1:?Usage: pdocker logs CONTAINER}"
+    local f="$LOGS_DIR/$container.log"
+    [[ -f "$f" ]] || die "no logs for $container"
+    cat "$f"
+}
+
+cmd_inspect() {
+    local target="${1:?Usage: pdocker inspect CONTAINER_OR_IMAGE}"
+    local cdir idir
+    cdir="$(container_dir "$target")"
+    if [[ -f "$cdir/config.json" ]]; then
+        cat "$cdir/config.json"
+        return
+    fi
+    local norm
+    norm="$(normalize_image "$target")"
+    idir="$(image_dir "$norm")"
+    if [[ -f "$idir/config.json" ]]; then
+        cat "$idir/config.json"
+        return
+    fi
+    die "no such container or image: $target"
+}
+
+cmd_save() {
+    local image="${1:?Usage: pdocker save IMAGE -o OUTPUT.tar}"
+    local out=""
+    shift
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -o|--output) out="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [[ -z "$out" ]] && die "specify output with -o"
+    local norm
+    norm="$(normalize_image "$image")"
+    local dir
+    dir="$(image_dir "$norm")"
+    [[ -d "$dir" ]] || die "image not found"
+    tar c -C "$dir" . > "$out"
+    log "Saved $norm to $out"
+}
+
+cmd_load() {
+    local input=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i|--input) input="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    [[ -z "$input" ]] && die "specify input with -i"
+    # Need to extract image_ref first to know the name
+    local tmp
+    tmp=$(mktemp -d)
+    tar x -C "$tmp" -f "$input"
+    [[ -f "$tmp/image_ref" ]] || { rm -rf "$tmp"; die "invalid pdocker archive"; }
+    local ref
+    ref=$(cat "$tmp/image_ref")
+    local dest
+    dest="$(image_dir "$ref")"
+    mkdir -p "$(dirname "$dest")"
+    rm -rf "$dest"
+    mv "$tmp" "$dest"
+    log "Loaded $ref"
+}
+
+cmd_version() {
+    cat <<EOF
+pdocker — Docker-compatible CLI for PRoot environments
+  crane:   $("$CRANE" version 2>/dev/null || echo unknown)
+  platform: $PLATFORM
+  home:    $PDOCKER_HOME
+EOF
+}
+
+usage() {
+    cat <<'HELP'
+pdocker — Docker-compatible CLI for PRoot environments
+
+Commands:
+  pull IMAGE               Pull an image from registry
+  run [OPTS] IMAGE [CMD]   Create and run a container
+  exec CONTAINER CMD       Run a command in a container's rootfs
+  ps [-a]                  List containers
+  images                   List images
+  rm [-f] CONTAINER...     Remove container(s)
+  rmi IMAGE...             Remove image(s)
+  logs CONTAINER           Show container logs
+  inspect NAME             Show container/image JSON
+  save IMAGE -o FILE.tar   Export image to tar archive
+  load -i FILE.tar         Import image from tar archive
+  build [OPTS] DIR         Use the bundled docker CLI against pdockerd
+  version                  Show versions
+  help                     Show this help
+
+Run options:
+  --name NAME              Container name
+  -v HOST:CTR              Symlink volume (bind-mount not available in proot)
+  -e KEY=VAL               Environment variable
+  -w DIR                   Working directory
+  --rm                     Auto-remove after exit
+  --entrypoint CMD         Override ENTRYPOINT
+  -d                       Detached (background) mode
+
+Note: This is NOT Docker. It uses crane + chroot and is constrained by
+what PRoot supports. No namespaces, no cgroups, no real networking.
+
+Storage: $HOME/.pdocker/  (set PDOCKER_HOME to override)
+HELP
+}
+
+# ---- Dispatch ----
+
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+    pull)       cmd_pull "$@" ;;
+    run)        cmd_run "$@" ;;
+    exec)       cmd_exec "$@" ;;
+    ps)         cmd_ps "$@" ;;
+    images)     cmd_images "$@" ;;
+    rm)         cmd_rm "$@" ;;
+    rmi)        cmd_rmi "$@" ;;
+    logs)       cmd_logs "$@" ;;
+    inspect)    cmd_inspect "$@" ;;
+    save)       cmd_save "$@" ;;
+    load)       cmd_load "$@" ;;
+    build)      die "legacy pdocker-build was removed; use the bundled docker CLI against pdockerd" ;;
+    version|--version) cmd_version ;;
+    stop|kill)  log "Note: detached containers can be killed via their PID file in $CONTAINERS_DIR/NAME/pid" ;;
+    help|--help|-h) usage ;;
+    *)          die "unknown command: $cmd (try: pdocker help)" ;;
+esac

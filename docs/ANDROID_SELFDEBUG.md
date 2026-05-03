@@ -52,10 +52,8 @@ $EDITOR app/build.gradle.kts   # versionCode = N+1, versionName = "0.x.y"
 export PATH="$HOME/opt/gradle-8.7/bin:$HOME/android-sdk/cmdline-tools/latest/bin:$PATH"
 export ANDROID_HOME=$HOME/android-sdk
 
-# DNS/TLS/symbol hackery が jniLibs に入っているため copy-native.sh が必要。
-# pdockerd を触ったときは docker-proot-setup リポ側で編集 → submodule に
-# cp してから:
-cp /root/tl/docker-proot-setup/bin/pdockerd docker-proot-setup/bin/pdockerd
+# DNS/TLS/direct-runtime assets が jniLibs/assets に入っているため copy-native.sh が必要。
+# pdockerd を触ったときは統合済み backend から asset を再ステージする:
 bash scripts/copy-native.sh
 gradle --no-daemon :app:assembleDebug
 
@@ -137,8 +135,8 @@ versionCode を比較して、変わってないときはアセット展開を *
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| `CANNOT LINK EXECUTABLE ... libtalloc.so not found` | proot の DT_NEEDED が解決できない | `LD_LIBRARY_PATH=runtime/lib` を env に、かつ copy-native.sh の `patchelf` が走ったか確認 |
-| `execve(...): No such file or directory` (proot 経由) | Android 15 で proot の ptrace execve 不可 | proot で crane をラップしない。HTTP_PROXY 経由の DNS 解決に切替 |
+| `process-exec=0` | modern flavor は direct runtime を metadata/edit/browse モードに制限している | 実行検証は compat flavor で行う |
+| direct 実行が遅い | ptrace/seccomp の停止回数、またはレイヤ snapshot が支配的 | `scripts/android-runtime-bench.sh --trace-mode seccomp` で stops と hot syscall を確認 |
 | `tls: certificate signed by unknown authority` | Go の Linux 標準 CA パスが Android に無い | `SSL_CERT_DIR=/system/etc/security/cacerts` |
 | `Permission denied: /tmp/pdblob_...` | /tmp 書き込み不可 | `PDOCKER_TMP_DIR=<filesDir>/pdocker-runtime/tmp` |
 | `tar: can't link ...: Permission denied` | SELinux が link() 拒否 | `PDOCKER_LINK_MODE=symlink` (自動 probe 済み) |

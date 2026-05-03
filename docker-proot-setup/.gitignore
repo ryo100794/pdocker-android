@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# local user data (containers, images, volumes, networks)
+pdocker-data/
+.pdocker/
+
+# Python venv (recreate via setup.sh)
+venv/
+
+# ephemeral logs
+*.log
+
+# build artefacts
+src/overlay/libcow.so
+src/overlay/libcow-musl.so
+src/overlay/libcow-android-*.so
+src/overlay/*.o
+
+# downloaded NDK
+android-ndk-*/
+
+# Unused third-party binaries (PRoot can't run them — kernel namespace/mount/
+# /proc/self/fd constraints). Kept out of the repo; fetch manually if you need
+# to experiment. See scripts/fetch-docker-bin.sh for the ones we actually use.
+docker-bin/dockerd
+docker-bin/containerd
+docker-bin/containerd-shim-runc-v2
+docker-bin/ctr
+docker-bin/runc
+docker-bin/nerdctl

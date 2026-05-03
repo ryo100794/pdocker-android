@@ -233,7 +233,6 @@ def check_license_inventory() -> list[Check]:
         return [Check("license inventory", "FAIL", "docs/THIRD_PARTY_LICENSES.md missing")]
     text = LICENSE_DOC.read_text()
     required = [
-        "PROot", "GPL-2.0-or-later", "talloc", "LGPL-3.0-or-later",
         "Docker CLI", "Docker Compose", "Apache-2.0", "go-containerregistry", "xterm.js",
         "MIT", "Chaquopy", "AndroidX", "Kotlin",
     ]

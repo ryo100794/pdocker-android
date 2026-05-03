@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# pdocker-remote - Wrapper for Docker CLI connecting to a remote daemon
+# Use this when you need full Docker features (build, port mapping, etc.)
+#
+# Setup:
+#   export DOCKER_HOST=tcp://your-server:2375
+#   # or via SSH:
+#   export DOCKER_HOST=ssh://user@your-server
+#
+# Usage:
+#   pdocker-remote build -t myapp .
+#   pdocker-remote run -d -p 8080:80 nginx
+#   pdocker-remote ps
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+DOCKER_BIN="$PROJECT_DIR/docker"
+
+if [[ ! -x "$DOCKER_BIN" ]]; then
+    echo "Error: Docker CLI not found at $DOCKER_BIN" >&2
+    exit 1
+fi
+
+if [[ -z "${DOCKER_HOST:-}" ]]; then
+    echo "Error: DOCKER_HOST is not set." >&2
+    echo "" >&2
+    echo "Set it to connect to a remote Docker daemon:" >&2
+    echo "  export DOCKER_HOST=tcp://your-server:2375" >&2
+    echo "  export DOCKER_HOST=ssh://user@your-server" >&2
+    exit 1
+fi
+
+exec "$DOCKER_BIN" "$@"

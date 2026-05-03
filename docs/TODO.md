@@ -61,6 +61,10 @@ or closes.
 - [done] Add tracer process cleanup: `PTRACE_O_EXITKILL` where available,
   separate child process group, and SIGINT/SIGTERM/SIGHUP/SIGQUIT handling so
   aborted direct runs do not leave tracee process leftovers.
+- [done] Remove `/proc/<pid>/status` ownership validation from the syscall-stop
+  hot path. It is now opt-in with `PDOCKER_DIRECT_VALIDATE_TRACEES=1` for
+  diagnostics, so normal seccomp/ptrace runs avoid one procfs open/read per
+  trapped syscall.
 - [next] Run optional PRoot/proot-like comparison only when an existing command
   is supplied; do not download or bundle external PRoot/fakechroot.
 - [doing] Profile remaining hot trapped syscalls after `newfstatat/openat` and
@@ -72,10 +76,15 @@ or closes.
   blocking wait loop at roughly the same 9.9k traced stops.
   A clean lightweight run after pruning uses
   `docker.io/library/ubuntu:22.04` and reports about 0.210s / 1,069 stops,
-  with `newfstatat` and `openat` still the top trapped syscalls.
-- [next] Optimize Python layer diff/snapshot. Default dev workspace now starts,
-  but large COPY/RUN layer snapshots can take 70-180s each; this is not ptrace
-  time and needs a separate storage/diff profiler.
+  with `newfstatat` and `openat` still the top trapped syscalls. After removing
+  default per-stop `/proc/<pid>/status` validation, the same lightweight run on
+  2026-05-03 reported about 0.141s / 1,069 stops.
+- [done] Optimize Python layer diff/snapshot by comparing against a compact
+  prior-layer path index and re-hardlinking committed snapshot files. Tiny
+  Android `RUN` layer snapshots dropped from about 3.0s to about 1.5-1.9s.
+- [next] Profile large apt/npm template layers separately from ptrace. The
+  remaining long spans are package-manager file churn and snapshot extraction,
+  not just syscall interception.
 - [next] Revisit rootfs-fd path rewriting as an opt-in optimization only after
   fd lifetime handling is proven. A trial that rewrote absolute `*at` paths to
   `openat(rootfs_fd, relative)` made apt resolver cleanup hit
@@ -130,10 +139,11 @@ or closes.
 ### Packaging / License
 
 - [done] Default no-PRoot packaging path exists.
-- [doing] Keep submodules committed as submodules and avoid unused external
-  code additions.
-- [next] Remove remaining PRoot/talloc payloads from default release packaging
-  once direct runtime covers process execution.
+- [done] Fold `docker-proot-setup` into this repository as a normal tracked
+  directory instead of a submodule.
+- [done] Remove unused bundled `proot`/`proot-runtime` payloads from the
+  integrated backend tree; optional proot comparison remains command-supplied
+  only.
 - [next] Re-run third-party notice audit after packaging changes.
 
 ## P0: Real Android Container Execution
@@ -360,7 +370,8 @@ Temporary behavior:
 
 - Image/container browsing works.
 - cow_bind merged browsing is basic.
-- `libcow`/PRoot paths are still compatibility pieces.
+- `libcow` remains the compatibility CoW shim; PRoot payloads are no longer
+  part of the default APK or integrated backend tree.
 
 Real implementation needed:
 
@@ -483,20 +494,20 @@ Acceptance:
 
 ## P2: License and PRoot Retirement
 
-Status: **default no-PRoot packaging exists; compatibility payload still
-documented**.
+Status: **default no-PRoot packaging exists; integrated backend no longer
+tracks bundled PRoot/proot-runtime payloads**.
 
 Temporary behavior:
 
-- PRoot/talloc are optional/diagnostic payloads.
-- `/root/tl/docker-proot-setup/docker-bin/libtalloc.so.2` may appear as a local
-  untracked artifact and should not be committed accidentally.
+- Optional proot comparisons are command-supplied diagnostics only.
+- PRoot/talloc artifacts may appear locally while experimenting and should not
+  be committed accidentally.
 
 Real implementation needed:
 
-1. Remove PRoot/talloc from default APK once direct executor works.
-2. Keep legacy PRoot as opt-in diagnostic flavor only if useful.
-3. Keep third-party notices aligned with actual packaged payloads.
+1. Keep legacy PRoot out of the default APK and integrated backend tree.
+2. Keep third-party notices aligned with actual packaged payloads.
+3. Remove stale PRoot-era documentation as direct runtime coverage grows.
 
 Acceptance:
 

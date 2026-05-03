@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # copy-native.sh — stage native binaries and pdockerd python tree from the
-# docker-proot-setup submodule into app/src/main/{assets,python,jniLibs}/.
+# integrated docker-proot-setup backend into app/src/main/{assets,python,jniLibs}/.
 # Run this before `gradle assembleDebug`.
 set -euo pipefail
 
@@ -9,7 +9,7 @@ SUB="$ROOT/docker-proot-setup"
 APP="$ROOT/app/src/main"
 
 if [[ ! -d "$SUB" ]]; then
-    echo "error: submodule $SUB missing — run 'git submodule update --init'" >&2
+    echo "error: backend directory missing: $SUB" >&2
     exit 1
 fi
 

@@ -131,29 +131,15 @@ def run_daemon(
         os.environ.pop("PDOCKER_DIRECT_TRACE_SYSCALLS", None)
         os.environ.pop("PDOCKER_DIRECT_TRACE_MODE", None)
 
-    runner = os.path.join(runtime_dir, "docker-bin", "proot")
-    if os.path.exists(runner):
-        os.environ["PDOCKER_RUNNER"] = runner
-    else:
-        os.environ.setdefault("PDOCKER_RUNTIME_BACKEND", "no-proot")
-        direct_executor = os.path.join(runtime_dir, "docker-bin", "pdocker-direct")
-        if os.path.exists(direct_executor):
-            os.environ["PDOCKER_DIRECT_EXECUTOR"] = direct_executor
-    # proot bootstraps every tracee through a tiny static loader binary
-    # (Termux ships /usr/libexec/proot/loader). Without PROOT_LOADER set,
-    # proot defaults to looking for libexec/proot/loader relative to
-    # itself, which our nativeLibraryDir tree doesn't have. Symptom is
-    # `execve(target): No such file or directory` (the missing thing is
-    # the loader, not target). Bridge points at the bundled copy.
-    proot_loader = os.path.join(runtime_dir, "docker-bin", "proot-loader")
-    if os.path.exists(proot_loader):
-        os.environ["PROOT_LOADER"] = proot_loader
+    os.environ.setdefault("PDOCKER_RUNTIME_BACKEND", "no-proot")
+    direct_executor = os.path.join(runtime_dir, "docker-bin", "pdocker-direct")
+    if os.path.exists(direct_executor):
+        os.environ["PDOCKER_DIRECT_EXECUTOR"] = direct_executor
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 
-    # Surface optional legacy PRoot's libtalloc via runtime/lib (Android's
-    # linker doesn't auto-search the executable's own dir on execve).
+    # Keep runtime/lib visible for libcow and future direct-runtime shims.
     lib_dir = os.path.join(runtime_dir, "lib")
     existing = os.environ.get("LD_LIBRARY_PATH", "")
     os.environ["LD_LIBRARY_PATH"] = lib_dir + (os.pathsep + existing if existing else "")

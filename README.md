@@ -1,8 +1,8 @@
 # pdocker-android
 
-Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
+Standalone Android APK wrapping the integrated `docker-proot-setup` backend.
 
-- **Daemon**: `pdockerd` (Python, from the submodule) running inside a
+- **Daemon**: `pdockerd` (Python, from the integrated backend) running inside a
   Chaquopy-hosted ForegroundService. Unix socket at
   `filesDir/pdocker/pdockerd.sock`.
 - **Resident mode**: pdockerd stays in the notification area, can be reopened
@@ -68,13 +68,12 @@ Standalone Android APK wrapping `docker-proot-setup` — no Termux required.
   layers can be edited directly, and read-only lower-layer files can be copied
   into the writable overlay before editing.
 - **CoW**: current default runtime uses bundled glibc `libcow.so` inside
-  containers; experimental `PDOCKER_USE_COW_BIND=1` uses the self-built
-  proot `--cow-bind` backend for write-open copy-up.
-- **Runtime direction**: PRoot is treated as a temporary backend. See
-  [`docs/RUNTIME_STRATEGY.md`](docs/RUNTIME_STRATEGY.md); experimental no-PRoot
-  payloads can be staged with `PDOCKER_WITH_PROOT=0`.
+  containers while snapshot and overlay semantics are moved into pdockerd and
+  the direct executor.
+- **Runtime direction**: the default APK and integrated backend do not bundle
+  PRoot/talloc/proot-loader. See [`docs/RUNTIME_STRATEGY.md`](docs/RUNTIME_STRATEGY.md).
 
-Plan document: [`docker-proot-setup/APK_PLAN.md`](docker-proot-setup/APK_PLAN.md)
+Current implementation status: [`docs/STATUS.md`](docs/STATUS.md)
 
 Compatibility and compliance records:
 
@@ -87,7 +86,7 @@ Compatibility and compliance records:
 - `python3 scripts/verify-project-library.py`
 - `python3 scripts/verify-ui-actions.py`
 
-## Build (from Termux+PRoot Ubuntu aarch64)
+## Build (aarch64 Android/Linux shell)
 
 ```sh
 git clone <this repo>

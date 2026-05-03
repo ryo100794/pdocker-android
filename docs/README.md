@@ -17,7 +17,6 @@ Use this file to avoid duplicating the same status or plan in multiple docs.
 | Default dev workspace | [`DEFAULT_DEV_WORKSPACE.md`](DEFAULT_DEV_WORKSPACE.md) | Template contents and expected user flow. |
 | Android self-debug workflow | [`ANDROID_SELFDEBUG.md`](ANDROID_SELFDEBUG.md) | ADB/debugging procedure. |
 | Third-party licenses | [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) | Distribution/license inventory. |
-| Overlay/storage roadmap | [`OVERLAYFS_ROADMAP.md`](OVERLAYFS_ROADMAP.md) | Storage semantics and PRoot/cow_bind history. |
 
 When adding a new doc, prefer linking to the canonical source above instead of
 copying large status tables or TODO lists.

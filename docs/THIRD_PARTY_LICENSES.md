@@ -3,14 +3,11 @@
 Snapshot date: 2026-05-01.
 
 This inventory covers externally sourced code and binary payloads bundled by
-pdocker-android. The current set is usable for APK distribution when the notice
-asset is included, GPL/LGPL source availability is maintained, and upstream
-license texts/notices are preserved.
+pdocker-android. The current default APK set is usable for distribution when
+the notice asset is included and upstream license texts/notices are preserved.
 
 | Component | Where used | License | Distribution condition | Status |
 |---|---|---|---|---|
-| PROot | `vendor/lib/proot`, `vendor/lib/proot-loader`, packaged as `libproot.so` and `libproot-loader.so`; patched by `scripts/proot-patches/proot-cow-bind.patch` | GPL-2.0-or-later | Provide corresponding source, local patch, and build script for the shipped binary. Keep GPL notice. | OK: source origin, patch, and build script are recorded in this repo. |
-| talloc | `vendor/lib/libtalloc.so.2`, packaged as `libtalloc.so`; PRoot dependency | LGPL-3.0-or-later | Keep LGPL notice. Dynamic library form must remain replaceable/relinkable in practice. | OK: shipped as separate shared object; notice added. |
 | Docker CLI | `vendor/lib/docker`, packaged as `libdocker.so` and exposed as `docker` at runtime | Apache-2.0 | Include license/notice; preserve Docker upstream notices. Export-control notice should remain visible to distributors. | OK with notice asset. |
 | Docker Compose plugin | `vendor/lib/docker-compose`, packaged as `libdocker-compose.so` and exposed as `docker-bin/cli-plugins/docker-compose` at runtime | Apache-2.0 | Include license/notice; preserve Docker Compose upstream notices. | OK with notice asset. |
 | go-containerregistry / crane | `docker-proot-setup/docker-bin/crane`, packaged as `libcrane.so` | Apache-2.0 | Include license notice. | OK with notice asset. |
@@ -25,11 +22,6 @@ license texts/notices are preserved.
 
 ## Source and license references
 
-- PROot upstream: https://github.com/proot-me/proot
-- PRoot license identifier recorded by upstream: `GPL-2.0-or-later`
-- Local PRoot patch: `scripts/proot-patches/proot-cow-bind.patch`
-- Local PRoot build recipe: `scripts/build-proot.sh`
-- talloc upstream: https://www.samba.org/talloc/
 - Docker CLI upstream: https://github.com/docker/cli
 - Docker Compose upstream: https://github.com/docker/compose
 - go-containerregistry/crane upstream: https://github.com/google/go-containerregistry
@@ -41,14 +33,9 @@ license texts/notices are preserved.
 ## Compliance notes
 
 - The APK must include `assets/oss-licenses/THIRD_PARTY_NOTICES.md`.
-- Any public binary APK release must publish or link the exact PRoot source,
-  `cow_bind` patch, and build instructions used to produce `libproot.so`.
-- PRoot is now opt-in. The default APK staging path omits `libproot.so`,
-  `libproot-loader.so`, and `libtalloc.so`; set `PDOCKER_WITH_PROOT=1` only for
-  a legacy diagnostic build. The default no-PRoot build is not yet a complete
-  container runtime.
-- Because `libtalloc.so` is LGPL, keep it as a separate shared object and do
-  not merge it into a non-replaceable binary.
+- The default APK staging path omits `libproot.so`, `libproot-loader.so`, and
+  `libtalloc.so`. Optional proot comparisons are command-supplied developer
+  diagnostics only, not bundled app payloads.
 - Docker CLI, Docker Compose, and crane are permissively licensed, but their
   notices should stay available in documentation or the app notice asset.
 - No external source in this inventory blocks distribution under the current

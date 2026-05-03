@@ -2,8 +2,6 @@
 
 pdocker-android bundles or depends on the following third-party components:
 
-- PROot: GPL-2.0-or-later, https://github.com/proot-me/proot
-- talloc: LGPL-3.0-or-later, https://www.samba.org/talloc/
 - Docker CLI: Apache-2.0, https://github.com/docker/cli
 - Docker Compose: Apache-2.0, https://github.com/docker/compose
 - go-containerregistry / crane: Apache-2.0, https://github.com/google/go-containerregistry
@@ -11,13 +9,9 @@ pdocker-android bundles or depends on the following third-party components:
 - Chaquopy: open-source builds with license restrictions removed since 12.0.1, https://chaquo.com/chaquopy/license/
 - Android Gradle Plugin, AndroidX, Material Components, Kotlin: Apache-2.0
 
-Corresponding source for the shipped PROot binary is reproducible from the
-upstream PROot source plus this repository's `scripts/proot-patches/` and
-`scripts/build-proot.sh`.
-
-PRoot is an optional compatibility backend. Default builds omit the
-PRoot/talloc payload; set `PDOCKER_WITH_PROOT=1` only for a legacy diagnostic
-build while the replacement runtime is incomplete.
+The default APK does not bundle PRoot, proot-loader, or talloc. Optional
+external proot comparisons are developer-supplied diagnostics only and are not
+part of the shipped app payload.
 
 See `docs/THIRD_PARTY_LICENSES.md` in the source repository for the maintained
 license inventory and distribution notes.

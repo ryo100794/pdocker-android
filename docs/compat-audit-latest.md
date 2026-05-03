@@ -1,6 +1,6 @@
 # pdocker compatibility audit result
 
-Summary: PASS=63 FAIL=0 SKIP=0
+Summary: PASS=59 FAIL=0 SKIP=2
 
 | status | check | detail |
 |---|---|---|
@@ -23,18 +23,18 @@ Summary: PASS=63 FAIL=0 SKIP=0
 | PASS | protocol token: timeNano |  |
 | PASS | protocol token: record_event |  |
 | PASS | protocol token: not active yet |  |
-| PASS | protocol: daemon start | /tmp/pdocker-compat-c85u_pkr/pdockerd.sock |
-| PASS | protocol: GET /_ping | status=200, headers={'server': 'pdockerd/0.1 Python/3.13.3', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'api-version': '1.43', 'ostype': 'linux', 'docker-experimental': 'false', 'content-type': 'text/plain', 'content-length': '2'}, body=b'OK' |
-| PASS | protocol: GET /version | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '581'}, body=b'{"Platform": {"Name": "pdockerd"}, "Components": [{"Name": "Engine", "Version": "0.1.0", "Details": {"ApiVersion": "1.43' |
-| PASS | protocol: GET /info | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '1759'}, body=b'{"ID": "PDOCKER:PROOT", "Containers": 0, "ContainersRunning": 0, "ContainersPaused": 0, "ContainersStopped": 0, "Images"' |
-| PASS | protocol: GET /containers/json?all=1 | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '2'}, body=b'[]' |
-| PASS | protocol: GET /images/json | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '2'}, body=b'[]' |
-| PASS | protocol: GET /volumes | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '31'}, body=b'{"Volumes": [], "Warnings": []}' |
-| PASS | protocol: GET /networks | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '199'}, body=b'[{"Name": "bridge", "Id": "bridge", "Created": "2026-01-01T00:00:00Z", "Scope": "local", "Driver": "host", "IPAM": {"Dri' |
-| PASS | protocol: GET /events?since=0&until=0 | status=200, headers={'server': 'pdockerd/0.1 Python/3.13.3', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43'}, body=b'' |
-| PASS | protocol: GET /v1.43/version | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sat, 02 May 2026 11:42:53 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '581'}, body=b'{"Platform": {"Name": "pdockerd"}, "Components": [{"Name": "Engine", "Version": "0.1.0", "Details": {"ApiVersion": "1.43' |
+| PASS | protocol: daemon start | /tmp/pdocker-compat-koz9hern/pdockerd.sock |
+| PASS | protocol: GET /_ping | status=200, headers={'server': 'pdockerd/0.1 Python/3.13.3', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'api-version': '1.43', 'ostype': 'linux', 'docker-experimental': 'false', 'content-type': 'text/plain', 'content-length': '2'}, body=b'OK' |
+| PASS | protocol: GET /version | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '581'}, body=b'{"Platform": {"Name": "pdockerd"}, "Components": [{"Name": "Engine", "Version": "0.1.0", "Details": {"ApiVersion": "1.43' |
+| PASS | protocol: GET /info | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '1819'}, body=b'{"ID": "PDOCKER:DIRECT", "Containers": 0, "ContainersRunning": 0, "ContainersPaused": 0, "ContainersStopped": 0, "Images' |
+| PASS | protocol: GET /containers/json?all=1 | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '2'}, body=b'[]' |
+| PASS | protocol: GET /images/json | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '2'}, body=b'[]' |
+| PASS | protocol: GET /volumes | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '31'}, body=b'{"Volumes": [], "Warnings": []}' |
+| PASS | protocol: GET /networks | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '199'}, body=b'[{"Name": "bridge", "Id": "bridge", "Created": "2026-01-01T00:00:00Z", "Scope": "local", "Driver": "host", "IPAM": {"Dri' |
+| PASS | protocol: GET /events?since=0&until=0 | status=200, headers={'server': 'pdockerd/0.1 Python/3.13.3', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43'}, body=b'' |
+| PASS | protocol: GET /v1.43/version | status=200, headers={'server': 'pdockerd/0.1', 'date': 'Sun, 03 May 2026 06:16:36 GMT', 'content-type': 'application/json', 'api-version': '1.43', 'docker-experimental': 'false', 'ostype': 'linux', 'content-length': '581'}, body=b'{"Platform": {"Name": "pdockerd"}, "Components": [{"Name": "Engine", "Version": "0.1.0", "Details": {"ApiVersion": "1.43' |
 | PASS | docker CLI: version negotiation | Client:<br> Version:           29.4.0<br> API version:       1.43 (downgraded from 1.54)<br> Go version:        go1.26.1<br> Git commit:        9d7ad9f<br> Built:             Tue Apr  7 08:34:25 2026<br> OS/Arch:           linux/arm64<br> Context:           default<br><br>Server: pdockerd<br> Engine:<br>  Version:          0.1.0<br>  API version:      1.43 (minimum version 1.12)<br>  Go version:       none<br>  Git commit:       pdocker<br>  Built:            Fri Apr 17 00:00:00 2026<br>  OS/Arch:          linux/arm64<br>  Experimental:     false<br> |
-| PASS | apk: debug artifact | /root/tl/pdocker-android/app/build/outputs/apk/debug/app-debug.apk |
+| PASS | apk: debug artifact | /root/tl/pdocker-android/app/build/outputs/apk/modern/debug/app-modern-debug.apk |
 | PASS | apk payload: lib/arm64-v8a/libcrane.so |  |
 | PASS | apk payload: lib/arm64-v8a/libdocker.so |  |
 | PASS | apk payload: lib/arm64-v8a/libdocker-compose.so |  |
@@ -47,14 +47,12 @@ Summary: PASS=63 FAIL=0 SKIP=0
 | PASS | apk payload: assets/project-library/llama-cpp-gpu/scripts/pdocker-gpu-profile.sh |  |
 | PASS | apk payload: assets/xterm/xterm.js |  |
 | PASS | apk payload: assets/oss-licenses/THIRD_PARTY_NOTICES.md |  |
+| SKIP | apk optional direct payload: lib/arm64-v8a/libpdocker-rootfs-shim.so |  |
+| SKIP | apk optional direct payload: lib/arm64-v8a/libpdocker-ld-linux-aarch64.so |  |
 | PASS | no-proot apk payload omits: lib/arm64-v8a/libproot.so |  |
 | PASS | no-proot apk payload omits: lib/arm64-v8a/libproot-loader.so |  |
 | PASS | no-proot apk payload omits: lib/arm64-v8a/libtalloc.so |  |
 | PASS | no-proot runtime selector |  |
-| PASS | license token: PROot |  |
-| PASS | license token: GPL-2.0-or-later |  |
-| PASS | license token: talloc |  |
-| PASS | license token: LGPL-3.0-or-later |  |
 | PASS | license token: Docker CLI |  |
 | PASS | license token: Docker Compose |  |
 | PASS | license token: Apache-2.0 |  |

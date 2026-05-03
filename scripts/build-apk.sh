@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-apk.sh — end-to-end build from PRoot Ubuntu aarch64.
+# build-apk.sh — end-to-end Android APK build from an aarch64 shell.
 # Expects: JDK 17, gradle, Android cmdline-tools, NDK r26d.
 set -euo pipefail
 
@@ -16,22 +16,16 @@ case "$PDOCKER_ANDROID_FLAVOR" in
     modern)
         GRADLE_TASK=":app:assembleModernDebug"
         APK="$ROOT/app/build/outputs/apk/modern/debug/app-modern-debug.apk"
-        : "${PDOCKER_WITH_PROOT:=0}"
         ;;
     compat)
         GRADLE_TASK=":app:assembleCompatDebug"
         APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"
-        : "${PDOCKER_WITH_PROOT:=0}"
         ;;
     *)
         echo "ABORT: PDOCKER_ANDROID_FLAVOR must be 'modern' or 'compat' (got '$PDOCKER_ANDROID_FLAVOR')" >&2
         exit 2
         ;;
 esac
-export PDOCKER_WITH_PROOT
-
-# Ensure submodule is populated.
-git submodule update --init --recursive
 
 # Build libcow.so + libpdockerpty.so natively with Termux aarch64 clang.
 # Bypasses the x86_64-only NDK toolchain (which would need box64 emulation
@@ -43,7 +37,7 @@ bash scripts/build-native-termux.sh
 # RuntimeBackend switch remains usable without adding a GPL/PRoot payload.
 echo "==> skipping external proot build (pdocker-direct compat runtime)"
 
-# Stage submodule assets (crane, optional proot, pdockerd python tree).
+# Stage integrated backend assets (crane/docker, pdockerd python tree).
 bash scripts/copy-native.sh
 
 # Gradle build. Use the checked-in wrapper so the included :app project and

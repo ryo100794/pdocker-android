@@ -32,6 +32,7 @@ static int g_stats = 0;
 static int g_selective_trace = 0;
 static int g_poll_wait = 0;
 static int g_rootfd_rewrite = 0;
+static int g_validate_tracees = 0;
 static int g_rootfs_fd = -1;
 static volatile sig_atomic_t g_trace_child_pgid = -1;
 static unsigned long long g_syscall_counts[512];
@@ -1818,7 +1819,7 @@ static int trace_and_exec(char *const exec_argv[], const char *rootfs, const cha
         if (!WIFSTOPPED(status)) continue;
         if (g_stats) g_stop_count++;
 
-        if (!tracee_is_still_owned(getpid(), got)) {
+        if (g_validate_tracees && !tracee_is_still_owned(getpid(), got)) {
             char summary[160];
             tracee_status_summary(got, summary, sizeof(summary));
             fprintf(stderr,
@@ -2084,6 +2085,7 @@ static int run_command(int argc, char **argv) {
     g_stats = env_flag_enabled("PDOCKER_DIRECT_STATS");
     g_poll_wait = env_flag_enabled("PDOCKER_DIRECT_POLL_WAIT");
     g_rootfd_rewrite = env_flag_enabled("PDOCKER_DIRECT_ROOTFD_REWRITE");
+    g_validate_tracees = env_flag_enabled("PDOCKER_DIRECT_VALIDATE_TRACEES");
     const char *trace_mode = getenv("PDOCKER_DIRECT_TRACE_MODE");
     g_selective_trace = !trace_mode || strcmp(trace_mode, "syscall") != 0;
     const char *sync_env = getenv("PDOCKER_DIRECT_SYNC_USEC");

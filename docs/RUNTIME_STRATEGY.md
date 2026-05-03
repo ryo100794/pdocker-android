@@ -1,15 +1,17 @@
 # Runtime strategy: retiring PRoot
 
-Snapshot date: 2026-05-02.
+Snapshot date: 2026-05-03.
 
 For the API 29+ direct-execution feasibility boundary, see
 [API29_DIRECT_EXEC_FEASIBILITY.md](API29_DIRECT_EXEC_FEASIBILITY.md). That note
 tracks which low-level pieces are proved and which app-domain blockers remain
 unproved.
 
-PRoot is the current execution backend because it gives an unprivileged Android
-app a usable Linux rootfs view without `chroot`, mount namespaces, overlayfs, or
-cgroups. It should not remain the long-term core runtime.
+The default APK and integrated backend no longer bundle PRoot, proot-loader, or
+talloc. PRoot was the earlier execution backend because it gave an unprivileged
+Android app a Linux rootfs view without `chroot`, mount namespaces, overlayfs,
+or cgroups, but it is now treated only as a command-supplied diagnostic
+comparison.
 
 ## Why remove it
 
@@ -61,61 +63,38 @@ pdocker-direct-executor:1
 process-exec=0
 ```
 
-Focused direct runner probe:
-
-```sh
-adb shell "run-as io.github.ryo100794.pdocker sh -c 'cd files; R=\$PWD/pdocker-runtime; ROOT=\$(find \$PWD/pdocker/containers -maxdepth 2 -path \"*/rootfs\" | tail -1); export LD_LIBRARY_PATH=\$R/lib PROOT_LOADER=\$R/docker-bin/proot-loader TMPDIR=\$R/tmp PROOT_TMP_DIR=\$R/tmp PROOT_NO_SECCOMP=1; \$R/docker-bin/proot -v 9 -0 -r \$ROOT -b /proc -b /sys -b /dev -w / /bin/sh -c \"echo direct-ok\"; echo rc=\$?'"
-```
-
-Observed failure:
-
-- `translate_execve_enter()` reaches the first `execve`.
-- PRoot returns `-EFAULT` before loader handoff.
-- Experiments that moved the cached stack pointer first, and experiments that
-  attempted shorter in-place loader path rewriting, still failed. This points
-  at tracee memory write restrictions rather than only path length, tmpdir, or
-  seccomp.
-
 ## Current dependency points
 
 | Area | Current PRoot usage | Removal target |
 |---|---|---|
-| container start/exec | `pdockerd` builds `proot -0 -r ROOTFS ...` argv | RuntimeBackend interface |
-| bind mounts | `proot -b host:guest` | backend-owned mount/path mapping |
-| overlay experiment | patched `proot --cow-bind upper:lower:/` | independent lower/upper filesystem engine |
-| DNS workaround for crane | formerly considered PRoot bind of `resolv.conf` | already moved to HTTP CONNECT proxy |
-| APK packaging | `libproot.so`, `libproot-loader.so`, `libtalloc.so` | optional payload, then removed default |
+| container start/exec | none in default APK; compat uses `pdocker-direct` | broaden RuntimeBackend coverage |
+| bind mounts | metadata/path mapping in pdockerd | backend-owned mount/path mapping |
+| overlay experiment | historical patched PRoot path removed | independent lower/upper filesystem engine |
+| DNS workaround for crane | no PRoot dependency | already moved to HTTP CONNECT proxy |
+| APK packaging | no `libproot.so`, `libproot-loader.so`, or `libtalloc.so` | keep default payload clean |
 
-## Build-time switch
+## Build-time packaging
 
-The APK can now be staged without PRoot payloads:
-
-```sh
-PDOCKER_WITH_PROOT=0 bash scripts/build-apk.sh  # default no-PRoot payload
-PDOCKER_WITH_PROOT=1 bash scripts/build-apk.sh  # legacy diagnostic payload
-```
-
-This is an experimental packaging mode. Without a replacement runtime,
-container start/exec will not be feature-complete on Android. It exists so the
-APK distribution shape can be tested while the backend replacement lands.
+The default and compat APK staging paths omit PRoot payloads. Optional PRoot or
+proot-like comparisons must be supplied as an existing command to benchmark
+scripts; this repository must not download, build, or bundle them by default.
 
 ## Runtime backend switch
 
 `pdockerd` now has an explicit runtime backend selector:
 
 ```sh
-PDOCKER_RUNTIME_BACKEND=auto      # default: PRoot when available, else chroot
-PDOCKER_RUNTIME_BACKEND=proot     # require PRoot
+PDOCKER_RUNTIME_BACKEND=auto      # default direct/chroot selection
+PDOCKER_RUNTIME_BACKEND=proot     # require explicit PDOCKER_RUNNER diagnostic
 PDOCKER_RUNTIME_BACKEND=chroot    # Linux host fallback
 PDOCKER_RUNTIME_BACKEND=no-proot  # Android direct backend metadata mode
 ```
 
 The `no-proot` backend is intentionally visible before process execution is
-complete. With it selected, `/info` reports `Driver=pdocker-direct` and runtime
-operations return a clear "not implemented yet" diagnostic instead of silently
-falling back to PRoot. This lets the APK and tests exercise the PRoot-free
-packaging shape while image pull, image browsing, Compose/Dockerfile editing,
-and metadata workflows continue to use the Engine API.
+complete on modern API levels. With it selected, `/info` reports
+`Driver=pdocker-direct` and runtime operations return a clear diagnostic instead
+of silently falling back to PRoot. The SDK28 compat flavor enables the direct
+executor process path for real Dockerfile/Compose smoke tests.
 
 Important: `no-proot` must not bind service ports or report a service as
 running unless the requested container process is actually executing. Earlier
@@ -128,7 +107,7 @@ compatibility and should stay out of product behavior.
    - Backend selector and neutral driver reporting: **started**.
    - Add a fuller backend contract around `start`, `exec`, `stop`, `logs`,
      `archive`, and `mounts`.
-   - Keep `proot` as one backend, not the daemon's identity.
+   - Keep any external PRoot comparison outside the default repository payload.
 
 2. **No-PRoot rootfs executor**
    - Use app-owned process spawning plus explicit filesystem mediation where
@@ -145,16 +124,15 @@ compatibility and should stay out of product behavior.
    - Keep `libcow` only as a compatibility fallback until write-path coverage is
      replaced.
 
-4. **Optional compatibility plugin**
-   - If PRoot remains useful for older devices or dev builds, ship it as an
-     opt-in build flavor or external add-on with clear GPL source links.
-   - Default APK target should not contain `libproot.so`, `libproot-loader.so`,
-     or `libtalloc.so`.
+4. **Optional external comparison**
+   - If PRoot remains useful for profiling on older devices, pass an existing
+     command to `scripts/android-runtime-bench.sh --proot-cmd ...`.
+   - Do not commit or bundle PRoot/talloc/proot-loader artifacts without an
+     explicit license and architecture decision.
 
 ## Acceptance criteria for default removal
 
-- `PDOCKER_WITH_PROOT=0 bash scripts/build-apk.sh` produces an APK with no PRoot
-  or talloc payload.
+- `bash scripts/build-apk.sh` produces an APK with no PRoot or talloc payload.
 - `docker pull`, image listing, image file browsing, Dockerfile/Compose editing,
   and logs UI still work without PRoot.
 - A replacement backend can run at least:

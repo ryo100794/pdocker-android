@@ -50,7 +50,7 @@ bash scripts/build-apk.sh
 python3 scripts/compat-audit.py --output docs/compat-audit-latest.md
 ```
 
-Backend-only regression remains available in the submodule:
+Backend-only regression remains available in the integrated backend tree:
 
 ```sh
 bash scripts/verify-heavy.sh --backend-quick
@@ -108,16 +108,16 @@ suite and should be recorded separately when it is run to completion.
 | Engine API negotiation | Good | `/_ping`, `/version`, `/info`, API prefix stripping, and `Api-Version` response headers are implemented. |
 | Image pull/list/inspect/delete | Good | Pull uses `crane export`; public registries work, private registry auth is not complete. |
 | Image save/load | Partial | Docker-style tar exchange works for the implemented flattened image format. Multi-platform indexes, zstd layers, and all OCI edge cases are not complete. |
-| Container create/start/stop/kill/wait/rm | Good | Implemented through PRoot runner and state files. No cgroups or namespaces. |
+| Container create/start/stop/kill/wait/rm | Good | Implemented through the Android direct userspace runner and state files. No cgroups or namespaces. |
 | Logs/attach/exec | Partial | Raw stream and hijack paths exist. Non-TTY exec works; `docker run -t` and `docker exec -it` still need PTY integration into the container side. |
 | `docker cp` archive API | Partial | HEAD/GET/PUT support Docker tar and `X-Docker-Container-Path-Stat`. cow_bind reads prefer upper then lower, writes target upper. Directory merge of lower+upper entries is still incomplete. |
 | Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. |
 | Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
-| Volumes/binds | Partial | Named volumes map to host directories; bind mounts use PRoot. No kernel mount propagation or tmpfs semantics. |
-| Dockerfile build | Partial | Dockerfiles use Docker's standard instruction surface only; pdocker-specific Dockerfile instructions are rejected instead of treated as extensions. Legacy builder supports common instructions and a practical `.dockerignore` subset on the backend host. On Android direct mode, `RUN` now fails honestly until a real process executor exists. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
-| Compose | Partial | Compose v2.35.1 is bundled in the APK and `docker compose version` works on Android. Basic up/down flows work when the build/runtime path stays inside the supported subset; Android compose with a built service is currently blocked by the same PRoot exec failure. |
+| Volumes/binds | Partial | Named volumes map to host directories; bind mounts are represented in runtime metadata and direct-run argv. No kernel mount propagation or tmpfs semantics. |
+| Dockerfile build | Partial | Dockerfiles use Docker's standard instruction surface only; pdocker-specific Dockerfile instructions are rejected instead of treated as extensions. Legacy builder supports common instructions and a practical `.dockerignore` subset on the backend host. On Android direct mode, real `RUN` works for the current supported subset. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
+| Compose | Partial | Compose v2.35.1 is bundled in the APK and `docker compose version` works on Android. Basic up/down flows work when the build/runtime path stays inside the supported subset; the default VS Code/Codex workspace has been built and started on-device through the direct runtime. |
 | Events | Partial | `/events` now persists Docker-style JSONL lifecycle events and live-streams new events with basic `since`, `until`, and filter handling. It covers container/image/network/volume/build events, but does not yet reproduce every daemon-internal event emitted by Moby. |
-| APK data exchange | Good | APK includes pdockerd, Docker CLI, crane, proot, proot-loader, libcow, talloc, xterm assets, and license notice asset. |
+| APK data exchange | Good | APK includes pdockerd, Docker CLI, crane, libcow, pdocker-direct, xterm assets, and license notice asset. It omits PRoot, proot-loader, and talloc. |
 
 ## Protocol coverage
 
