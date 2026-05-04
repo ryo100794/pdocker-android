@@ -203,6 +203,8 @@ def main() -> int:
     require("code editor keeps indent/outdent actions", "indentSelection()" in editor_src and "outdentSelection()" in editor_src)
     require("code editor supports search and replace", "findNext()" in editor_src and "replaceAllMatches()" in editor_src)
     require("code editor supports pinch zoom", "ScaleGestureDetector" in editor_src and "editorFontSize" in editor_src)
+    require("code editor syncs line numbers while scrolling", "setOnScrollChangeListener" in editor_src and "lineNumbers.scrollY = editor.scrollY" in editor_src)
+    require("code editor supports forgiving horizontal drag scroll", "horizontalPan" in editor_src and "horizontalScroller.scrollBy" in editor_src and "abs(totalDx) > abs(totalDy) * 0.55f" in editor_src)
 
     require("localized terminal title formats exist", "terminal_compose_up_fmt" in string_src and "terminal_docker_build_fmt" in string_src)
     return 0

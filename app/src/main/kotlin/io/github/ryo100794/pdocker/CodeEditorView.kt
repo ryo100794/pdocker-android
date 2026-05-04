@@ -13,12 +13,15 @@ import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import android.view.ViewConfiguration
 import android.widget.Button
 import android.widget.EditText
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class CodeEditorView(
     context: Context,
@@ -29,12 +32,18 @@ class CodeEditorView(
     private val message: TextView
     private val lineNumbers: TextView
     private val editor: EditText
+    private val horizontalScroller: HorizontalScrollView
     private val searchField: EditText
     private val replaceField: EditText
     private var spacesMode = true
     private var tabWidth = 4
     private var highlighting = false
     private var editorFontSize = 14f
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private var dragStartX = 0f
+    private var dragStartY = 0f
+    private var lastDragX = 0f
+    private var horizontalPan = false
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
             editorFontSize = (editorFontSize * detector.scaleFactor).coerceIn(10f, 24f)
@@ -68,6 +77,7 @@ class CodeEditorView(
             gravity = Gravity.END or Gravity.TOP
             alpha = 0.58f
             setPadding(0, 8, 10, 8)
+            includeFontPadding = true
         }
         editor = EditText(context).apply {
             setTextIsSelectable(true)
@@ -92,8 +102,11 @@ class CodeEditorView(
                     true
                 } else {
                     scaleDetector.onTouchEvent(event)
-                    false
+                    handleSinglePointerEditorTouch(event)
                 }
+            }
+            setOnScrollChangeListener { _, _, scrollY, _, _ ->
+                lineNumbers.scrollY = scrollY
             }
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -104,6 +117,12 @@ class CodeEditorView(
                 }
             })
         }
+        horizontalScroller = HorizontalScrollView(context).apply {
+            isFillViewport = true
+            isHorizontalScrollBarEnabled = true
+            overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(editor, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
+        }
 
         addView(toolPalette(pathView))
         addView(searchPalette())
@@ -112,7 +131,7 @@ class CodeEditorView(
         addView(LinearLayout(context).apply {
             orientation = HORIZONTAL
             addView(lineNumbers, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT))
-            addView(HorizontalScrollView(context).apply { addView(editor) }, LayoutParams(
+            addView(horizontalScroller, LayoutParams(
                 0,
                 LayoutParams.MATCH_PARENT,
                 1f,
@@ -124,6 +143,7 @@ class CodeEditorView(
     private fun applyEditorFontSize() {
         editor.textSize = editorFontSize
         lineNumbers.textSize = editorFontSize
+        syncLineNumberScroll()
     }
 
     private fun toolPalette(pathView: TextView): LinearLayout =
@@ -335,6 +355,47 @@ class CodeEditorView(
     private fun updateLineNumbers() {
         val count = editor.text.count { it == '\n' } + 1
         lineNumbers.text = (1..count).joinToString("\n")
+        syncLineNumberScroll()
+    }
+
+    private fun syncLineNumberScroll() {
+        lineNumbers.scrollY = editor.scrollY
+    }
+
+    private fun handleSinglePointerEditorTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragStartX = event.x
+                dragStartY = event.y
+                lastDragX = event.x
+                horizontalPan = false
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val totalDx = event.x - dragStartX
+                val totalDy = event.y - dragStartY
+                if (!horizontalPan &&
+                    abs(totalDx) > touchSlop &&
+                    abs(totalDx) > abs(totalDy) * 0.55f
+                ) {
+                    horizontalPan = true
+                    editor.clearFocus()
+                }
+                if (horizontalPan) {
+                    val dx = (lastDragX - event.x).roundToInt()
+                    if (dx != 0) horizontalScroller.scrollBy(dx, 0)
+                    lastDragX = event.x
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
+                val consumed = horizontalPan
+                horizontalPan = false
+                return consumed
+            }
+        }
+        return false
     }
 
     private fun applyHighlighting(text: Editable) {
