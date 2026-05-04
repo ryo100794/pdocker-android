@@ -53,6 +53,7 @@ cuda_signal="false"
 vulkan_env_signal="false"
 vulkan_icd_signal="false"
 vulkaninfo_signal="false"
+pdocker_vulkan_icd_signal="false"
 nvidia_device_signal="false"
 opencl_signal="false"
 bridge_shim_signal="false"
@@ -79,6 +80,9 @@ if [[ "${PDOCKER_VULKAN_PASSTHROUGH:-}" = "1" ]]; then
 fi
 if [[ -n "${VK_ICD_FILENAMES:-}" || -e /etc/vulkan/icd.d/pdocker-android.json ]]; then
   vulkan_icd_signal="true"
+fi
+if [[ "${PDOCKER_VULKAN_ICD_KIND:-}" = pdocker-* || "${PDOCKER_VULKAN_ICD:-}" = *pdocker-vulkan-icd.so ]]; then
+  pdocker_vulkan_icd_signal="true"
 fi
 if [[ -e /dev/nvidia0 ]]; then
   nvidia_device_signal="true"
@@ -116,6 +120,14 @@ elif [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || "${PDOCKER_CUDA_COMPAT:-}
   else
     reason="CUDA-compatible mode was requested, but no validated glibc GPU bridge exists; using CPU fallback"
   fi
+elif [[ "$pdocker_vulkan_icd_signal" = "true" && "${PDOCKER_VULKAN_ICD_READY:-0}" != "1" ]]; then
+  backend="cpu"
+  ngl="0"
+  if [[ "$bridge_fd_signal" = "true" ]]; then
+    reason="pdocker Vulkan ICD is visible and the GPU bridge validates, but the Vulkan compute lowering is not complete yet; using CPU fallback"
+  else
+    reason="pdocker Vulkan ICD is visible, but the GPU bridge is not validated yet; using CPU fallback"
+  fi
 elif command -v vulkaninfo >/dev/null 2>&1 && vulkaninfo --summary >/dev/null 2>&1; then
   backend="vulkan"
   ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
@@ -150,6 +162,9 @@ cat > "$diagnostics" <<EOF
     "pdocker_vulkan_passthrough": $vulkan_env_signal,
     "vk_icd_filenames": "$(json_escape "${VK_ICD_FILENAMES:-}")",
     "pdocker_icd_file": $vulkan_icd_signal,
+    "pdocker_vulkan_icd": $pdocker_vulkan_icd_signal,
+    "pdocker_vulkan_icd_kind": "$(json_escape "${PDOCKER_VULKAN_ICD_KIND:-}")",
+    "pdocker_vulkan_icd_ready": "$(json_escape "${PDOCKER_VULKAN_ICD_READY:-0}")",
     "vulkaninfo_summary": $vulkaninfo_signal,
     "nvidia_device": $nvidia_device_signal,
     "pdocker_opencl_passthrough": $opencl_signal,

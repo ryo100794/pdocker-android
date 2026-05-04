@@ -164,6 +164,10 @@ def run_daemon(
     if os.path.exists(gpu_shim):
         os.environ["PDOCKER_GPU_SHIM_HOST_PATH"] = gpu_shim
         os.environ["PDOCKER_GPU_SHIM_CONTAINER_PATH"] = "/usr/local/bin/pdocker-gpu-shim"
+    vulkan_icd = os.path.join(runtime_dir, "lib", "pdocker-vulkan-icd.so")
+    if os.path.exists(vulkan_icd):
+        os.environ["PDOCKER_VULKAN_ICD_HOST_PATH"] = vulkan_icd
+        os.environ["PDOCKER_VULKAN_ICD_CONTAINER_PATH"] = "/usr/local/lib/pdocker-vulkan-icd.so"
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")

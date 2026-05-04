@@ -1808,6 +1808,9 @@ def _gpu_env(state):
         env.update({
             "PDOCKER_VULKAN_PASSTHROUGH": "1",
             "VK_ICD_FILENAMES": "/etc/vulkan/icd.d/pdocker-android.json",
+            "PDOCKER_VULKAN_ICD": os.environ.get("PDOCKER_VULKAN_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-vulkan-icd.so"),
+            "PDOCKER_VULKAN_ICD_KIND": "pdocker-bridge-minimal",
+            "PDOCKER_VULKAN_ICD_READY": "0",
         })
     if "cuda-compat" in modes:
         env.update({
@@ -1838,21 +1841,18 @@ def _gpu_binds(state):
         return []
     shim_host = os.environ.get("PDOCKER_GPU_SHIM_HOST_PATH")
     shim_guest = os.environ.get("PDOCKER_GPU_SHIM_CONTAINER_PATH", "/usr/local/bin/pdocker-gpu-shim")
+    vulkan_icd_host = os.environ.get("PDOCKER_VULKAN_ICD_HOST_PATH")
+    vulkan_icd_guest = os.environ.get("PDOCKER_VULKAN_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-vulkan-icd.so")
     gpu_host_dir = os.environ.get("PDOCKER_GPU_HOST_DIR")
     gpu_guest_dir = os.environ.get("PDOCKER_GPU_CONTAINER_DIR", "/run/pdocker-gpu")
     candidates = [
         (shim_host, shim_guest, True),
+        (vulkan_icd_host, vulkan_icd_guest, True),
         (gpu_host_dir, gpu_guest_dir, False),
         ("/dev/kgsl-3d0", "/dev/kgsl-3d0", False),
         ("/dev/dri", "/dev/dri", False),
-        ("/system/lib64/libvulkan.so", "/system/lib64/libvulkan.so", True),
-        ("/vendor/lib64/libvulkan.so", "/vendor/lib64/libvulkan.so", True),
         ("/vendor/lib64/egl", "/vendor/lib64/egl", True),
         ("/vendor/lib64/hw", "/vendor/lib64/hw", True),
-        ("/vendor/lib64/libOpenCL.so", "/vendor/lib64/libOpenCL.so", True),
-        ("/system/vendor/lib64/libOpenCL.so", "/system/vendor/lib64/libOpenCL.so", True),
-        ("/system/etc/vulkan", "/system/etc/vulkan", True),
-        ("/vendor/etc/vulkan", "/vendor/etc/vulkan", True),
     ]
     out = []
     seen = set()
@@ -2933,8 +2933,6 @@ def create_container(config, name=None):
             f"127.0.0.1 localhost\n::1 localhost\n127.0.1.1 {name or cid[:12]}\n",
         )
     if "vulkan" in state.get("PdockerGpu", {}).get("Modes", []):
-        vulkan_lib = "/vendor/lib64/libvulkan.so" \
-            if os.path.exists("/vendor/lib64/libvulkan.so") else "/system/lib64/libvulkan.so"
         _write_container_file(
             state,
             cdir,
@@ -2942,8 +2940,8 @@ def create_container(config, name=None):
             json.dumps({
                 "file_format_version": "1.0.0",
                 "ICD": {
-                    "library_path": vulkan_lib,
-                    "api_version": "1.3.0",
+                    "library_path": os.environ.get("PDOCKER_VULKAN_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-vulkan-icd.so"),
+                    "api_version": "1.1.0",
                 },
             }, indent=2) + "\n",
         )

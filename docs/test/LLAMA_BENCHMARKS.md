@@ -228,6 +228,29 @@ direct executor rewrites `connect(AF_UNIX)` socket paths through the bind map.
 This avoids leaking Android app-data absolute paths into container code and
 keeps the shim ABI portable.
 
+## 2026-05-04 pdocker Vulkan ICD Surface
+
+The GPU path is now being moved toward standard GPU application entry points
+instead of llama.cpp-specific changes. The APK packages a glibc
+`pdocker-vulkan-icd.so`, and pdockerd writes
+`/etc/vulkan/icd.d/pdocker-android.json` pointing at
+`/usr/local/lib/pdocker-vulkan-icd.so` for GPU-requesting containers.
+
+Local Vulkan-loader probe against the pdocker ICD:
+
+- `vkCreateInstance`: success.
+- `vkEnumeratePhysicalDevices`: one device.
+- Device name: `pdocker GPU bridge (offline)`.
+- Device type: CPU when the bridge queue is not available, integrated GPU when
+  the queue is visible.
+
+This is a loader/diagnostic milestone, not a compute claim. pdockerd marks the
+surface as `PDOCKER_VULKAN_ICD_KIND=pdocker-bridge-minimal` and
+`PDOCKER_VULKAN_ICD_READY=0`, so the llama template continues CPU fallback
+unless raw diagnostic mode is selected or the ICD is later marked compute-ready.
+The next step is lowering Vulkan compute buffer and command-buffer calls into
+the existing pdocker GPU bridge without modifying llama.cpp.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.

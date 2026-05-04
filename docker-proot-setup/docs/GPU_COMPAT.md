@@ -52,28 +52,35 @@ When Vulkan mode is requested, pdockerd:
 - marks the container with `PdockerGpu.Modes=["vulkan", ...]`;
 - injects `PDOCKER_VULKAN_PASSTHROUGH=1`;
 - injects `VK_ICD_FILENAMES=/etc/vulkan/icd.d/pdocker-android.json`;
-- creates a minimal Vulkan ICD JSON in the container rootfs;
-- bind-passes Android GPU device/library paths when they exist:
+- creates a Vulkan ICD JSON in the container rootfs pointing at pdocker's
+  glibc ICD, `/usr/local/lib/pdocker-vulkan-icd.so`;
+- bind-passes pdocker's glibc ICD and bridge paths:
+  - `/usr/local/lib/pdocker-vulkan-icd.so`
+  - `/usr/local/bin/pdocker-gpu-shim`
+  - `/run/pdocker-gpu`
+- bind-passes Android GPU device paths when they exist:
   - `/dev/kgsl-3d0`
   - `/dev/dri`
-  - `/system/lib64/libvulkan.so`
-  - `/vendor/lib64/libvulkan.so`
+- and currently keeps selected vendor helper directories visible as diagnostic
+  raw-mode context:
   - `/vendor/lib64/egl`
   - `/vendor/lib64/hw`
-  - `/system/etc/vulkan`
-  - `/vendor/etc/vulkan`
 
-This is diagnostic-only raw exposure unless `PDOCKER_GPU_MODE=vulkan-raw` is
-explicitly selected for an experiment. A successful backend must instead use a
-pdocker-owned glibc shim and marshal GPU work to an Android/Bionic GPU
-executor. The executor must not become a host-side inference engine; for
-llama.cpp, the container keeps model loading, tokenization, scheduling,
-sampling, and HTTP serving. The container-facing contract is
+The pdocker Vulkan ICD is the production-facing direction because it presents a
+normal Vulkan-loader surface to unmodified container applications. It is
+currently marked `PDOCKER_VULKAN_ICD_KIND=pdocker-bridge-minimal` and
+`PDOCKER_VULKAN_ICD_READY=0`: applications can discover the ICD surface, but
+Vulkan compute lowering is not complete yet. Raw Android Vulkan library
+exposure is diagnostic-only unless `PDOCKER_GPU_MODE=vulkan-raw` is explicitly
+selected for an experiment. A successful backend must marshal GPU work to an
+Android/Bionic GPU executor. The executor must not become a host-side inference
+engine; for llama.cpp, the container keeps model loading, tokenization,
+scheduling, sampling, and HTTP serving. The container-facing contract is
 `pdocker-gpu-command-v1`, a device-independent command ABI. GLES, Vulkan,
-OpenCL, NNAPI, and vendor quirks are executor implementation details below
-that ABI. GPU-requesting containers receive a Linux/glibc
+OpenCL, NNAPI, and vendor quirks are executor implementation details below that
+ABI. GPU-requesting containers receive a Linux/glibc
 `/usr/local/bin/pdocker-gpu-shim` capability probe; the APK owns the Bionic
-`pdocker-gpu-executor`. The command queue between them is still pending.
+`pdocker-gpu-executor` and queue socket under `/run/pdocker-gpu`.
 
 When OpenCL mode is requested, pdockerd:
 

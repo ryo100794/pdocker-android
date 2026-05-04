@@ -581,6 +581,10 @@ Scaffold completed:
 - APK-side `pdocker-gpu-executor` capability/vector-add probe.
 - Container-side Linux/glibc `pdocker-gpu-shim` capability probe injected into
   GPU-requesting containers.
+- Container-side Linux/glibc `pdocker-vulkan-icd.so` minimal Vulkan ICD surface
+  injected through `/etc/vulkan/icd.d/pdocker-android.json`; this lets
+  unmodified apps use the standard Vulkan loader path, but it is still marked
+  `PDOCKER_VULKAN_ICD_READY=0`.
 - First shared-buffer transport probe: the glibc shim creates a mapped vector
   buffer and passes its FD to the Android/Bionic executor with `SCM_RIGHTS`.
   This proves the bridge can move data without exposing Android GPU libraries
@@ -603,6 +607,9 @@ Next implementation slice:
   vendor libraries directly.
 - Add a real reusable buffer/fence protocol and then wire a minimal ggml/llama
   GPU backend path to the bridge.
+- Lower minimal Vulkan compute calls from `pdocker-vulkan-icd.so` into the
+  bridge before enabling llama.cpp GPU layers; llama.cpp itself must remain
+  unmodified.
 
 Acceptance:
 

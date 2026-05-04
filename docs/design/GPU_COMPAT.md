@@ -89,6 +89,12 @@ The first scaffold now has two binaries:
   `/usr/local/bin/pdocker-gpu-shim` for GPU-requesting containers.
 - `pdocker-gpu-executor`: Android/Bionic APK-side executor probe. It owns
   Android GPU APIs and advertises the same neutral command ABI.
+- `pdocker-vulkan-icd.so`: Linux/glibc Vulkan ICD surface, injected as
+  `/usr/local/lib/pdocker-vulkan-icd.so`. This is the standard Vulkan-loader
+  entry point for unmodified container applications. It currently exposes a
+  minimal discoverable ICD and is marked not compute-ready
+  (`PDOCKER_VULKAN_ICD_READY=0`) until Vulkan commands are lowered into the
+  pdocker GPU bridge.
 
 The current shim supports capability probing, a temporary Unix-socket command
 path, a shared-buffer probe where the glibc shim passes a mapped buffer FD to
@@ -105,7 +111,8 @@ binds the APK runtime GPU directory there and direct execution rewrites
 `connect(AF_UNIX)` socket paths, so container code never needs Android app-data
 absolute paths.
 Until that bridge exists and passes validation, llama.cpp GPU profile selection
-must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
+must stay on CPU fallback unless a raw diagnostic mode is explicitly requested
+or the pdocker Vulkan ICD is explicitly marked compute-ready.
 
 ## CUDA-compatible API
 
