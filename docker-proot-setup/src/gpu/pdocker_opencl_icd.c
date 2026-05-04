@@ -90,6 +90,31 @@ typedef struct PdockerClEvent *cl_event;
 #define CL_DEVICE_EXTENSIONS 0x1030
 #define CL_DEVICE_OPENCL_C_VERSION 0x103D
 
+#define CL_CONTEXT_REFERENCE_COUNT 0x1080
+#define CL_CONTEXT_NUM_DEVICES 0x1083
+#define CL_CONTEXT_DEVICES 0x1081
+
+#define CL_QUEUE_CONTEXT 0x1090
+#define CL_QUEUE_DEVICE 0x1091
+#define CL_QUEUE_REFERENCE_COUNT 0x1092
+
+#define CL_MEM_SIZE 0x1102
+#define CL_MEM_HOST_PTR 0x1103
+
+#define CL_PROGRAM_REFERENCE_COUNT 0x1160
+#define CL_PROGRAM_CONTEXT 0x1161
+#define CL_PROGRAM_NUM_DEVICES 0x1162
+#define CL_PROGRAM_DEVICES 0x1163
+#define CL_PROGRAM_SOURCE 0x1164
+
+#define CL_KERNEL_FUNCTION_NAME 0x1190
+#define CL_KERNEL_NUM_ARGS 0x1191
+#define CL_KERNEL_REFERENCE_COUNT 0x1192
+#define CL_KERNEL_CONTEXT 0x1193
+#define CL_KERNEL_PROGRAM 0x1194
+#define CL_KERNEL_WORK_GROUP_SIZE 0x11B0
+#define CL_KERNEL_COMPILE_WORK_GROUP_SIZE 0x11B1
+
 #define CL_PROGRAM_BUILD_LOG 0x1183
 
 struct PdockerClPlatform {
@@ -116,6 +141,7 @@ struct PdockerClMem {
 };
 
 struct PdockerClProgram {
+    cl_context context;
     char *source;
 };
 
@@ -349,6 +375,21 @@ cl_int clReleaseContext(cl_context context) {
     return CL_SUCCESS;
 }
 
+cl_int clRetainContext(cl_context context) {
+    return context ? CL_SUCCESS : CL_INVALID_CONTEXT;
+}
+
+cl_int clGetContextInfo(cl_context context, cl_uint param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    if (!context) return CL_INVALID_CONTEXT;
+    cl_uint u32 = 1;
+    switch (param_name) {
+        case CL_CONTEXT_REFERENCE_COUNT: return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        case CL_CONTEXT_NUM_DEVICES: return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        case CL_CONTEXT_DEVICES: return copy_info(&context->device, sizeof(context->device), param_value_size, param_value, param_value_size_ret);
+        default: return CL_INVALID_VALUE;
+    }
+}
+
 cl_command_queue clCreateCommandQueue(cl_context context, cl_device_id device, cl_bitfield properties, cl_int *errcode_ret) {
     (void)properties;
     if (!context || device != &g_device) {
@@ -374,6 +415,21 @@ cl_command_queue clCreateCommandQueueWithProperties(cl_context context, cl_devic
 cl_int clReleaseCommandQueue(cl_command_queue command_queue) {
     free(command_queue);
     return CL_SUCCESS;
+}
+
+cl_int clRetainCommandQueue(cl_command_queue command_queue) {
+    return command_queue ? CL_SUCCESS : CL_INVALID_VALUE;
+}
+
+cl_int clGetCommandQueueInfo(cl_command_queue command_queue, cl_uint param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    if (!command_queue) return CL_INVALID_VALUE;
+    cl_uint u32 = 1;
+    switch (param_name) {
+        case CL_QUEUE_CONTEXT: return copy_info(&command_queue->context, sizeof(command_queue->context), param_value_size, param_value, param_value_size_ret);
+        case CL_QUEUE_DEVICE: return copy_info(&command_queue->device, sizeof(command_queue->device), param_value_size, param_value, param_value_size_ret);
+        case CL_QUEUE_REFERENCE_COUNT: return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        default: return CL_INVALID_VALUE;
+    }
 }
 
 cl_mem clCreateBuffer(cl_context context, cl_mem_flags flags, size_t size, void *host_ptr, cl_int *errcode_ret) {
@@ -414,6 +470,19 @@ cl_int clReleaseMemObject(cl_mem memobj) {
     return CL_SUCCESS;
 }
 
+cl_int clRetainMemObject(cl_mem memobj) {
+    return memobj ? CL_SUCCESS : CL_INVALID_MEM_OBJECT;
+}
+
+cl_int clGetMemObjectInfo(cl_mem memobj, cl_uint param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    if (!memobj) return CL_INVALID_MEM_OBJECT;
+    switch (param_name) {
+        case CL_MEM_SIZE: return copy_info(&memobj->size, sizeof(memobj->size), param_value_size, param_value, param_value_size_ret);
+        case CL_MEM_HOST_PTR: return copy_info(&memobj->map, sizeof(memobj->map), param_value_size, param_value, param_value_size_ret);
+        default: return CL_INVALID_VALUE;
+    }
+}
+
 cl_int clEnqueueWriteBuffer(cl_command_queue command_queue, cl_mem buffer, cl_bool blocking_write, size_t offset, size_t cb, const void *ptr, cl_uint num_events_in_wait_list, const cl_event *event_wait_list, cl_event *event) {
     (void)command_queue;
     (void)blocking_write;
@@ -436,6 +505,51 @@ cl_int clEnqueueReadBuffer(cl_command_queue command_queue, cl_mem buffer, cl_boo
     return CL_SUCCESS;
 }
 
+cl_int clEnqueueCopyBuffer(cl_command_queue command_queue, cl_mem src_buffer, cl_mem dst_buffer, size_t src_offset, size_t dst_offset, size_t cb, cl_uint num_events_in_wait_list, const cl_event *event_wait_list, cl_event *event) {
+    (void)command_queue;
+    (void)num_events_in_wait_list;
+    (void)event_wait_list;
+    if (event) *event = NULL;
+    if (!src_buffer || !dst_buffer || src_offset + cb > src_buffer->size || dst_offset + cb > dst_buffer->size) return CL_INVALID_VALUE;
+    memmove((char *)dst_buffer->map + dst_offset, (const char *)src_buffer->map + src_offset, cb);
+    return CL_SUCCESS;
+}
+
+cl_int clEnqueueFillBuffer(cl_command_queue command_queue, cl_mem buffer, const void *pattern, size_t pattern_size, size_t offset, size_t cb, cl_uint num_events_in_wait_list, const cl_event *event_wait_list, cl_event *event) {
+    (void)command_queue;
+    (void)num_events_in_wait_list;
+    (void)event_wait_list;
+    if (event) *event = NULL;
+    if (!buffer || !pattern || pattern_size == 0 || offset + cb > buffer->size) return CL_INVALID_VALUE;
+    unsigned char *dst = (unsigned char *)buffer->map + offset;
+    for (size_t i = 0; i < cb; ++i) dst[i] = ((const unsigned char *)pattern)[i % pattern_size];
+    return CL_SUCCESS;
+}
+
+void *clEnqueueMapBuffer(cl_command_queue command_queue, cl_mem buffer, cl_bool blocking_map, cl_bitfield map_flags, size_t offset, size_t cb, cl_uint num_events_in_wait_list, const cl_event *event_wait_list, cl_event *event, cl_int *errcode_ret) {
+    (void)command_queue;
+    (void)blocking_map;
+    (void)map_flags;
+    (void)num_events_in_wait_list;
+    (void)event_wait_list;
+    if (event) *event = NULL;
+    if (!buffer || offset + cb > buffer->size) {
+        set_error(errcode_ret, CL_INVALID_VALUE);
+        return NULL;
+    }
+    set_error(errcode_ret, CL_SUCCESS);
+    return (char *)buffer->map + offset;
+}
+
+cl_int clEnqueueUnmapMemObject(cl_command_queue command_queue, cl_mem memobj, void *mapped_ptr, cl_uint num_events_in_wait_list, const cl_event *event_wait_list, cl_event *event) {
+    (void)command_queue;
+    (void)mapped_ptr;
+    (void)num_events_in_wait_list;
+    (void)event_wait_list;
+    if (event) *event = NULL;
+    return memobj ? CL_SUCCESS : CL_INVALID_MEM_OBJECT;
+}
+
 cl_program clCreateProgramWithSource(cl_context context, cl_uint count, const char **strings, const size_t *lengths, cl_int *errcode_ret) {
     (void)context;
     if (count == 0 || !strings) {
@@ -449,6 +563,7 @@ cl_program clCreateProgramWithSource(cl_context context, cl_uint count, const ch
         set_error(errcode_ret, CL_OUT_OF_HOST_MEMORY);
         return NULL;
     }
+    program->context = context;
     program->source = calloc(1, total + 1);
     if (!program->source) {
         free(program);
@@ -488,6 +603,26 @@ cl_int clReleaseProgram(cl_program program) {
     return CL_SUCCESS;
 }
 
+cl_int clRetainProgram(cl_program program) {
+    return program ? CL_SUCCESS : CL_INVALID_VALUE;
+}
+
+cl_int clGetProgramInfo(cl_program program, cl_uint param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    if (!program) return CL_INVALID_VALUE;
+    cl_uint u32 = 1;
+    switch (param_name) {
+        case CL_PROGRAM_REFERENCE_COUNT: return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        case CL_PROGRAM_CONTEXT: return copy_info(&program->context, sizeof(program->context), param_value_size, param_value, param_value_size_ret);
+        case CL_PROGRAM_NUM_DEVICES: return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        case CL_PROGRAM_DEVICES: {
+            cl_device_id device = &g_device;
+            return copy_info(&device, sizeof(device), param_value_size, param_value, param_value_size_ret);
+        }
+        case CL_PROGRAM_SOURCE: return copy_string_info(program->source ? program->source : "", param_value_size, param_value, param_value_size_ret);
+        default: return CL_INVALID_VALUE;
+    }
+}
+
 cl_kernel clCreateKernel(cl_program program, const char *kernel_name, cl_int *errcode_ret) {
     (void)program;
     if (!kernel_name) {
@@ -510,6 +645,35 @@ cl_int clReleaseKernel(cl_kernel kernel) {
     free(kernel->name);
     free(kernel);
     return CL_SUCCESS;
+}
+
+cl_int clRetainKernel(cl_kernel kernel) {
+    return kernel ? CL_SUCCESS : CL_INVALID_KERNEL;
+}
+
+cl_int clGetKernelInfo(cl_kernel kernel, cl_uint param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    if (!kernel) return CL_INVALID_KERNEL;
+    cl_uint u32 = 1;
+    switch (param_name) {
+        case CL_KERNEL_FUNCTION_NAME: return copy_string_info(kernel->name ? kernel->name : "", param_value_size, param_value, param_value_size_ret);
+        case CL_KERNEL_NUM_ARGS: u32 = 16; return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        case CL_KERNEL_REFERENCE_COUNT: return copy_info(&u32, sizeof(u32), param_value_size, param_value, param_value_size_ret);
+        case CL_KERNEL_CONTEXT: return copy_info(&kernel->program->context, sizeof(kernel->program->context), param_value_size, param_value, param_value_size_ret);
+        case CL_KERNEL_PROGRAM: return copy_info(&kernel->program, sizeof(kernel->program), param_value_size, param_value, param_value_size_ret);
+        default: return CL_INVALID_VALUE;
+    }
+}
+
+cl_int clGetKernelWorkGroupInfo(cl_kernel kernel, cl_device_id device, cl_uint param_name, size_t param_value_size, void *param_value, size_t *param_value_size_ret) {
+    if (!kernel) return CL_INVALID_KERNEL;
+    if (device && device != &g_device) return CL_INVALID_DEVICE;
+    size_t wg = 128;
+    size_t compile_wg[3] = { 0, 0, 0 };
+    switch (param_name) {
+        case CL_KERNEL_WORK_GROUP_SIZE: return copy_info(&wg, sizeof(wg), param_value_size, param_value, param_value_size_ret);
+        case CL_KERNEL_COMPILE_WORK_GROUP_SIZE: return copy_info(compile_wg, sizeof(compile_wg), param_value_size, param_value, param_value_size_ret);
+        default: return CL_INVALID_VALUE;
+    }
 }
 
 cl_int clSetKernelArg(cl_kernel kernel, cl_uint arg_index, size_t arg_size, const void *arg_value) {
