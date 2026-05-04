@@ -13,6 +13,7 @@
 #   app/src/main/jniLibs/arm64-v8a/libcow.so
 #   app/src/main/jniLibs/arm64-v8a/libpdockerpty.so
 #   app/src/main/jniLibs/arm64-v8a/libpdockerdirect.so
+#   app/src/main/jniLibs/arm64-v8a/libpdockergpuexecutor.so
 #
 # These are packaged as-is by the gradle build — the APK's
 # externalNativeBuild (CMake) block has been removed.
@@ -109,6 +110,17 @@ echo "==> building libpdockerdirect.so"
     "$ROOT/app/src/main/cpp/pdocker_direct_exec.c"
 strip_rpath "$JNI_DIR/libpdockerdirect.so"
 file "$JNI_DIR/libpdockerdirect.so" | head -1
+
+# ---- libpdockergpuexecutor.so ----
+# Android packaging only extracts native files named lib*.so. This is an
+# executable PIE renamed to .so, then symlinked as gpu/pdocker-gpu-executor.
+echo "==> building libpdockergpuexecutor.so"
+"$CLANG" "${EXEC_FLAGS[@]}" \
+    -o "$JNI_DIR/libpdockergpuexecutor.so" \
+    "$ROOT/app/src/main/cpp/pdocker_gpu_executor.c" \
+    -lEGL -lGLESv3 -llog -lm
+strip_rpath "$JNI_DIR/libpdockergpuexecutor.so"
+file "$JNI_DIR/libpdockergpuexecutor.so" | head -1
 
 echo
 echo "==> JNI .so ready:"

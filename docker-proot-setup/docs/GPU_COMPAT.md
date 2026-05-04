@@ -68,7 +68,10 @@ explicitly selected for an experiment. A successful backend must instead use a
 pdocker-owned glibc shim and marshal GPU work to an Android/Bionic GPU
 executor. The executor must not become a host-side inference engine; for
 llama.cpp, the container keeps model loading, tokenization, scheduling,
-sampling, and HTTP serving.
+sampling, and HTTP serving. The container-facing contract is
+`pdocker-gpu-command-v1`, a device-independent command ABI. GLES, Vulkan,
+OpenCL, NNAPI, and vendor quirks are executor implementation details below
+that ABI.
 
 When OpenCL mode is requested, pdockerd:
 

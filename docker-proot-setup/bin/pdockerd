@@ -1791,9 +1791,15 @@ def _gpu_env(state):
     env = {
         "PDOCKER_GPU": "1",
         "PDOCKER_GPU_MODES": ",".join(sorted(modes)),
+        "PDOCKER_GPU_COMMAND_API": os.environ.get("PDOCKER_GPU_COMMAND_API", "pdocker-gpu-command-v1"),
+        "PDOCKER_GPU_ABI_VERSION": os.environ.get("PDOCKER_GPU_ABI_VERSION", "0.1"),
+        "PDOCKER_GPU_EXECUTOR_ROLE": "apk-bionic-gpu-command-executor",
+        "PDOCKER_GPU_LLM_ENGINE_LOCATION": "container",
         "NVIDIA_VISIBLE_DEVICES": "all",
         "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics",
     }
+    if os.environ.get("PDOCKER_GPU_EXECUTOR"):
+        env["PDOCKER_GPU_EXECUTOR_AVAILABLE"] = "1"
     if "vulkan" in modes:
         env.update({
             "PDOCKER_VULKAN_PASSTHROUGH": "1",

@@ -78,6 +78,11 @@ For llama.cpp, model loading, tokenization, sampling, HTTP serving, scheduling,
 and ggml graph ownership stay in the container process. The bridge may execute
 GPU kernels, move buffers, and signal fences, but it must not replace
 `llama-server` with a host RPC inference service.
+The visible contract is a device-independent `pdocker-gpu-command-v1` ABI. GPU
+backend choices such as GLES compute, Vulkan, OpenCL, NNAPI, or vendor-specific
+driver details belong below that ABI and must be absorbed by the APK-owned
+executor layer. Container code should not branch on phone model or vendor GPU
+library paths.
 Until that bridge exists and passes validation, llama.cpp GPU profile selection
 must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
 
@@ -183,7 +188,8 @@ state, and thermal state when available.
 4. glibc bridge ABI: container-facing shim, shared-memory transport, command
    buffers, fence/error model, and Bionic GPU-executor lifecycle. The executor
    runs GPU commands only; application engines such as llama.cpp remain in the
-   container.
+   container. The container-facing ABI must be device-independent; backend
+   differences are handled by executor capability probing and command lowering.
 5. cuVK runtime: CUDA-shaped allocation/copy/module/kernel launch API backed by
    the bridge runtime.
 6. CUDA subset transpiler: parse restricted CUDA-like kernels, emit GLSL/SPIR-V

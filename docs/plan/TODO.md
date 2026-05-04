@@ -567,7 +567,9 @@ Real implementation needed:
    shim/device ABI, shared-memory command queue, Bionic GPU-executor process,
    fences, error propagation, and lifecycle management. The executor may run
    GPU commands only; llama.cpp and other app engines must stay inside the
-   container.
+   container. The ABI exposed to containers must be device-independent; device
+   and backend variation is absorbed by executor capability probing and command
+   lowering.
 4. Implement minimal container-facing Vulkan/OpenCL validation against that
    bridge, not against directly exposed Android libraries.
 5. Implement CUDA-compatible shim API only as a real library/runtime, not just

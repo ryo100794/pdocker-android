@@ -44,7 +44,9 @@ diagnostic dead end, not the production design. The container-facing side must
 remain glibc-compatible and talk to an APK-owned Android/Bionic GPU command
 executor through a thin pdocker bridge. The executor is not a host-side
 llama.cpp RPC inference service; `llama-server`, model loading, tokenization,
-sampling, and HTTP serving stay inside the container.
+sampling, and HTTP serving stay inside the container. The bridge contract must
+be device-independent so benchmarks compare the same LLM workload while the
+executor absorbs GLES/Vulkan/OpenCL/vendor differences underneath.
 
 Official `llama-bench` with `-p 16 -n 8 -r 2 -ngl 999 -t 8` is stored at
 `docs/test/llama-bench-tool-vulkan-requested-p16-n8-r2.json`:
@@ -70,6 +72,47 @@ result matches Vulkan: passthrough metadata and file exposure work as
 diagnostics, but direct loading from a glibc container is not a working GPU
 backend. OpenCL also needs the glibc bridge plus Android/Bionic GPU-executor
 model.
+
+## 2026-05-04 GPU Executor Boundary Probe
+
+The APK now includes `pdocker-gpu-executor`, a Bionic-side command executor
+probe for the future device-independent `pdocker-gpu-command-v1` ABI. This is
+not an LLM engine and does not move llama.cpp out of the container.
+
+Local executor capability probe:
+
+- API: `pdocker-gpu-command-v1`.
+- ABI version: `0.1`.
+- Role: `gpu-command-executor`.
+- LLM engine location: `container`.
+- Current implementation backend: `gles31_compute`.
+
+Local vector-add self-test on 2026-05-04:
+
+- Kernel: `vector_add`, n=262144.
+- compile: 35.2674 ms.
+- upload: 2.4036 ms.
+- dispatch: 6.6698 ms.
+- download: 0.9055 ms.
+- total: 45.2464 ms.
+- max absolute error: 0.0.
+- valid: true.
+
+Installed compat APK executor self-test via `run-as` on 2026-05-04:
+
+- Kernel: `vector_add`, n=262144.
+- compile: 24.6921 ms.
+- upload: 2.4523 ms.
+- dispatch: 21.3822 ms.
+- download: 1.7867 ms.
+- total: 50.3134 ms.
+- max absolute error: 0.0.
+- valid: true.
+
+This proves the APK-owned executor can run an Android GPU command behind the
+neutral ABI. It does not yet prove container llama.cpp acceleration; the next
+step is the glibc shim plus shared-memory command queue used by the container
+process.
 
 ## Latest HTTP API Result
 
