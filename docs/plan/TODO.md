@@ -550,6 +550,64 @@ Acceptance:
 
 Status: **contract and benchmark first pass only**.
 
+### llama.cpp Container GPU 10x Task List
+
+Status: **in progress; llama.cpp source must remain unmodified**.
+
+Goal:
+
+- Load Qwen3 8B Q4_K_M into the llama.cpp container with GPU layers enabled
+  through standard Vulkan/OpenCL loader APIs.
+- Record CPU and GPU benchmarks from the same container image and model.
+- Reach at least `10.0x` GPU generation throughput over the CPU baseline on
+  the current Android device, without moving the llama.cpp engine to a host RPC
+  process and without patching llama.cpp.
+
+Reusable scenario:
+
+- `scripts/android-llama-gpu-compare.sh` restarts the llama project container
+  in CPU mode, records an HTTP benchmark, restarts it in forced Vulkan mode,
+  records either a GPU HTTP benchmark or a structured model-load failure, writes
+  `docs/test/llama-gpu-compare-latest.json`, copies it to
+  `files/pdocker/bench`, and restores the CPU server.
+
+Tasks:
+
+1. **[done] CPU baseline is repeatable.**
+   `scripts/android-llama-bench.sh` and `scripts/android-llama-gpu-compare.sh`
+   record the current HTTP throughput for Qwen3 8B Q4_K_M.
+2. **[done] Vulkan device discovery reaches llama.cpp.**
+   Forced Vulkan mode now reaches `Vulkan0 (pdocker Vulkan bridge (queue))`
+   instead of `ggml_vulkan: No devices found`.
+3. **[active] Make GPU model-buffer allocation serve-safe.**
+   The forced `--n-gpu-layers 1` path currently reaches model loading but
+   blocks at Vulkan buffer or pinned host-buffer allocation. Implement 4 GiB+
+   tensor buffer splitting or equivalent large-buffer virtualization in
+   `pdocker-vulkan-icd.so`, keeping the llama.cpp binary unchanged.
+4. **[next] Lower the first real llama.cpp SPIR-V dispatches.**
+   Keep unknown shaders rejected, but add a trace classifier and implement the
+   minimal operations needed for one offloaded Qwen3 output/repeating layer.
+5. **[next] Add persistent GPU command-ring transport.**
+   Replace per-dispatch socket commands with shared ring descriptors, reusable
+   buffer handles, fences, and error records under `/run/pdocker-gpu`.
+6. **[next] Establish small-model GPU green path.**
+   Use the same unmodified llama.cpp container with a small GGUF model to prove
+   model load, first token, and `llama-bench -ngl 1` before returning to 8B.
+7. **[next] Optimize to 10x.**
+   Measure CPU vs GPU after every dispatch slice; target is GPU
+   `tokens/s >= CPU tokens/s * 10`. Prioritize persistent buffers, batched
+   command submission, and resident compute over transfer-heavy paths.
+8. **[next] UI reporting.**
+   Surface `target_met`, speedup, current blocker, GPU layer count, and latest
+   compare artifact in the project dashboard.
+
+Current 2026-05-04 blocker:
+
+- Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge and begin
+  model loading, but cannot serve tokens yet. The latest blocker is large
+  Vulkan model buffers and pinned host-buffer scheduling. CPU mode is restored
+  as the usable path after GPU experiments.
+
 Temporary behavior:
 
 - `--gpus all`, Vulkan env, CUDA-compatible env, and GPU diagnostics are

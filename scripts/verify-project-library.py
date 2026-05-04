@@ -30,6 +30,25 @@ def read(path: Path) -> str:
 
 
 def main() -> int:
+    compare_script = read(ROOT / "scripts" / "android-llama-gpu-compare.sh")
+    compare_doc = read(ROOT / "docs" / "test" / "LLAMA_BENCHMARKS.md")
+    compare_todo = read(ROOT / "docs" / "plan" / "TODO.md")
+    compare_expectations = {
+        "compare script schema": "pdocker.llama.gpu.compare.v1" in compare_script,
+        "compare script leaves llama.cpp unmodified": '"llama_cpp_modified": False' in compare_script,
+        "compare script records 10x target": '"target_speedup": 10.0' in compare_script and "target_tps = cpu_tps * 10.0" in compare_script,
+        "compare script captures Vulkan allocation trace": "PDOCKER_VULKAN_ICD_TRACE_ALLOC=1" in compare_script and "allocation_trace_bytes" in compare_script,
+        "compare script uses standard Vulkan entry": "standard Vulkan loader through pdocker-vulkan-icd.so" in compare_script,
+        "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script,
+        "compare docs record latest report": "llama-gpu-compare-latest.json" in compare_doc,
+        "compare todo records 10x task list": "llama.cpp Container GPU 10x Task List" in compare_todo,
+        "compare todo preserves no llama patch policy": "llama.cpp source must remain unmodified" in compare_todo,
+    }
+    for name, passed in compare_expectations.items():
+        if not passed:
+            fail(name)
+    ok("llama gpu 10x comparison scenario is recorded")
+
     data = json.loads(read(LIBRARY))
     templates = {item["id"]: item for item in data.get("templates", [])}
     for tid in ("dev-workspace", "llama-cpp-gpu"):

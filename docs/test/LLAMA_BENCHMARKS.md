@@ -421,6 +421,26 @@ default.
 ## Latest HTTP API Result
 
 - Date: 2026-05-04 UTC.
+- Local path: `docs/test/llama-gpu-compare-latest.json`.
+- Device path: `files/pdocker/bench/llama-gpu-compare-latest.json`.
+- Scenario: `scripts/android-llama-gpu-compare.sh --predict 2 --repeat 1 --gpu-layers 1 --gpu-ctx 512 --cpu-ctx 2048`.
+- Policy: llama.cpp source unchanged; GPU entry is the standard Vulkan loader
+  through `pdocker-vulkan-icd.so`.
+- CPU baseline: 0.275 generated tokens/s for the short HTTP probe.
+- 10x target for this baseline: 2.746 generated tokens/s.
+- Forced Vulkan result: `served=false`, speedup `0.0x`.
+- GPU evidence: llama.cpp reached `Vulkan0 (pdocker Vulkan bridge (queue))`
+  and model metadata loading, then failed with `unable to allocate Vulkan0
+  buffer`.
+- Next blocker: split or virtualize 4 GiB+ Vulkan model buffers and pinned
+  host-buffer paths before SPIR-V dispatch lowering can produce token
+  benchmarks.
+- Recovery: the script restored CPU mode; `pdocker-llama-cpp` returned to
+  `Up (healthy)` and `/v1/models` returned `model.gguf`.
+
+## Previous HTTP API Result
+
+- Date: 2026-05-04 UTC.
 - Device: `10.62.90.13:37669`.
 - Mode: Vulkan bridge forced experiment, then CPU fallback recovery.
 - Build: `pdocker/llama-cpp-gpu:latest` rebuilt with `GGML_VULKAN=ON`.
