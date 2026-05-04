@@ -143,6 +143,7 @@ def main() -> int:
     service_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdService.kt").read_text()
     require("pdockerd service strongly restarts unless user stopped", "START_STICKY" in service_src and "onTaskRemoved" in service_src and "setExactAndAllowWhileIdle" in service_src and "holdStartWakeLock" in service_src and "if (!stopFlag && !userStopped)" in service_src)
     require("release signing is externalized", 'providers.environmentVariable("PDOCKER_${name}")' in build_gradle_src and "SIGNING_STORE_FILE" in build_gradle_src and "release-signing.properties" in build_gradle_src and "*.jks" in gitignore_src and "*.keystore" in gitignore_src and "*.p12" in gitignore_src)
+    require("release apk closes exported debug receiver", 'manifestPlaceholders["pdockerDebugReceiverExported"] = "false"' in build_gradle_src and 'manifestPlaceholders["pdockerDebugReceiverExported"] = "true"' in build_gradle_src and 'android:exported="${pdockerDebugReceiverExported}"' in manifest_src)
     require("docker jobs expose retry actions", "action_retry_job_fmt" in main_src and "retryDockerJob(job)" in main_src)
     require("engine job retry stays on engine api route", "private fun retryDockerJob" in main_src and "runComposeUp(dir, job.title)" in main_src and "runImageBuild(dir, job.title)" in main_src)
     require("docker jobs expose stop and log actions", "stopDockerJob(job.id)" in main_src and "openJobLog(job)" in main_src)

@@ -53,6 +53,8 @@ typedef struct PdockerVkFence PdockerVkFence;
 
 struct PdockerVkMemory {
     size_t size;
+    uint32_t memory_type_index;
+    VkMemoryPropertyFlags property_flags;
     int fd;
     void *map;
 };
@@ -114,8 +116,28 @@ static VkDeviceSize pdocker_vulkan_heap_size(void) {
     return (VkDeviceSize)(8ull * 1024ull * 1024ull * 1024ull);
 }
 
+static VkDeviceSize pdocker_vulkan_host_heap_size(void) {
+    VkDeviceSize heap = pdocker_vulkan_heap_size();
+    VkDeviceSize host_heap = heap / 2;
+    const VkDeviceSize min_heap = (VkDeviceSize)(512ull * 1024ull * 1024ull);
+    if (host_heap < min_heap) host_heap = min_heap;
+    return host_heap;
+}
+
 static bool trace_allocations(void) {
     return getenv("PDOCKER_VULKAN_ICD_TRACE_ALLOC") != NULL;
+}
+
+static void trace_pnext_chain(const char *prefix, const void *pNext) {
+    if (!trace_allocations()) return;
+    const VkBaseInStructure *base = (const VkBaseInStructure *)pNext;
+    while (base) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: %s pnext sType=%d\n",
+                prefix,
+                (int)base->sType);
+        base = base->pNext;
+    }
 }
 
 static void *pdocker_alloc_handle(size_t size) {
@@ -627,15 +649,19 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(
     (void)physicalDevice;
     if (!pMemoryProperties) return;
     memset(pMemoryProperties, 0, sizeof(*pMemoryProperties));
-    pMemoryProperties->memoryTypeCount = 1;
+    pMemoryProperties->memoryTypeCount = 2;
     pMemoryProperties->memoryTypes[0].propertyFlags =
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    pMemoryProperties->memoryTypes[0].heapIndex = 0;
+    pMemoryProperties->memoryTypes[1].propertyFlags =
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    pMemoryProperties->memoryTypes[0].heapIndex = 0;
-    pMemoryProperties->memoryHeapCount = 1;
+    pMemoryProperties->memoryTypes[1].heapIndex = 1;
+    pMemoryProperties->memoryHeapCount = 2;
     pMemoryProperties->memoryHeaps[0].size = pdocker_vulkan_heap_size();
     pMemoryProperties->memoryHeaps[0].flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+    pMemoryProperties->memoryHeaps[1].size = pdocker_vulkan_host_heap_size();
+    pMemoryProperties->memoryHeaps[1].flags = 0;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties2(
@@ -686,7 +712,7 @@ VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(
     memset(pMemoryRequirements, 0, sizeof(*pMemoryRequirements));
     pMemoryRequirements->size = b ? (VkDeviceSize)b->size : 0;
     pMemoryRequirements->alignment = 16;
-    pMemoryRequirements->memoryTypeBits = 1;
+    pMemoryRequirements->memoryTypeBits = 0x3;
     if (trace_allocations()) {
         fprintf(stderr,
                 "pdocker-vulkan-icd: buffer-requirements size=%llu alignment=%llu typeBits=0x%x\n",
@@ -702,6 +728,23 @@ VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements2(
         VkMemoryRequirements2 *pMemoryRequirements) {
     if (!pInfo || !pMemoryRequirements) return;
     vkGetBufferMemoryRequirements(device, pInfo->buffer, &pMemoryRequirements->memoryRequirements);
+    for (VkBaseOutStructure *base = (VkBaseOutStructure *)pMemoryRequirements->pNext;
+         base;
+         base = base->pNext) {
+        if (base->sType == VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS) {
+            VkMemoryDedicatedRequirements *dedicated = (VkMemoryDedicatedRequirements *)base;
+            dedicated->prefersDedicatedAllocation = VK_FALSE;
+            dedicated->requiresDedicatedAllocation = VK_FALSE;
+            if (trace_allocations()) {
+                fprintf(stderr,
+                        "pdocker-vulkan-icd: memory-requirements2 dedicated prefers=0 requires=0\n");
+            }
+        } else if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: memory-requirements2 ignored pnext sType=%d\n",
+                    (int)base->sType);
+        }
+    }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(
@@ -715,8 +758,17 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(
     PdockerVkMemory *memory = pdocker_alloc_handle(sizeof(*memory));
     if (!memory) return VK_ERROR_OUT_OF_HOST_MEMORY;
     memory->size = (size_t)pAllocateInfo->allocationSize;
+    memory->memory_type_index = pAllocateInfo->memoryTypeIndex;
+    memory->property_flags = memory->memory_type_index == 0
+        ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        : (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    trace_pnext_chain("allocate", pAllocateInfo->pNext);
     if (trace_allocations()) {
-        fprintf(stderr, "pdocker-vulkan-icd: allocate %zu bytes\n", memory->size);
+        fprintf(stderr,
+                "pdocker-vulkan-icd: allocate %zu bytes type=%u flags=0x%x\n",
+                memory->size,
+                memory->memory_type_index,
+                (unsigned)memory->property_flags);
     }
     memory->fd = create_shared_fd(memory->size);
     if (memory->fd < 0) {
@@ -759,6 +811,15 @@ VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(
     if (!memory || !ppData) return VK_ERROR_MEMORY_MAP_FAILED;
     PdockerVkMemory *m = (PdockerVkMemory *)memory;
     if ((size_t)offset > m->size) return VK_ERROR_MEMORY_MAP_FAILED;
+    if ((m->property_flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0) {
+        if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: map rejected non-host-visible type=%u allocation=%zu\n",
+                    m->memory_type_index,
+                    m->size);
+        }
+        return VK_ERROR_MEMORY_MAP_FAILED;
+    }
     if (trace_allocations()) {
         fprintf(stderr,
                 "pdocker-vulkan-icd: map offset=%llu size=%llu allocation=%zu\n",

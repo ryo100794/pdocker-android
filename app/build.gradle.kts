@@ -25,6 +25,7 @@ android {
         versionCode = 23
         versionName = "0.5.2"
         buildConfigField("String", "BUILD_TIME_UTC", "\"${Instant.now()}\"")
+        manifestPlaceholders["pdockerDebugReceiverExported"] = "false"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -99,6 +100,7 @@ android {
         }
         getByName("debug") {
             isDebuggable = true
+            manifestPlaceholders["pdockerDebugReceiverExported"] = "true"
         }
     }
 

@@ -426,8 +426,8 @@ default.
 - Scenario: `scripts/android-llama-gpu-compare.sh --predict 4 --repeat 1 --gpu-layers 1 --gpu-ctx 512 --cpu-ctx 2048`.
 - Policy: llama.cpp source unchanged; GPU entry is the standard Vulkan loader
   through `pdocker-vulkan-icd.so`.
-- CPU baseline: 0.207 generated tokens/s for the short HTTP probe.
-- 10x target for this baseline: 2.074 generated tokens/s.
+- CPU baseline: 0.193 generated tokens/s for the short HTTP probe.
+- 10x target for this baseline: 1.934 generated tokens/s.
 - Forced Vulkan result: `served=false`, speedup `0.0x`.
 - GPU evidence: llama.cpp reached `Vulkan0 (pdocker Vulkan bridge (queue))`
   and allocated the offloaded output-layer Vulkan model buffer:
@@ -436,6 +436,13 @@ default.
   now records copy-buffer regions as in-bounds:
   `src_size=510504960 ... dst_off=16384 bytes=510504960 ok=1`. The run reaches
   `llama_context`, KV-cache setup, compute-buffer allocation, and model warmup.
+  The Vulkan ICD now exposes separate device-local and host-visible memory
+  types, so llama.cpp places the offloaded model/compute buffers in
+  device-local memory and staging/output buffers in host-visible memory.
+- Diagnostic progress: allocation pNext tracing shows llama.cpp is passing
+  allocation pNext structures (`sType=1000060000`) for these buffers. This
+  narrows the remaining investigation to Vulkan memory/buffer accounting,
+  dedicated allocation metadata, and ggml backend allocation-size expectations.
 - Next blocker: fix Vulkan buffer base/range accounting for ggml scheduler
   warmup. The current failure is a `ggml_backend_buffer_get_alloc_size` range
   assertion.

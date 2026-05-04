@@ -1,6 +1,6 @@
 # pdocker TODO ledger
 
-Snapshot date: 2026-05-03.
+Snapshot date: 2026-05-04.
 
 This is the working TODO list for unfinished items and deliberate temporary
 accommodations. Keep this file current whenever a workaround is added so it
@@ -156,6 +156,11 @@ or closes.
   This prevents a fast repeated start from launching a second process, having
   the second process fail on an already-bound port, and overwriting state as
   `Exited` while the first service is still serving.
+- [done] Keep release builds from exposing debug-only daemon entry points.
+  The product still starts the internal pdockerd Engine API for UI-driven
+  compose/build/container management, but release APKs do not export the smoke
+  broadcast receiver and the normal UI hides host shell/manual daemon/debug
+  benchmark actions.
 - [done] Keep COW terminology independent from PRoot. `libcow` is an
   LD_PRELOAD libc hook shim; it does not use ptrace or waitpid. PRoot-era COW
   comments and the diagnostic `proot-cow` driver label were renamed.
@@ -600,7 +605,12 @@ Tasks:
    in-bounds; the remaining failure occurs before the first descriptor-backed
    compute dispatch. A `--no-warmup` diagnostic still reaches the same range
    assertion during slot initialization, so this is a buffer-type/accounting
-   issue rather than only the warmup call path.
+   issue rather than only the warmup call path. The latest trace exposes
+   separate Vulkan memory types: device-local model/compute buffers and
+   host-visible staging/output buffers. It also shows allocation pNext records
+   (`sType=1000060000`) on llama.cpp buffer allocations, so the next slice is
+   exact dedicated-allocation/memory-requirements accounting instead of broad
+   device discovery.
 6. **[next] Add persistent GPU command-ring transport.**
    Replace per-dispatch socket commands with shared ring descriptors, reusable
    buffer handles, fences, and error records under `/run/pdocker-gpu`.

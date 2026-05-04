@@ -275,6 +275,9 @@ class MainActivity : AppCompatActivity() {
     private val containerRoot: File by lazy { File(pdockerHome, "containers") }
     private val projectRoot: File by lazy { File(pdockerHome, "projects") }
     private val engine: DockerEngineClient by lazy { DockerEngineClient(File(pdockerHome, "pdockerd.sock")) }
+    private val diagnosticsEnabled: Boolean
+        get() = BuildConfig.DEBUG ||
+            (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -817,24 +820,25 @@ class MainActivity : AppCompatActivity() {
     private fun renderDiagnostics() {
         addSection(getString(R.string.section_diagnostics))
         renderHostEnvironment()
-        addAction(getString(R.string.action_start_pdockerd), getString(R.string.detail_start_pdockerd)) { startDaemon() }
-        addAction(getString(R.string.action_stop_pdockerd), getString(R.string.detail_stop_pdockerd)) {
-            startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
-            status.text = getString(R.string.status_stopped)
-        }
         addAction(getString(R.string.action_keep_resident), getString(R.string.detail_keep_resident)) {
             requestBatteryOptimizationBypass()
         }
         addAction(getString(R.string.action_enable_notifications), getString(R.string.detail_enable_notifications)) {
             requestNotificationPermission()
         }
-        addAction(getString(R.string.action_run_gpu_bench), getString(R.string.detail_run_gpu_bench)) {
-            runAndroidGpuBench()
-        }
         addAction(getString(R.string.action_prune_build_cache), getString(R.string.detail_prune_build_cache)) {
             runEngineAction(getString(R.string.action_prune_build_cache), getString(R.string.section_diagnostics)) {
                 post("/build/prune").text
             }
+        }
+        if (!diagnosticsEnabled) return
+        addAction(getString(R.string.action_start_pdockerd), getString(R.string.detail_start_pdockerd)) { startDaemon() }
+        addAction(getString(R.string.action_stop_pdockerd), getString(R.string.detail_stop_pdockerd)) {
+            startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
+            status.text = getString(R.string.status_stopped)
+        }
+        addAction(getString(R.string.action_run_gpu_bench), getString(R.string.detail_run_gpu_bench)) {
+            runAndroidGpuBench()
         }
         addAction(getString(R.string.action_docker_console), getString(R.string.detail_docker_console)) {
             startDaemon()

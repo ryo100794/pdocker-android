@@ -68,7 +68,7 @@
 
         <receiver
             android:name=".PdockerdDebugReceiver"
-            android:exported="true">
+            android:exported="${pdockerDebugReceiverExported}">
             <intent-filter>
                 <action android:name="io.github.ryo100794.pdocker.action.SMOKE_START" />
                 <action android:name="io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH" />
