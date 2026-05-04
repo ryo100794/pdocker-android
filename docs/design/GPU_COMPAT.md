@@ -78,6 +78,27 @@ For llama.cpp, model loading, tokenization, sampling, HTTP serving, scheduling,
 and ggml graph ownership stay in the container process. The bridge may execute
 GPU kernels, move buffers, and signal fences, but it must not replace
 `llama-server` with a host RPC inference service.
+
+## Vulkan Passthrough Terminology
+
+There are two different ideas that can both sound like "Vulkan passthrough":
+
+- **Raw vendor passthrough**: bind Android vendor Vulkan/OpenCL libraries from
+  `/vendor/lib64` directly into a glibc container. This is not the pdocker
+  target. It crosses the Bionic/glibc boundary, depends on Android linker
+  namespaces, and can be blocked for untrusted apps even when the library files
+  exist.
+- **pdocker ICD bridge**: expose a glibc-facing Vulkan ICD in the container and
+  lower Vulkan calls into the APK-owned GPU executor. This is the target path.
+  The container process still uses standard Vulkan loader behavior, while the
+  executor hides Android GLES/Vulkan/OpenCL/vendor details below the neutral
+  `pdocker-gpu-command-v1` ABI.
+
+The current Vulkan ICD bridge already validates a compute-style vector-add
+smoke through `vkQueueSubmit`. It is not a general Vulkan backend yet because
+only a small descriptor/buffer/dispatch subset is lowered. This is still more
+promising than raw passthrough on Android because the APK can use public NDK
+Vulkan APIs without asking a glibc process to load Bionic vendor libraries.
 The visible contract is a device-independent `pdocker-gpu-command-v1` ABI. GPU
 backend choices such as GLES compute, Vulkan, OpenCL, NNAPI, or vendor-specific
 driver details belong below that ABI and must be absorbed by the APK-owned

@@ -319,6 +319,19 @@ unless raw diagnostic mode is selected or the ICD is later marked compute-ready.
 The next step is lowering Vulkan compute buffer and command-buffer calls into
 the existing pdocker GPU bridge without modifying llama.cpp.
 
+Follow-up Vulkan ICD bridge smoke on 2026-05-04:
+
+- `vkQueueSubmit`: success through the pdocker command queue.
+- Device name: `pdocker GPU bridge (queue)`.
+- Device type: integrated GPU when the queue is visible.
+- Result: `maxErr=0.00000000`, `out0=1.000`, `outLast=128.875`.
+
+This confirms the bridge-style Vulkan path, not raw Android vendor passthrough.
+Raw passthrough would mean loading Android/Bionic vendor Vulkan libraries
+directly from a glibc container, which remains out of scope. The viable path is
+standard Vulkan loader compatibility in the container, backed by pdocker's ICD
+and APK-owned executor.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.
