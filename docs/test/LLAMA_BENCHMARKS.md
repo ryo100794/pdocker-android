@@ -18,6 +18,27 @@ bash scripts/android-llama-bench.sh --predict 8 --repeat 1
 Use the same prompt, token count, and model when comparing CPU fallback with
 future Vulkan/CUDA-compatible runs.
 
+## 2026-05-04 Vulkan Bridge Execution Result
+
+- Local path: `docs/test/llama-gpu-compare-latest.json`.
+- Device path: `files/pdocker/bench/llama-gpu-compare-latest.json`.
+- Device: `10.62.90.13:37669`.
+- Model: Qwen3 8B GGUF, Q4_K_M, 8.19B parameters.
+- Policy: llama.cpp was not modified; it used the standard Vulkan loader and
+  the pdocker glibc-facing Vulkan ICD.
+- GPU result: forced Vulkan with `--n-gpu-layers 1` now serves HTTP and
+  reaches `Up (healthy)`.
+- Evidence: `Vulkan0 model buffer size` was present, offload was reported,
+  `main: model loaded` was reached, and generic SPIR-V dispatches returned
+  `valid=true` from the APK-owned Android Vulkan executor.
+- Short benchmark: CPU 0.095 tokens/s, GPU 0.052 tokens/s, speedup 0.55x.
+- Bridge profile: 258 generic SPIR-V samples, mean upload 109.26 ms, mean
+  dispatch 234.62 ms, mean download 7.61 ms.
+- Current blocker: the bridge is functionally alive but slower than CPU because
+  each dispatch copies buffer slices through the executor boundary. The next
+  work is persistent device-buffer registration/cache, descriptor/pipeline
+  caching by shader/layout, and reducing FD slice upload/download volume.
+
 ## 2026-05-03 Vulkan-Requested Result
 
 - Local path: `docs/test/llama-bench-vulkan-requested-repeat3.json`.

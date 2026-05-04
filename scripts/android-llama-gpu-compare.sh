@@ -155,9 +155,9 @@ if wait_server 120; then
 else
   operation_notify "running" "Forced Vulkan did not serve; collecting container logs"
   gpu_served=0
-  container_state > "$GPU_STATE"
-  container_logs > "$GPU_LOG"
 fi
+container_state > "$GPU_STATE"
+container_logs > "$GPU_LOG"
 
 python3 - "$CPU_JSON" "$GPU_JSON" "$GPU_LOG" "$GPU_STATE" "$OUT" "$gpu_served" "$GPU_LAYERS" "$GPU_CTX" <<'PY'
 import json
@@ -180,7 +180,7 @@ cpu_tps = float(cpu.get("summary", {}).get("predicted_tokens_per_second_mean") o
 gpu_tps = float(gpu.get("summary", {}).get("predicted_tokens_per_second_mean") or 0.0)
 target_tps = cpu_tps * 10.0
 evidence = {
-    "vulkan_device_seen": "Vulkan0 (pdocker Vulkan bridge" in log,
+    "vulkan_device_seen": "Vulkan0 (pdocker Vulkan bridge" in log or "Vulkan0 model buffer size" in log,
     "offload_seen": "offloading" in log,
     "model_loaded": "main: model loaded" in log,
     "serve_reachable": bool(int(gpu_served_s)),
@@ -188,6 +188,7 @@ evidence = {
     "assert_blocker": "GGML_ASSERT" in log,
     "buffer_range_assert_blocker": "ggml_backend_buffer_get_alloc_size" in log,
     "gpu_model_buffer_seen": "Vulkan0 model buffer size" in log,
+    "generic_spirv_dispatch_seen": '"kernel":"generic_spirv"' in log and '"valid":true' in log,
     "queue_submit_blocker": "vk::Queue::submit: ErrorFeatureNotPresent" in log,
     "spirv_dispatch_blocker": "real SPIR-V dispatch is not lowered yet" in log or "vk::Queue::submit: ErrorFeatureNotPresent" in log,
 }
@@ -195,6 +196,9 @@ allocations = [
     int(m.group(1))
     for m in re.finditer(r"pdocker-vulkan-icd: allocate ([0-9]+) bytes", log)
 ]
+dispatch_upload_ms = [float(m.group(1)) for m in re.finditer(r'"upload_ms":([0-9.]+)', log)]
+dispatch_ms = [float(m.group(1)) for m in re.finditer(r'"dispatch_ms":([0-9.]+)', log)]
+dispatch_download_ms = [float(m.group(1)) for m in re.finditer(r'"download_ms":([0-9.]+)', log)]
 result = {
     "schema": "pdocker.llama.gpu.compare.v1",
     "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -219,6 +223,12 @@ result = {
         "log_excerpt": log[-12000:],
         "evidence": evidence,
         "allocation_trace_bytes": allocations[-32:],
+        "bridge_dispatch_profile": {
+            "samples": len(dispatch_ms),
+            "upload_ms_mean": (sum(dispatch_upload_ms) / len(dispatch_upload_ms)) if dispatch_upload_ms else 0.0,
+            "dispatch_ms_mean": (sum(dispatch_ms) / len(dispatch_ms)) if dispatch_ms else 0.0,
+            "download_ms_mean": (sum(dispatch_download_ms) / len(dispatch_download_ms)) if dispatch_download_ms else 0.0,
+        },
     },
     "comparison": {
         "speedup": (gpu_tps / cpu_tps) if cpu_tps and gpu_tps else 0.0,
@@ -232,7 +242,9 @@ result = {
         "split 4GiB+ Vulkan buffers / pinned host-buffer path"
         if evidence["buffer_allocation_blocker"] or evidence["assert_blocker"]
         else "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
-        if evidence["vulkan_device_seen"] or evidence["queue_submit_blocker"]
+        if evidence["spirv_dispatch_blocker"] or evidence["queue_submit_blocker"]
+        else "reduce bridge upload/copy overhead and benchmark with larger n_predict"
+        if evidence["generic_spirv_dispatch_seen"] and bool(int(gpu_served_s))
         else "make Vulkan device discovery reliable"
     ),
 }

@@ -24,8 +24,14 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <fcntl.h>
 #include <time.h>
 #include <unistd.h>
+
+#define PDOCKER_GPU_MAX_PASSED_FDS 24
+#define PDOCKER_GPU_MAX_COMMAND_BYTES 4096
+#define PDOCKER_GPU_MAX_VULKAN_BINDINGS 16
+#define PDOCKER_GPU_MAX_PUSH_BYTES 256
 
 #ifndef GL_COMPUTE_SHADER
 #define GL_COMPUTE_SHADER 0x91B9
@@ -379,6 +385,7 @@ typedef struct {
     VkBuffer buffer;
     VkDeviceMemory memory;
     void *map;
+    size_t size;
 } VulkanVectorBuffer;
 
 typedef struct {
@@ -428,6 +435,7 @@ static int create_vulkan_vector_buffer(VkPhysicalDevice physical_device, VkDevic
     if (rc != VK_SUCCESS) return -13;
     rc = vkMapMemory(device, out->memory, 0, (VkDeviceSize)bytes, 0, &out->map);
     if (rc != VK_SUCCESS || !out->map) return -14;
+    out->size = bytes;
     if (initial) memcpy(out->map, initial, bytes);
     return 0;
 }
@@ -488,10 +496,14 @@ static int init_vulkan_runtime(VulkanRuntime *rt) {
         .queueCount = 1,
         .pQueuePriorities = &priority,
     };
+    VkPhysicalDeviceFeatures enabled_features;
+    memset(&enabled_features, 0, sizeof(enabled_features));
+    vkGetPhysicalDeviceFeatures(rt->physical_device, &enabled_features);
     VkDeviceCreateInfo dci = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &qci,
+        .pEnabledFeatures = &enabled_features,
     };
     stage = "create-device";
     rc = vkCreateDevice(rt->physical_device, &dci, NULL, &rt->device);
@@ -1088,6 +1100,245 @@ static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n, GpuApiAf
     munmap(map_b, bytes);
     munmap(map_out, bytes);
     return rc;
+}
+
+typedef struct {
+    uint32_t binding;
+    off_t offset;
+    size_t size;
+} VulkanDispatchBinding;
+
+static int hex_decode(const char *hex, uint8_t *out, size_t out_size) {
+    if (!hex || !out) return -1;
+    size_t len = strlen(hex);
+    if ((len % 2) != 0 || len / 2 > out_size) return -1;
+    for (size_t i = 0; i < len / 2; ++i) {
+        char hi = hex[i * 2];
+        char lo = hex[i * 2 + 1];
+        int hv = (hi >= '0' && hi <= '9') ? hi - '0' : (hi >= 'a' && hi <= 'f') ? hi - 'a' + 10 : (hi >= 'A' && hi <= 'F') ? hi - 'A' + 10 : -1;
+        int lv = (lo >= '0' && lo <= '9') ? lo - '0' : (lo >= 'a' && lo <= 'f') ? lo - 'a' + 10 : (lo >= 'A' && lo <= 'F') ? lo - 'A' + 10 : -1;
+        if (hv < 0 || lv < 0) return -1;
+        out[i] = (uint8_t)((hv << 4) | lv);
+    }
+    return (int)(len / 2);
+}
+
+static int read_fd_exact(int fd, void *buf, size_t size, off_t offset) {
+    uint8_t *p = (uint8_t *)buf;
+    size_t done = 0;
+    while (done < size) {
+        ssize_t n = pread(fd, p + done, size - done, offset + (off_t)done);
+        if (n < 0) return -errno;
+        if (n == 0) return -EIO;
+        done += (size_t)n;
+    }
+    return 0;
+}
+
+static int write_fd_exact(int fd, const void *buf, size_t size, off_t offset) {
+    const uint8_t *p = (const uint8_t *)buf;
+    size_t done = 0;
+    while (done < size) {
+        ssize_t n = pwrite(fd, p + done, size - done, offset + (off_t)done);
+        if (n < 0) return -errno;
+        if (n == 0) return -EIO;
+        done += (size_t)n;
+    }
+    return 0;
+}
+
+static int run_vulkan_dispatch_fd(
+        int shader_fd,
+        const int *buffer_fds,
+        const VulkanDispatchBinding *bindings,
+        size_t binding_count,
+        size_t shader_size,
+        const uint8_t *push,
+        size_t push_size,
+        uint32_t gx,
+        uint32_t gy,
+        uint32_t gz) {
+    if (shader_fd < 0 || !buffer_fds || !bindings || binding_count == 0 ||
+        binding_count > PDOCKER_GPU_MAX_VULKAN_BINDINGS || shader_size == 0 ||
+        shader_size > 8 * 1024 * 1024 || push_size > PDOCKER_GPU_MAX_PUSH_BYTES) {
+        json_fail("vulkan-dispatch", "invalid dispatch metadata");
+        return 64;
+    }
+    const int was_ready = g_vulkan_runtime.ready;
+    if (init_vulkan_runtime(&g_vulkan_runtime) != 0) return -21;
+    VulkanRuntime *rt = &g_vulkan_runtime;
+    const char *fail_stage = "start";
+    VkResult rc = VK_SUCCESS;
+    int ret = -21;
+    uint32_t max_binding = 0;
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (bindings[i].binding > max_binding) max_binding = bindings[i].binding;
+        if (bindings[i].size == 0 || bindings[i].size > 512 * 1024 * 1024) {
+            json_fail("vulkan-dispatch", "invalid binding size");
+            return 64;
+        }
+    }
+    uint32_t layout_count = max_binding + 1;
+    if (layout_count > PDOCKER_GPU_MAX_VULKAN_BINDINGS) {
+        json_fail("vulkan-dispatch", "too many descriptor bindings");
+        return 64;
+    }
+
+    uint32_t *shader_code = (uint32_t *)malloc(shader_size);
+    VulkanVectorBuffer vk_buffers[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+    VkShaderModule shader = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    memset(vk_buffers, 0, sizeof(vk_buffers));
+    if (!shader_code) return -21;
+    if (read_fd_exact(shader_fd, shader_code, shader_size, 0) != 0) goto cleanup;
+
+    double upload_start = now_ms();
+    for (size_t i = 0; i < binding_count; ++i) {
+        fail_stage = "create-dispatch-buffer";
+        if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bindings[i].size, NULL, &vk_buffers[i]) != 0) goto cleanup;
+        if (read_fd_exact(buffer_fds[i], vk_buffers[i].map, bindings[i].size, bindings[i].offset) != 0) goto cleanup;
+    }
+    double upload_ms = now_ms() - upload_start;
+
+    VkDescriptorSetLayoutBinding layout_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    memset(layout_bindings, 0, sizeof(layout_bindings));
+    for (uint32_t i = 0; i < layout_count; ++i) {
+        layout_bindings[i].binding = i;
+        layout_bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        layout_bindings[i].descriptorCount = 1;
+        layout_bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    }
+    VkDescriptorSetLayoutCreateInfo dslci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = layout_count,
+        .pBindings = layout_bindings,
+    };
+    fail_stage = "create-generic-descriptor-set-layout";
+    rc = vkCreateDescriptorSetLayout(rt->device, &dslci, NULL, &set_layout);
+    if (rc != VK_SUCCESS) goto cleanup;
+    VkPushConstantRange push_range = {
+        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+        .offset = 0,
+        .size = (uint32_t)push_size,
+    };
+    VkPipelineLayoutCreateInfo plci = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &set_layout,
+        .pushConstantRangeCount = push_size ? 1u : 0u,
+        .pPushConstantRanges = push_size ? &push_range : NULL,
+    };
+    fail_stage = "create-generic-pipeline-layout";
+    rc = vkCreatePipelineLayout(rt->device, &plci, NULL, &pipeline_layout);
+    if (rc != VK_SUCCESS) goto cleanup;
+    VkShaderModuleCreateInfo smci = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = shader_size,
+        .pCode = shader_code,
+    };
+    fail_stage = "create-generic-shader-module";
+    rc = vkCreateShaderModule(rt->device, &smci, NULL, &shader);
+    if (rc != VK_SUCCESS) goto cleanup;
+    VkComputePipelineCreateInfo cpci = {
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+            .module = shader,
+            .pName = "main",
+        },
+        .layout = pipeline_layout,
+    };
+    fail_stage = "create-generic-compute-pipeline";
+    rc = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1, &cpci, NULL, &pipeline);
+    if (rc != VK_SUCCESS) goto cleanup;
+    VkDescriptorPoolSize pool_size = {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = layout_count};
+    VkDescriptorPoolCreateInfo dpci = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .maxSets = 1, .poolSizeCount = 1, .pPoolSizes = &pool_size};
+    fail_stage = "create-generic-descriptor-pool";
+    rc = vkCreateDescriptorPool(rt->device, &dpci, NULL, &descriptor_pool);
+    if (rc != VK_SUCCESS) goto cleanup;
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    VkDescriptorSetAllocateInfo dsai = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = descriptor_pool, .descriptorSetCount = 1, .pSetLayouts = &set_layout};
+    fail_stage = "allocate-generic-descriptor-set";
+    rc = vkAllocateDescriptorSets(rt->device, &dsai, &descriptor_set);
+    if (rc != VK_SUCCESS) goto cleanup;
+    VkDescriptorBufferInfo infos[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    VkWriteDescriptorSet writes[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    memset(writes, 0, sizeof(writes));
+    for (size_t i = 0; i < binding_count; ++i) {
+        infos[i].buffer = vk_buffers[i].buffer;
+        infos[i].offset = 0;
+        infos[i].range = (VkDeviceSize)bindings[i].size;
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = descriptor_set;
+        writes[i].dstBinding = bindings[i].binding;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &infos[i];
+    }
+    vkUpdateDescriptorSets(rt->device, (uint32_t)binding_count, writes, 0, NULL);
+    VkCommandBufferAllocateInfo cbai = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, .commandPool = rt->command_pool, .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, .commandBufferCount = 1};
+    fail_stage = "allocate-generic-command-buffer";
+    rc = vkAllocateCommandBuffers(rt->device, &cbai, &command_buffer);
+    if (rc != VK_SUCCESS) goto cleanup;
+    double dispatch_start = now_ms();
+    VkCommandBufferBeginInfo cbi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    rc = vkBeginCommandBuffer(command_buffer, &cbi);
+    if (rc != VK_SUCCESS) { fail_stage = "begin-generic-command-buffer"; goto cleanup; }
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    if (push_size) vkCmdPushConstants(command_buffer, pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)push_size, push);
+    vkCmdDispatch(command_buffer, gx ? gx : 1, gy ? gy : 1, gz ? gz : 1);
+    rc = vkEndCommandBuffer(command_buffer);
+    if (rc != VK_SUCCESS) { fail_stage = "end-generic-command-buffer"; goto cleanup; }
+    VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    rc = vkCreateFence(rt->device, &fci, NULL, &fence);
+    if (rc != VK_SUCCESS) { fail_stage = "create-generic-fence"; goto cleanup; }
+    VkSubmitInfo submit = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &command_buffer};
+    fail_stage = "submit-generic-dispatch";
+    rc = vkQueueSubmit(rt->queue, 1, &submit, fence);
+    if (rc != VK_SUCCESS) goto cleanup;
+    fail_stage = "wait-generic-fence";
+    rc = vkWaitForFences(rt->device, 1, &fence, VK_TRUE, UINT64_MAX);
+    if (rc != VK_SUCCESS) goto cleanup;
+    double dispatch_ms = now_ms() - dispatch_start;
+    double download_start = now_ms();
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (write_fd_exact(buffer_fds[i], vk_buffers[i].map, bindings[i].size, bindings[i].offset) != 0) goto cleanup;
+    }
+    double download_ms = now_ms() - download_start;
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"backend_impl\":\"android_vulkan\",\"kernel\":\"generic_spirv\","
+            "\"shader_bytes\":%zu,\"bindings\":%zu,\"dispatch\":[%u,%u,%u],"
+            "\"backend_cached\":%s,\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
+            "\"download_ms\":%.4f,\"valid\":true}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            shader_size, binding_count, gx, gy, gz, was_ready ? "true" : "false",
+            upload_ms, dispatch_ms, download_ms);
+    fflush(json_out());
+    ret = 0;
+
+cleanup:
+    if (ret != 0) {
+        fprintf(stderr, "pdocker-gpu-executor: generic Vulkan dispatch failed stage=%s rc=%d\n", fail_stage, rc);
+        json_fail("vulkan-dispatch", fail_stage);
+    }
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    if (pipeline) vkDestroyPipeline(rt->device, pipeline, NULL);
+    if (shader) vkDestroyShaderModule(rt->device, shader, NULL);
+    if (pipeline_layout) vkDestroyPipelineLayout(rt->device, pipeline_layout, NULL);
+    if (set_layout) vkDestroyDescriptorSetLayout(rt->device, set_layout, NULL);
+    for (size_t i = 0; i < binding_count; ++i) destroy_vulkan_vector_buffer(rt->device, &vk_buffers[i]);
+    free(shader_code);
+    return ret;
 }
 
 typedef struct {
@@ -1762,7 +2013,7 @@ static int recv_command_with_fds(int cfd, char *cmd, size_t cmd_size, int *passe
     if (!cmd || cmd_size == 0 || !passed_fds || !fd_count) return -EINVAL;
     *fd_count = 0;
     for (size_t i = 0; i < max_fds; ++i) passed_fds[i] = -1;
-    char control[CMSG_SPACE(sizeof(int) * 4)];
+    char control[CMSG_SPACE(sizeof(int) * PDOCKER_GPU_MAX_PASSED_FDS)];
     struct iovec iov;
     struct msghdr msg;
     memset(control, 0, sizeof(control));
@@ -1859,13 +2110,13 @@ static int serve_socket(const char *path) {
             continue;
         }
         setvbuf(out, NULL, _IONBF, 0);
-        char cmd[160];
+        char cmd[PDOCKER_GPU_MAX_COMMAND_BYTES];
         RegisteredVectorBuffer registered;
         memset(&registered, 0, sizeof(registered));
         for (;;) {
-            int passed_fds[4] = { -1, -1, -1, -1 };
+            int passed_fds[PDOCKER_GPU_MAX_PASSED_FDS];
             size_t passed_fd_count = 0;
-            int nread = recv_command_with_fds(cfd, cmd, sizeof(cmd), passed_fds, 4, &passed_fd_count);
+            int nread = recv_command_with_fds(cfd, cmd, sizeof(cmd), passed_fds, PDOCKER_GPU_MAX_PASSED_FDS, &passed_fd_count);
             if (nread <= 0) break;
             g_json_out = out;
             if (strcmp(cmd, "CAPABILITIES") == 0) {
@@ -1908,10 +2159,60 @@ static int serve_socket(const char *path) {
                     (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n, GPU_API_AUTO);
                     passed_fds[0] = passed_fds[1] = passed_fds[2] = -1;
                 }
+            } else if (strncmp(cmd, "VULKAN_DISPATCH_V1 ", 19) == 0) {
+                char *save = NULL;
+                char *cursor = cmd + 19;
+                char *tok = strtok_r(cursor, " ", &save);
+                size_t shader_size = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                size_t binding_count = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                size_t push_size = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                uint32_t gx = tok ? (uint32_t)strtoul(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                uint32_t gy = tok ? (uint32_t)strtoul(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                uint32_t gz = tok ? (uint32_t)strtoul(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                const char *push_hex = tok ? tok : "-";
+                uint8_t push[PDOCKER_GPU_MAX_PUSH_BYTES];
+                VulkanDispatchBinding bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+                memset(push, 0, sizeof(push));
+                memset(bindings, 0, sizeof(bindings));
+                int parse_ok = 1;
+                if (binding_count == 0 || binding_count > PDOCKER_GPU_MAX_VULKAN_BINDINGS ||
+                    push_size > PDOCKER_GPU_MAX_PUSH_BYTES ||
+                    passed_fd_count < 1 + binding_count) {
+                    parse_ok = 0;
+                }
+                if (parse_ok && push_size > 0) {
+                    int decoded = hex_decode(push_hex, push, sizeof(push));
+                    if (decoded < 0 || (size_t)decoded != push_size) parse_ok = 0;
+                } else if (parse_ok && strcmp(push_hex, "-") != 0) {
+                    parse_ok = 0;
+                }
+                for (size_t i = 0; parse_ok && i < binding_count; ++i) {
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    bindings[i].binding = (uint32_t)strtoul(tok, NULL, 10);
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    bindings[i].offset = (off_t)strtoll(tok, NULL, 10);
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    bindings[i].size = (size_t)strtoull(tok, NULL, 10);
+                }
+                if (!parse_ok) {
+                    json_fail("vulkan-dispatch", "invalid command");
+                } else {
+                    (void)run_vulkan_dispatch_fd(passed_fds[0], &passed_fds[1], bindings, binding_count,
+                                                 shader_size, push, push_size, gx, gy, gz);
+                }
             } else {
                 json_fail("command", "unknown command");
             }
-            for (size_t i = 0; i < passed_fd_count && i < 4; ++i) {
+            for (size_t i = 0; i < passed_fd_count && i < PDOCKER_GPU_MAX_PASSED_FDS; ++i) {
                 if (passed_fds[i] >= 0) close(passed_fds[i]);
             }
             g_json_out = NULL;

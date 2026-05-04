@@ -2163,10 +2163,19 @@ def _network_port_plan(cid, config, img_config):
     return ports, rewrite
 
 
+HOST_NETWORK_LIMITATION_WARNING = (
+    "pdocker records Docker/Compose network metadata, but Android runtime is "
+    "host-network-only: there is no TUN, bridge namespace, iptables, or "
+    "embedded DNS yet. Named-network aliases are /etc/hosts compatibility "
+    "entries and all process traffic still uses the Android app network."
+)
+
+
 def _network_warnings(config, port_rewrite):
     """Return user-visible warnings for Docker networking features we emulate."""
     hc = config.get("HostConfig") or {}
     warnings = []
+    warnings.append(HOST_NETWORK_LIMITATION_WARNING)
     if hc.get("PortBindings") or hc.get("PublishAllPorts") or port_rewrite:
         warnings.append(
             "pdocker records requested port publishing, but Android sandbox "
@@ -2208,6 +2217,77 @@ def _container_ports_summary(state):
                 "Type": proto,
             })
     return out
+
+
+def _stable_network_id(net_name):
+    if net_name == "bridge":
+        return hashlib.sha256(b"pdocker-network:bridge").hexdigest()
+    meta = _network_meta(net_name)
+    if meta.get("Id"):
+        return meta["Id"]
+    return hashlib.sha256(f"pdocker-network:{net_name}".encode()).hexdigest()
+
+
+def _stable_endpoint_id(net_name, cid):
+    seed = f"pdocker-endpoint:{_stable_network_id(net_name)}:{cid}".encode()
+    return hashlib.sha256(seed).hexdigest()
+
+
+def _network_aliases(state, endpoint_config=None):
+    labels = state.get("Labels") or {}
+    cname = state.get("Name", state.get("Id", "")[:12]).lstrip("/")
+    aliases = []
+    for value in (
+        cname,
+        state.get("Id", "")[:12],
+        labels.get("com.docker.compose.service", ""),
+        labels.get("io.github.ryo100794.pdocker.compose-service", ""),
+    ):
+        if value and value not in aliases:
+            aliases.append(value)
+    for value in (endpoint_config or {}).get("Aliases") or []:
+        if value and value not in aliases:
+            aliases.append(value)
+    return aliases
+
+
+def _network_endpoint_config(config, net_name):
+    endpoints = ((config.get("NetworkingConfig") or {}).get("EndpointsConfig") or {})
+    return endpoints.get(net_name) or {}
+
+
+def _container_network_names(config):
+    hc = config.get("HostConfig") or {}
+    names = []
+    endpoints = ((config.get("NetworkingConfig") or {}).get("EndpointsConfig") or {})
+    for name in endpoints.keys():
+        if name and name not in names:
+            names.append(name)
+    network_mode = hc.get("NetworkMode")
+    if network_mode and network_mode not in ("default", "bridge", "host", "none"):
+        if network_mode not in names:
+            names.append(network_mode)
+    if not names and network_mode != "none":
+        names.append("bridge")
+    return names
+
+
+def _network_entry(state, net_name, endpoint_config=None):
+    cid = state["Id"]
+    ip = _container_virtual_ip(cid)
+    return {
+        "NetworkID": _stable_network_id(net_name),
+        "EndpointID": _stable_endpoint_id(net_name, cid),
+        "Gateway": "",
+        "IPAddress": ip,
+        "IPPrefixLen": 32,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "MacAddress": "",
+        "DriverOpts": {},
+        "Aliases": _network_aliases(state, endpoint_config),
+    }
 
 
 def _container_mounts_inspect(state):
@@ -2272,12 +2352,14 @@ def _network_containers(net_name):
     """Format network membership for /networks/{name} GET response."""
     out = {}
     for m in _network_members(net_name):
-        out[m["id"]] = {
-            "Name": m.get("name", m["id"][:12]),
-            "EndpointID": m["id"],
+        cid = m["id"]
+        out[cid] = {
+            "Name": m.get("name", cid[:12]),
+            "EndpointID": m.get("endpoint_id") or _stable_endpoint_id(net_name, cid),
             "MacAddress": "",
-            "IPv4Address": "127.0.0.1/32",
+            "IPv4Address": f"{_container_virtual_ip(cid)}/32",
             "IPv6Address": "",
+            "Aliases": m.get("aliases") or [],
         }
     return out
 
@@ -2291,6 +2373,60 @@ def _network_for_container(cid):
             if m["id"] == cid:
                 return n
     return None
+
+
+def _connect_network_metadata(state, net_name, endpoint_config=None):
+    """Persist Docker-compatible network endpoint metadata without changing runtime networking."""
+    cid = state["Id"]
+    cname = state.get("Name", cid).lstrip("/")
+    aliases = _network_aliases(state, endpoint_config)
+    np_ = os.path.join(NETWORKS_DIR, net_name)
+    if os.path.isdir(np_):
+        mp = os.path.join(np_, "members.json")
+        members = _network_members(net_name)
+        member = {
+            "id": cid,
+            "name": cname,
+            "endpoint_id": _stable_endpoint_id(net_name, cid),
+            "aliases": aliases,
+        }
+        replaced = False
+        for i, existing in enumerate(members):
+            if existing.get("id") == cid:
+                members[i] = member
+                replaced = True
+                break
+        if not replaced:
+            members.append(member)
+        with open(mp, "w") as f:
+            json.dump(members, f)
+    networks = state.setdefault("NetworkSettings", {}).setdefault("Networks", {})
+    networks[net_name] = _network_entry(state, net_name, endpoint_config)
+    pn = state.setdefault("PdockerNetwork", {})
+    pn["Networks"] = networks
+    pn["Runtime"] = "host-network-only"
+    pn["Limitation"] = HOST_NETWORK_LIMITATION_WARNING
+    warnings = state.setdefault("Warnings", [])
+    if HOST_NETWORK_LIMITATION_WARNING not in warnings:
+        warnings.insert(0, HOST_NETWORK_LIMITATION_WARNING)
+    pn["Warnings"] = warnings
+    save_container_state(cid, state)
+
+
+def _disconnect_network_metadata(state, net_name):
+    cid = state["Id"]
+    np_ = os.path.join(NETWORKS_DIR, net_name)
+    mp = os.path.join(np_, "members.json")
+    if os.path.isfile(mp):
+        members = _network_members(net_name)
+        new_members = [m for m in members if m.get("id") != cid]
+        if len(new_members) != len(members):
+            with open(mp, "w") as f:
+                json.dump(new_members, f)
+    networks = state.setdefault("NetworkSettings", {}).setdefault("Networks", {})
+    networks.pop(net_name, None)
+    state.setdefault("PdockerNetwork", {})["Networks"] = networks
+    save_container_state(cid, state)
 
 
 def _inject_network_hosts(rootfs, net_name, self_cid):
@@ -2315,8 +2451,10 @@ def _inject_network_hosts(rootfs, net_name, self_cid):
         existing = existing.split(marker)[0].rstrip() + "\n"
     block = [marker]
     for m in others:
-        n = m.get("name", m["id"][:12])
-        block.append(f"127.0.0.1\t{n} {m['id'][:12]}")
+        aliases = m.get("aliases") or [m.get("name", m["id"][:12]), m["id"][:12]]
+        aliases = [a for a in aliases if a]
+        if aliases:
+            block.append(f"127.0.0.1\t{' '.join(dict.fromkeys(aliases))}")
     with open(hosts_path, "w") as f:
         f.write(existing.rstrip() + "\n" + "\n".join(block) + "\n")
 
@@ -2987,6 +3125,14 @@ def _decode_event_filters(raw):
 
 def create_container(config, name=None):
     """Create a container (prepare rootfs, save config, don't start)."""
+    if name:
+        existing = find_containers(name.lstrip("/"))
+        if existing:
+            raise ValueError(
+                f"Conflict. The container name \"{name}\" is already in use by "
+                f"container {existing[0]['Id']}. You have to remove or rename "
+                "that container to be able to reuse that name."
+            )
     cid = uuid.uuid4().hex
     image = config.get("Image", "")
     norm_img = normalize_image(image)
@@ -3045,6 +3191,7 @@ def create_container(config, name=None):
     ports, port_rewrite = _network_port_plan(cid, config, img_c)
     virtual_ip = _container_virtual_ip(cid)
     warnings = _network_warnings(config, port_rewrite)
+    network_names = _container_network_names(config)
 
     state = {
         "Id": cid,
@@ -3109,15 +3256,16 @@ def create_container(config, name=None):
         "NetworkSettings": {
             "IPAddress": virtual_ip,
             "Ports": ports,
-            "Networks": {
-                "bridge": {
-                    "IPAddress": virtual_ip,
-                    "Gateway": "",
-                    "MacAddress": "",
-                }
-            }
+            "Networks": {},
         },
     }
+    state["NetworkSettings"]["Networks"] = {
+        net_name: _network_entry(state, net_name, _network_endpoint_config(config, net_name))
+        for net_name in network_names
+    }
+    state["PdockerNetwork"]["Networks"] = state["NetworkSettings"]["Networks"]
+    state["PdockerNetwork"]["Runtime"] = "host-network-only"
+    state["PdockerNetwork"]["Limitation"] = HOST_NETWORK_LIMITATION_WARNING
     if _container_healthcheck(state):
         state["State"]["Health"] = {
             "Status": "starting",
@@ -3169,6 +3317,9 @@ def create_container(config, name=None):
     # longer pre-create symlinks at container-create time; HostConfig.Binds
     # is preserved on the state and consumed by start_container.
     save_container_state(cid, state)
+    for net_name in network_names:
+        if net_name != "bridge" and os.path.isdir(os.path.join(NETWORKS_DIR, net_name)):
+            _connect_network_metadata(state, net_name, _network_endpoint_config(config, net_name))
     container_configs[cid] = state
     record_event("container", "create", cid, _container_event_attrs(state))
     return state
@@ -3196,20 +3347,45 @@ def load_container_state(cid):
     return None
 
 
+def _container_sort_key(state):
+    created = (state or {}).get("Created") or ""
+    cid = (state or {}).get("Id") or ""
+    running = 1 if ((state or {}).get("State") or {}).get("Running") else 0
+    return (running, created, cid)
+
+
+def find_containers(identifier):
+    """Resolve all containers matching a full ID, short ID, or exact name.
+
+    Docker itself prevents duplicate names. pdocker had older builds that could
+    leave duplicate name records behind; returning all exact-name matches lets
+    destructive name operations repair that state instead of picking an
+    arbitrary stale container.
+    """
+    matches = []
+    if os.path.isdir(os.path.join(CONTAINERS_DIR, identifier)):
+        state = load_container_state(identifier)
+        return [state] if state else []
+    if not os.path.isdir(CONTAINERS_DIR):
+        return []
+    exact_name = []
+    prefix = []
+    for cid in os.listdir(CONTAINERS_DIR):
+        state = load_container_state(cid)
+        if not state:
+            continue
+        if cid.startswith(identifier):
+            prefix.append(state)
+        if state.get("Name", "").lstrip("/") == identifier:
+            exact_name.append(state)
+    matches = exact_name or prefix
+    return sorted(matches, key=_container_sort_key, reverse=True)
+
+
 def find_container(identifier):
     """Resolve container by full ID, short ID, or name."""
-    # Exact ID
-    if os.path.isdir(os.path.join(CONTAINERS_DIR, identifier)):
-        return load_container_state(identifier)
-    # Short ID (12 chars) prefix or name
-    if os.path.isdir(CONTAINERS_DIR):
-        for cid in os.listdir(CONTAINERS_DIR):
-            if cid.startswith(identifier):
-                return load_container_state(cid)
-            state = load_container_state(cid)
-            if state and state.get("Name", "").lstrip("/") == identifier:
-                return state
-    return None
+    matches = find_containers(identifier)
+    return matches[0] if matches else None
 
 
 def reconcile_container_state(state):
@@ -3609,20 +3785,13 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     # Also handle docker-compose's `--network NAME` flow where the
     # container's NetworkMode names a user-defined network: ensure
     # this container is registered as a member, then inject.
-    net_mode = (state.get("HostConfig") or {}).get("NetworkMode", "default")
+    configured_networks = list((state.get("NetworkSettings") or {}).get("Networks") or {})
     net_name = None
-    if net_mode and net_mode not in ("default", "bridge", "host", "none"):
-        net_name = net_mode
-        np_ = os.path.join(NETWORKS_DIR, net_name)
-        if os.path.isdir(np_):
-            mp = os.path.join(np_, "members.json")
-            members = _network_members(net_name)
-            if not any(m_["id"] == cid for m_ in members):
-                cname = state.get("Name", cid).lstrip("/")
-                members.append({"id": cid, "name": cname})
-                with open(mp, "w") as f:
-                    json.dump(members, f)
-    else:
+    for configured in configured_networks:
+        if configured != "bridge":
+            net_name = configured
+            _connect_network_metadata(state, configured)
+    if not net_name:
         net_name = _network_for_container(cid)
     if net_name:
         _inject_network_hosts(cow["upper"] if cow else rootfs, net_name, cid)
@@ -4621,7 +4790,11 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         if path == "/containers/create" and method == "POST":
             config = self._read_json()
             name = query.get("name", [None])[0]
-            state = create_container(config, name=name)
+            try:
+                state = create_container(config, name=name)
+            except ValueError as e:
+                self._send_json(409, {"message": str(e)})
+                return
             self._send_json(201, {"Id": state["Id"], "Warnings": state.get("Warnings", [])})
             return
 
@@ -4804,12 +4977,26 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         m = re.match(r"^/containers/(.+)$", path)
         if m and method == "DELETE":
             cid = m.group(1)
-            state = find_container(cid)
-            if not state:
+            matches = find_containers(cid)
+            if not matches:
                 self._send_json(404, {"message": f"No such container: {cid}"})
                 return
             force = query.get("force", ["false"])[0] in ("1", "true", "True")
-            if remove_container(state["Id"], force=force):
+            removed = []
+            blocked = False
+            # Exact-name deletes may clean up duplicate names left by older
+            # pdockerd builds. ID/prefix deletes still affect only one object.
+            delete_many = (
+                not os.path.isdir(os.path.join(CONTAINERS_DIR, cid))
+                and any(s.get("Name", "").lstrip("/") == cid for s in matches)
+            )
+            for state in (matches if delete_many else matches[:1]):
+                if remove_container(state["Id"], force=force):
+                    removed.append(state["Id"])
+                else:
+                    blocked = True
+                    break
+            if removed and not blocked:
                 self.send_response(204)
                 self.end_headers()
             else:
@@ -5086,24 +5273,27 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         # port between members are unavoidable — that's the user's problem.
         if path == "/networks" and method == "GET":
             nets = [{
-                "Name": "bridge", "Id": "bridge",
+                "Name": "bridge", "Id": _stable_network_id("bridge"),
                 "Created": "2026-01-01T00:00:00Z",
                 "Scope": "local", "Driver": "host",
                 "IPAM": {"Driver": "default", "Config": []},
-                "Containers": {}, "Options": {}, "Labels": {}}]
+                "Containers": {}, "Options": {},
+                "Labels": {},
+                "PdockerWarning": HOST_NETWORK_LIMITATION_WARNING}]
             for n in os.listdir(NETWORKS_DIR):
                 np_ = os.path.join(NETWORKS_DIR, n)
                 if os.path.isdir(np_):
                     meta = _network_meta(n)
                     nets.append({
-                        "Name": n, "Id": n,
+                        "Name": n, "Id": _stable_network_id(n),
                         "Created": meta.get("Created", "2026-01-01T00:00:00Z"),
                         "Scope": "local",
                         "Driver": meta.get("Driver", "host"),
                         "IPAM": meta.get("IPAM", {"Driver": "default", "Config": []}),
                         "Containers": _network_containers(n),
                         "Options": meta.get("Options", {}),
-                        "Labels": meta.get("Labels", {})})
+                        "Labels": meta.get("Labels", {}),
+                        "PdockerWarning": meta.get("Warning", HOST_NETWORK_LIMITATION_WARNING)})
             self._send_json(200, nets)
             return
 
@@ -5119,11 +5309,13 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             # Persist client-supplied metadata so subsequent inspects (esp.
             # docker-compose's idempotency check on Labels) round-trip cleanly.
             meta = {
+                "Id": payload.get("Id") or _stable_network_id(name),
                 "Created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "Driver": payload.get("Driver", "host"),
                 "Options": payload.get("Options") or {},
                 "Labels": payload.get("Labels") or {},
                 "IPAM": payload.get("IPAM") or {"Driver": "default", "Config": []},
+                "Warning": HOST_NETWORK_LIMITATION_WARNING,
             }
             with open(os.path.join(np_, "meta.json"), "w") as f:
                 json.dump(meta, f)
@@ -5132,8 +5324,8 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                 "type": meta["Driver"],
             })
             self._send_json(201, {
-                "Id": name,
-                "Warning": "host-network underneath; members resolve via /etc/hosts to 127.0.0.1",
+                "Id": meta["Id"],
+                "Warning": HOST_NETWORK_LIMITATION_WARNING,
             })
             return
 
@@ -5172,14 +5364,15 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                     return
                 meta = _network_meta(net_name)
                 self._send_json(200, {
-                    "Name": net_name, "Id": net_name,
+                    "Name": net_name, "Id": _stable_network_id(net_name),
                     "Created": meta.get("Created", "2026-01-01T00:00:00Z"),
                     "Scope": "local",
                     "Driver": meta.get("Driver", "host"),
                     "IPAM": meta.get("IPAM", {"Driver": "default", "Config": []}),
                     "Containers": _network_containers(net_name) if os.path.isdir(np_) else {},
                     "Options": meta.get("Options", {}),
-                    "Labels": meta.get("Labels", {})})
+                    "Labels": meta.get("Labels", {}),
+                    "PdockerWarning": meta.get("Warning", HOST_NETWORK_LIMITATION_WARNING)})
                 return
             if method == "DELETE":
                 shutil.rmtree(np_, ignore_errors=True)
@@ -5193,29 +5386,23 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                 if not state:
                     self._send_json(404, {"message": f"No such container: {cid_or_name}"})
                     return
-                os.makedirs(np_, exist_ok=True)
-                mp = os.path.join(np_, "members.json")
-                members = []
-                if os.path.exists(mp):
-                    with open(mp) as f:
-                        members = json.load(f)
                 cid = state["Id"]
-                cname = state.get("Name", cid).lstrip("/")
                 if sub == "/connect":
-                    if not any(m_["id"] == cid for m_ in members):
-                        members.append({"id": cid, "name": cname})
+                    if net_name != "bridge" and not os.path.isdir(np_):
+                        self._send_json(404, {"message": f"network {net_name} not found"})
+                        return
+                    endpoint_config = payload.get("EndpointConfig") or {}
+                    _connect_network_metadata(state, net_name, endpoint_config)
                     record_event("network", "connect", net_name, {
                         "name": net_name,
                         "container": cid,
                     })
                 else:
-                    members = [m_ for m_ in members if m_["id"] != cid]
+                    _disconnect_network_metadata(state, net_name)
                     record_event("network", "disconnect", net_name, {
                         "name": net_name,
                         "container": cid,
                     })
-                with open(mp, "w") as f:
-                    json.dump(members, f)
                 self.send_response(200); self.end_headers()
                 return
             if method == "POST":

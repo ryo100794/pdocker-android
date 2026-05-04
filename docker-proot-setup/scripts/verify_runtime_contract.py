@@ -295,12 +295,144 @@ def test_default_no_proot_runtime_path() -> None:
         ok("no-proot request creates direct backend instance")
 
 
+def test_duplicate_name_resolution_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("duplicate_names", "no-proot", home_path)
+        old_id = "1" * 64
+        new_id = "2" * 64
+        name = "stale-name"
+        for cid, created in (
+            (old_id, "2026-01-01T00:00:00.000000000Z"),
+            (new_id, "2026-01-02T00:00:00.000000000Z"),
+        ):
+            (Path(mod.CONTAINERS_DIR) / cid).mkdir(parents=True)
+            mod.save_container_state(
+                cid,
+                {
+                    "Id": cid,
+                    "Name": f"/{name}",
+                    "Created": created,
+                    "State": {"Running": False, "Status": "exited", "Pid": 0},
+                },
+            )
+
+        matches = mod.find_containers(name)
+        if [state["Id"] for state in matches] != [new_id, old_id]:
+            fail(f"duplicate name lookup did not return newest-first matches: {matches!r}")
+        try:
+            mod.create_container({"Image": "unused:latest"}, name=name)
+        except ValueError as exc:
+            if new_id not in str(exc):
+                fail(f"duplicate create conflict did not report newest match: {exc}")
+        else:
+            fail("duplicate container name should reject create_container")
+
+        removed = [state["Id"] for state in matches if mod.remove_container(state["Id"], force=True)]
+        if removed != [new_id, old_id]:
+            fail(f"duplicate name cleanup did not remove both matches: {removed!r}")
+        if mod.find_containers(name):
+            fail("duplicate name cleanup left stale matches behind")
+        ok("duplicate container names resolve newest-first and can be cleaned up")
+
+
 def seed_legacy_image(mod, image: str) -> None:
     img_dir = Path(mod.image_dir(mod.normalize_image(image)))
     rootfs = img_dir / "rootfs"
     (rootfs / "bin").mkdir(parents=True)
     (rootfs / "bin" / "sh").write_text("#!/bin/sh\n")
     (img_dir / "config.json").write_text('{"config":{"Env":[]}}')
+
+
+def test_network_metadata_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("network_metadata", "no-proot", home_path)
+        seed_legacy_image(mod, "ubuntu:22.04")
+        net_name = "demo_default"
+        net_dir = Path(mod.NETWORKS_DIR) / net_name
+        net_dir.mkdir(parents=True)
+        (net_dir / "members.json").write_text("[]")
+        stable_net_id = mod._stable_network_id(net_name)
+        (net_dir / "meta.json").write_text(json.dumps({
+            "Id": stable_net_id,
+            "Created": "2026-05-04T00:00:00Z",
+            "Driver": "bridge",
+            "Labels": {"com.docker.compose.project": "demo"},
+            "Options": {},
+            "IPAM": {"Driver": "default", "Config": []},
+            "Warning": mod.HOST_NETWORK_LIMITATION_WARNING,
+        }))
+
+        def make_service(name: str, aliases: list[str], host_port: str):
+            return mod.create_container(
+                {
+                    "Image": "ubuntu:22.04",
+                    "Cmd": ["/bin/sh"],
+                    "ExposedPorts": {"8080/tcp": {}},
+                    "Labels": {
+                        "com.docker.compose.project": "demo",
+                        "com.docker.compose.service": name,
+                        "io.github.ryo100794.pdocker.compose-service": name,
+                    },
+                    "HostConfig": {
+                        "NetworkMode": net_name,
+                        "PortBindings": {
+                            "8080/tcp": [{"HostIp": "0.0.0.0", "HostPort": host_port}],
+                        },
+                    },
+                    "NetworkingConfig": {
+                        "EndpointsConfig": {
+                            net_name: {"Aliases": aliases},
+                        },
+                    },
+                },
+                name=f"demo-{name}-1",
+            )
+
+        web = make_service("web", ["web", "demo-web"], "18080")
+        db = make_service("db", ["db", "demo-db"], "15432")
+        web_net = web["NetworkSettings"]["Networks"][net_name]
+        if web_net.get("NetworkID") != stable_net_id or len(web_net.get("EndpointID", "")) != 64:
+            fail(f"stable network/endpoint IDs missing: {web_net!r}")
+        aliases = web_net.get("Aliases") or []
+        for alias in ("demo-web-1", "web", "demo-web"):
+            if alias not in aliases:
+                fail(f"compose/service alias {alias!r} missing: {aliases!r}")
+        if web["NetworkSettings"]["Ports"]["8080/tcp"][0]["HostPort"] != "18080":
+            fail(f"Docker port binding did not persist: {web['NetworkSettings']['Ports']!r}")
+        if web["PdockerNetwork"]["IPAddress"] != web["NetworkSettings"]["IPAddress"]:
+            fail(f"PdockerNetwork and NetworkSettings IPs diverged: {web!r}")
+        warnings = web.get("Warnings") or []
+        if not any("host-network-only" in item and "no TUN" in item for item in warnings):
+            fail(f"host-network limitation warning missing: {warnings!r}")
+
+        containers = mod._network_containers(net_name)
+        web_member = containers.get(web["Id"]) or {}
+        if web_member.get("EndpointID") != web_net.get("EndpointID"):
+            fail(f"network inspect endpoint mismatch: {containers!r}")
+        if web_member.get("IPv4Address") != f"{web['NetworkSettings']['IPAddress']}/32":
+            fail(f"network inspect synthetic IP mismatch: {web_member!r}")
+        if "web" not in (web_member.get("Aliases") or []):
+            fail(f"network inspect aliases missing: {web_member!r}")
+
+        hosts_root = home_path / "hosts-root"
+        mod._inject_network_hosts(str(hosts_root), net_name, web["Id"])
+        hosts = (hosts_root / "etc" / "hosts").read_text()
+        if "db" not in hosts or "demo-db" not in hosts:
+            fail(f"/etc/hosts alias injection omitted peer service aliases: {hosts!r}")
+
+        loaded_web = mod.load_container_state(web["Id"])
+        mod._disconnect_network_metadata(loaded_web, net_name)
+        disconnected = mod.load_container_state(web["Id"])
+        if net_name in disconnected.get("NetworkSettings", {}).get("Networks", {}):
+            fail(f"disconnect left endpoint in container NetworkSettings: {disconnected!r}")
+        members = mod._network_members(net_name)
+        if any(member.get("id") == web["Id"] for member in members):
+            fail(f"disconnect left network membership behind: {members!r}")
+        if not any(member.get("id") == db["Id"] for member in members):
+            fail(f"disconnect removed the wrong network member: {members!r}")
+        ok("network metadata records stable IDs, aliases, ports, IPs, and host-only warnings")
 
 
 def seed_layered_image(mod, image: str, diff_ids: list[str], config: dict | None = None) -> None:
@@ -619,6 +751,8 @@ def main() -> int:
     test_start_container_reconciles_live_pid()
     test_start_container_rejects_reused_pid()
     test_default_no_proot_runtime_path()
+    test_duplicate_name_resolution_contract()
+    test_network_metadata_contract()
     test_dockerfile_unknown_instruction_rejected()
     test_direct_run_requires_real_executor()
     test_existing_tag_inline_run_cache()

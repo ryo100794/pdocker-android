@@ -531,6 +531,7 @@ static int install_selective_seccomp_trace_filter(void) {
     ADD_TRACE_SYSCALL(175);  /* geteuid */
     ADD_TRACE_SYSCALL(176);  /* getgid */
     ADD_TRACE_SYSCALL(177);  /* getegid */
+    ADD_TRACE_SYSCALL(203);  /* connect: rewrite AF_UNIX socket bind paths. */
     ADD_TRACE_SYSCALL(221);  /* execve */
     ADD_ERRNO_SYSCALL(293, ENOSYS);  /* rseq */
     ADD_ERRNO_SYSCALL(235, ENOSYS);  /* mbind */

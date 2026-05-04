@@ -1,6 +1,6 @@
 # pdocker network visibility and port rewrite plan
 
-Snapshot date: 2026-05-01.
+Snapshot date: 2026-05-04.
 
 pdockerd still executes containers in Android's app/user-space networking
 context. It does not yet create a kernel network namespace or a real bridge
@@ -14,8 +14,13 @@ For each created container, pdockerd now stores:
 
 - `NetworkSettings.IPAddress`
 - `NetworkSettings.Networks.bridge.IPAddress`
+- `NetworkSettings.Networks.<name>.NetworkID`
+- `NetworkSettings.Networks.<name>.EndpointID`
+- `NetworkSettings.Networks.<name>.Aliases`
 - `NetworkSettings.Ports`
 - `/containers/json[].Ports`
+- `/networks`, `/networks/{name}`, `/networks/{name}/connect`, and
+  `/networks/{name}/disconnect` metadata
 
 The IP address is a stable synthetic identity in `10.88.0.0/16`, derived from
 the container ID. It is intended for UI/API identity and for future hook lookup;
@@ -32,11 +37,20 @@ Example inspect shape:
       "443/tcp": null
     },
     "Networks": {
-      "bridge": {"IPAddress": "10.88.12.34"}
+      "bridge": {
+        "NetworkID": "5c33...",
+        "EndpointID": "7db1...",
+        "IPAddress": "10.88.12.34",
+        "Aliases": ["web-1", "web"]
+      }
     }
   }
 }
 ```
+
+Network IDs and endpoint IDs are stable hashes, not kernel object IDs. Compose
+project/service aliases and endpoint aliases are preserved for inspect/list
+responses and for the current `/etc/hosts` compatibility injection.
 
 ## pdocker extension surface
 
@@ -58,7 +72,10 @@ Example inspect shape:
       }
     ],
     "Kind": "host-network-with-syscall-hook-plan",
+    "Runtime": "host-network-only",
+    "Limitation": "pdocker records Docker/Compose network metadata, but Android runtime is host-network-only: there is no TUN, bridge namespace, iptables, or embedded DNS yet. Named-network aliases are /etc/hosts compatibility entries and all process traffic still uses the Android app network.",
     "Warnings": [
+      "pdocker records Docker/Compose network metadata, but Android runtime is host-network-only: there is no TUN, bridge namespace, iptables, or embedded DNS yet. Named-network aliases are /etc/hosts compatibility entries and all process traffic still uses the Android app network.",
       "pdocker records requested port publishing, but Android sandbox runtime is still host-network-only; bind/connect syscall rewrite is planned and not active yet."
     ]
   },
@@ -78,19 +95,24 @@ are marked `planned`.
 - `Config.ExposedPorts` and image `config.ExposedPorts` are merged.
 - `HostConfig.PortBindings` is honored when present.
 - `HostConfig.PublishAllPorts=true` allocates deterministic host ports.
+- Compose `NetworkingConfig.EndpointsConfig.<network>.Aliases` and
+  `com.docker.compose.service` labels are reflected in endpoint aliases.
 - Invalid or empty host ports fall back to deterministic ports derived from the
   container ID and container port.
 - Container create responses and inspect payloads expose warnings whenever port
-  publishing is requested. That warning means Docker-compatible metadata was
-  recorded, but the syscall rewrite layer has not started forwarding traffic.
+  publishing or named-network metadata is requested. Those warnings mean
+  Docker-compatible metadata was recorded, but the Android runtime remains
+  host-network-only and the syscall rewrite layer has not started forwarding
+  traffic.
 
 This keeps `docker ps`, `docker inspect`, UI widgets, and future syscall hook
 logic reading the same persisted state.
 
 ## Test coverage
 
-`scripts/verify_all.sh` includes a reusable regression named
-`pdocker network identity + port plan`. It imports `bin/pdockerd` directly and
-asserts stable virtual IP generation, Docker-style `Ports`, `/containers/json`
-port summaries, invalid host-port fallback behavior, and port-publishing
+`scripts/verify_all.sh` includes a reusable regression named `pdocker network
+identity + port plan`. `scripts/verify_runtime_contract.py` also imports
+`bin/pdockerd` directly and asserts stable network IDs, endpoint IDs,
+Compose/service aliases, `/etc/hosts` peer alias injection, Docker-style
+`Ports`, synthetic IP display, disconnect cleanup, and host-network-only
 warnings.

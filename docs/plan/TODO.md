@@ -452,15 +452,20 @@ Status: **metadata only**.
 Temporary behavior:
 
 - Synthetic IPs and `PdockerNetwork.PortRewrite` are recorded.
-- Network mode is treated as a Compose-compatible host-network stub.
+- Network mode is treated as a Compose-compatible host-network stub with stable
+  network IDs, endpoint IDs, service aliases, and `/networks` metadata.
 - Port publishing warnings are surfaced.
+- API warnings explicitly state the Android runtime has no TUN, namespace,
+  bridge, iptables, or embedded DNS yet.
 
 Real implementation needed:
 
 1. Implement bind/connect syscall mediation or a container-aware socket proxy.
 2. Support multiple containers wanting the same internal port.
 3. Provide container DNS/alias resolution beyond `/etc/hosts` injection.
-4. Add UI state for active/inactive/blocked port mappings.
+4. Teach running containers to refresh peer aliases after network connect and
+   disconnect without requiring a restart.
+5. Add UI state for active/inactive/blocked port mappings.
 
 Acceptance:
 

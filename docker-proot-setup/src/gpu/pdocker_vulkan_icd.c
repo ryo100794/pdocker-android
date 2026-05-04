@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_icd.h>
@@ -46,10 +47,15 @@ typedef struct {
 typedef struct PdockerVkMemory PdockerVkMemory;
 typedef struct PdockerVkBuffer PdockerVkBuffer;
 typedef struct PdockerVkDescriptorBinding PdockerVkDescriptorBinding;
+typedef struct PdockerVkDescriptorSetLayout PdockerVkDescriptorSetLayout;
 typedef struct PdockerVkDescriptorSet PdockerVkDescriptorSet;
 typedef struct PdockerVkShaderModule PdockerVkShaderModule;
+typedef struct PdockerVkPipelineLayout PdockerVkPipelineLayout;
 typedef struct PdockerVkPipeline PdockerVkPipeline;
 typedef struct PdockerVkFence PdockerVkFence;
+
+#define PDOCKER_VK_MAX_STORAGE_BUFFERS 16
+#define PDOCKER_VK_MAX_PUSH_BYTES 256
 
 struct PdockerVkMemory {
     size_t size;
@@ -71,17 +77,28 @@ struct PdockerVkDescriptorBinding {
     VkDeviceSize range;
 };
 
+struct PdockerVkDescriptorSetLayout {
+    uint32_t storage_binding_count;
+};
+
 struct PdockerVkDescriptorSet {
-    PdockerVkDescriptorBinding storage_buffers[16];
+    PdockerVkDescriptorBinding storage_buffers[PDOCKER_VK_MAX_STORAGE_BUFFERS];
 };
 
 struct PdockerVkShaderModule {
     size_t code_size;
     uint32_t first_word;
+    int code_fd;
+    void *code_map;
+};
+
+struct PdockerVkPipelineLayout {
+    uint32_t push_constant_size;
 };
 
 struct PdockerVkPipeline {
     PdockerVkShaderModule *shader;
+    PdockerVkPipelineLayout *layout;
     uint32_t local_size_x;
 };
 
@@ -94,6 +111,10 @@ typedef struct {
     PdockerVkPipeline *pipeline;
     PdockerVkDescriptorSet *set;
     uint32_t dispatch_x;
+    uint32_t dispatch_y;
+    uint32_t dispatch_z;
+    uint8_t push_constants[PDOCKER_VK_MAX_PUSH_BYTES];
+    uint32_t push_constant_size;
     bool has_dispatch;
 } PdockerVkCommandBuffer;
 
@@ -243,6 +264,118 @@ static int send_vector_add_3fd(size_t n, int fd_a, int fd_b, int fd_out) {
     return rc;
 }
 
+static void hex_encode(const uint8_t *src, size_t src_size, char *dst, size_t dst_size) {
+    static const char hex[] = "0123456789abcdef";
+    if (!dst || dst_size == 0) return;
+    size_t max_bytes = (dst_size - 1) / 2;
+    if (src_size > max_bytes) src_size = max_bytes;
+    for (size_t i = 0; i < src_size; ++i) {
+        dst[i * 2] = hex[(src[i] >> 4) & 0xf];
+        dst[i * 2 + 1] = hex[src[i] & 0xf];
+    }
+    dst[src_size * 2] = '\0';
+}
+
+static size_t descriptor_binding_size(const PdockerVkDescriptorBinding *binding);
+
+static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
+    if (!cmd || !cmd->pipeline || !cmd->pipeline->shader || !cmd->set) return -EINVAL;
+    PdockerVkShaderModule *shader = cmd->pipeline->shader;
+    if (shader->code_fd < 0 || shader->code_size == 0) return -EINVAL;
+
+    int fds[1 + PDOCKER_VK_MAX_STORAGE_BUFFERS];
+    uint32_t bindings[PDOCKER_VK_MAX_STORAGE_BUFFERS];
+    VkDeviceSize offsets[PDOCKER_VK_MAX_STORAGE_BUFFERS];
+    size_t sizes[PDOCKER_VK_MAX_STORAGE_BUFFERS];
+    size_t binding_count = 0;
+    fds[0] = shader->code_fd;
+    for (uint32_t i = 0; i < PDOCKER_VK_MAX_STORAGE_BUFFERS; ++i) {
+        PdockerVkDescriptorBinding *binding = &cmd->set->storage_buffers[i];
+        if (!binding->buffer || !binding->buffer->memory) continue;
+        size_t bytes = descriptor_binding_size(binding);
+        if (bytes == 0) continue;
+        bindings[binding_count] = i;
+        offsets[binding_count] = binding->buffer->memory_offset + binding->offset;
+        sizes[binding_count] = bytes;
+        fds[1 + binding_count] = binding->buffer->memory->fd;
+        binding_count++;
+    }
+    if (binding_count == 0) return -EINVAL;
+
+    char push_hex[PDOCKER_VK_MAX_PUSH_BYTES * 2 + 1];
+    hex_encode(cmd->push_constants, cmd->push_constant_size, push_hex, sizeof(push_hex));
+    const char *push_token = cmd->push_constant_size ? push_hex : "-";
+
+    char command[4096];
+    int n = snprintf(command, sizeof(command),
+                     "VULKAN_DISPATCH_V1 %zu %zu %u %u %u %u %s",
+                     shader->code_size,
+                     binding_count,
+                     cmd->push_constant_size,
+                     cmd->dispatch_x,
+                     cmd->dispatch_y ? cmd->dispatch_y : 1,
+                     cmd->dispatch_z ? cmd->dispatch_z : 1,
+                     push_token);
+    if (n < 0 || (size_t)n >= sizeof(command)) return -ENAMETOOLONG;
+    size_t off = (size_t)n;
+    for (size_t i = 0; i < binding_count; ++i) {
+        n = snprintf(command + off, sizeof(command) - off,
+                     " %u %llu %zu",
+                     bindings[i],
+                     (unsigned long long)offsets[i],
+                     sizes[i]);
+        if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+        off += (size_t)n;
+    }
+    if (off + 2 >= sizeof(command)) return -ENAMETOOLONG;
+    command[off++] = '\n';
+    command[off] = '\0';
+
+    int socket_fd = connect_queue();
+    if (socket_fd < 0) return socket_fd;
+    char control[CMSG_SPACE(sizeof(fds))];
+    struct iovec iov;
+    struct msghdr msg;
+    memset(control, 0, sizeof(control));
+    memset(&iov, 0, sizeof(iov));
+    memset(&msg, 0, sizeof(msg));
+    iov.iov_base = command;
+    iov.iov_len = strlen(command);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(int) * (1 + binding_count));
+    memcpy(CMSG_DATA(cmsg), fds, sizeof(int) * (1 + binding_count));
+    msg.msg_controllen = CMSG_SPACE(sizeof(int) * (1 + binding_count));
+
+    int rc = 0;
+    if (sendmsg(socket_fd, &msg, 0) < 0) {
+        rc = -errno;
+    } else {
+        char line[4096];
+        size_t line_off = 0;
+        while (line_off + 1 < sizeof(line)) {
+            char ch;
+            ssize_t r = read(socket_fd, &ch, 1);
+            if (r <= 0) break;
+            line[line_off++] = ch;
+            if (ch == '\n') break;
+        }
+        line[line_off] = '\0';
+        if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+            fprintf(stderr, "pdocker-vulkan-icd: generic dispatch response: %s", line);
+            if (line_off == 0 || line[line_off - 1] != '\n') fprintf(stderr, "\n");
+        }
+        if (strstr(line, "\"valid\":true") == NULL) rc = -EIO;
+    }
+    close(socket_fd);
+    return rc;
+}
+
 static size_t buffer_available(const PdockerVkBuffer *buffer, VkDeviceSize offset) {
     if (!buffer || !buffer->memory) return 0;
     VkDeviceSize absolute = buffer->memory_offset + offset;
@@ -290,7 +423,13 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->driverVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
     pProperties->vendorID = 0x5044; /* PD */
     pProperties->deviceID = 0x0001;
-    pProperties->deviceType = bridge_available() ? VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+    /*
+     * The Android GPU is usually physically integrated, but this glibc-facing
+     * ICD does not expose true UMA pointers into vendor memory. Work is
+     * lowered through the APK-owned executor, so advertise a discrete-like
+     * device to keep ggml/llama.cpp out of UMA host-pointer fast paths.
+     */
+    pProperties->deviceType = bridge_available() ? VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
                                                  : VK_PHYSICAL_DEVICE_TYPE_CPU;
     snprintf(pProperties->deviceName, sizeof(pProperties->deviceName),
              "pdocker Vulkan bridge (%s)", bridge_available() ? "queue" : "offline");
@@ -310,6 +449,7 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.maxDescriptorSetStorageBuffers = 64;
     pProperties->limits.minStorageBufferOffsetAlignment = 16;
     pProperties->limits.minUniformBufferOffsetAlignment = 16;
+    pProperties->limits.minMemoryMapAlignment = 64;
     pProperties->limits.nonCoherentAtomSize = 64;
     pProperties->limits.timestampComputeAndGraphics = VK_FALSE;
 }
@@ -982,8 +1122,18 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorSetLayout(
     (void)pCreateInfo;
     (void)pAllocator;
     if (!pSetLayout) return VK_ERROR_INITIALIZATION_FAILED;
-    *pSetLayout = (VkDescriptorSetLayout)pdocker_alloc_handle(sizeof(PdockerHandle));
-    return *pSetLayout ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+    PdockerVkDescriptorSetLayout *layout = pdocker_alloc_handle(sizeof(*layout));
+    if (!layout) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    for (uint32_t i = 0; pCreateInfo && i < pCreateInfo->bindingCount; ++i) {
+        const VkDescriptorSetLayoutBinding *binding = &pCreateInfo->pBindings[i];
+        if (binding->descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER &&
+            binding->binding < PDOCKER_VK_MAX_STORAGE_BUFFERS &&
+            binding->binding + 1 > layout->storage_binding_count) {
+            layout->storage_binding_count = binding->binding + 1;
+        }
+    }
+    *pSetLayout = (VkDescriptorSetLayout)layout;
+    return VK_SUCCESS;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorSetLayout(
@@ -1001,11 +1151,21 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreatePipelineLayout(
         const VkAllocationCallbacks *pAllocator,
         VkPipelineLayout *pPipelineLayout) {
     (void)device;
-    (void)pCreateInfo;
     (void)pAllocator;
     if (!pPipelineLayout) return VK_ERROR_INITIALIZATION_FAILED;
-    *pPipelineLayout = (VkPipelineLayout)pdocker_alloc_handle(sizeof(PdockerHandle));
-    return *pPipelineLayout ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+    PdockerVkPipelineLayout *layout = pdocker_alloc_handle(sizeof(*layout));
+    if (!layout) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    for (uint32_t i = 0; pCreateInfo && i < pCreateInfo->pushConstantRangeCount; ++i) {
+        const VkPushConstantRange *range = &pCreateInfo->pPushConstantRanges[i];
+        uint32_t end = range->offset + range->size;
+        if (end > layout->push_constant_size) layout->push_constant_size = end;
+    }
+    if (layout->push_constant_size > PDOCKER_VK_MAX_PUSH_BYTES) {
+        free(layout);
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    *pPipelineLayout = (VkPipelineLayout)layout;
+    return VK_SUCCESS;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkDestroyPipelineLayout(
@@ -1124,6 +1284,18 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateShaderModule(
     shader->first_word = (pCreateInfo->pCode && pCreateInfo->codeSize >= sizeof(uint32_t))
         ? pCreateInfo->pCode[0]
         : 0;
+    shader->code_fd = create_shared_fd(shader->code_size);
+    if (shader->code_fd < 0) {
+        free(shader);
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    shader->code_map = mmap(NULL, shader->code_size, PROT_READ | PROT_WRITE, MAP_SHARED, shader->code_fd, 0);
+    if (shader->code_map == MAP_FAILED) {
+        close(shader->code_fd);
+        free(shader);
+        return VK_ERROR_MEMORY_MAP_FAILED;
+    }
+    memcpy(shader->code_map, pCreateInfo->pCode, shader->code_size);
     *pShaderModule = (VkShaderModule)shader;
     return *pShaderModule ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
 }
@@ -1134,7 +1306,11 @@ VKAPI_ATTR void VKAPI_CALL vkDestroyShaderModule(
         const VkAllocationCallbacks *pAllocator) {
     (void)device;
     (void)pAllocator;
-    free((void *)shaderModule);
+    PdockerVkShaderModule *shader = (PdockerVkShaderModule *)shaderModule;
+    if (!shader) return;
+    if (shader->code_map && shader->code_map != MAP_FAILED) munmap(shader->code_map, shader->code_size);
+    if (shader->code_fd >= 0) close(shader->code_fd);
+    free(shader);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateComputePipelines(
@@ -1153,6 +1329,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateComputePipelines(
         PdockerVkPipeline *pipeline = pdocker_alloc_handle(sizeof(*pipeline));
         if (!pipeline) return VK_ERROR_OUT_OF_HOST_MEMORY;
         pipeline->shader = (PdockerVkShaderModule *)pCreateInfos[i].stage.module;
+        pipeline->layout = (PdockerVkPipelineLayout *)pCreateInfos[i].layout;
         pipeline->local_size_x = 128;
         pPipelines[i] = (VkPipeline)pipeline;
     }
@@ -1236,6 +1413,10 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(
     cmd->pipeline = NULL;
     cmd->set = NULL;
     cmd->dispatch_x = 0;
+    cmd->dispatch_y = 0;
+    cmd->dispatch_z = 0;
+    memset(cmd->push_constants, 0, sizeof(cmd->push_constants));
+    cmd->push_constant_size = 0;
     cmd->has_dispatch = false;
     return VK_SUCCESS;
 }
@@ -1290,6 +1471,8 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
     PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
     if (cmd) {
         cmd->dispatch_x = groupCountX;
+        cmd->dispatch_y = groupCountY;
+        cmd->dispatch_z = groupCountZ;
         cmd->has_dispatch = true;
     }
 }
@@ -1301,12 +1484,13 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(
         uint32_t offset,
         uint32_t size,
         const void *pValues) {
-    (void)commandBuffer;
     (void)layout;
     (void)stageFlags;
-    (void)offset;
-    (void)size;
-    (void)pValues;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
+    if (!cmd || !pValues || offset >= PDOCKER_VK_MAX_PUSH_BYTES) return;
+    if (offset + size > PDOCKER_VK_MAX_PUSH_BYTES) size = PDOCKER_VK_MAX_PUSH_BYTES - offset;
+    memcpy(cmd->push_constants + offset, pValues, size);
+    if (offset + size > cmd->push_constant_size) cmd->push_constant_size = offset + size;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(
@@ -1441,12 +1625,20 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
             if (cmd->pipeline && cmd->pipeline->shader && cmd->pipeline->shader->code_size > sizeof(uint32_t)) {
+                int generic_rc = send_generic_vulkan_dispatch(cmd);
+                if (generic_rc == 0) {
+                    continue;
+                }
                 if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                     fprintf(stderr,
-                            "pdocker-vulkan-icd: real SPIR-V dispatch is not lowered yet code_size=%zu first_word=0x%08x dispatch_x=%u\n",
+                            "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",
+                            generic_rc,
                             cmd->pipeline->shader->code_size,
                             cmd->pipeline->shader->first_word,
-                            cmd->dispatch_x);
+                            cmd->dispatch_x,
+                            cmd->dispatch_y,
+                            cmd->dispatch_z,
+                            cmd->push_constant_size);
                 }
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }

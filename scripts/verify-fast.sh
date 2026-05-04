@@ -20,6 +20,7 @@ run python3 -m py_compile \
   docker-proot-setup/scripts/verify_runtime_contract.py
 
 run python3 docker-proot-setup/scripts/verify_runtime_contract.py
+run cmp -s docker-proot-setup/bin/pdockerd app/src/main/assets/pdockerd/pdockerd
 run python3 scripts/verify-build-profile.py
 run python3 scripts/verify-dockerfile-standard.py
 run python3 scripts/verify_terminal_editor_contracts.py
