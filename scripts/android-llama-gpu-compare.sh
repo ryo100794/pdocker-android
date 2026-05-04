@@ -16,6 +16,7 @@ PREDICT="${PDOCKER_LLAMA_BENCH_PREDICT:-4}"
 REPEAT="${PDOCKER_LLAMA_BENCH_REPEAT:-1}"
 OUT="${PDOCKER_LLAMA_COMPARE_OUT:-$ROOT/docs/test/llama-gpu-compare-latest.json}"
 RESTORE_CPU=1
+OP_ID="llama-gpu-compare-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 
 usage() {
   cat <<EOF
@@ -58,6 +59,30 @@ remote_quote() {
 
 run_as() {
   "$ADB" shell "run-as $PKG sh -c $(remote_quote "$1")"
+}
+
+operation_notify() {
+  local status="$1"
+  local detail="$2"
+  local finished="${3:-0}"
+  local json len
+  json="$(python3 - "$OP_ID" "$status" "$detail" "$finished" <<'PY'
+import json
+import sys
+
+op_id, status, detail, finished = sys.argv[1:5]
+print(json.dumps({
+    "Id": op_id,
+    "Kind": "llama-gpu-compare",
+    "Title": "llama.cpp GPU compare",
+    "Status": status,
+    "Detail": detail,
+    "Finished": finished == "1",
+}, separators=(",", ":")))
+PY
+)"
+  len="$(printf "%s" "$json" | wc -c | tr -d ' ')"
+  run_as "cd files && { printf 'POST /system/operations HTTP/1.1\r\nHost: pdocker\r\nContent-Type: application/json\r\nContent-Length: $len\r\nConnection: close\r\n\r\n'; printf %s $(remote_quote "$json"); } | toybox nc -U pdocker/pdockerd.sock >/dev/null 2>&1 || true" >/dev/null 2>&1 || true
 }
 
 docker_prefix='cd files && export PATH="$PWD/pdocker-runtime/docker-bin:$PATH" DOCKER_CONFIG="$PWD/pdocker-runtime/docker-bin" DOCKER_HOST="unix://$PWD/pdocker/pdockerd.sock" DOCKER_BUILDKIT=0'
@@ -105,8 +130,10 @@ bench_http() {
 }
 
 echo "[pdocker llama compare] start CPU baseline"
+operation_notify "running" "CPU baseline: starting"
 start_cpu >/dev/null
 if ! wait_server 90; then
+  operation_notify "failed" "CPU server did not become reachable" 1
   echo "CPU server did not become reachable" >&2
   container_state >&2
   container_logs >&2
@@ -116,14 +143,17 @@ CPU_JSON="$TMP/cpu.json"
 bench_http "cpu-baseline" "$CPU_JSON" >/dev/null
 
 echo "[pdocker llama compare] start forced Vulkan run"
+operation_notify "running" "CPU baseline complete; forced Vulkan model load starting"
 start_gpu >/dev/null
 GPU_LOG="$TMP/gpu.log"
 GPU_STATE="$TMP/gpu-state.txt"
 GPU_JSON="$TMP/gpu.json"
 if wait_server 120; then
+  operation_notify "running" "Forced Vulkan served; recording HTTP benchmark"
   bench_http "vulkan-forced-ngl-$GPU_LAYERS" "$GPU_JSON" >/dev/null || true
   gpu_served=1
 else
+  operation_notify "running" "Forced Vulkan did not serve; collecting container logs"
   gpu_served=0
   container_state > "$GPU_STATE"
   container_logs > "$GPU_LOG"
@@ -156,6 +186,7 @@ evidence = {
     "serve_reachable": bool(int(gpu_served_s)),
     "buffer_allocation_blocker": "unable to allocate Vulkan0 buffer" in log,
     "assert_blocker": "GGML_ASSERT" in log,
+    "buffer_range_assert_blocker": "ggml_backend_buffer_get_alloc_size" in log,
     "gpu_model_buffer_seen": "Vulkan0 model buffer size" in log,
     "queue_submit_blocker": "vk::Queue::submit: ErrorFeatureNotPresent" in log,
     "spirv_dispatch_blocker": "real SPIR-V dispatch is not lowered yet" in log or "vk::Queue::submit: ErrorFeatureNotPresent" in log,
@@ -195,6 +226,9 @@ result = {
         "target_met": bool(cpu_tps and gpu_tps >= target_tps),
     },
     "next_blocker": (
+        "fix Vulkan buffer base/range accounting for scheduler warmup"
+        if evidence["buffer_range_assert_blocker"]
+        else
         "split 4GiB+ Vulkan buffers / pinned host-buffer path"
         if evidence["buffer_allocation_blocker"] or evidence["assert_blocker"]
         else "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
@@ -207,15 +241,32 @@ print(json.dumps(result["comparison"], indent=2))
 print("next_blocker:", result["next_blocker"])
 PY
 
+SUMMARY="$(python3 - "$OUT" <<'PY'
+import json
+import sys
+
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+print(
+    f"CPU {d['cpu']['tokens_per_second']:.3f} tok/s; "
+    f"GPU served={str(d['gpu']['served']).lower()}; "
+    f"speedup {d['comparison']['speedup']:.2f}x; "
+    f"next: {d['next_blocker']}"
+)
+PY
+)"
+operation_notify "running" "$SUMMARY"
+
 DEVICE_NAME="$(basename "$OUT")"
 "$ADB" push "$OUT" "/data/local/tmp/$DEVICE_NAME" >/dev/null
 run_as "mkdir -p files/pdocker/bench && cp /data/local/tmp/$DEVICE_NAME files/pdocker/bench/$DEVICE_NAME"
 
 if [[ "$RESTORE_CPU" -eq 1 ]]; then
   echo "[pdocker llama compare] restore CPU server"
+  operation_notify "running" "Restoring CPU llama server"
   start_cpu >/dev/null
   wait_server 90 >/dev/null || true
 fi
 
+operation_notify "done" "$SUMMARY; CPU server restored" 1
 echo "[pdocker llama compare] local: $OUT"
 echo "[pdocker llama compare] device: files/pdocker/bench/$DEVICE_NAME"

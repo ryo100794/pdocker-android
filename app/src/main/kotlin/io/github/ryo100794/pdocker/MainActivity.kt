@@ -215,6 +215,9 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             refreshStatus()
             refreshDaemonOperationsAsync()
+            if (currentTab in setOf(Tab.Overview, Tab.Containers, Tab.Compose)) {
+                refreshContainerSnapshotAsync()
+            }
             ui.postDelayed(this, 3000)
         }
     }
@@ -258,6 +261,10 @@ class MainActivity : AppCompatActivity() {
     private var lastStorageMetricsAt = 0L
     private var daemonOperations: List<DaemonOperation> = emptyList()
     private var daemonOperationsRefreshing = false
+    private var containerSnapshot: List<JSONObject> = emptyList()
+    private var containerSnapshotFingerprint = ""
+    private var containerSnapshotRefreshing = false
+    private var lastContainerSnapshotAt = 0L
     private var hostEnvironment: JSONObject? = null
     private var hostEnvironmentRefreshing = false
     private var lastHostEnvironmentAt = 0L
@@ -639,6 +646,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderContainers() {
         addSection(getString(R.string.section_containers))
+        refreshContainerSnapshotAsync()
         addAction(getString(R.string.action_docker_ps), getString(R.string.detail_docker_ps)) {
             runEngineAction(getString(R.string.terminal_docker_ps), workspaceGroup()) {
                 formatContainers(getArray("/containers/json?all=1"))
@@ -649,11 +657,15 @@ class MainActivity : AppCompatActivity() {
             addMessage(getString(R.string.message_no_containers))
             return
         }
+        val snapshotByKey = containerSnapshotLookup()
         containers.forEach { dir ->
             val state = readState(dir)
-            val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
+            val snapshot = snapshotByKey[dir.name]
+                ?: snapshotByKey[state?.optString("Name").orEmpty().trim('/')]
+            val name = containerDisplayName(snapshot, state, dir)
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
-            val statusText = state?.optJSONObject("State")
+            val statusText = snapshot?.optString("Status")?.takeIf { it.isNotBlank() }
+                ?: state?.optJSONObject("State")
                 ?.optString("Status")
                 ?.ifBlank { getString(R.string.unknown_status) }
                 ?: getString(R.string.unknown_status)
@@ -700,6 +712,62 @@ class MainActivity : AppCompatActivity() {
             containerServiceUrls(state).forEach { (label, url) ->
                 addAction(getString(R.string.action_open_service_fmt, label), url) {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            }
+        }
+    }
+
+    private fun containerDisplayName(snapshot: JSONObject?, state: JSONObject?, dir: File): String {
+        val names = snapshot?.optJSONArray("Names")
+        val fromSnapshot = names?.optString(0).orEmpty().trim('/').takeIf { it.isNotBlank() }
+        return fromSnapshot
+            ?: state?.optString("Name")?.trim('/')?.takeIf { it.isNotBlank() }
+            ?: dir.name
+    }
+
+    private fun containerSnapshotLookup(): Map<String, JSONObject> {
+        val out = mutableMapOf<String, JSONObject>()
+        containerSnapshot.forEach { obj ->
+            val id = obj.optString("Id")
+            if (id.isNotBlank()) {
+                out[id] = obj
+                out[id.take(12)] = obj
+            }
+            val names = obj.optJSONArray("Names")
+            if (names != null) {
+                for (i in 0 until names.length()) {
+                    val name = names.optString(i).trim('/')
+                    if (name.isNotBlank()) out[name] = obj
+                }
+            }
+        }
+        return out
+    }
+
+    private fun refreshContainerSnapshotAsync(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (containerSnapshotRefreshing) return
+        if (!force && now - lastContainerSnapshotAt < 2500L) return
+        containerSnapshotRefreshing = true
+        thread(isDaemon = true, name = "pdocker-container-snapshot") {
+            val arr = runCatching { engine.getArray("/containers/json?all=1") }.getOrNull()
+            val list = if (arr == null) emptyList() else (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+            val fingerprint = list.joinToString("\n") { obj ->
+                listOf(
+                    obj.optString("Id"),
+                    obj.optString("Status"),
+                    obj.optString("State"),
+                    obj.optJSONArray("Names")?.toString().orEmpty(),
+                ).joinToString("|")
+            }
+            ui.post {
+                val changed = fingerprint != containerSnapshotFingerprint
+                containerSnapshot = list
+                containerSnapshotFingerprint = fingerprint
+                containerSnapshotRefreshing = false
+                lastContainerSnapshotAt = System.currentTimeMillis()
+                if (changed && currentTab in setOf(Tab.Overview, Tab.Containers, Tab.Compose)) {
+                    renderContent()
                 }
             }
         }

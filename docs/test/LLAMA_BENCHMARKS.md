@@ -426,15 +426,18 @@ default.
 - Scenario: `scripts/android-llama-gpu-compare.sh --predict 2 --repeat 1 --gpu-layers 1 --gpu-ctx 512 --cpu-ctx 2048`.
 - Policy: llama.cpp source unchanged; GPU entry is the standard Vulkan loader
   through `pdocker-vulkan-icd.so`.
-- CPU baseline: 0.268 generated tokens/s for the short HTTP probe.
-- 10x target for this baseline: 2.676 generated tokens/s.
+- CPU baseline: 0.359 generated tokens/s for the short HTTP probe.
+- 10x target for this baseline: 3.590 generated tokens/s.
 - Forced Vulkan result: `served=false`, speedup `0.0x`.
 - GPU evidence: llama.cpp reached `Vulkan0 (pdocker Vulkan bridge (queue))`
   and allocated the offloaded output-layer Vulkan model buffer:
   `Vulkan0 model buffer size = 486.87 MiB`, `offloaded 1/37 layers to GPU`.
-- Next blocker: lower the llama.cpp Vulkan queue submit path into the Android
-  GPU executor. The current failure is `vk::Queue::submit:
-  ErrorFeatureNotPresent`.
+- Additional progress: transfer-only queue submits now complete. The run
+  reaches `llama_context`, KV-cache setup, compute-buffer allocation, and model
+  warmup.
+- Next blocker: fix Vulkan buffer base/range accounting for ggml scheduler
+  warmup. The current failure is a `ggml_backend_buffer_get_alloc_size` range
+  assertion.
 - Recovery: the script restored CPU mode; `pdocker-llama-cpp` returned to
   `Up (healthy)` and `/v1/models` returned `model.gguf`.
 

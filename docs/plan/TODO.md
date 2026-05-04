@@ -587,27 +587,32 @@ Tasks:
 4. **[active] Lower the first real llama.cpp SPIR-V dispatches.**
    Keep unknown shaders rejected, but add a trace classifier and implement the
    minimal operations needed for one offloaded Qwen3 output/repeating layer.
-5. **[next] Add persistent GPU command-ring transport.**
+5. **[active] Fix Vulkan buffer base/range accounting during scheduler warmup.**
+   Transfer-only submits now complete and llama.cpp reaches context
+   construction, compute-buffer allocation, and warmup. The current failure is
+   a `ggml_backend_buffer_get_alloc_size` range assertion, so the ICD must make
+   mapped buffer base/size accounting match what ggml's scheduler expects.
+6. **[next] Add persistent GPU command-ring transport.**
    Replace per-dispatch socket commands with shared ring descriptors, reusable
    buffer handles, fences, and error records under `/run/pdocker-gpu`.
-6. **[next] Establish small-model GPU green path.**
+7. **[next] Establish small-model GPU green path.**
    Use the same unmodified llama.cpp container with a small GGUF model to prove
    model load, first token, and `llama-bench -ngl 1` before returning to 8B.
-7. **[next] Optimize to 10x.**
+8. **[next] Optimize to 10x.**
    Measure CPU vs GPU after every dispatch slice; target is GPU
    `tokens/s >= CPU tokens/s * 10`. Prioritize persistent buffers, batched
    command submission, and resident compute over transfer-heavy paths.
-8. **[next] UI reporting.**
+9. **[next] UI reporting.**
    Surface `target_met`, speedup, current blocker, GPU layer count, and latest
    compare artifact in the project dashboard.
 
 Current 2026-05-04 blocker:
 
 - Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge, allocate
-  the first offloaded Vulkan model buffer, and report `offloaded 1/37 layers to
-  GPU`. It still cannot serve tokens because llama.cpp reaches
-  `vk::Queue::submit: ErrorFeatureNotPresent`. CPU mode is restored as the
-  usable path after GPU experiments.
+  the first offloaded Vulkan model buffer, complete transfer-only queue submits,
+  and reach context warmup. It still cannot serve tokens because ggml currently
+  trips a `ggml_backend_buffer_get_alloc_size` range assertion during warmup.
+  CPU mode is restored as the usable path after GPU experiments.
 
 Temporary behavior:
 

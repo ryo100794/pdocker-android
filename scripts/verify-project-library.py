@@ -40,6 +40,8 @@ def main() -> int:
         "compare script captures Vulkan allocation trace": "PDOCKER_VULKAN_ICD_TRACE_ALLOC=1" in compare_script and "allocation_trace_bytes" in compare_script,
         "compare script uses standard Vulkan entry": "standard Vulkan loader through pdocker-vulkan-icd.so" in compare_script,
         "compare script classifies dispatch blocker": "queue_submit_blocker" in compare_script and "vk::Queue::submit: ErrorFeatureNotPresent" in compare_script,
+        "compare script classifies range assert": "buffer_range_assert_blocker" in compare_script and "ggml_backend_buffer_get_alloc_size" in compare_script,
+        "compare script reports operation to ui": "operation_notify" in compare_script and "POST /system/operations" in compare_script and "llama-gpu-compare" in compare_script,
         "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script,
         "compare docs record latest report": "llama-gpu-compare-latest.json" in compare_doc,
         "compare todo records 10x task list": "llama.cpp Container GPU 10x Task List" in compare_todo,

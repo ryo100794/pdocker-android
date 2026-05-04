@@ -85,6 +85,7 @@ typedef struct {
     PdockerVkPipeline *pipeline;
     PdockerVkDescriptorSet *set;
     uint32_t dispatch_x;
+    bool has_dispatch;
 } PdockerVkCommandBuffer;
 
 typedef struct {
@@ -1132,6 +1133,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(
     cmd->pipeline = NULL;
     cmd->set = NULL;
     cmd->dispatch_x = 0;
+    cmd->has_dispatch = false;
     return VK_SUCCESS;
 }
 
@@ -1183,7 +1185,10 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
     (void)groupCountY;
     (void)groupCountZ;
     PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
-    if (cmd) cmd->dispatch_x = groupCountX;
+    if (cmd) {
+        cmd->dispatch_x = groupCountX;
+        cmd->has_dispatch = true;
+    }
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(
@@ -1287,15 +1292,29 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
     for (uint32_t i = 0; i < submitCount; ++i) {
         for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; ++j) {
             PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)pSubmits[i].pCommandBuffers[j];
+            if (!cmd) return VK_ERROR_INITIALIZATION_FAILED;
+            if (!cmd->has_dispatch) {
+                if (trace_allocations()) {
+                    fprintf(stderr, "pdocker-vulkan-icd: queue-submit transfer-only command buffer\n");
+                }
+                continue;
+            }
             if (!cmd || !cmd->set || !cmd->set->storage_buffers[0] ||
                 !cmd->set->storage_buffers[1] || !cmd->set->storage_buffers[2]) {
+                if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+                    fprintf(stderr,
+                            "pdocker-vulkan-icd: dispatch missing storage buffers set=%p\n",
+                            (void *)cmd->set);
+                }
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
             if (cmd->pipeline && cmd->pipeline->shader && cmd->pipeline->shader->code_size > sizeof(uint32_t)) {
-                if (getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+                if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                     fprintf(stderr,
-                            "pdocker-vulkan-icd: real SPIR-V dispatch is not lowered yet code_size=%zu\n",
-                            cmd->pipeline->shader->code_size);
+                            "pdocker-vulkan-icd: real SPIR-V dispatch is not lowered yet code_size=%zu first_word=0x%08x dispatch_x=%u\n",
+                            cmd->pipeline->shader->code_size,
+                            cmd->pipeline->shader->first_word,
+                            cmd->dispatch_x);
                 }
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }

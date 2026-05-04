@@ -699,6 +699,30 @@ def update_operation(op_id, detail=None, status=None):
         op["UpdatedAt"] = time.time()
 
 
+def upsert_operation(op_id, kind, title, detail="", status="running"):
+    op_id = op_id or uuid.uuid4().hex
+    now = time.time()
+    with active_operations_lock:
+        op = active_operations.get(op_id)
+        if not op:
+            active_operations[op_id] = {
+                "Id": op_id,
+                "Kind": kind or "operation",
+                "Title": title or kind or "operation",
+                "Detail": detail or "",
+                "Status": status or "running",
+                "StartedAt": now,
+                "UpdatedAt": now,
+            }
+        else:
+            op["Kind"] = kind or op.get("Kind", "operation")
+            op["Title"] = title or op.get("Title", op["Kind"])
+            op["Detail"] = detail if detail is not None else op.get("Detail", "")
+            op["Status"] = status or op.get("Status", "running")
+            op["UpdatedAt"] = now
+    return op_id
+
+
 def finish_operation(op_id, status="done", detail=None):
     if not op_id:
         return
@@ -4274,6 +4298,23 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/system/operations" and method == "GET":
             self._send_json(200, list_active_operations())
+            return
+
+        if path == "/system/operations" and method == "POST":
+            payload = self._read_json()
+            op_id = payload.get("Id") or payload.get("id") or ""
+            kind = payload.get("Kind") or payload.get("kind") or "diagnostic"
+            title = payload.get("Title") or payload.get("title") or kind
+            detail = payload.get("Detail") if "Detail" in payload else payload.get("detail", "")
+            status = payload.get("Status") or payload.get("status") or "running"
+            finished = bool(payload.get("Finished") or payload.get("finished"))
+            if finished or status in ("done", "failed", "cancelled", "stopped"):
+                if op_id:
+                    finish_operation(op_id, status=status, detail=detail)
+                self._send_json(200, {"Id": op_id, "Status": status})
+            else:
+                op_id = upsert_operation(op_id, kind, title, detail, status)
+                self._send_json(200, {"Id": op_id, "Status": status})
             return
 
         if path == "/system/host" and method == "GET":
