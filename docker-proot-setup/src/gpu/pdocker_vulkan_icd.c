@@ -45,6 +45,7 @@ typedef struct {
 
 typedef struct PdockerVkMemory PdockerVkMemory;
 typedef struct PdockerVkBuffer PdockerVkBuffer;
+typedef struct PdockerVkDescriptorBinding PdockerVkDescriptorBinding;
 typedef struct PdockerVkDescriptorSet PdockerVkDescriptorSet;
 typedef struct PdockerVkShaderModule PdockerVkShaderModule;
 typedef struct PdockerVkPipeline PdockerVkPipeline;
@@ -62,8 +63,14 @@ struct PdockerVkBuffer {
     VkDeviceSize memory_offset;
 };
 
+struct PdockerVkDescriptorBinding {
+    PdockerVkBuffer *buffer;
+    VkDeviceSize offset;
+    VkDeviceSize range;
+};
+
 struct PdockerVkDescriptorSet {
-    PdockerVkBuffer *storage_buffers[16];
+    PdockerVkDescriptorBinding storage_buffers[16];
 };
 
 struct PdockerVkShaderModule {
@@ -212,6 +219,27 @@ static int send_vector_add_3fd(size_t n, int fd_a, int fd_b, int fd_out) {
     }
     close(socket_fd);
     return rc;
+}
+
+static size_t buffer_available(const PdockerVkBuffer *buffer, VkDeviceSize offset) {
+    if (!buffer || !buffer->memory) return 0;
+    VkDeviceSize absolute = buffer->memory_offset + offset;
+    if (absolute > buffer->memory->size) return 0;
+    return buffer->memory->size - (size_t)absolute;
+}
+
+static void *buffer_ptr(PdockerVkBuffer *buffer, VkDeviceSize offset, VkDeviceSize bytes) {
+    if (!buffer || !buffer->memory) return NULL;
+    size_t available = buffer_available(buffer, offset);
+    if ((size_t)bytes > available) return NULL;
+    return (char *)buffer->memory->map + buffer->memory_offset + offset;
+}
+
+static size_t descriptor_binding_size(const PdockerVkDescriptorBinding *binding) {
+    if (!binding || !binding->buffer) return 0;
+    size_t available = buffer_available(binding->buffer, binding->offset);
+    if (binding->range == VK_WHOLE_SIZE) return available;
+    return (size_t)binding->range < available ? (size_t)binding->range : available;
 }
 
 static uint32_t pdocker_api_version(void) {
@@ -1002,7 +1030,21 @@ VKAPI_ATTR void VKAPI_CALL vkUpdateDescriptorSets(
         if (!set || w->descriptorType != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || !w->pBufferInfo) continue;
         for (uint32_t j = 0; j < w->descriptorCount; ++j) {
             uint32_t binding = w->dstBinding + j;
-            if (binding < 16) set->storage_buffers[binding] = (PdockerVkBuffer *)w->pBufferInfo[j].buffer;
+            if (binding < 16) {
+                set->storage_buffers[binding].buffer = (PdockerVkBuffer *)w->pBufferInfo[j].buffer;
+                set->storage_buffers[binding].offset = w->pBufferInfo[j].offset;
+                set->storage_buffers[binding].range = w->pBufferInfo[j].range;
+                if (trace_allocations()) {
+                    PdockerVkBuffer *buffer = set->storage_buffers[binding].buffer;
+                    fprintf(stderr,
+                            "pdocker-vulkan-icd: descriptor storage binding=%u buffer_size=%zu offset=%llu range=%llu effective=%zu\n",
+                            binding,
+                            buffer ? buffer->size : 0,
+                            (unsigned long long)set->storage_buffers[binding].offset,
+                            (unsigned long long)set->storage_buffers[binding].range,
+                            descriptor_binding_size(&set->storage_buffers[binding]));
+                }
+            }
         }
     }
 }
@@ -1241,13 +1283,24 @@ VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(
     if (!src || !dst || !src->memory || !dst->memory || !pRegions) return;
     for (uint32_t i = 0; i < regionCount; ++i) {
         const VkBufferCopy *r = &pRegions[i];
-        if ((size_t)(r->srcOffset + r->size) > src->memory->size ||
-            (size_t)(r->dstOffset + r->size) > dst->memory->size) {
+        void *dst_ptr = buffer_ptr(dst, r->dstOffset, r->size);
+        void *src_ptr = buffer_ptr(src, r->srcOffset, r->size);
+        if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: copy-buffer src_size=%zu src_mem=%zu src_off=%llu dst_size=%zu dst_mem=%zu dst_off=%llu bytes=%llu ok=%u\n",
+                    src->size,
+                    src->memory->size,
+                    (unsigned long long)r->srcOffset,
+                    dst->size,
+                    dst->memory->size,
+                    (unsigned long long)r->dstOffset,
+                    (unsigned long long)r->size,
+                    (src_ptr && dst_ptr) ? 1u : 0u);
+        }
+        if (!src_ptr || !dst_ptr) {
             continue;
         }
-        memmove((char *)dst->memory->map + dst->memory_offset + r->dstOffset,
-                (const char *)src->memory->map + src->memory_offset + r->srcOffset,
-                (size_t)r->size);
+        memmove(dst_ptr, src_ptr, (size_t)r->size);
     }
 }
 
@@ -1260,12 +1313,20 @@ VKAPI_ATTR void VKAPI_CALL vkCmdFillBuffer(
     (void)commandBuffer;
     PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
     if (!dst || !dst->memory) return;
-    size_t available = dst->memory->size > (size_t)(dst->memory_offset + dstOffset)
-        ? dst->memory->size - (size_t)(dst->memory_offset + dstOffset)
-        : 0;
+    size_t available = buffer_available(dst, dstOffset);
     size_t bytes = size == VK_WHOLE_SIZE ? available : (size_t)size;
     if (bytes > available) bytes = available;
-    uint32_t *p = (uint32_t *)((char *)dst->memory->map + dst->memory_offset + dstOffset);
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: fill-buffer dst_size=%zu dst_mem=%zu off=%llu bytes=%zu available=%zu\n",
+                dst->size,
+                dst->memory->size,
+                (unsigned long long)dstOffset,
+                bytes,
+                available);
+    }
+    uint32_t *p = (uint32_t *)buffer_ptr(dst, dstOffset, bytes);
+    if (!p) return;
     for (size_t i = 0; i < bytes / sizeof(uint32_t); ++i) p[i] = data;
 }
 
@@ -1278,8 +1339,18 @@ VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(
     (void)commandBuffer;
     PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
     if (!dst || !dst->memory || !pData) return;
-    if ((size_t)(dst->memory_offset + dstOffset + dataSize) > dst->memory->size) return;
-    memcpy((char *)dst->memory->map + dst->memory_offset + dstOffset, pData, (size_t)dataSize);
+    void *dst_ptr = buffer_ptr(dst, dstOffset, dataSize);
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: update-buffer dst_size=%zu dst_mem=%zu off=%llu bytes=%llu ok=%u\n",
+                dst->size,
+                dst->memory->size,
+                (unsigned long long)dstOffset,
+                (unsigned long long)dataSize,
+                dst_ptr ? 1u : 0u);
+    }
+    if (!dst_ptr) return;
+    memcpy(dst_ptr, pData, (size_t)dataSize);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
@@ -1299,8 +1370,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
                 }
                 continue;
             }
-            if (!cmd || !cmd->set || !cmd->set->storage_buffers[0] ||
-                !cmd->set->storage_buffers[1] || !cmd->set->storage_buffers[2]) {
+            if (!cmd || !cmd->set || !cmd->set->storage_buffers[0].buffer ||
+                !cmd->set->storage_buffers[1].buffer || !cmd->set->storage_buffers[2].buffer) {
                 if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                     fprintf(stderr,
                             "pdocker-vulkan-icd: dispatch missing storage buffers set=%p\n",
@@ -1318,13 +1389,15 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
                 }
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
-            PdockerVkBuffer *a = cmd->set->storage_buffers[0];
-            PdockerVkBuffer *b = cmd->set->storage_buffers[1];
-            PdockerVkBuffer *out = cmd->set->storage_buffers[2];
+            PdockerVkBuffer *a = cmd->set->storage_buffers[0].buffer;
+            PdockerVkBuffer *b = cmd->set->storage_buffers[1].buffer;
+            PdockerVkBuffer *out = cmd->set->storage_buffers[2].buffer;
             if (!a->memory || !b->memory || !out->memory) return VK_ERROR_MEMORY_MAP_FAILED;
-            size_t n = a->size / sizeof(float);
-            if (b->size / sizeof(float) < n) n = b->size / sizeof(float);
-            if (out->size / sizeof(float) < n) n = out->size / sizeof(float);
+            size_t n = descriptor_binding_size(&cmd->set->storage_buffers[0]) / sizeof(float);
+            size_t b_n = descriptor_binding_size(&cmd->set->storage_buffers[1]) / sizeof(float);
+            size_t out_n = descriptor_binding_size(&cmd->set->storage_buffers[2]) / sizeof(float);
+            if (b_n < n) n = b_n;
+            if (out_n < n) n = out_n;
             if (cmd->dispatch_x && cmd->pipeline && cmd->pipeline->local_size_x) {
                 size_t dispatched = (size_t)cmd->dispatch_x * cmd->pipeline->local_size_x;
                 if (dispatched < n) n = dispatched;

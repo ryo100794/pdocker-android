@@ -3377,6 +3377,16 @@ def _pid_alive(pid):
         return False
 
 
+def _container_live_pid(state):
+    try:
+        pid = int(((state or {}).get("State") or {}).get("Pid") or 0)
+    except (TypeError, ValueError):
+        return 0
+    if pid > 0 and _pid_alive(pid):
+        return pid
+    return 0
+
+
 def _signal_pid_group(pid, sig):
     try:
         os.killpg(os.getpgid(pid), sig)
@@ -3484,6 +3494,14 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     state = load_container_state(cid)
     if not state:
         return None
+    live_pid = _container_live_pid(state)
+    if live_pid:
+        state.setdefault("State", {})["Running"] = True
+        state["State"]["Status"] = "running"
+        state["State"]["Pid"] = live_pid
+        save_container_state(cid, state)
+        _start_health_monitor(cid)
+        return state
     cdir, cow, rootfs = _container_runtime(state)
 
     entrypoint = state.get("Entrypoint") or []
@@ -3586,6 +3604,12 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         rc = proc.wait()
         s = load_container_state(cid)
         if s:
+            current_pid = _container_live_pid(s)
+            if current_pid and current_pid != proc.pid:
+                with running_lock:
+                    if running_containers.get(cid) is proc:
+                        running_containers.pop(cid, None)
+                return
             s["State"]["Running"] = False
             s["State"]["Status"] = "exited"
             s["State"]["ExitCode"] = rc

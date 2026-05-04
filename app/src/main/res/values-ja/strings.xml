@@ -57,6 +57,11 @@
     <string name="detail_images_inventory">参照できる pull 済み rootfs ツリー</string>
     <string name="widget_containers">コンテナ</string>
     <string name="detail_containers_inventory">作成済みコンテナの状態とログ</string>
+    <string name="container_inventory_fmt">合計 %1$d / 起動中 %2$d</string>
+    <string name="container_inventory_syncing_fmt">ローカル %1$d / 同期中</string>
+    <string name="container_status_syncing">docker ps と同期中...</string>
+    <string name="container_status_cached_fmt">キャッシュ: %1$s</string>
+    <string name="container_status_not_in_ps">docker ps に存在しません</string>
     <string name="widget_compose_projects">Compose プロジェクト</string>
     <string name="widget_dockerfiles">Dockerfile</string>
     <string name="detail_dockerfiles_inventory">projects 配下のビルド定義</string>
@@ -78,12 +83,13 @@
     <string name="host_environment_gles_fmt">%1$s: EGL %2$s, GLES %3$s</string>
     <string name="host_environment_opencl_fmt">OpenCL: %1$s, %2$s</string>
     <string name="host_environment_accel_fmt">NNAPI %1$s, AHardwareBuffer %2$s, MediaCodec %3$s</string>
-    <string name="section_daemon_operations">Daemon operations</string>
+    <string name="section_daemon_operations">デーモン操作</string>
     <string name="daemon_operation_status_fmt">%1$s %2$d秒 %3$s</string>
     <string name="daemon_operation_kind_fmt">Kind: %1$s</string>
+    <string name="daemon_operation_not_container">操作の進行状況です。コンテナではないため docker ps には出ません。</string>
     <string name="daemon_operation_idle_fmt">最終更新: %1$d秒前</string>
     <string name="section_project_dashboard">プロジェクトダッシュボード</string>
-    <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$d</string>
+    <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, ファイル %3$d, コンテナ %4$s</string>
     <string name="project_dashboard_services_fmt">サービス: %1$s</string>
     <string name="project_dashboard_dependencies_fmt">依存: %1$s</string>
     <string name="project_dashboard_health_fmt">ヘルスチェック: %1$s</string>

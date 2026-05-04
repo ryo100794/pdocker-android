@@ -152,6 +152,10 @@ or closes.
   shipped accidentally. On SOG15, dev-workspace container create dropped from
   about 77.35s with full rootfs materialization to about 1.10s with lower/upper
   sharing; a fresh `pdocker-dev` create/start measured about 0.382s/0.389s.
+- [done] Make container start idempotent when a live runtime PID already exists.
+  This prevents a fast repeated start from launching a second process, having
+  the second process fail on an already-bound port, and overwriting state as
+  `Exited` while the first service is still serving.
 - [done] Keep COW terminology independent from PRoot. `libcow` is an
   LD_PRELOAD libc hook shim; it does not use ptrace or waitpid. PRoot-era COW
   comments and the diagnostic `proot-cow` driver label were renamed.
@@ -584,7 +588,7 @@ Tasks:
    Vulkan model buffer through `pdocker-vulkan-icd.so`. The key fix was to
    advertise non-zero storage-buffer alignment from the ICD; llama.cpp remains
    unchanged.
-4. **[active] Lower the first real llama.cpp SPIR-V dispatches.**
+4. **[next] Lower the first real llama.cpp SPIR-V dispatches.**
    Keep unknown shaders rejected, but add a trace classifier and implement the
    minimal operations needed for one offloaded Qwen3 output/repeating layer.
 5. **[active] Fix Vulkan buffer base/range accounting during scheduler warmup.**
@@ -592,6 +596,11 @@ Tasks:
    construction, compute-buffer allocation, and warmup. The current failure is
    a `ggml_backend_buffer_get_alloc_size` range assertion, so the ICD must make
    mapped buffer base/size accounting match what ggml's scheduler expects.
+   The 2026-05-04 trace confirmed that the two model copy-buffer regions are
+   in-bounds; the remaining failure occurs before the first descriptor-backed
+   compute dispatch. A `--no-warmup` diagnostic still reaches the same range
+   assertion during slot initialization, so this is a buffer-type/accounting
+   issue rather than only the warmup call path.
 6. **[next] Add persistent GPU command-ring transport.**
    Replace per-dispatch socket commands with shared ring descriptors, reusable
    buffer handles, fences, and error records under `/run/pdocker-gpu`.
@@ -605,6 +614,10 @@ Tasks:
 9. **[next] UI reporting.**
    Surface `target_met`, speedup, current blocker, GPU layer count, and latest
    compare artifact in the project dashboard.
+10. **[done] Distinguish daemon operations from containers in the UI.**
+    Long-running compare/build cards are pdockerd operations and intentionally
+    do not appear in `docker ps`; container cards are reconciled only from
+    Engine API `/containers/json?all=1`.
 
 Current 2026-05-04 blocker:
 

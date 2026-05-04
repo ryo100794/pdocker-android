@@ -227,6 +227,32 @@ def test_direct_backend_rejects_fake_container_start() -> None:
         ok("direct backend rejects fake service start honestly")
 
 
+def test_start_container_reconciles_live_pid() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("start_live_pid", "no-proot", home_path)
+        image = "ubuntu:22.04"
+        img_dir = Path(mod.image_dir(mod.normalize_image(image)))
+        rootfs = img_dir / "rootfs"
+        (rootfs / "bin").mkdir(parents=True)
+        (rootfs / "bin" / "sh").write_text("#!/bin/sh\n")
+        (img_dir / "config.json").write_text('{"config":{"Cmd":["/bin/sh"],"Env":[]}}')
+        state = mod.create_container({"Image": image, "Cmd": ["/bin/sh"]}, name="live-pid")
+        state["State"]["Running"] = False
+        state["State"]["Status"] = "exited"
+        state["State"]["Pid"] = os.getpid()
+        state["State"]["ExitCode"] = 1
+        mod.save_container_state(state["Id"], state)
+
+        returned = mod.start_container(state["Id"])
+        saved = mod.load_container_state(state["Id"])
+        if returned["State"]["Pid"] != os.getpid() or saved["State"]["Pid"] != os.getpid():
+            fail("start_container did not preserve the live runtime pid")
+        if not saved["State"]["Running"] or saved["State"]["Status"] != "running":
+            fail(f"start_container did not reconcile live pid to running: {saved['State']!r}")
+        ok("container start reconciles live pid without double-starting")
+
+
 def test_default_no_proot_runtime_path() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
@@ -558,6 +584,7 @@ def main() -> int:
     test_direct_executor_probe_contract()
     test_direct_executor_process_capability_contract()
     test_direct_backend_rejects_fake_container_start()
+    test_start_container_reconciles_live_pid()
     test_default_no_proot_runtime_path()
     test_dockerfile_unknown_instruction_rejected()
     test_direct_run_requires_real_executor()

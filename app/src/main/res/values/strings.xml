@@ -57,6 +57,11 @@
     <string name="detail_images_inventory">Pulled rootfs trees available to browse</string>
     <string name="widget_containers">Containers</string>
     <string name="detail_containers_inventory">Created container states and logs</string>
+    <string name="container_inventory_fmt">%1$d total / %2$d up</string>
+    <string name="container_inventory_syncing_fmt">%1$d local / syncing</string>
+    <string name="container_status_syncing">syncing with docker ps...</string>
+    <string name="container_status_cached_fmt">cached: %1$s</string>
+    <string name="container_status_not_in_ps">not in docker ps</string>
     <string name="widget_compose_projects">Compose projects</string>
     <string name="widget_dockerfiles">Dockerfiles</string>
     <string name="detail_dockerfiles_inventory">Build definitions under projects</string>
@@ -81,9 +86,10 @@
     <string name="section_daemon_operations">Daemon operations</string>
     <string name="daemon_operation_status_fmt">%1$s %2$ds %3$s</string>
     <string name="daemon_operation_kind_fmt">Kind: %1$s</string>
+    <string name="daemon_operation_not_container">Operation status only; not a container and not listed by docker ps.</string>
     <string name="daemon_operation_idle_fmt">Last update: %1$ds ago</string>
     <string name="section_project_dashboard">Project dashboard</string>
-    <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, files %3$d, containers %4$d</string>
+    <string name="project_dashboard_counts_fmt">Compose %1$d, Dockerfile %2$d, files %3$d, containers %4$s</string>
     <string name="project_dashboard_services_fmt">Services: %1$s</string>
     <string name="project_dashboard_dependencies_fmt">Depends: %1$s</string>
     <string name="project_dashboard_health_fmt">Healthcheck: %1$s</string>

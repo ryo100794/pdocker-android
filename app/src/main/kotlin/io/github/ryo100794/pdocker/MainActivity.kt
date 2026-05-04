@@ -190,7 +190,7 @@ class MainActivity : AppCompatActivity() {
         val modelSummary: String,
         val gpuProfileSummary: String,
         val gpuDiagnostics: File?,
-        val containerCount: Int,
+        val containerStatusSummary: String,
         val jobSummary: String,
     )
 
@@ -498,6 +498,7 @@ class MainActivity : AppCompatActivity() {
     })
 
     private fun renderOverview() {
+        refreshContainerSnapshotAsync()
         addSection(getString(R.string.section_workspace))
         addAction(getString(R.string.action_default_dev_workspace), getString(R.string.detail_default_dev_workspace)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
@@ -505,7 +506,7 @@ class MainActivity : AppCompatActivity() {
 
         addSection(getString(R.string.section_inventory))
         addWidget(getString(R.string.widget_images), imageDirs().size.toString(), getString(R.string.detail_images_inventory))
-        addWidget(getString(R.string.widget_containers), containerDirs().size.toString(), getString(R.string.detail_containers_inventory))
+        addWidget(getString(R.string.widget_containers), containerInventoryValue(), getString(R.string.detail_containers_inventory))
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
         renderStorageMetrics()
@@ -665,10 +666,7 @@ class MainActivity : AppCompatActivity() {
             val name = containerDisplayName(snapshot, state, dir)
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
             val statusText = snapshot?.optString("Status")?.takeIf { it.isNotBlank() }
-                ?: state?.optJSONObject("State")
-                ?.optString("Status")
-                ?.ifBlank { getString(R.string.unknown_status) }
-                ?: getString(R.string.unknown_status)
+                ?: containerCachedStatus(state)
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
                 openDockerInteractiveTerminal(
                     getString(R.string.terminal_container_fmt, name),
@@ -742,6 +740,33 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return out
+    }
+
+    private fun containerInventoryValue(): String {
+        val local = containerDirs().size
+        if (containerSnapshot.isEmpty()) {
+            return if (lastContainerSnapshotAt == 0L && local > 0) {
+                getString(R.string.container_inventory_syncing_fmt, local)
+            } else {
+                getString(R.string.container_inventory_fmt, local, 0)
+            }
+        }
+        val running = containerSnapshot.count { obj ->
+            obj.optString("State").equals("running", ignoreCase = true) ||
+                obj.optString("Status").startsWith("Up", ignoreCase = true)
+        }
+        return getString(R.string.container_inventory_fmt, containerSnapshot.size, running)
+    }
+
+    private fun containerCachedStatus(state: JSONObject?): String {
+        val cached = state?.optJSONObject("State")
+            ?.optString("Status")
+            ?.ifBlank { null }
+        return when {
+            lastContainerSnapshotAt > 0L -> getString(R.string.container_status_not_in_ps)
+            cached != null -> getString(R.string.container_status_cached_fmt, cached)
+            else -> getString(R.string.container_status_syncing)
+        }
     }
 
     private fun refreshContainerSnapshotAsync(force: Boolean = false) {
@@ -904,6 +929,7 @@ class MainActivity : AppCompatActivity() {
             val job = daemonOperationJob(op)
             val detail = listOf(
                 getString(R.string.daemon_operation_kind_fmt, op.kind),
+                getString(R.string.daemon_operation_not_container),
                 op.detail.ifBlank { "-" },
                 getString(R.string.daemon_operation_idle_fmt, idle),
                 job?.let { getString(R.string.action_open_job_log_fmt, it.title) }.orEmpty(),
@@ -2687,7 +2713,7 @@ class MainActivity : AppCompatActivity() {
                     project.compose.size,
                     project.dockerfiles.size,
                     project.editable.size,
-                    project.containerCount,
+                    project.containerStatusSummary,
                 ),
                 getString(R.string.project_dashboard_services_fmt, serviceText),
                 getString(R.string.project_dashboard_dependencies_fmt, projectDependencySummary(project.services)),
@@ -2773,7 +2799,7 @@ class MainActivity : AppCompatActivity() {
                 modelSummary = projectModelSummary(dir),
                 gpuProfileSummary = projectGpuProfileSummary(dir),
                 gpuDiagnostics = File(dir, "profiles/pdocker-gpu-diagnostics.json").takeIf { it.isFile },
-                containerCount = projectContainerCount(dir.name),
+                containerStatusSummary = projectContainerStatusSummary(dir.name),
                 jobSummary = projectJobSummary(dir.name),
             )
         }.sortedWith(compareBy<ProjectSummary> {
@@ -2812,11 +2838,33 @@ class MainActivity : AppCompatActivity() {
         else -> 3
     }
 
-    private fun projectContainerCount(projectName: String): Int =
-        containerDirs().count { dir ->
-            val state = readState(dir)
-            val name = state?.optString("Name")?.trim('/')?.ifBlank { dir.name } ?: dir.name
-            name == projectName || name.startsWith("$projectName-")
+    private fun projectContainerStatusSummary(projectName: String): String {
+        val snapshots = projectContainerSnapshots(projectName)
+        if (snapshots.isEmpty()) {
+            return if (lastContainerSnapshotAt == 0L) {
+                getString(R.string.container_status_syncing)
+            } else {
+                getString(R.string.container_inventory_fmt, 0, 0)
+            }
+        }
+        val running = snapshots.count { obj ->
+            obj.optString("State").equals("running", ignoreCase = true) ||
+                obj.optString("Status").startsWith("Up", ignoreCase = true)
+        }
+        return getString(R.string.container_inventory_fmt, snapshots.size, running)
+    }
+
+    private fun projectContainerSnapshots(projectName: String): List<JSONObject> =
+        containerSnapshot.filter { obj ->
+            val names = obj.optJSONArray("Names")
+            if (names == null) {
+                false
+            } else {
+                (0 until names.length()).any { index ->
+                    val name = names.optString(index).trim('/')
+                    name == projectName || name.startsWith("$projectName-") || name.startsWith("pdocker-$projectName")
+                }
+            }
         }
 
     private fun projectJobSummary(projectName: String): String {
