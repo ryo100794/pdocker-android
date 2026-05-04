@@ -589,6 +589,8 @@ Next implementation slice:
   a scaffold.
 - Keep persistent transport semantics. Benchmarks show one-connection-per-GPU
   command adds measurable overhead and is the wrong shape for LLM workloads.
+- Keep container-visible paths under `/run/pdocker-gpu`; do not expose Android
+  app-data absolute paths to container code.
 - Add queue lifecycle under pdockerd so container processes never call Android
   vendor libraries directly.
 - Add a real buffer/fence protocol and run vector-add through shim -> executor

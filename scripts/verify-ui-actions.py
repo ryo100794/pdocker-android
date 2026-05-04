@@ -81,6 +81,7 @@ def main() -> int:
     service_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdService.kt").read_text()
     require("pdockerd service starts gpu executor socket", "--serve-socket" in service_src and "pdocker-gpu.sock" in service_src and "gpuExecutorProcess" in service_src and "PDOCKER_GPU_QUEUE_SOCKET" in pdockerd_bridge_src)
     require("direct runtime advertises implemented bind support", "PDOCKER_USE_COW_BIND" in pdockerd_bridge_src and 'if DIRECT_EXECUTOR and os.path.exists(DIRECT_EXECUTOR)' in pdockerd_src and '"cow-bind=1" in output' in pdockerd_src and "cow-bind=0" in direct_src and "bind-path-rewrite=1" in direct_src)
+    require("direct runtime rewrites unix socket paths", "rewrite_unix_sockaddr_arg" in direct_src and "AF_UNIX" in direct_src and "case 203" in direct_src and "/run/pdocker-gpu" in pdockerd_bridge_src)
     require("direct runtime treats blocked NUMA policy syscalls as unavailable", "case 235: return \"mbind\"" in direct_src and "syscall_emulate_errno" in direct_src and "ADD_ERRNO_SYSCALL(235, ENOSYS)" in direct_src and "set_mempolicy_home_node" in direct_src)
     require("runtime removes stale docker-compose shim", "docker-compose" in runtime_src)
     require("runtime selects no-proot when proot absent", 'PDOCKER_RUNTIME_BACKEND", "no-proot"' in pdockerd_bridge_src)

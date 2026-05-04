@@ -97,6 +97,10 @@ The temporary socket transport is allowed only as a measurement scaffold.
 Benchmarks must separate NOOP/control overhead from upload/dispatch/download
 work, and real LLM integration must use persistent transport plus buffer reuse
 so bridge overhead is not paid per tiny ggml operation.
+GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
+binds the APK runtime GPU directory there and direct execution rewrites
+`connect(AF_UNIX)` socket paths, so container code never needs Android app-data
+absolute paths.
 Until that bridge exists and passes validation, llama.cpp GPU profile selection
 must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
 

@@ -12,6 +12,8 @@
 #include <sys/ptrace.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <dirent.h>
 #include <linux/elf.h>
 #include <linux/audit.h>
@@ -1023,6 +1025,60 @@ static int rewrite_path_arg(pid_t pid, struct user_pt_regs *regs, int arg_index,
     return rewrite_path_arg_scratch(pid, regs, arg_index, rootfs, context, 8192u);
 }
 
+static int rewrite_unix_sockaddr_arg(pid_t pid, struct user_pt_regs *regs,
+                                     const char *rootfs, const char *context) {
+    unsigned long long addr_ptr = regs->regs[1];
+    unsigned long long len = regs->regs[2];
+    if (!addr_ptr || len < offsetof(struct sockaddr_un, sun_path) + 1) return 0;
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    size_t to_read = len < sizeof(addr) ? (size_t)len : sizeof(addr);
+    struct iovec local = { .iov_base = &addr, .iov_len = to_read };
+    struct iovec remote = { .iov_base = (void *)(uintptr_t)addr_ptr, .iov_len = to_read };
+    if (pdocker_process_vm_readv(pid, &local, 1, &remote, 1, 0) != (ssize_t)to_read) {
+        return 0;
+    }
+    if (addr.sun_family != AF_UNIX || addr.sun_path[0] != '/') return 0;
+
+    char guest[sizeof(addr.sun_path)];
+    size_t max_path = to_read > offsetof(struct sockaddr_un, sun_path)
+        ? to_read - offsetof(struct sockaddr_un, sun_path)
+        : 0;
+    if (max_path == 0) return 0;
+    size_t i = 0;
+    for (; i + 1 < sizeof(guest) && i < max_path; ++i) {
+        guest[i] = addr.sun_path[i];
+        if (addr.sun_path[i] == '\0') break;
+    }
+    guest[sizeof(guest) - 1] = '\0';
+    if (guest[0] != '/') return 0;
+
+    char rewritten[PATH_MAX];
+    int bind_path = 0;
+    int resolved = resolve_guest_host_path(rootfs, guest, rewritten, sizeof(rewritten), &bind_path);
+    if (resolved <= 0) return 0;
+    if (strlen(rewritten) >= sizeof(addr.sun_path)) {
+        fprintf(stderr, "pdocker-direct-trace: pid=%d %s AF_UNIX path too long: %s -> %s\n",
+                (int)pid, context, guest, rewritten);
+        return 0;
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", rewritten);
+    unsigned long long scratch = (regs->sp - 24576u) & ~15ULL;
+    if (write_tracee_data(pid, scratch, &addr, sizeof(addr)) != 0) {
+        fprintf(stderr, "pdocker-direct-trace: pid=%d %s AF_UNIX rewrite failed: %s -> %s (%s)\n",
+                (int)pid, context, guest, rewritten, strerror(errno));
+        return 0;
+    }
+    regs->regs[1] = scratch;
+    regs->regs[2] = (unsigned long long)(offsetof(struct sockaddr_un, sun_path) + strlen(rewritten) + 1);
+    TRACE_LOG("pdocker-direct-trace: pid=%d rewrite %s AF_UNIX %s -> %s\n",
+              (int)pid, context, guest, rewritten);
+    return 1;
+}
+
 static void normalize_guest_path(const char *base, const char *path, char *out, size_t out_len) {
     char combined[PATH_MAX];
     if (!path || !path[0]) {
@@ -1736,6 +1792,8 @@ static int rewrite_syscall_paths(pid_t pid, struct user_pt_regs *regs, TraceeSta
             return rewrite_path_arg(pid, regs, 0, rootfs, syscall_name(nr));
         case 49:  /* chdir(pathname) */
             return rewrite_chdir_arg(pid, regs, state, rootfs);
+        case 203: /* connect(sockfd, addr, addrlen) */
+            return rewrite_unix_sockaddr_arg(pid, regs, rootfs, syscall_name(nr));
         case 221: /* execve(pathname, argv, envp) */
             return rewrite_execve_arg(pid, regs, state, rootfs, loader, libpath);
         case 281: /* execveat(dirfd, pathname, argv, envp, flags) */

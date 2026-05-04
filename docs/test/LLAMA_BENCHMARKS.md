@@ -187,6 +187,12 @@ backend work. The next lower-overhead bridge target remains shared memory for
 buffer tables plus a small persistent control channel for command submission
 and fences.
 
+The container-facing socket path is `/run/pdocker-gpu/pdocker-gpu.sock`.
+pdockerd bind-maps the APK runtime GPU directory to `/run/pdocker-gpu`, and the
+direct executor rewrites `connect(AF_UNIX)` socket paths through the bind map.
+This avoids leaking Android app-data absolute paths into container code and
+keeps the shim ABI portable.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.
