@@ -84,7 +84,7 @@ C
 
 gcc "$TMP/pdocker-vk-smoke.c" -o "$TMP/pdocker-vk-smoke" -lvulkan
 cat >"$TMP/pdocker_icd.json" <<JSON
-{"file_format_version":"1.0.0","ICD":{"library_path":"$ICD","api_version":"1.1.0"}}
+{"file_format_version":"1.0.0","ICD":{"library_path":"$ICD","api_version":"1.2.0"}}
 JSON
 
 "$EXECUTOR" --serve-socket "$SOCK" >"$TMP/executor.log" 2>&1 &

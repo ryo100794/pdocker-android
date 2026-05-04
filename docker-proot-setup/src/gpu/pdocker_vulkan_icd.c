@@ -94,6 +94,18 @@ typedef struct {
 static PdockerVkPhysicalDevice g_device;
 static PdockerVkQueue g_queue;
 
+static VkDeviceSize pdocker_vulkan_heap_size(void) {
+    const char *env = getenv("PDOCKER_VULKAN_HEAP_BYTES");
+    if (env && env[0]) {
+        char *end = NULL;
+        unsigned long long value = strtoull(env, &end, 10);
+        if (end && *end == '\0' && value >= 256ull * 1024ull * 1024ull) {
+            return (VkDeviceSize)value;
+        }
+    }
+    return (VkDeviceSize)(8ull * 1024ull * 1024ull * 1024ull);
+}
+
 static void *pdocker_alloc_handle(size_t size) {
     return calloc(1, size ? size : sizeof(PdockerHandle));
 }
@@ -127,12 +139,13 @@ static int create_shared_fd(size_t bytes) {
 
 static bool bridge_available(void) {
     const char *socket_path = getenv("PDOCKER_GPU_QUEUE_SOCKET");
-    return socket_path && socket_path[0];
+    if (socket_path && socket_path[0]) return true;
+    return access("/run/pdocker-gpu/pdocker-gpu.sock", F_OK) == 0;
 }
 
 static int connect_queue(void) {
     const char *path = getenv("PDOCKER_GPU_QUEUE_SOCKET");
-    if (!path || !path[0]) return -ENOENT;
+    if (!path || !path[0]) path = "/run/pdocker-gpu/pdocker-gpu.sock";
     if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return -ENAMETOOLONG;
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -errno;
@@ -235,7 +248,7 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.maxComputeWorkGroupSize[1] = 256;
     pProperties->limits.maxComputeWorkGroupSize[2] = 64;
     pProperties->limits.maxPushConstantsSize = 256;
-    pProperties->limits.maxStorageBufferRange = 512u * 1024u * 1024u;
+    pProperties->limits.maxStorageBufferRange = 0xffffffffu;
     pProperties->limits.maxMemoryAllocationCount = 4096;
     pProperties->limits.maxBoundDescriptorSets = 8;
     pProperties->limits.maxPerStageDescriptorStorageBuffers = 64;
@@ -249,9 +262,16 @@ static void fill_pnext_properties(void *pNext) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES: {
                 VkPhysicalDeviceMaintenance3Properties *p = (VkPhysicalDeviceMaintenance3Properties *)cur;
                 p->maxPerSetDescriptors = 1024;
-                p->maxMemoryAllocationSize = 1024ull * 1024ull * 1024ull;
+                p->maxMemoryAllocationSize = pdocker_vulkan_heap_size();
                 break;
             }
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES: {
+                VkPhysicalDeviceMaintenance4Properties *p = (VkPhysicalDeviceMaintenance4Properties *)cur;
+                p->maxBufferSize = pdocker_vulkan_heap_size();
+                break;
+            }
+#endif
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES: {
                 VkPhysicalDeviceSubgroupProperties *p = (VkPhysicalDeviceSubgroupProperties *)cur;
                 p->subgroupSize = 32;
@@ -290,7 +310,7 @@ static void fill_pnext_properties(void *pNext) {
                 p->maxMultiviewViewCount = 1;
                 p->maxMultiviewInstanceIndex = 1;
                 p->maxPerSetDescriptors = 1024;
-                p->maxMemoryAllocationSize = 1024ull * 1024ull * 1024ull;
+                p->maxMemoryAllocationSize = pdocker_vulkan_heap_size();
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES: {
@@ -566,11 +586,13 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(
     memset(pMemoryProperties, 0, sizeof(*pMemoryProperties));
     pMemoryProperties->memoryTypeCount = 1;
     pMemoryProperties->memoryTypes[0].propertyFlags =
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     pMemoryProperties->memoryTypes[0].heapIndex = 0;
     pMemoryProperties->memoryHeapCount = 1;
-    pMemoryProperties->memoryHeaps[0].size = 2ull * 1024ull * 1024ull * 1024ull;
-    pMemoryProperties->memoryHeaps[0].flags = 0;
+    pMemoryProperties->memoryHeaps[0].size = pdocker_vulkan_heap_size();
+    pMemoryProperties->memoryHeaps[0].flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties2(
@@ -636,6 +658,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(
     PdockerVkMemory *memory = pdocker_alloc_handle(sizeof(*memory));
     if (!memory) return VK_ERROR_OUT_OF_HOST_MEMORY;
     memory->size = (size_t)pAllocateInfo->allocationSize;
+    if (getenv("PDOCKER_VULKAN_ICD_TRACE_ALLOC")) {
+        fprintf(stderr, "pdocker-vulkan-icd: allocate %zu bytes\n", memory->size);
+    }
     memory->fd = create_shared_fd(memory->size);
     if (memory->fd < 0) {
         free(memory);
@@ -752,6 +777,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(
     (void)pLayerName;
     const VkExtensionProperties available[] = {
         { VK_KHR_16BIT_STORAGE_EXTENSION_NAME, VK_KHR_16BIT_STORAGE_SPEC_VERSION },
+#ifdef VK_KHR_MAINTENANCE_4_EXTENSION_NAME
+        { VK_KHR_MAINTENANCE_4_EXTENSION_NAME, VK_KHR_MAINTENANCE_4_SPEC_VERSION },
+#endif
     };
     copy_extension_properties(available, (uint32_t)(sizeof(available) / sizeof(available[0])), pPropertyCount, pProperties);
     return VK_SUCCESS;

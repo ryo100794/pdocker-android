@@ -610,6 +610,15 @@ Next implementation slice:
 - Lower minimal Vulkan compute calls from `pdocker-vulkan-icd.so` into the
   bridge before enabling llama.cpp GPU layers; llama.cpp itself must remain
   unmodified.
+- Implement the next llama Vulkan bridge blockers found on 2026-05-04:
+  split or otherwise support 4 GiB+ model buffers, handle pinned host-buffer
+  paths without crashing, and lower real llama.cpp SPIR-V compute dispatches.
+  Current forced-GPU status: llama.cpp discovers `Vulkan0 (pdocker Vulkan
+  bridge (queue))` and reaches model loading, but Qwen3 8B Q4_K_M cannot serve
+  tokens on GPU yet.
+- Keep CPU fallback healthy while GPU work is incomplete. CPU mode must hide
+  Vulkan devices with `GGML_VK_VISIBLE_DEVICES=""` so llama.cpp does not enter
+  Vulkan buffer scheduling with `--n-gpu-layers 0`.
 
 Acceptance:
 

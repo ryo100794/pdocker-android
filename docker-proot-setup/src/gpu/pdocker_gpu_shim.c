@@ -340,12 +340,14 @@ static void print_env(void) {
 
 static int send_command(const char *command) {
     const char *path = getenv("PDOCKER_GPU_QUEUE_SOCKET");
-    if (!path || !path[0]) {
+    if (!path || !path[0]) path = "/run/pdocker-gpu/pdocker-gpu.sock";
+    if (access(path, F_OK) != 0) {
         printf("{\"shim\":\"pdocker-gpu-shim\","
                "\"api\":\"%s\","
                "\"valid\":false,"
-               "\"reason\":\"PDOCKER_GPU_QUEUE_SOCKET is not set\"}\n",
-               PDOCKER_GPU_COMMAND_API);
+               "\"reason\":\"GPU queue socket is not available\","
+               "\"socket\":\"%s\"}\n",
+               PDOCKER_GPU_COMMAND_API, path);
         return 2;
     }
     if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
@@ -382,9 +384,7 @@ static int send_command(const char *command) {
 
 static int connect_queue(void) {
     const char *path = getenv("PDOCKER_GPU_QUEUE_SOCKET");
-    if (!path || !path[0]) {
-        return -ENOENT;
-    }
+    if (!path || !path[0]) path = "/run/pdocker-gpu/pdocker-gpu.sock";
     if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
         return -ENAMETOOLONG;
     }

@@ -11,6 +11,20 @@ if [[ -f "$profile" ]]; then
   # shellcheck disable=SC1090
   source "$profile"
 fi
+if [[ "${LLAMA_GPU_BACKEND:-cpu}" = "cpu" ]]; then
+  export GGML_VK_VISIBLE_DEVICES=""
+  unset VK_ICD_FILENAMES
+  unset VK_DRIVER_FILES
+  unset CUDA_VISIBLE_DEVICES
+  unset CUDA_DEVICE_ORDER
+  unset OCL_ICD_VENDORS
+  unset PDOCKER_VULKAN_PASSTHROUGH
+  unset PDOCKER_VULKAN_ICD
+  unset PDOCKER_VULKAN_ICD_KIND
+  unset PDOCKER_OPENCL_PASSTHROUGH
+  unset PDOCKER_OPENCL_ICD
+  unset PDOCKER_OPENCL_ICD_KIND
+fi
 
 log_file="${LLAMA_LOG_FILE:-/workspace/logs/llama-server.log}"
 if [[ -n "$log_file" ]]; then

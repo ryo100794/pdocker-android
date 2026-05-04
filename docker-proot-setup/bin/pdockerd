@@ -462,12 +462,12 @@ def collect_host_environment(api_version):
             "LlmEngineLocation": os.environ.get("PDOCKER_GPU_LLM_ENGINE_LOCATION", ""),
             "VulkanIcdKind": os.environ.get("PDOCKER_VULKAN_ICD_KIND", ""),
             "VulkanIcdReady": os.environ.get("PDOCKER_VULKAN_ICD_READY", "0") == "1",
-            "VulkanApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.1.0"),
+            "VulkanApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.2.0"),
             "VulkanLoaderIcdJson": os.environ.get("VK_ICD_FILENAMES", ""),
         },
         "Frameworks": {
             "Vulkan": {
-                "ApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.1.0"),
+                "ApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.2.0"),
                 "IcdKind": os.environ.get("PDOCKER_VULKAN_ICD_KIND", ""),
                 "IcdReady": os.environ.get("PDOCKER_VULKAN_ICD_READY", "0") == "1",
             },
@@ -3124,7 +3124,7 @@ def create_container(config, name=None):
                 "file_format_version": "1.0.0",
                 "ICD": {
                     "library_path": os.environ.get("PDOCKER_VULKAN_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-vulkan-icd.so"),
-                    "api_version": "1.1.0",
+                    "api_version": "1.2.0",
                 },
             }, indent=2) + "\n",
         )

@@ -452,7 +452,7 @@ def test_host_environment_contract() -> None:
             fail(f"host environment API version missing: {env!r}")
         if env.get("Gpu", {}).get("CommandApi") != "pdocker-gpu-command-v1":
             fail(f"host environment GPU command api missing: {env!r}")
-        if env.get("Frameworks", {}).get("Vulkan", {}).get("ApiVersion") != "1.1.0":
+        if env.get("Frameworks", {}).get("Vulkan", {}).get("ApiVersion") != "1.2.0":
             fail(f"host environment Vulkan API version missing: {env!r}")
         if "OpenCL" not in env.get("Frameworks", {}):
             fail(f"host environment OpenCL diagnostic missing: {env!r}")

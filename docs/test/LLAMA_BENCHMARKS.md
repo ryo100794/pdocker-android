@@ -420,6 +420,51 @@ default.
 
 ## Latest HTTP API Result
 
+- Date: 2026-05-04 UTC.
+- Device: `10.62.90.13:37669`.
+- Mode: Vulkan bridge forced experiment, then CPU fallback recovery.
+- Build: `pdocker/llama-cpp-gpu:latest` rebuilt with `GGML_VULKAN=ON`.
+- Vulkan discovery result: llama.cpp now sees
+  `Vulkan0 (pdocker Vulkan bridge (queue))` instead of
+  `ggml_vulkan: No devices found`.
+- Vulkan memory surface result: the pdocker ICD reports Vulkan 1.2,
+  `VK_KHR_maintenance4`, integrated GPU device type, and an 8 GiB advertised
+  heap.
+- 8B forced GPU result: `--n-gpu-layers 1` reaches llama.cpp model loading and
+  reports `offloading output layer to GPU`, but still exits before serving.
+- Current blocker: Qwen3 8B Q4_K_M still hits Vulkan buffer/pinned-memory
+  allocation paths before a useful token benchmark can run. The next GPU work
+  is split-buffer/pinned-host-buffer handling and real SPIR-V dispatch lowering
+  in `pdocker-vulkan-icd.so`; llama.cpp remains unmodified.
+- Recovery result: CPU fallback now hides Vulkan devices with
+  `GGML_VK_VISIBLE_DEVICES=""`, reaches `Up (healthy)`, and
+  `GET /v1/models` returns `model.gguf`.
+- Recovery probe: 2 generated tokens returned from `/completion`; prompt speed
+  `0.659 tok/s`, generation speed `0.350 tok/s`.
+
+## Previous HTTP API Result
+
+- Date: 2026-05-04 UTC.
+- Local path: `docs/test/llama-run-current.json`.
+- Device path: `files/pdocker/bench/llama-run-current.json`.
+- Mode: CPU current server run.
+- Model: Qwen3 8B GGUF, Q4_K_M, 8.19B parameters.
+- Generated tokens: 8.
+- Repetitions: 1.
+- Mean wall time: 41.96s.
+- Generation speed: 0.225 tokens/s.
+- Content preview: `Okay, I need to figure out`.
+
+The server is model-capable today on CPU fallback. During this run the
+container still had an old Vulkan ICD JSON pointing at `/system/lib64/libvulkan.so`
+and the template GPU profile selected Vulkan too early because
+`PDOCKER_CUDA_COMPAT=1` was checked before the unfinished pdocker Vulkan ICD
+gate. The source template now gates unfinished pdocker Vulkan before CUDA
+compatibility and pdockerd now writes the pdocker ICD JSON with API version
+`1.2.0`.
+
+## Previous HTTP API Result
+
 - Date: 2026-05-03 UTC.
 - Local path: `docs/test/llama-bench-cpu-repeat3.json`.
 - Latest alias: `docs/test/llama-bench-latest.json`.

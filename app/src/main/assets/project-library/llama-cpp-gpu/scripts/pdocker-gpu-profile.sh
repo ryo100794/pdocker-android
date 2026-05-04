@@ -31,6 +31,10 @@ json_int_or_string() {
   fi
 }
 
+shell_quote() {
+  printf '%q' "$1"
+}
+
 threads="${LLAMA_ARG_THREADS:-}"
 if [[ -z "$threads" ]]; then
   threads="$(nproc 2>/dev/null || echo 4)"
@@ -101,7 +105,10 @@ fi
 if command -v pdocker-gpu-shim >/dev/null 2>&1; then
   bridge_shim_signal="true"
 fi
-if [[ -n "${PDOCKER_GPU_QUEUE_SOCKET:-}" || -S /run/pdocker-gpu/pdocker-gpu.sock ]]; then
+if [[ -z "${PDOCKER_GPU_QUEUE_SOCKET:-}" && -S /run/pdocker-gpu/pdocker-gpu.sock ]]; then
+  export PDOCKER_GPU_QUEUE_SOCKET=/run/pdocker-gpu/pdocker-gpu.sock
+fi
+if [[ -n "${PDOCKER_GPU_QUEUE_SOCKET:-}" ]]; then
   bridge_queue_signal="true"
 fi
 if [[ "$bridge_shim_signal" = "true" && "$bridge_queue_signal" = "true" ]]; then
@@ -120,14 +127,6 @@ elif [[ "$mode" = "vulkan-raw" || "$mode" = "android-vulkan-raw" ]]; then
   backend="vulkan"
   ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
   reason="raw Android Vulkan library exposure was explicitly requested"
-elif [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || "${PDOCKER_CUDA_COMPAT:-}" = "1" || -e /dev/nvidia0 ]]; then
-  backend="cpu"
-  ngl="0"
-  if [[ "$bridge_fd_signal" = "true" ]]; then
-    reason="CUDA-compatible mode was requested and the pdocker GPU bridge validated, but llama.cpp bridge backend is not wired yet; using CPU fallback"
-  else
-    reason="CUDA-compatible mode was requested, but no validated glibc GPU bridge exists; using CPU fallback"
-  fi
 elif [[ "$pdocker_vulkan_icd_signal" = "true" && "${PDOCKER_VULKAN_ICD_READY:-0}" != "1" ]]; then
   backend="cpu"
   ngl="0"
@@ -135,6 +134,14 @@ elif [[ "$pdocker_vulkan_icd_signal" = "true" && "${PDOCKER_VULKAN_ICD_READY:-0}
     reason="pdocker Vulkan ICD is visible and the GPU bridge validates, but the Vulkan compute lowering is not complete yet; using CPU fallback"
   else
     reason="pdocker Vulkan ICD is visible, but the GPU bridge is not validated yet; using CPU fallback"
+  fi
+elif [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || "${PDOCKER_CUDA_COMPAT:-}" = "1" || -e /dev/nvidia0 ]]; then
+  backend="cpu"
+  ngl="0"
+  if [[ "$bridge_fd_signal" = "true" ]]; then
+    reason="CUDA-compatible mode was requested and the pdocker GPU bridge validated, but llama.cpp bridge backend is not wired yet; using CPU fallback"
+  else
+    reason="CUDA-compatible mode was requested, but no validated glibc GPU bridge exists; using CPU fallback"
   fi
 elif [[ "$pdocker_opencl_icd_ready_signal" = "true" ]]; then
   backend="cpu"
@@ -160,7 +167,7 @@ LLAMA_GPU_BACKEND=$backend
 LLAMA_ARG_THREADS=$threads
 LLAMA_ARG_CTX=$ctx
 LLAMA_ARG_N_GPU_LAYERS=$ngl
-LLAMA_EXTRA_ARGS=$extra
+LLAMA_EXTRA_ARGS=$(shell_quote "$extra")
 EOF
 
 cat > "$diagnostics" <<EOF

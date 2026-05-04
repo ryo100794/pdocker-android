@@ -171,7 +171,7 @@ def run_daemon(
         os.environ["PDOCKER_VULKAN_ICD_CONTAINER_PATH"] = "/usr/local/lib/pdocker-vulkan-icd.so"
         os.environ["PDOCKER_VULKAN_ICD_KIND"] = "pdocker-bridge-minimal"
         os.environ["PDOCKER_VULKAN_ICD_READY"] = "0"
-        os.environ["PDOCKER_VULKAN_API_VERSION"] = "1.1.0"
+        os.environ["PDOCKER_VULKAN_API_VERSION"] = "1.2.0"
     opencl_icd = os.path.join(runtime_dir, "lib", "pdocker-opencl-icd.so")
     if os.path.exists(opencl_icd):
         os.environ["PDOCKER_OPENCL_ICD_HOST_PATH"] = opencl_icd
