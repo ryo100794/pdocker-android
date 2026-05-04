@@ -71,7 +71,9 @@ llama.cpp, the container keeps model loading, tokenization, scheduling,
 sampling, and HTTP serving. The container-facing contract is
 `pdocker-gpu-command-v1`, a device-independent command ABI. GLES, Vulkan,
 OpenCL, NNAPI, and vendor quirks are executor implementation details below
-that ABI.
+that ABI. GPU-requesting containers receive a Linux/glibc
+`/usr/local/bin/pdocker-gpu-shim` capability probe; the APK owns the Bionic
+`pdocker-gpu-executor`. The command queue between them is still pending.
 
 When OpenCL mode is requested, pdockerd:
 

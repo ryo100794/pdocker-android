@@ -83,6 +83,16 @@ backend choices such as GLES compute, Vulkan, OpenCL, NNAPI, or vendor-specific
 driver details belong below that ABI and must be absorbed by the APK-owned
 executor layer. Container code should not branch on phone model or vendor GPU
 library paths.
+The first scaffold now has two binaries:
+
+- `pdocker-gpu-shim`: Linux/glibc container-facing probe, injected as
+  `/usr/local/bin/pdocker-gpu-shim` for GPU-requesting containers.
+- `pdocker-gpu-executor`: Android/Bionic APK-side executor probe. It owns
+  Android GPU APIs and advertises the same neutral command ABI.
+
+The current shim is a capability probe only. It intentionally reports
+`transport=command-queue-pending` until the shared-memory queue, buffer table,
+and fence protocol are implemented.
 Until that bridge exists and passes validation, llama.cpp GPU profile selection
 must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
 

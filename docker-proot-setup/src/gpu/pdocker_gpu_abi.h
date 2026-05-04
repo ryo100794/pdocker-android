@@ -1,0 +1,9 @@
+#ifndef PDOCKER_GPU_ABI_H
+#define PDOCKER_GPU_ABI_H
+
+#define PDOCKER_GPU_COMMAND_API "pdocker-gpu-command-v1"
+#define PDOCKER_GPU_ABI_VERSION "0.1"
+#define PDOCKER_GPU_LLM_ENGINE_LOCATION "container"
+#define PDOCKER_GPU_CONTAINER_CONTRACT "glibc-shim-command-queue"
+
+#endif

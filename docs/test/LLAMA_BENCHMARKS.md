@@ -114,6 +114,22 @@ neutral ABI. It does not yet prove container llama.cpp acceleration; the next
 step is the glibc shim plus shared-memory command queue used by the container
 process.
 
+## 2026-05-04 Container Shim Probe
+
+The Linux/glibc container-facing shim is now built as `pdocker-gpu-shim` and
+packaged in the APK as `libpdockergpushim.so`. pdockerd bind-mounts it into
+GPU-requesting containers at `/usr/local/bin/pdocker-gpu-shim`.
+
+Local capability output:
+
+```json
+{"shim":"pdocker-gpu-shim","api":"pdocker-gpu-command-v1","abi_version":"0.1","llm_engine":"container","device_independent":true,"container_contract":"glibc-shim-command-queue","executor_available":false,"executor_role":"apk-bionic-gpu-command-executor","transport":"command-queue-pending","backend_impl_visible_to_container":false}
+```
+
+This confirms the container-visible contract remains device-independent. It is
+not an acceleration claim until `transport` changes from
+`command-queue-pending` to a validated queue implementation.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.

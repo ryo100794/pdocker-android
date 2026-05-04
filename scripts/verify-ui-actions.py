@@ -77,6 +77,7 @@ def main() -> int:
     require("runtime omits upstream docker cli and compose plugin", "libdocker.so" not in runtime_src and "libdocker-compose.so" not in runtime_src and 'File(dockerBin, "docker")' in runtime_src)
     require("runtime installs direct executor helper", "libpdockerdirect.so" in runtime_src and "pdocker-direct" in runtime_src and "PDOCKER_DIRECT_EXECUTOR" in pdockerd_bridge_src)
     require("runtime installs backend-neutral gpu executor helper", "libpdockergpuexecutor.so" in runtime_src and "pdocker-gpu-executor" in runtime_src and "PDOCKER_GPU_COMMAND_API" in pdockerd_bridge_src and "PDOCKER_GPU_LLM_ENGINE_LOCATION" in pdockerd_src)
+    require("runtime installs glibc gpu shim for containers", "libpdockergpushim.so" in runtime_src and "pdocker-gpu-shim" in runtime_src and "PDOCKER_GPU_SHIM_HOST_PATH" in pdockerd_bridge_src and "PDOCKER_GPU_SHIM" in pdockerd_src)
     require("direct runtime advertises implemented bind support", "PDOCKER_USE_COW_BIND" in pdockerd_bridge_src and 'if DIRECT_EXECUTOR and os.path.exists(DIRECT_EXECUTOR)' in pdockerd_src and '"cow-bind=1" in output' in pdockerd_src and "cow-bind=0" in direct_src and "bind-path-rewrite=1" in direct_src)
     require("direct runtime treats blocked NUMA policy syscalls as unavailable", "case 235: return \"mbind\"" in direct_src and "syscall_emulate_errno" in direct_src and "ADD_ERRNO_SYSCALL(235, ENOSYS)" in direct_src and "set_mempolicy_home_node" in direct_src)
     require("runtime removes stale docker-compose shim", "docker-compose" in runtime_src)

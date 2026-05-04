@@ -576,6 +576,20 @@ Real implementation needed:
    env variables.
 6. Add UI recommendation based on measured CPU/GPU crossover size.
 
+Scaffold completed:
+
+- APK-side `pdocker-gpu-executor` capability/vector-add probe.
+- Container-side Linux/glibc `pdocker-gpu-shim` capability probe injected into
+  GPU-requesting containers.
+
+Next implementation slice:
+
+- Replace shim capability probe with a shared-memory command queue.
+- Add queue lifecycle under pdockerd so container processes never call Android
+  vendor libraries directly.
+- Add a real buffer/fence protocol and run vector-add through shim -> executor
+  before enabling llama.cpp backend integration.
+
 Acceptance:
 
 - Benchmark report shows when GPU beats CPU on the current Android device.

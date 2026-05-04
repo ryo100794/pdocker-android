@@ -22,6 +22,7 @@ import java.io.File
  *   ├── etc/resolv.conf    (DNS nameservers discovered from Android networks)
  *   └── lib/
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
+ *       ├── pdocker-gpu-shim (-> nativeLibraryDir/libpdockergpushim.so)
  *       └── pdocker-rootfs-shim.so (-> nativeLibraryDir/libpdocker-rootfs-shim.so)
  *
  * pdockerd derives _PROJECT_DIR = dirname(dirname(__file__)), so running
@@ -75,6 +76,7 @@ nameserver 1.1.1.1
         java.nio.file.Files.deleteIfExists(File(dockerCliPlugins, "docker-compose").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "docker-compose").toPath())
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
+        optionalLinkTo(File(nativeDir, "libpdockergpushim.so"), File(lib, "pdocker-gpu-shim"))
         optionalLinkTo(File(nativeDir, "libpdocker-rootfs-shim.so"), File(lib, "pdocker-rootfs-shim.so"))
         java.nio.file.Files.deleteIfExists(File(lib, "libtalloc.so").toPath())
 

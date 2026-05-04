@@ -156,6 +156,10 @@ def run_daemon(
         os.environ["PDOCKER_GPU_ABI_VERSION"] = "0.1"
         os.environ["PDOCKER_GPU_EXECUTOR_ROLE"] = "gpu-command-executor"
         os.environ["PDOCKER_GPU_LLM_ENGINE_LOCATION"] = "container"
+    gpu_shim = os.path.join(runtime_dir, "lib", "pdocker-gpu-shim")
+    if os.path.exists(gpu_shim):
+        os.environ["PDOCKER_GPU_SHIM_HOST_PATH"] = gpu_shim
+        os.environ["PDOCKER_GPU_SHIM_CONTAINER_PATH"] = "/usr/local/bin/pdocker-gpu-shim"
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")

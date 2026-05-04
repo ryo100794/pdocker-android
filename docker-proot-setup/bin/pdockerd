@@ -1795,6 +1795,7 @@ def _gpu_env(state):
         "PDOCKER_GPU_ABI_VERSION": os.environ.get("PDOCKER_GPU_ABI_VERSION", "0.1"),
         "PDOCKER_GPU_EXECUTOR_ROLE": "apk-bionic-gpu-command-executor",
         "PDOCKER_GPU_LLM_ENGINE_LOCATION": "container",
+        "PDOCKER_GPU_SHIM": os.environ.get("PDOCKER_GPU_SHIM_CONTAINER_PATH", "/usr/local/bin/pdocker-gpu-shim"),
         "NVIDIA_VISIBLE_DEVICES": "all",
         "NVIDIA_DRIVER_CAPABILITIES": "compute,utility,graphics",
     }
@@ -1820,6 +1821,8 @@ def _gpu_env(state):
 
 
 def _existing_bind(src, dst=None, readonly=True):
+    if not src:
+        return None
     if not os.path.exists(src):
         return None
     target = dst or src
@@ -1830,7 +1833,10 @@ def _gpu_binds(state):
     modes = _gpu_request_modes(state)
     if not modes:
         return []
+    shim_host = os.environ.get("PDOCKER_GPU_SHIM_HOST_PATH")
+    shim_guest = os.environ.get("PDOCKER_GPU_SHIM_CONTAINER_PATH", "/usr/local/bin/pdocker-gpu-shim")
     candidates = [
+        (shim_host, shim_guest, True),
         ("/dev/kgsl-3d0", "/dev/kgsl-3d0", False),
         ("/dev/dri", "/dev/dri", False),
         ("/system/lib64/libvulkan.so", "/system/lib64/libvulkan.so", True),

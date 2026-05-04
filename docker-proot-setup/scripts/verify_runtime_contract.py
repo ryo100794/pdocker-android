@@ -425,6 +425,49 @@ def test_active_operations_contract() -> None:
         ok("daemon active operations are listed independently of UI jobs")
 
 
+def test_gpu_shim_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        shim = home_path / "pdocker-gpu-shim"
+        shim.write_text("#!/bin/sh\nexit 0\n")
+        shim.chmod(0o755)
+        mod = load_pdockerd_with_env(
+            "gpu_shim",
+            "no-proot",
+            home_path,
+            {
+                "PDOCKER_GPU_SHIM_HOST_PATH": str(shim),
+                "PDOCKER_GPU_SHIM_CONTAINER_PATH": "/usr/local/bin/pdocker-gpu-shim",
+                "PDOCKER_GPU_EXECUTOR": str(home_path / "pdocker-gpu-executor"),
+                "PDOCKER_GPU_COMMAND_API": "pdocker-gpu-command-v1",
+                "PDOCKER_GPU_ABI_VERSION": "0.1",
+            },
+        )
+        state = {
+            "HostConfig": {
+                "DeviceRequests": [
+                    {
+                        "Driver": "pdocker-gpu",
+                        "Count": -1,
+                        "Capabilities": [["gpu"]],
+                    }
+                ]
+            }
+        }
+        env = mod._gpu_env(state)
+        binds = mod._gpu_binds(state)
+        if env.get("PDOCKER_GPU_SHIM") != "/usr/local/bin/pdocker-gpu-shim":
+            fail(f"gpu shim env missing: {env!r}")
+        if env.get("PDOCKER_GPU_COMMAND_API") != "pdocker-gpu-command-v1":
+            fail(f"gpu command api missing: {env!r}")
+        if env.get("PDOCKER_GPU_LLM_ENGINE_LOCATION") != "container":
+            fail(f"gpu engine location must stay container: {env!r}")
+        expected_bind = f"{shim}:/usr/local/bin/pdocker-gpu-shim:ro"
+        if expected_bind not in binds:
+            fail(f"gpu shim bind missing {expected_bind!r}: {binds!r}")
+        ok("GPU shim contract injects device-independent container ABI")
+
+
 def main() -> int:
     test_direct_backend_contract()
     test_direct_executor_probe_contract()
@@ -437,6 +480,7 @@ def main() -> int:
     test_existing_tag_full_image_cache()
     test_build_cache_contract()
     test_active_operations_contract()
+    test_gpu_shim_contract()
     return 0
 
 
