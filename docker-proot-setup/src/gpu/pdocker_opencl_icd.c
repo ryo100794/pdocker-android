@@ -295,6 +295,51 @@ static bool kernel_is_supported_vector_add(const cl_kernel kernel) {
     return source_looks_like_vector_add(kernel->program->source);
 }
 
+static bool env_is(const char *name, const char *value) {
+    const char *v = getenv(name);
+    return v && strcmp(v, value) == 0;
+}
+
+static size_t env_size_or(const char *name, size_t fallback) {
+    const char *v = getenv(name);
+    if (!v || !v[0]) return fallback;
+    char *end = NULL;
+    unsigned long long parsed = strtoull(v, &end, 10);
+    if (!end || *end || parsed == 0) return fallback;
+    return (size_t)parsed;
+}
+
+static bool cpu_governor_enabled(size_t n) {
+    if (env_is("PDOCKER_GPU_GOVERNOR", "force-gpu") ||
+        env_is("PDOCKER_GPU_GOVERNOR", "gpu") ||
+        env_is("PDOCKER_GPU_GOVERNOR", "bridge")) {
+        return false;
+    }
+    if (env_is("PDOCKER_GPU_GOVERNOR", "force-cpu") ||
+        env_is("PDOCKER_GPU_GOVERNOR", "cpu") ||
+        env_is("PDOCKER_GPU_GOVERNOR", "cpu-emulated")) {
+        return true;
+    }
+    size_t max_n = env_size_or(
+        "PDOCKER_GPU_CPU_FALLBACK_MAX_VECTOR_ADD_N",
+        PDOCKER_GPU_VECTOR_ADD_DEFAULT_N);
+    return n <= max_n;
+}
+
+static cl_int run_vector_add_cpu_emulated(cl_mem a, cl_mem b, cl_mem out, size_t n) {
+    if (!a || !b || !out || !a->map || !b->map || !out->map) return CL_INVALID_OPERATION;
+    const float *av = (const float *)a->map;
+    const float *bv = (const float *)b->map;
+    float *ov = (float *)out->map;
+    for (size_t i = 0; i < n; ++i) ov[i] = av[i] + bv[i];
+    if (getenv("PDOCKER_OPENCL_ICD_DEBUG")) {
+        fprintf(stderr,
+                "pdocker-opencl-icd: vector_add CPU-emulated n=%zu reason=governor\n",
+                n);
+    }
+    return CL_SUCCESS;
+}
+
 cl_int clGetPlatformIDs(cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms) {
     if (num_platforms) *num_platforms = 1;
     if (platforms && num_entries > 0) platforms[0] = &g_platform;
@@ -709,6 +754,9 @@ cl_int clEnqueueNDRangeKernel(cl_command_queue command_queue, cl_kernel kernel, 
     if (b->size / sizeof(float) < n) n = b->size / sizeof(float);
     if (out->size / sizeof(float) < n) n = out->size / sizeof(float);
     if (global_work_size && global_work_size[0] < n) n = global_work_size[0];
+    if (cpu_governor_enabled(n)) {
+        return run_vector_add_cpu_emulated(a, b, out, n);
+    }
     int rc = send_vector_add_3fd(n, a->fd, b->fd, out->fd);
     return rc == 0 ? CL_SUCCESS : CL_INVALID_OPERATION;
 }

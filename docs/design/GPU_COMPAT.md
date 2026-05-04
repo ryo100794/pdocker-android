@@ -188,6 +188,27 @@ The vector-add probes intentionally use small buffers and are not
 representative of model loading. Future llama/ggml work must benchmark bridge
 overhead by buffer size and transfer mode before enabling GPU mode by default.
 
+CPU execution is a valid implementation of the neutral GPU command ABI when it
+is the fastest correct path. The compatibility layer should expose a
+CPU-emulated backend for operations where API overhead, bridge crossings, or
+buffer transfer dominate the work. The governor rule is:
+
+- prefer CPU for transfer-bound one-shot kernels and small buffers;
+- prefer same-API GPU only when buffers are resident or imported and the
+  measured warm path beats CPU by the configured threshold;
+- keep the decision explicit in diagnostics with `backend_affinity`,
+  `backend_impl`, `buffer_residency`, and a fallback reason;
+- never silently translate an unsupported kernel to a different numerical
+  operation.
+
+The OpenCL ICD now applies this rule to the current `vector_add` proof: in
+`auto` mode it CPU-emulates small/default vector-add submissions inside the
+glibc container process because measured CPU execution beats the current
+bridge path. Bridge tests set `PDOCKER_GPU_GOVERNOR=force-gpu` so the real GPU
+transport remains continuously tested. Operators can force CPU with
+`PDOCKER_GPU_GOVERNOR=force-cpu` or tune the auto threshold with
+`PDOCKER_GPU_CPU_FALLBACK_MAX_VECTOR_ADD_N`.
+
 GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
 binds the APK runtime GPU directory there and direct execution rewrites
 `connect(AF_UNIX)` socket paths, so container code never needs Android app-data
@@ -262,6 +283,8 @@ Recommended decision thresholds:
   faster than `cpu_neon`
 - defer GPU when transfer overhead dominates, validation fails, or thermal
   throttling erases the gain
+- use CPU-emulated execution for compatibility when the measured CPU path is
+  faster than the GPU path for the current kernel shape
 
 Latest quick smoke on Sony SOG15, 2026-05-04, using the Android-side
 `gles31_compute` backend:
@@ -301,7 +324,9 @@ state, and thermal state when available.
 2. Vulkan baseline: compute context, buffer upload/download, SPIR-V shader
    loading, CPU wall time and GPU timestamp timing when available.
 3. Matrix baseline: CPU reference, simple Vulkan matmul, tiled Vulkan matmul,
-   GFLOPS and numerical error reporting.
+   GFLOPS and numerical error reporting. The resident Vulkan matmul256 probe is
+   now the host-side proof that compute-heavy kernels can beat CPU; bridge work
+   should preserve this resident-buffer shape.
 4. glibc bridge ABI: container-facing shim, FD-passed shared-buffer transport,
    reusable buffer table, command buffers, fence/error model, and Bionic
    GPU-executor lifecycle. The executor runs GPU commands only; application

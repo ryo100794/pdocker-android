@@ -129,4 +129,4 @@ for _ in $(seq 1 100); do
 done
 [[ -S "$SOCK" ]] || { cat "$TMP/executor.log" >&2; exit 1; }
 
-PDOCKER_GPU_QUEUE_SOCKET="$SOCK" "$TMP/pdocker-opencl-smoke" "$OPENCL"
+PDOCKER_GPU_GOVERNOR=force-gpu PDOCKER_GPU_QUEUE_SOCKET="$SOCK" "$TMP/pdocker-opencl-smoke" "$OPENCL"

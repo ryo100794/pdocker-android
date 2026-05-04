@@ -140,6 +140,77 @@ static const uint32_t kVectorAddSpv[] = {
     0x00000028, 0x00000027, 0x000100fd, 0x00010038,
 };
 
+static const uint32_t kMatmul256Spv[] = {
+    0x07230203, 0x00010000, 0x0008000b, 0x00000053, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,
+    0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e, 0x00000000, 0x0003000e, 0x00000000, 0x00000001,
+    0x0006000f, 0x00000005, 0x00000004, 0x6e69616d, 0x00000000, 0x0000000b, 0x00060010, 0x00000004,
+    0x00000011, 0x00000008, 0x00000008, 0x00000001, 0x00030003, 0x00000002, 0x000001c2, 0x00040005,
+    0x00000004, 0x6e69616d, 0x00000000, 0x00030005, 0x00000008, 0x006c6f63, 0x00080005, 0x0000000b,
+    0x475f6c67, 0x61626f6c, 0x766e496c, 0x7461636f, 0x496e6f69, 0x00000044, 0x00030005, 0x00000010,
+    0x00776f72, 0x00030005, 0x00000020, 0x006d7573, 0x00030005, 0x00000022, 0x0000006b, 0x00030005,
+    0x0000002b, 0x00000041, 0x00040006, 0x0000002b, 0x00000000, 0x00000061, 0x00030005, 0x0000002d,
+    0x00000000, 0x00030005, 0x00000038, 0x00000042, 0x00040006, 0x00000038, 0x00000000, 0x00000062,
+    0x00030005, 0x0000003a, 0x00000000, 0x00030005, 0x00000048, 0x0000004f, 0x00040006, 0x00000048,
+    0x00000000, 0x0000006f, 0x00030005, 0x0000004a, 0x00000000, 0x00040047, 0x0000000b, 0x0000000b,
+    0x0000001c, 0x00040047, 0x0000002a, 0x00000006, 0x00000004, 0x00030047, 0x0000002b, 0x00000003,
+    0x00040048, 0x0000002b, 0x00000000, 0x00000018, 0x00050048, 0x0000002b, 0x00000000, 0x00000023,
+    0x00000000, 0x00030047, 0x0000002d, 0x00000018, 0x00040047, 0x0000002d, 0x00000021, 0x00000000,
+    0x00040047, 0x0000002d, 0x00000022, 0x00000000, 0x00040047, 0x00000037, 0x00000006, 0x00000004,
+    0x00030047, 0x00000038, 0x00000003, 0x00040048, 0x00000038, 0x00000000, 0x00000018, 0x00050048,
+    0x00000038, 0x00000000, 0x00000023, 0x00000000, 0x00030047, 0x0000003a, 0x00000018, 0x00040047,
+    0x0000003a, 0x00000021, 0x00000001, 0x00040047, 0x0000003a, 0x00000022, 0x00000000, 0x00040047,
+    0x00000047, 0x00000006, 0x00000004, 0x00030047, 0x00000048, 0x00000003, 0x00040048, 0x00000048,
+    0x00000000, 0x00000019, 0x00050048, 0x00000048, 0x00000000, 0x00000023, 0x00000000, 0x00030047,
+    0x0000004a, 0x00000019, 0x00040047, 0x0000004a, 0x00000021, 0x00000002, 0x00040047, 0x0000004a,
+    0x00000022, 0x00000000, 0x00040047, 0x00000052, 0x0000000b, 0x00000019, 0x00020013, 0x00000002,
+    0x00030021, 0x00000003, 0x00000002, 0x00040015, 0x00000006, 0x00000020, 0x00000000, 0x00040020,
+    0x00000007, 0x00000007, 0x00000006, 0x00040017, 0x00000009, 0x00000006, 0x00000003, 0x00040020,
+    0x0000000a, 0x00000001, 0x00000009, 0x0004003b, 0x0000000a, 0x0000000b, 0x00000001, 0x0004002b,
+    0x00000006, 0x0000000c, 0x00000000, 0x00040020, 0x0000000d, 0x00000001, 0x00000006, 0x0004002b,
+    0x00000006, 0x00000011, 0x00000001, 0x0004002b, 0x00000006, 0x00000015, 0x00000100, 0x00020014,
+    0x00000016, 0x00030016, 0x0000001e, 0x00000020, 0x00040020, 0x0000001f, 0x00000007, 0x0000001e,
+    0x0004002b, 0x0000001e, 0x00000021, 0x00000000, 0x0003001d, 0x0000002a, 0x0000001e, 0x0003001e,
+    0x0000002b, 0x0000002a, 0x00040020, 0x0000002c, 0x00000002, 0x0000002b, 0x0004003b, 0x0000002c,
+    0x0000002d, 0x00000002, 0x00040015, 0x0000002e, 0x00000020, 0x00000001, 0x0004002b, 0x0000002e,
+    0x0000002f, 0x00000000, 0x00040020, 0x00000034, 0x00000002, 0x0000001e, 0x0003001d, 0x00000037,
+    0x0000001e, 0x0003001e, 0x00000038, 0x00000037, 0x00040020, 0x00000039, 0x00000002, 0x00000038,
+    0x0004003b, 0x00000039, 0x0000003a, 0x00000002, 0x0004002b, 0x0000002e, 0x00000045, 0x00000001,
+    0x0003001d, 0x00000047, 0x0000001e, 0x0003001e, 0x00000048, 0x00000047, 0x00040020, 0x00000049,
+    0x00000002, 0x00000048, 0x0004003b, 0x00000049, 0x0000004a, 0x00000002, 0x0004002b, 0x00000006,
+    0x00000051, 0x00000008, 0x0006002c, 0x00000009, 0x00000052, 0x00000051, 0x00000051, 0x00000011,
+    0x00050036, 0x00000002, 0x00000004, 0x00000000, 0x00000003, 0x000200f8, 0x00000005, 0x0004003b,
+    0x00000007, 0x00000008, 0x00000007, 0x0004003b, 0x00000007, 0x00000010, 0x00000007, 0x0004003b,
+    0x0000001f, 0x00000020, 0x00000007, 0x0004003b, 0x00000007, 0x00000022, 0x00000007, 0x00050041,
+    0x0000000d, 0x0000000e, 0x0000000b, 0x0000000c, 0x0004003d, 0x00000006, 0x0000000f, 0x0000000e,
+    0x0003003e, 0x00000008, 0x0000000f, 0x00050041, 0x0000000d, 0x00000012, 0x0000000b, 0x00000011,
+    0x0004003d, 0x00000006, 0x00000013, 0x00000012, 0x0003003e, 0x00000010, 0x00000013, 0x0004003d,
+    0x00000006, 0x00000014, 0x00000010, 0x000500ae, 0x00000016, 0x00000017, 0x00000014, 0x00000015,
+    0x0004003d, 0x00000006, 0x00000018, 0x00000008, 0x000500ae, 0x00000016, 0x00000019, 0x00000018,
+    0x00000015, 0x000500a6, 0x00000016, 0x0000001a, 0x00000017, 0x00000019, 0x000300f7, 0x0000001c,
+    0x00000000, 0x000400fa, 0x0000001a, 0x0000001b, 0x0000001c, 0x000200f8, 0x0000001b, 0x000100fd,
+    0x000200f8, 0x0000001c, 0x0003003e, 0x00000020, 0x00000021, 0x0003003e, 0x00000022, 0x0000000c,
+    0x000200f9, 0x00000023, 0x000200f8, 0x00000023, 0x000400f6, 0x00000025, 0x00000026, 0x00000000,
+    0x000200f9, 0x00000027, 0x000200f8, 0x00000027, 0x0004003d, 0x00000006, 0x00000028, 0x00000022,
+    0x000500b0, 0x00000016, 0x00000029, 0x00000028, 0x00000015, 0x000400fa, 0x00000029, 0x00000024,
+    0x00000025, 0x000200f8, 0x00000024, 0x0004003d, 0x00000006, 0x00000030, 0x00000010, 0x00050084,
+    0x00000006, 0x00000031, 0x00000030, 0x00000015, 0x0004003d, 0x00000006, 0x00000032, 0x00000022,
+    0x00050080, 0x00000006, 0x00000033, 0x00000031, 0x00000032, 0x00060041, 0x00000034, 0x00000035,
+    0x0000002d, 0x0000002f, 0x00000033, 0x0004003d, 0x0000001e, 0x00000036, 0x00000035, 0x0004003d,
+    0x00000006, 0x0000003b, 0x00000022, 0x00050084, 0x00000006, 0x0000003c, 0x0000003b, 0x00000015,
+    0x0004003d, 0x00000006, 0x0000003d, 0x00000008, 0x00050080, 0x00000006, 0x0000003e, 0x0000003c,
+    0x0000003d, 0x00060041, 0x00000034, 0x0000003f, 0x0000003a, 0x0000002f, 0x0000003e, 0x0004003d,
+    0x0000001e, 0x00000040, 0x0000003f, 0x00050085, 0x0000001e, 0x00000041, 0x00000036, 0x00000040,
+    0x0004003d, 0x0000001e, 0x00000042, 0x00000020, 0x00050081, 0x0000001e, 0x00000043, 0x00000042,
+    0x00000041, 0x0003003e, 0x00000020, 0x00000043, 0x000200f9, 0x00000026, 0x000200f8, 0x00000026,
+    0x0004003d, 0x00000006, 0x00000044, 0x00000022, 0x00050080, 0x00000006, 0x00000046, 0x00000044,
+    0x00000045, 0x0003003e, 0x00000022, 0x00000046, 0x000200f9, 0x00000023, 0x000200f8, 0x00000025,
+    0x0004003d, 0x00000006, 0x0000004b, 0x00000010, 0x00050084, 0x00000006, 0x0000004c, 0x0000004b,
+    0x00000015, 0x0004003d, 0x00000006, 0x0000004d, 0x00000008, 0x00050080, 0x00000006, 0x0000004e,
+    0x0000004c, 0x0000004d, 0x0004003d, 0x0000001e, 0x0000004f, 0x00000020, 0x00060041, 0x00000034,
+    0x00000050, 0x0000004a, 0x0000002f, 0x0000004e, 0x0003003e, 0x00000050, 0x0000004f, 0x000100fd,
+    0x00010038,
+};
+
 static FILE *g_json_out = NULL;
 
 static FILE *json_out(void) {
@@ -318,9 +389,11 @@ typedef struct {
     VkQueue queue;
     uint32_t queue_family;
     VkShaderModule shader;
+    VkShaderModule matmul_shader;
     VkDescriptorSetLayout set_layout;
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
+    VkPipeline matmul_pipeline;
     VkCommandPool command_pool;
     double init_ms;
 } VulkanRuntime;
@@ -469,6 +542,19 @@ static int init_vulkan_runtime(VulkanRuntime *rt) {
     stage = "create-compute-pipeline";
     rc = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1, &cpci, NULL, &rt->pipeline);
     if (rc != VK_SUCCESS) goto fail;
+    VkShaderModuleCreateInfo mmsmci = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = sizeof(kMatmul256Spv),
+        .pCode = kMatmul256Spv,
+    };
+    stage = "create-matmul-shader-module";
+    rc = vkCreateShaderModule(rt->device, &mmsmci, NULL, &rt->matmul_shader);
+    if (rc != VK_SUCCESS) goto fail;
+    VkComputePipelineCreateInfo mmcpci = cpci;
+    mmcpci.stage.module = rt->matmul_shader;
+    stage = "create-matmul-compute-pipeline";
+    rc = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1, &mmcpci, NULL, &rt->matmul_pipeline);
+    if (rc != VK_SUCCESS) goto fail;
     VkCommandPoolCreateInfo cpoci = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .queueFamilyIndex = rt->queue_family,
@@ -482,9 +568,11 @@ static int init_vulkan_runtime(VulkanRuntime *rt) {
 fail:
     fprintf(stderr, "pdocker-gpu-executor: Vulkan runtime init failed stage=%s rc=%d\n", stage, rc);
     if (rt->command_pool) vkDestroyCommandPool(rt->device, rt->command_pool, NULL);
+    if (rt->matmul_pipeline) vkDestroyPipeline(rt->device, rt->matmul_pipeline, NULL);
     if (rt->pipeline) vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     if (rt->pipeline_layout) vkDestroyPipelineLayout(rt->device, rt->pipeline_layout, NULL);
     if (rt->set_layout) vkDestroyDescriptorSetLayout(rt->device, rt->set_layout, NULL);
+    if (rt->matmul_shader) vkDestroyShaderModule(rt->device, rt->matmul_shader, NULL);
     if (rt->shader) vkDestroyShaderModule(rt->device, rt->shader, NULL);
     if (rt->device) vkDestroyDevice(rt->device, NULL);
     if (rt->instance) vkDestroyInstance(rt->instance, NULL);
@@ -1191,6 +1279,443 @@ static int bench_vulkan_vector_add(int count) {
     return last;
 }
 
+static int bench_vulkan_vector_add_resident(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(n, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_inputs(a, b, n);
+
+    const int was_ready = g_vulkan_runtime.ready;
+    if (init_vulkan_runtime(&g_vulkan_runtime) != 0) {
+        free(a);
+        free(b);
+        free(out);
+        return -21;
+    }
+    VulkanRuntime *rt = &g_vulkan_runtime;
+    VulkanVectorBuffer buffers[3];
+    memset(buffers, 0, sizeof(buffers));
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    VkResult rc = VK_SUCCESS;
+    const char *fail_stage = "start";
+    VkResult fail_result = VK_SUCCESS;
+
+    double upload_start = now_ms();
+    fail_stage = "create-buffer-a";
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, a, &buffers[0]) != 0) goto fail;
+    fail_stage = "create-buffer-b";
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, b, &buffers[1]) != 0) goto fail;
+    fail_stage = "create-buffer-out";
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, NULL, &buffers[2]) != 0) goto fail;
+    double upload_ms = now_ms() - upload_start;
+
+    VkDescriptorPoolSize pool_size = {
+        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 3,
+    };
+    VkDescriptorPoolCreateInfo dpci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+    };
+    fail_stage = "create-descriptor-pool";
+    rc = vkCreateDescriptorPool(rt->device, &dpci, NULL, &descriptor_pool);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    VkDescriptorSetAllocateInfo dsai = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &rt->set_layout,
+    };
+    fail_stage = "allocate-descriptor-set";
+    rc = vkAllocateDescriptorSets(rt->device, &dsai, &descriptor_set);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorBufferInfo infos[3];
+    VkWriteDescriptorSet writes[3];
+    memset(writes, 0, sizeof(writes));
+    for (uint32_t i = 0; i < 3; ++i) {
+        infos[i].buffer = buffers[i].buffer;
+        infos[i].offset = 0;
+        infos[i].range = (VkDeviceSize)bytes;
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = descriptor_set;
+        writes[i].dstBinding = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &infos[i];
+    }
+    vkUpdateDescriptorSets(rt->device, 3, writes, 0, NULL);
+
+    VkCommandBufferAllocateInfo cbai = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = rt->command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    fail_stage = "allocate-command-buffer";
+    rc = vkAllocateCommandBuffers(rt->device, &cbai, &command_buffer);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkCommandBufferBeginInfo cbi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    fail_stage = "begin-command-buffer";
+    rc = vkBeginCommandBuffer(command_buffer, &cbi);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    vkCmdDispatch(command_buffer, (uint32_t)((n + 127) / 128), 1, 1);
+    fail_stage = "end-command-buffer";
+    rc = vkEndCommandBuffer(command_buffer);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    fail_stage = "create-fence";
+    rc = vkCreateFence(rt->device, &fci, NULL, &fence);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkSubmitInfo submit = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        rc = vkResetFences(rt->device, 1, &fence);
+        if (rc != VK_SUCCESS) { fail_stage = "reset-fence"; fail_result = rc; goto fail; }
+        double dispatch_start = now_ms();
+        rc = vkQueueSubmit(rt->queue, 1, &submit, fence);
+        if (rc != VK_SUCCESS) { fail_stage = "queue-submit"; fail_result = rc; goto fail; }
+        rc = vkWaitForFences(rt->device, 1, &fence, VK_TRUE, UINT64_MAX);
+        if (rc != VK_SUCCESS) { fail_stage = "wait-fence"; fail_result = rc; goto fail; }
+        double dispatch_ms = now_ms() - dispatch_start;
+
+        double download_start = now_ms();
+        memcpy(out, buffers[2].map, bytes);
+        double download_ms = now_ms() - download_start;
+        double max_err = 0.0;
+        for (size_t j = 0; j < n; ++j) {
+            double e = fabs((double)out[j] - (double)(a[j] + b[j]));
+            if (e > max_err) max_err = e;
+        }
+        const int valid = max_err <= 0.0001;
+        const double init_ms = (!was_ready && i == 0) ? rt->init_ms : 0.0;
+        const double run_upload_ms = i == 0 ? upload_ms : 0.0;
+        fprintf(json_out(),
+                "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+                "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+                "\"backend_impl\":\"android_vulkan\",\"backend_affinity\":\"same-api\","
+                "\"backend_cached\":true,\"buffer_residency\":\"resident\","
+                "\"transport\":\"direct-vulkan-resident-buffer\","
+                "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
+                "\"init_ms\":%.4f,\"compile_ms\":0.0000,\"upload_ms\":%.4f,"
+                "\"dispatch_ms\":%.4f,\"download_ms\":%.4f,\"total_ms\":%.4f,"
+                "\"max_abs_error\":%.8f,\"valid\":%s}\n",
+                PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+                PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+                n, init_ms, run_upload_ms, dispatch_ms, download_ms,
+                init_ms + run_upload_ms + dispatch_ms + download_ms, max_err,
+                valid ? "true" : "false");
+        fflush(json_out());
+        last = valid ? 0 : 6;
+        if (last != 0) break;
+    }
+
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[0]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[1]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[2]);
+    free(a);
+    free(b);
+    free(out);
+    return last;
+
+fail:
+    fprintf(stderr, "pdocker-gpu-executor: Vulkan resident vector_add failed stage=%s rc=%d\n", fail_stage, fail_result);
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[0]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[1]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[2]);
+    free(a);
+    free(b);
+    free(out);
+    return -21;
+}
+
+static void fill_matmul_inputs(float *a, float *b, size_t n) {
+    for (size_t r = 0; r < n; ++r) {
+        for (size_t c = 0; c < n; ++c) {
+            int av = (int)((r * 3 + c * 5) % 17) - 8;
+            int bv = (int)((r * 7 + c * 2) % 19) - 9;
+            a[r * n + c] = (float)av * 0.03125f;
+            b[r * n + c] = (float)bv * 0.025f;
+        }
+    }
+}
+
+static void matmul_cpu_ref(const float *a, const float *b, float *out, size_t n) {
+    for (size_t r = 0; r < n; ++r) {
+        for (size_t c = 0; c < n; ++c) {
+            float sum = 0.0f;
+            for (size_t k = 0; k < n; ++k) {
+                sum += a[r * n + k] * b[k * n + c];
+            }
+            out[r * n + c] = sum;
+        }
+    }
+}
+
+static double matmul_max_error(const float *got, const float *ref, size_t n) {
+    double max_err = 0.0;
+    size_t total = n * n;
+    for (size_t i = 0; i < total; ++i) {
+        double e = fabs((double)got[i] - (double)ref[i]);
+        if (e > max_err) max_err = e;
+    }
+    return max_err;
+}
+
+static double matmul_checksum(const float *m, size_t n) {
+    volatile double sum = 0.0;
+    size_t total = n * n;
+    for (size_t i = 0; i < total; ++i) {
+        sum += (double)m[i] * (double)((i % 13) + 1);
+    }
+    return sum;
+}
+
+static int bench_cpu_matmul256(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = 256;
+    const size_t items = n * n;
+    const size_t bytes = items * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(items, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_matmul_inputs(a, b, n);
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        memset(out, 0, bytes);
+        double start = now_ms();
+        matmul_cpu_ref(a, b, out, n);
+        double checksum = matmul_checksum(out, n);
+        double total_ms = now_ms() - start;
+        fprintf(json_out(),
+                "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+                "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+                "\"backend_impl\":\"cpu_scalar\",\"backend_affinity\":\"cpu\","
+                "\"transport\":\"host-cpu-local-process-buffer\","
+                "\"kernel\":\"matmul_fp32\",\"problem_size\":\"n=%zux%zu\","
+                "\"init_ms\":0.0000,\"compile_ms\":0.0000,\"upload_ms\":0.0000,"
+                "\"dispatch_ms\":%.4f,\"download_ms\":0.0000,\"total_ms\":%.4f,"
+                "\"checksum\":%.8f,\"max_abs_error\":0.00000000,\"valid\":true}\n",
+                PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+                PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+                n, n, total_ms, total_ms, checksum);
+        fflush(json_out());
+        last = 0;
+    }
+    free(a);
+    free(b);
+    free(out);
+    return last;
+}
+
+static int bench_vulkan_matmul256_resident(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = 256;
+    const size_t items = n * n;
+    const size_t bytes = items * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(items, sizeof(float));
+    float *ref = (float *)calloc(items, sizeof(float));
+    if (!a || !b || !out || !ref) {
+        free(a);
+        free(b);
+        free(out);
+        free(ref);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_matmul_inputs(a, b, n);
+    matmul_cpu_ref(a, b, ref, n);
+
+    const int was_ready = g_vulkan_runtime.ready;
+    if (init_vulkan_runtime(&g_vulkan_runtime) != 0) {
+        free(a);
+        free(b);
+        free(out);
+        free(ref);
+        return -21;
+    }
+    VulkanRuntime *rt = &g_vulkan_runtime;
+    VulkanVectorBuffer buffers[3];
+    memset(buffers, 0, sizeof(buffers));
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    VkResult rc = VK_SUCCESS;
+    const char *fail_stage = "start";
+    VkResult fail_result = VK_SUCCESS;
+
+    double upload_start = now_ms();
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, a, &buffers[0]) != 0) goto fail;
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, b, &buffers[1]) != 0) goto fail;
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, NULL, &buffers[2]) != 0) goto fail;
+    double upload_ms = now_ms() - upload_start;
+
+    VkDescriptorPoolSize pool_size = {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 3};
+    VkDescriptorPoolCreateInfo dpci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+    };
+    fail_stage = "create-descriptor-pool";
+    rc = vkCreateDescriptorPool(rt->device, &dpci, NULL, &descriptor_pool);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    VkDescriptorSetAllocateInfo dsai = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &rt->set_layout,
+    };
+    fail_stage = "allocate-descriptor-set";
+    rc = vkAllocateDescriptorSets(rt->device, &dsai, &descriptor_set);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorBufferInfo infos[3];
+    VkWriteDescriptorSet writes[3];
+    memset(writes, 0, sizeof(writes));
+    for (uint32_t i = 0; i < 3; ++i) {
+        infos[i].buffer = buffers[i].buffer;
+        infos[i].offset = 0;
+        infos[i].range = (VkDeviceSize)bytes;
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = descriptor_set;
+        writes[i].dstBinding = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &infos[i];
+    }
+    vkUpdateDescriptorSets(rt->device, 3, writes, 0, NULL);
+
+    VkCommandBufferAllocateInfo cbai = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = rt->command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    fail_stage = "allocate-command-buffer";
+    rc = vkAllocateCommandBuffers(rt->device, &cbai, &command_buffer);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkCommandBufferBeginInfo cbi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    fail_stage = "begin-command-buffer";
+    rc = vkBeginCommandBuffer(command_buffer, &cbi);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->matmul_pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    vkCmdDispatch(command_buffer, 32, 32, 1);
+    fail_stage = "end-command-buffer";
+    rc = vkEndCommandBuffer(command_buffer);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    fail_stage = "create-fence";
+    rc = vkCreateFence(rt->device, &fci, NULL, &fence);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkSubmitInfo submit = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        rc = vkResetFences(rt->device, 1, &fence);
+        if (rc != VK_SUCCESS) { fail_stage = "reset-fence"; fail_result = rc; goto fail; }
+        double dispatch_start = now_ms();
+        rc = vkQueueSubmit(rt->queue, 1, &submit, fence);
+        if (rc != VK_SUCCESS) { fail_stage = "queue-submit"; fail_result = rc; goto fail; }
+        rc = vkWaitForFences(rt->device, 1, &fence, VK_TRUE, UINT64_MAX);
+        if (rc != VK_SUCCESS) { fail_stage = "wait-fence"; fail_result = rc; goto fail; }
+        double dispatch_ms = now_ms() - dispatch_start;
+        double download_start = now_ms();
+        memcpy(out, buffers[2].map, bytes);
+        double download_ms = now_ms() - download_start;
+        double max_err = matmul_max_error(out, ref, n);
+        double checksum = matmul_checksum(out, n);
+        const int valid = max_err <= 0.001;
+        const double init_ms = (!was_ready && i == 0) ? rt->init_ms : 0.0;
+        const double run_upload_ms = i == 0 ? upload_ms : 0.0;
+        fprintf(json_out(),
+                "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+                "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+                "\"backend_impl\":\"android_vulkan\",\"backend_affinity\":\"same-api\","
+                "\"backend_cached\":true,\"buffer_residency\":\"resident\","
+                "\"transport\":\"direct-vulkan-resident-buffer\","
+                "\"kernel\":\"matmul_fp32\",\"problem_size\":\"n=%zux%zu\","
+                "\"init_ms\":%.4f,\"compile_ms\":0.0000,\"upload_ms\":%.4f,"
+                "\"dispatch_ms\":%.4f,\"download_ms\":%.4f,\"total_ms\":%.4f,"
+                "\"checksum\":%.8f,\"max_abs_error\":%.8f,\"valid\":%s}\n",
+                PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+                PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+                n, n, init_ms, run_upload_ms, dispatch_ms, download_ms,
+                init_ms + run_upload_ms + dispatch_ms + download_ms, checksum, max_err,
+                valid ? "true" : "false");
+        fflush(json_out());
+        last = valid ? 0 : 6;
+        if (last != 0) break;
+    }
+
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[0]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[1]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[2]);
+    free(a);
+    free(b);
+    free(out);
+    free(ref);
+    return last;
+
+fail:
+    fprintf(stderr, "pdocker-gpu-executor: Vulkan resident matmul failed stage=%s rc=%d\n", fail_stage, fail_result);
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[0]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[1]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[2]);
+    free(a);
+    free(b);
+    free(out);
+    free(ref);
+    return -21;
+}
+
 static int bench_opencl_vector_add(int count) {
     if (count <= 0) count = 1;
     const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
@@ -1417,6 +1942,15 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--bench-vulkan-vector-add") == 0) {
         return bench_vulkan_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
+    if (argc > 1 && strcmp(argv[1], "--bench-vulkan-vector-add-resident") == 0) {
+        return bench_vulkan_vector_add_resident(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
+    if (argc > 1 && strcmp(argv[1], "--bench-cpu-matmul256") == 0) {
+        return bench_cpu_matmul256(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
+    if (argc > 1 && strcmp(argv[1], "--bench-vulkan-matmul256-resident") == 0) {
+        return bench_vulkan_matmul256_resident(parse_count(argc > 2 ? argv[2] : NULL, 5));
     }
     if (argc > 1 && strcmp(argv[1], "--bench-opencl-vector-add") == 0) {
         return bench_opencl_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));

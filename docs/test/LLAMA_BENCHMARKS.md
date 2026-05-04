@@ -382,23 +382,41 @@ container-vs-host overhead comparisons.
 
 Follow-up host/container comparison on 2026-05-04:
 
-- Repeatable script: `scripts/android-gpu-compare-bench.sh 5`.
+- Repeatable script: `scripts/android-gpu-compare-bench.sh 8`.
 - Latest JSON: `docs/test/gpu-host-container-comparison-latest.json`.
 - Latest table: `docs/test/gpu-host-container-comparison-latest.md`.
 - Device: `10.62.90.13:37669`.
-- Container: `pdocker-llama-cpp`.
-- Host CPU vector-add warm mean: `0.0965 ms`.
-- Host Vulkan vector-add warm mean: `5.9220 ms`.
-- Container CPU vector-add warm mean: `0.1702 ms`.
-- Container Vulkan bridge vector-add warm mean: `7.5369 ms`.
-- Container GPU / host GPU warm total ratio: `1.2727x`.
+- Container: `device-smoke-app-1`.
+- Warmup samples discarded per series: `3`.
+- Host CPU vector-add steady median: `0.0836 ms`.
+- Host Vulkan transfer vector-add steady median: `5.5497 ms`.
+- Host Vulkan resident-buffer vector-add steady median: `0.6522 ms`.
+- Host CPU matmul256 steady median: `34.9056 ms`.
+- Host Vulkan resident-buffer matmul256 steady median: `0.9234 ms`.
+- Container CPU vector-add steady median: `0.1042 ms`.
+- Container Vulkan bridge vector-add steady median: `3.3530 ms`.
+- Container GPU / host transfer GPU steady median ratio: `0.6042x`.
+- Container GPU / host resident GPU steady median ratio: `5.1411x`.
+- Host resident Vulkan / host transfer Vulkan steady median ratio: `0.1175x`.
+- Host CPU matmul256 / host resident Vulkan matmul256 ratio: `37.8012x`.
 - Bridge NOOP command-queue round trip from inside the container process:
-  `0.1747 ms/call`.
+  `0.1245 ms/call`.
 
 The script also records wall time for the direct-executor benchmark process.
 That wall time includes process startup and ptrace/seccomp tracing, so it is
 useful for end-to-end runtime overhead but not the pure GPU command-queue
 crossing cost. Use the Bridge NOOP row for command-queue overhead.
+
+Interpretation: vector-add is a poor proof of LLM GPU value because it is
+transfer-bound and CPU is already very fast. CPU-emulated execution should be
+used for this class when it wins; the OpenCL ICD now has this CPU-emulated
+path in auto mode, while bridge smokes force GPU explicitly. The host-side
+Vulkan path shows useful GPU behavior once buffers are resident and reused:
+the resident matmul256 probe is about `37.8x` faster than the CPU scalar
+reference. The current container bridge still behaves like a transfer path for
+vector-add, so the next optimization target is persistent registered GPU
+buffers across the container/APK boundary before llama GPU mode is enabled by
+default.
 
 ## Latest HTTP API Result
 

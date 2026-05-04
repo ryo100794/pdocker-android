@@ -5,7 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ADB="${ADB:-adb}"
 PKG="${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker.compat}"
-RUNS="${1:-${PDOCKER_GPU_COMPARE_RUNS:-5}}"
+RUNS="${1:-${PDOCKER_GPU_COMPARE_RUNS:-10}}"
+WARMUP_DISCARD="${PDOCKER_GPU_COMPARE_WARMUP_DISCARD:-3}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_JSON="${PDOCKER_GPU_COMPARE_OUT:-$ROOT/docs/test/gpu-host-container-comparison-latest.json}"
 OUT_MD="${PDOCKER_GPU_COMPARE_MD:-$ROOT/docs/test/gpu-host-container-comparison-latest.md}"
@@ -121,11 +122,14 @@ PY
 
 measure host_cpu run_as "files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-cpu-vector-add '$RUNS'"
 measure host_gpu_vulkan run_as "files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-vulkan-vector-add '$RUNS'"
+measure host_gpu_vulkan_resident run_as "files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-vulkan-vector-add-resident '$RUNS'"
+measure host_cpu_matmul run_as "files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-cpu-matmul256 '$RUNS'"
+measure host_gpu_vulkan_matmul_resident run_as "files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-vulkan-matmul256-resident '$RUNS'"
 measure container_cpu direct_container_cmd "$ROOTFS" "--bench-cpu-vector-add $(printf "%q" "$RUNS")"
 measure bridge_noop direct_container_cmd "$ROOTFS" "--bench-noop-persistent $(printf "%q" "$RUNS")"
 measure container_gpu_vulkan direct_container_cmd "$ROOTFS" "--bench-vulkan-vector-add-3fd-persistent $(printf "%q" "$RUNS")"
 
-python3 - "$TMP" "$OUT_JSON" "$OUT_MD" "$RUNS" "$CONTAINER" "$STAMP" <<'PY'
+python3 - "$TMP" "$OUT_JSON" "$OUT_MD" "$RUNS" "$CONTAINER" "$STAMP" "$WARMUP_DISCARD" <<'PY'
 import json
 import statistics
 import sys
@@ -137,7 +141,17 @@ out_md = Path(sys.argv[3])
 runs = int(sys.argv[4])
 container = sys.argv[5]
 stamp = sys.argv[6]
-labels = ["host_cpu", "host_gpu_vulkan", "container_cpu", "bridge_noop", "container_gpu_vulkan"]
+warmup_discard_requested = int(sys.argv[7])
+labels = [
+    "host_cpu",
+    "host_gpu_vulkan",
+    "host_gpu_vulkan_resident",
+    "host_cpu_matmul",
+    "host_gpu_vulkan_matmul_resident",
+    "container_cpu",
+    "bridge_noop",
+    "container_gpu_vulkan",
+]
 
 def load(label):
     rows = []
@@ -159,16 +173,26 @@ def summary(rows):
     totals = [float(r.get("total_ms", 0.0)) for r in valid]
     dispatch = [float(r.get("dispatch_ms", 0.0)) for r in valid]
     warm = totals[1:] if len(totals) > 1 else totals
+    discard = min(warmup_discard_requested, max(0, len(totals) - 1))
+    steady = totals[discard:] if discard else totals
+    steady_dispatch = dispatch[discard:] if discard else dispatch
     return {
         "samples": len(rows),
         "valid_samples": len(valid),
+        "warmup_discarded": discard,
         "backend_impl": next((r.get("backend_impl") for r in rows if r.get("backend_impl")), None),
         "transport": next((r.get("transport") for r in rows if r.get("transport")), None),
         "cached_samples": sum(1 for r in rows if r.get("backend_cached") is True),
         "total_ms_mean": statistics.fmean(totals) if totals else None,
         "total_ms_min": min(totals) if totals else None,
         "warm_total_ms_mean": statistics.fmean(warm) if warm else None,
+        "warm_total_ms_median": statistics.median(warm) if warm else None,
+        "steady_total_ms_mean": statistics.fmean(steady) if steady else None,
+        "steady_total_ms_median": statistics.median(steady) if steady else None,
+        "steady_total_ms_min": min(steady) if steady else None,
+        "steady_total_ms_max": max(steady) if steady else None,
         "dispatch_ms_mean": statistics.fmean(dispatch) if dispatch else None,
+        "steady_dispatch_ms_mean": statistics.fmean(steady_dispatch) if steady_dispatch else None,
     }
 
 wall = {}
@@ -180,23 +204,31 @@ if wall_path.exists():
 
 rows = {label: load(label) for label in labels}
 summaries = {label: summary(rows[label]) for label in labels}
-host_gpu = summaries["host_gpu_vulkan"].get("warm_total_ms_mean")
-container_gpu = summaries["container_gpu_vulkan"].get("warm_total_ms_mean")
-host_cpu = summaries["host_cpu"].get("warm_total_ms_mean")
-container_cpu = summaries["container_cpu"].get("warm_total_ms_mean")
+host_gpu = summaries["host_gpu_vulkan"].get("steady_total_ms_median")
+host_gpu_resident = summaries["host_gpu_vulkan_resident"].get("steady_total_ms_median")
+container_gpu = summaries["container_gpu_vulkan"].get("steady_total_ms_median")
+host_cpu = summaries["host_cpu"].get("steady_total_ms_median")
+host_cpu_matmul = summaries["host_cpu_matmul"].get("steady_total_ms_median")
+host_gpu_matmul = summaries["host_gpu_vulkan_matmul_resident"].get("steady_total_ms_median")
+container_cpu = summaries["container_cpu"].get("steady_total_ms_median")
 bridge_noop = wall.get("bridge_noop", {}).get("wall_ms_per_run")
-bridge_noop_roundtrip = summaries["bridge_noop"].get("warm_total_ms_mean")
+bridge_noop_roundtrip = summaries["bridge_noop"].get("steady_total_ms_median")
 
 doc = {
     "timestamp_utc": stamp,
     "runs_requested": runs,
+    "warmup_discard_requested": warmup_discard_requested,
     "container": container,
     "summaries": summaries,
     "wall": wall,
     "ratios": {
-        "container_gpu_over_host_gpu_warm_total": (container_gpu / host_gpu) if host_gpu and container_gpu else None,
-        "container_cpu_over_host_cpu_warm_total": (container_cpu / host_cpu) if host_cpu and container_cpu else None,
-        "bridge_noop_roundtrip_warm_total_ms": bridge_noop_roundtrip,
+        "container_gpu_over_host_gpu_steady_median_total": (container_gpu / host_gpu) if host_gpu and container_gpu else None,
+        "container_gpu_over_host_gpu_resident_steady_median_total": (container_gpu / host_gpu_resident) if host_gpu_resident and container_gpu else None,
+        "host_gpu_resident_over_host_gpu_transfer_total": (host_gpu_resident / host_gpu) if host_gpu and host_gpu_resident else None,
+        "host_gpu_matmul_resident_over_host_cpu_matmul": (host_gpu_matmul / host_cpu_matmul) if host_cpu_matmul and host_gpu_matmul else None,
+        "host_cpu_matmul_over_host_gpu_matmul_resident": (host_cpu_matmul / host_gpu_matmul) if host_cpu_matmul and host_gpu_matmul else None,
+        "container_cpu_over_host_cpu_steady_median_total": (container_cpu / host_cpu) if host_cpu and container_cpu else None,
+        "bridge_noop_roundtrip_steady_median_total_ms": bridge_noop_roundtrip,
         "direct_executor_bridge_noop_wall_ms_per_call": bridge_noop,
     },
     "samples": rows,
@@ -212,7 +244,10 @@ def fmt(v):
 
 table = [
     ("Host CPU", "host_cpu"),
-    ("Host GPU Vulkan", "host_gpu_vulkan"),
+    ("Host GPU Vulkan transfer", "host_gpu_vulkan"),
+    ("Host GPU Vulkan resident", "host_gpu_vulkan_resident"),
+    ("Host CPU matmul256", "host_cpu_matmul"),
+    ("Host GPU Vulkan matmul256 resident", "host_gpu_vulkan_matmul_resident"),
     ("Container CPU", "container_cpu"),
     ("Bridge NOOP", "bridge_noop"),
     ("Container GPU Vulkan bridge", "container_gpu_vulkan"),
@@ -223,25 +258,31 @@ lines = [
     f"- Date: {stamp} UTC.",
     f"- Container: `{container}`.",
     f"- Runs: {runs}.",
+    f"- Warmup samples discarded per series: {warmup_discard_requested}.",
     "",
-    "| Scope | Backend | Valid | Warm total mean ms | Dispatch mean ms | Wall ms/call | Transport |",
-    "| --- | --- | ---: | ---: | ---: | ---: | --- |",
+    "| Scope | Backend | Valid | Steady median ms | Steady mean ms | Steady dispatch mean ms | Wall ms/call | Transport |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
 ]
 for title, label in table:
     s = summaries[label]
     w = wall.get(label, {})
     lines.append(
         f"| {title} | {s.get('backend_impl') or '-'} | {s.get('valid_samples')}/{s.get('samples')} | "
-        f"{fmt(s.get('warm_total_ms_mean'))} | {fmt(s.get('dispatch_ms_mean'))} | "
+        f"{fmt(s.get('steady_total_ms_median'))} | {fmt(s.get('steady_total_ms_mean'))} | "
+        f"{fmt(s.get('steady_dispatch_ms_mean'))} | "
         f"{fmt(w.get('wall_ms_per_run'))} | {s.get('transport') or '-'} |"
     )
 lines += [
     "",
     "## Ratios",
     "",
-    f"- Container GPU / host GPU warm total: {fmt(doc['ratios']['container_gpu_over_host_gpu_warm_total'])}x.",
-    f"- Container CPU / host CPU warm total: {fmt(doc['ratios']['container_cpu_over_host_cpu_warm_total'])}x.",
-    f"- Bridge NOOP round trip inside container process: {fmt(doc['ratios']['bridge_noop_roundtrip_warm_total_ms'])} ms/call.",
+    f"- Container GPU / host GPU steady median total: {fmt(doc['ratios']['container_gpu_over_host_gpu_steady_median_total'])}x.",
+    f"- Container GPU / host resident GPU steady median total: {fmt(doc['ratios']['container_gpu_over_host_gpu_resident_steady_median_total'])}x.",
+    f"- Host resident Vulkan / host transfer Vulkan steady median total: {fmt(doc['ratios']['host_gpu_resident_over_host_gpu_transfer_total'])}x.",
+    f"- Host GPU resident matmul256 / host CPU matmul256 steady median total: {fmt(doc['ratios']['host_gpu_matmul_resident_over_host_cpu_matmul'])}x.",
+    f"- Host CPU matmul256 / host GPU resident matmul256 steady median total: {fmt(doc['ratios']['host_cpu_matmul_over_host_gpu_matmul_resident'])}x.",
+    f"- Container CPU / host CPU steady median total: {fmt(doc['ratios']['container_cpu_over_host_cpu_steady_median_total'])}x.",
+    f"- Bridge NOOP round trip inside container process: {fmt(doc['ratios']['bridge_noop_roundtrip_steady_median_total_ms'])} ms/call.",
     f"- Direct-executor wall time for the bridge NOOP measurement: {fmt(doc['ratios']['direct_executor_bridge_noop_wall_ms_per_call'])} ms/call.",
     "",
     "The direct-executor wall time includes starting and tracing the benchmark process; use the bridge NOOP round-trip row for the command-queue crossing cost.",
