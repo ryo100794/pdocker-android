@@ -555,9 +555,12 @@ def test_storage_summary_distinguishes_layer_and_upper_bytes() -> None:
         one = images.get("local/one:latest")
         if not one or one.get("VirtualSize") != 30 or one.get("SharedSize") != 10 or one.get("UniqueSize") != 20:
             fail(f"image storage sizes should split virtual/shared/unique bytes: {images!r}")
-        containers = mod.list_containers(all_=True)
+        containers = mod.list_containers(all_=True, size=True)
         if len(containers) != 1 or containers[0].get("SizeRw") != 7:
             fail(f"container summary must expose upper/private bytes: {containers!r}")
+        fast_containers = mod.list_containers(all_=True)
+        if len(fast_containers) != 1 or "SizeRw" in fast_containers[0]:
+            fail(f"container list must skip expensive storage sizes by default: {fast_containers!r}")
 
         srv = mod.ThreadingTCPHTTPServer(("127.0.0.1", 0), mod.DockerAPIHandler)
         thread = threading.Thread(target=srv.serve_forever, daemon=True)
@@ -822,6 +825,10 @@ def test_host_environment_contract() -> None:
 def test_media_bridge_scaffold_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
+        executor = home_path / "pdocker-media-executor"
+        executor.write_text("#!/bin/sh\nexit 0\n")
+        executor.chmod(0o755)
+        (home_path / "pdocker-media.sock").touch()
         mod = load_pdockerd_with_env(
             "media_scaffold",
             "no-proot",
@@ -833,11 +840,13 @@ def test_media_bridge_scaffold_contract() -> None:
                 "PDOCKER_MEDIA_SHARED_DIR": "/run/pdocker-media",
                 "PDOCKER_MEDIA_COMMAND_API": "pdocker-media-command-v1",
                 "PDOCKER_MEDIA_ABI_VERSION": "0.1",
-                "PDOCKER_MEDIA_STATUS": "scaffold-disabled",
-                "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "0",
+                "PDOCKER_MEDIA_STATUS": "executor-present-capture-disabled",
+                "PDOCKER_MEDIA_EXECUTOR": str(executor),
+                "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "1",
                 "PDOCKER_MEDIA_CAPTURE_READY": "0",
                 "PDOCKER_MEDIA_CAMERA_READY": "0",
                 "PDOCKER_MEDIA_AUDIO_READY": "0",
+                "PDOCKER_MEDIA_DEVICE_PASSTHROUGH": "0",
             },
         )
         state = {
@@ -867,12 +876,20 @@ def test_media_bridge_scaffold_contract() -> None:
             fail(f"media request modes mismatch: {env!r}")
         if env.get("PDOCKER_MEDIA_QUEUE_SOCKET") != "/run/pdocker-media/pdocker-media.sock":
             fail(f"media queue socket env missing: {env!r}")
-        if env.get("PDOCKER_MEDIA_STATUS") != "scaffold-disabled":
-            fail(f"media status must remain scaffold-disabled: {env!r}")
+        if env.get("PDOCKER_MEDIA_STATUS") != "executor-present-capture-disabled":
+            fail(f"media status must allow executor control plane without capture: {env!r}")
         if env.get("PDOCKER_MEDIA_CAPTURE_READY") != "0" or env.get("PDOCKER_MEDIA_ENABLED") != "0":
             fail(f"media capture readiness must be false: {env!r}")
+        if env.get("PDOCKER_MEDIA_DEVICE_PASSTHROUGH") != "0":
+            fail(f"media must not expose raw Android device passthrough: {env!r}")
+        if env.get("PDOCKER_MEDIA_EXECUTOR_AVAILABLE") != "1":
+            fail(f"media executor control plane should be visible separately from readiness: {env!r}")
+        if "/dev/video" in "".join(binds) or "/dev/snd" in "".join(binds):
+            fail(f"media binds must not pass raw host media devices: {binds!r}")
         if media.get("CaptureReady") or media.get("CameraReady") or media.get("AudioReady"):
             fail(f"media diagnostics must not claim capture readiness: {media!r}")
+        if not media.get("ExecutorAvailable") or media.get("RawDevicePassthrough"):
+            fail(f"media diagnostics must separate executor control from raw passthrough: {media!r}")
         expected_bind = f"{home_path}:/run/pdocker-media"
         if expected_bind not in binds:
             fail(f"media runtime dir bind missing {expected_bind!r}: {binds!r}")
@@ -897,6 +914,8 @@ def test_media_bridge_scaffold_contract() -> None:
             fail(f"/system/media socket contract mismatch: {endpoint!r}")
         if endpoint.get("CaptureReady"):
             fail(f"/system/media must report disabled capture: {endpoint!r}")
+        if not endpoint.get("ExecutorAvailable") or endpoint.get("RawDevicePassthrough"):
+            fail(f"/system/media must expose executor control without raw passthrough: {endpoint!r}")
         ok("media bridge scaffold exposes socket contract without capture")
 
 
@@ -924,6 +943,10 @@ def test_android_media_static_contract() -> None:
         fail("Chaquopy bridge missing media queue socket contract")
     if 'PDOCKER_MEDIA_CAPTURE_READY"] = "0"' not in bridge:
         fail("Chaquopy bridge must keep media capture disabled in Phase-0")
+    if 'PDOCKER_MEDIA_DEVICE_PASSTHROUGH"] = "0"' not in bridge:
+        fail("Chaquopy bridge must keep raw media device passthrough disabled")
+    if "/dev/video" in bridge or "/dev/snd" in bridge:
+        fail("Chaquopy bridge must not expose raw Linux media device paths")
     ok("Android media manifest and bridge scaffold are statically guarded")
 
 

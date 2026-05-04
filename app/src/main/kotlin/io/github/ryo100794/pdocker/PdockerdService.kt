@@ -205,7 +205,14 @@ class PdockerdService : Service() {
         val socket = File(mediaDir, "pdocker-media.sock")
         runCatching {
             socket.delete()
-            val process = ProcessBuilder(executor.absolutePath, "--serve-socket", socket.absolutePath)
+            val descriptor = File(mediaDir, "pdocker-media-capabilities.json")
+            val process = ProcessBuilder(
+                executor.absolutePath,
+                "--serve-socket",
+                socket.absolutePath,
+                "--descriptor",
+                descriptor.absolutePath,
+            )
                 .redirectErrorStream(true)
                 .start()
             mediaExecutorProcess = process

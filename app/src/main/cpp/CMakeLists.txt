@@ -11,3 +11,6 @@ target_compile_options(pdockerdirect PRIVATE -Wall -Wextra -Wno-unused-parameter
 add_executable(pdockergpuexecutor pdocker_gpu_executor.c)
 target_link_libraries(pdockergpuexecutor EGL GLESv3 vulkan log dl)
 target_compile_options(pdockergpuexecutor PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
+add_executable(pdockermediaexecutor pdocker_media_executor.c)
+target_compile_options(pdockermediaexecutor PRIVATE -Wall -Wextra -Wno-unused-parameter)

@@ -19,6 +19,12 @@ glibc container process
   -> Android public APIs
 ```
 
+The boundary is an API proxy boundary, not a device passthrough boundary.
+Containers must not receive raw `/dev/video*` nodes, raw `/dev/snd*` nodes,
+Android vendor nodes, or Android framework libraries. Media requests are routed
+through pdocker's socket/env contract and then translated by APK-owned code onto
+Android public APIs.
+
 The Android side must use public APIs first:
 
 - video: Camera2, with explicit front, rear, and external camera targets;
@@ -29,13 +35,21 @@ The Android side must use public APIs first:
 - audio routing/inventory: AudioManager and AudioDeviceInfo, including USB
   multichannel inputs/outputs when Android reports them.
 
-## Current Phase 1 Scaffold
+## Current Phase 1 Control Plane
 
 `PdockerdService` writes
 `files/pdocker-runtime/media/pdocker-media-capabilities.json` before attempting
 to start any executor. The descriptor records Camera2 and AudioManager device
 inventory, runtime permission state, and the public API targets. It is
 diagnostic truth, not a capture stream.
+
+The APK also builds and stages `pdocker-media-executor`, which serves
+`pdocker-media-command-v1` on `/run/pdocker-media/pdocker-media.sock`. This is
+only the command boundary: `hello`, `capabilities`, and `probe` report the
+contract and descriptor path, while `open-camera`, `open-audio-capture`, and
+`open-audio-playback` return a structured not-implemented error until the
+Android Framework broker is wired. The executor never opens raw `/dev/video*`
+or `/dev/snd/*` nodes.
 
 `pdockerd_bridge.py` exports:
 
@@ -61,9 +75,19 @@ Camera2 or AudioRecord/AudioTrack commands and reports success. A present
 socket, descriptor file, permission, or enumerated device is not capture
 readiness by itself.
 
-Future executor milestones:
+The executor control plane is tracked separately from capture/playback
+readiness. `PDOCKER_MEDIA_EXECUTOR_AVAILABLE=1` and a present
+`/run/pdocker-media/pdocker-media.sock` may mean that the control socket can be
+probed, but `PDOCKER_MEDIA_CAPTURE_READY`, `PDOCKER_MEDIA_CAMERA_READY`,
+`PDOCKER_MEDIA_AUDIO_READY`, and `PDOCKER_MEDIA_ENABLED` must remain `0` until
+real Camera2, AudioRecord, and AudioTrack command probes succeed. Raw device
+passthrough remains disabled in every phase of this bridge contract:
+`PDOCKER_MEDIA_DEVICE_PASSTHROUGH=0`.
 
-1. Serve `pdocker-media-command-v1` on the Unix socket.
+Executor milestones:
+
+1. [done] Serve `pdocker-media-command-v1` on the Unix socket without raw
+   device passthrough.
 2. Implement explicit open/configure/start/stop commands for Camera2 streams.
 3. Implement explicit AudioRecord capture and AudioTrack playback commands with
    AudioManager device selection.

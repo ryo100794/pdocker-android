@@ -64,12 +64,13 @@ echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
 [[ -f "$JNI_DIR/libpdocker-ld-linux-aarch64.so" ]] && echo "staged glibc loader -> $JNI_DIR/libpdocker-ld-linux-aarch64.so"
 
 # --- jniLibs sanity ---
-# libpdockerpty.so, libpdockerdirect.so, and libpdockergpuexecutor.so are built
+# libpdockerpty.so, libpdockerdirect.so, libpdockergpuexecutor.so, and
+# libpdockermediaexecutor.so are built
 # natively by scripts/build-native-termux.sh. libpdockergpushim.so is the
 # Linux/glibc container shim built by scripts/build-gpu-shim.sh. Executable
 # helpers are intentionally named lib*.so so Android extracts them to
 # nativeLibraryDir.
-for lib in libpdockerpty.so libpdockerdirect.so libpdockergpuexecutor.so libpdockergpushim.so libpdockervulkanicd.so libpdockeropenclicd.so; do
+for lib in libpdockerpty.so libpdockerdirect.so libpdockergpuexecutor.so libpdockermediaexecutor.so libpdockergpushim.so libpdockervulkanicd.so libpdockeropenclicd.so; do
     p="$APP/jniLibs/arm64-v8a/$lib"
     if [[ ! -f "$p" ]]; then
         echo "warn: $p missing — run scripts/build-native-termux.sh first" >&2

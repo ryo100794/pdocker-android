@@ -174,7 +174,7 @@ class Bridge(
             .put("Cmd", listOf("/bin/sh"))
         val response = engineRequest(
             "POST",
-            "/containers/$containerId/exec",
+            "/containers/${DockerEngineClient.encodePath(containerId)}/exec",
             payload.toString().toByteArray(Charsets.UTF_8),
         )
         val text = response.body.toString(Charsets.UTF_8)

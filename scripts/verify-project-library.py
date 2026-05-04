@@ -50,10 +50,13 @@ def check_llama_gpu_compare_contract(compare_script: str) -> None:
         if not passed:
             fail(f"compare script {name}")
 
-    bridge_limits = {
-        name: re.findall(rf"-e {re.escape(name)}=([0-9]+)\b", compare_script)
-        for name in LLAMA_GPU_COMPARE_BRIDGE_LIMITS
-    }
+    bridge_limits = {}
+    for name in LLAMA_GPU_COMPARE_BRIDGE_LIMITS:
+        matches = re.findall(
+            rf"(?:-e\s+{re.escape(name)}=|\"{re.escape(name)}=)([0-9]+)\b",
+            compare_script,
+        )
+        bridge_limits[name] = matches
     for name, values in bridge_limits.items():
         if not values:
             fail(f"compare script missing {name} Vulkan bridge clamp")
@@ -64,6 +67,30 @@ def check_llama_gpu_compare_contract(compare_script: str) -> None:
             )
     if {values[0] for values in bridge_limits.values()} != {LLAMA_GPU_COMPARE_BRIDGE_MAX_BYTES}:
         fail("compare script Vulkan bridge clamps must use one byte value")
+
+    forbidden_main_path = (
+        "stage_test_cli",
+        "pdocker-runtime/docker-bin",
+        "DOCKER_HOST",
+        "DOCKER_CONFIG",
+        "docker run",
+        "docker logs",
+        "docker ps",
+        "docker rm",
+    )
+    for token in forbidden_main_path:
+        if token in compare_script:
+            fail(f"compare script main path must not require Docker CLI token {token!r}")
+    engine_api_checks = {
+        "creates containers through Engine API": "/containers/create" in compare_script and "engine_body POST" in compare_script,
+        "starts containers through Engine API": "/start" in compare_script and "engine_request POST" in compare_script,
+        "removes containers through Engine API": "DELETE" in compare_script and "/containers/" in compare_script,
+        "reads logs through Engine API": "/logs?stdout=1&stderr=1" in compare_script and "decode_engine_logs" in compare_script,
+        "uses pdockerd Unix socket directly": "toybox nc -U pdocker/pdockerd.sock" in compare_script,
+    }
+    for name, passed in engine_api_checks.items():
+        if not passed:
+            fail(f"compare script {name}")
 
 
 def main() -> int:
@@ -79,11 +106,13 @@ def main() -> int:
         "compare script captures Vulkan allocation trace": "PDOCKER_VULKAN_ICD_TRACE_ALLOC=1" in compare_script and "allocation_trace_bytes" in compare_script,
         "compare script uses standard Vulkan entry": "standard Vulkan loader through pdocker-vulkan-icd.so" in compare_script,
         "compare script classifies dispatch blocker": "queue_submit_blocker" in compare_script and "vk::Queue::submit: ErrorFeatureNotPresent" in compare_script,
+        "compare script classifies generic spirv blocker": "generic_spirv_dispatch_attempted" in compare_script and "vulkan_generic_spirv_dispatch" in compare_script and "executor_submit_generic_dispatch_error" in compare_script,
         "compare script classifies range assert": "buffer_range_assert_blocker" in compare_script and "ggml_backend_buffer_get_alloc_size" in compare_script,
         "compare script reports operation to ui": "operation_notify" in compare_script and "POST /system/operations" in compare_script and "llama-gpu-compare" in compare_script,
         "compare script operation summary includes gpu status": "GPU {d['gpu']['tokens_per_second']:.3f} tok/s" in compare_script and "target_met={str(d['comparison']['target_met']).lower()}" in compare_script and "gpu_layers={d['settings']['gpu_layers']}" in compare_script,
         "compare script records operation cleanup behavior": '"operation": {' in compare_script and "mark failed operation on nonzero exit" in compare_script and "--no-restore" in compare_script and "CPU server left in last compare mode" in compare_script,
         "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script and "CPU server restored" in compare_script,
+        "compare script avoids test Docker CLI": "/containers/create" in compare_script and "pdocker-runtime/docker-bin" not in compare_script and "docker run" not in compare_script,
         "compare docs record latest report": "llama-gpu-compare-latest.json" in compare_doc,
         "compare docs record latest tps and blocker": "CPU baseline: 0.259 generated tokens/s" in compare_doc and "GPU 0.000 generated tokens/s" in compare_doc and "target_met=false" in compare_doc and "Next blocker: lower the failing llama.cpp SPIR-V dispatch" in compare_doc,
         "compare docs record operation ui visibility": "daemon operation/progress card" in compare_doc and "only object expected in `docker ps`" in compare_doc and "Operation cleanup" in compare_doc,
@@ -102,6 +131,8 @@ def main() -> int:
         "latest compare records speedup and target": isinstance(compare_result.get("comparison", {}).get("speedup"), (int, float)) and compare_result.get("comparison", {}).get("target_met") is not None,
         "latest compare records gpu layer count": isinstance(compare_result.get("settings", {}).get("gpu_layers"), int),
         "latest compare records current blocker": bool(compare_result.get("next_blocker")),
+        "latest compare records blocker classification": compare_result.get("gpu", {}).get("diagnostics", {}).get("blocker_class") == "vulkan_generic_spirv_dispatch",
+        "latest compare records generic spirv attempt": compare_result.get("gpu", {}).get("evidence", {}).get("generic_spirv_dispatch_attempted") is True,
         "latest compare records operation ui surface": compare_result.get("operation", {}).get("kind") == "llama-gpu-compare" and "operation/progress card" in compare_result.get("operation", {}).get("ui_surface", ""),
         "latest compare records operation cleanup": "restore CPU server unless --no-restore" in compare_result.get("operation", {}).get("cleanup", ""),
     }

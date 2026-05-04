@@ -219,7 +219,7 @@ def run_daemon(
     if os.path.exists(media_executor):
         os.environ["PDOCKER_MEDIA_EXECUTOR"] = media_executor
         os.environ["PDOCKER_MEDIA_EXECUTOR_AVAILABLE"] = "1"
-        os.environ["PDOCKER_MEDIA_STATUS"] = "executor-present-capture-disabled"
+        os.environ["PDOCKER_MEDIA_STATUS"] = "executor-control-plane-ready-capture-disabled"
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")

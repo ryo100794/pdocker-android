@@ -43,6 +43,7 @@ def main() -> int:
     require("pinch zoom updates term font size", "touches.length === 2" in source["terminal"] and "setFontSize" in source["terminal"])
     require("terminal key toggles remain visible", 'data-toggle="select"' in source["terminal"] and 'data-toggle="ctrl"' in source["terminal"] and 'data-toggle="alt"' in source["terminal"])
     require("modifier toggle state propagates", "btn.classList.toggle('active', !!mods" in source["terminal"])
+    require("terminal selection suppresses ime", "suppressImeForSelection" in source["terminal"] and "selectionSuppressesIme()" in source["terminal"] and "inputmode', 'none'" in source["terminal"])
 
     require("editor exposes visible whitespace transformer", "VisibleWhitespaceTransformation" in source["editor"])
     require("editor supports indent mode toggle", "toggleIndentMode" in source["editor"] and "convertIndentation(editor.text.toString()" in source["editor"])

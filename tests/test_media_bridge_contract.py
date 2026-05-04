@@ -14,6 +14,9 @@ PDOCKERD = ROOT / "docker-proot-setup" / "bin" / "pdockerd"
 ASSET_PDOCKERD = ROOT / "app" / "src" / "main" / "assets" / "pdockerd" / "pdockerd"
 BRIDGE = ROOT / "app" / "src" / "main" / "python" / "pdockerd_bridge.py"
 SERVICE = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "PdockerdService.kt"
+RUNTIME = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "PdockerdRuntime.kt"
+CMAKE = ROOT / "app" / "src" / "main" / "cpp" / "CMakeLists.txt"
+MEDIA_EXECUTOR = ROOT / "app" / "src" / "main" / "cpp" / "pdocker_media_executor.c"
 
 
 def load_pdockerd(env):
@@ -26,13 +29,18 @@ def load_pdockerd(env):
 
 
 class MediaBridgeContractTest(unittest.TestCase):
-    def test_media_environment_is_phase1_and_not_capture_ready_without_executor(self):
+    def test_media_environment_is_phase1_and_not_capture_ready_with_control_plane(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             media_dir = root / "runtime" / "media"
             media_dir.mkdir(parents=True)
             descriptor = media_dir / "pdocker-media-capabilities.json"
             descriptor.write_text(json.dumps({"Video": {"Devices": [{"Facing": "rear"}]}}))
+            executor = media_dir / "pdocker-media-executor"
+            executor.write_text("#!/bin/sh\nexit 0\n")
+            executor.chmod(0o755)
+            queue_socket = media_dir / "pdocker-media.sock"
+            queue_socket.touch()
             env = {
                 "PDOCKER_HOME": str(root / "home"),
                 "PDOCKER_TMP_DIR": str(root / "tmp"),
@@ -49,10 +57,11 @@ class MediaBridgeContractTest(unittest.TestCase):
                 "PDOCKER_MEDIA_VIDEO_API": "android-camera2",
                 "PDOCKER_MEDIA_AUDIO_API": "android-audiorecord-audiotrack",
                 "PDOCKER_MEDIA_AUDIO_DEVICE_API": "android-audiomanager",
-                "PDOCKER_MEDIA_CAPTURE_READY": "1",
-                "PDOCKER_MEDIA_CAMERA_READY": "1",
-                "PDOCKER_MEDIA_AUDIO_READY": "1",
-                "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "0",
+                "PDOCKER_MEDIA_CAPTURE_READY": "0",
+                "PDOCKER_MEDIA_CAMERA_READY": "0",
+                "PDOCKER_MEDIA_AUDIO_READY": "0",
+                "PDOCKER_MEDIA_EXECUTOR": str(executor),
+                "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "1",
             }
 
             with mock.patch.dict(os.environ, env, clear=False):
@@ -62,6 +71,7 @@ class MediaBridgeContractTest(unittest.TestCase):
         self.assertEqual(media["Kind"], "android-media-bridge-phase1")
         self.assertEqual(media["Contract"], "linux-like-socket-env-v1")
         self.assertFalse(media["RawDevicePassthrough"])
+        self.assertTrue(media["ExecutorAvailable"])
         self.assertFalse(media["CaptureReady"])
         self.assertFalse(media["CameraReady"])
         self.assertFalse(media["AudioReady"])
@@ -117,6 +127,8 @@ class MediaBridgeContractTest(unittest.TestCase):
         self.assertEqual(media_env["PDOCKER_MEDIA_DEVICE_PASSTHROUGH"], "0")
         self.assertEqual(binds, [f"{media_dir}:/run/pdocker-media"])
         self.assertNotIn("/dev/", "".join(binds))
+        self.assertNotIn("/dev/video", "".join(binds))
+        self.assertNotIn("/dev/snd", "".join(binds))
 
     def test_android_service_scaffold_targets_public_media_apis(self):
         source = SERVICE.read_text()
@@ -130,6 +142,26 @@ class MediaBridgeContractTest(unittest.TestCase):
         self.assertIn("AudioDeviceInfo.TYPE_USB_DEVICE", source)
         self.assertIn('"RawDevicePassthrough", false', source)
         self.assertIn('"CaptureReady", false', source)
+        self.assertIn("--descriptor", source)
+        self.assertNotIn("/dev/video", source)
+        self.assertNotIn("/dev/snd", source)
+
+    def test_media_executor_control_socket_is_built_without_raw_device_passthrough(self):
+        cmake = CMAKE.read_text()
+        runtime = RUNTIME.read_text()
+        executor = MEDIA_EXECUTOR.read_text()
+
+        self.assertIn("add_executable(pdockermediaexecutor pdocker_media_executor.c)", cmake)
+        self.assertIn("libpdockermediaexecutor.so", runtime)
+        self.assertIn("pdocker-media-executor", runtime)
+        self.assertIn("pdocker-media-command-v1", executor)
+        self.assertIn("linux-like-socket-env-v1", executor)
+        self.assertIn("open-camera", executor)
+        self.assertIn("open-audio-capture", executor)
+        self.assertIn("capture-playback-not-implemented", executor)
+        self.assertIn('\\"raw_device_passthrough\\":false', "".join(executor.split()))
+        self.assertNotIn("/dev/video", executor)
+        self.assertNotIn("/dev/snd", executor)
 
     def test_bridge_exports_socket_env_contract_and_asset_matches_source(self):
         bridge = BRIDGE.read_text()
@@ -138,6 +170,9 @@ class MediaBridgeContractTest(unittest.TestCase):
         self.assertIn('PDOCKER_MEDIA_DEVICE_PASSTHROUGH"] = "0"', bridge)
         self.assertIn('PDOCKER_MEDIA_QUEUE_SOCKET"] = "/run/pdocker-media/pdocker-media.sock"', bridge)
         self.assertIn("audio.usb.multichannel", bridge)
+        self.assertIn("executor-control-plane-ready-capture-disabled", bridge)
+        self.assertNotIn("/dev/video", bridge)
+        self.assertNotIn("/dev/snd", bridge)
         self.assertEqual(PDOCKERD.read_text(), ASSET_PDOCKERD.read_text())
 
 

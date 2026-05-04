@@ -3951,8 +3951,8 @@ def _container_matches_filters(summary, filters):
     return True
 
 
-def list_containers(all_=False, filters=None):
-    storage = collect_storage_summary()
+def list_containers(all_=False, filters=None, size=False):
+    storage = collect_storage_summary() if size else {"Containers": []}
     by_id = {c["Id"]: c for c in storage.get("Containers", [])}
     containers = []
     if not os.path.isdir(CONTAINERS_DIR):
@@ -5217,8 +5217,9 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         # --- Containers ---
         if path == "/containers/json" and method == "GET":
             all_ = query.get("all", ["false"])[0] in ("1", "true", "True")
+            size = query.get("size", ["false"])[0] in ("1", "true", "True")
             filters = _decode_event_filters(query.get("filters", [""])[0])
-            self._send_json(200, list_containers(all_=all_, filters=filters))
+            self._send_json(200, list_containers(all_=all_, filters=filters, size=size))
             return
 
         if path == "/containers/create" and method == "POST":
@@ -5568,7 +5569,7 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         # /containers/{id}/exec
         m = re.match(r"^/containers/(.+?)/exec$", path)
         if m and method == "POST":
-            cid = m.group(1)
+            cid = urllib.parse.unquote(m.group(1))
             state = find_container(cid)
             if not state:
                 self._send_json(404, {"message": f"No such container: {cid}"})

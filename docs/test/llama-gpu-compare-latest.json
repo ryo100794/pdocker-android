@@ -39,7 +39,12 @@
       "executor_feature_trace_seen": false,
       "android_vulkan_dispatch_blocker": false,
       "queue_submit_blocker": true,
-      "spirv_dispatch_blocker": true
+      "spirv_dispatch_blocker": true,
+      "generic_dispatch_response_seen": true,
+      "generic_spirv_dispatch_attempted": true,
+      "generic_spirv_dispatch_failed": true,
+      "executor_submit_generic_dispatch_error": true,
+      "executor_fallback_dispatch_blocker": true
     },
     "allocation_trace_bytes": [
       2431008,
@@ -56,6 +61,17 @@
       "upload_ms_mean": 0.0,
       "dispatch_ms_mean": 0.0,
       "download_ms_mean": 0.0
+    },
+    "diagnostics": {
+      "blocker_class": "vulkan_generic_spirv_dispatch",
+      "blocker_detail": "generic SPIR-V dispatch reached submit-generic-dispatch / queue submit failure",
+      "executor_backends": [
+        "gles31_compute"
+      ],
+      "executor_errors": [
+        "submit-generic-dispatch"
+      ],
+      "spirv_hashes": []
     }
   },
   "comparison": {
@@ -69,5 +85,5 @@
     "container_surface": "pdocker-llama-cpp remains the container shown by docker ps",
     "cleanup": "remove adb port forward, mark failed operation on nonzero exit, restore CPU server unless --no-restore is passed"
   },
-  "next_blocker": "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
+  "next_blocker": "lower generic SPIR-V dispatch into the Android Vulkan executor or clamp advertised capabilities"
 }

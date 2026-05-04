@@ -202,6 +202,7 @@ def check_apk_payload() -> list[Check]:
             "lib/arm64-v8a/libpdockerpty.so",
             "lib/arm64-v8a/libpdockerdirect.so",
             "lib/arm64-v8a/libpdockergpuexecutor.so",
+            "lib/arm64-v8a/libpdockermediaexecutor.so",
             "lib/arm64-v8a/libpdockergpushim.so",
             "assets/pdockerd/pdockerd",
             "assets/project-library/library.json",

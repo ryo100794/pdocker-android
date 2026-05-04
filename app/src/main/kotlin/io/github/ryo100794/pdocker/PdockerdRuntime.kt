@@ -19,6 +19,8 @@ import java.io.File
  *   │   ├── pdocker-ld-linux-aarch64 (-> nativeLibraryDir/libpdocker-ld-linux-aarch64.so)
  *   ├── gpu/
  *   │   └── pdocker-gpu-executor (-> nativeLibraryDir/libpdockergpuexecutor.so)
+ *   ├── media/
+ *   │   └── pdocker-media-executor (-> nativeLibraryDir/libpdockermediaexecutor.so)
  *   ├── etc/resolv.conf    (DNS nameservers discovered from Android networks)
  *   └── lib/
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
@@ -51,6 +53,7 @@ nameserver 1.1.1.1
         val dockerBin = File(root, "docker-bin").apply { mkdirs() }
         val dockerCliPlugins = File(dockerBin, "cli-plugins").apply { mkdirs() }
         val gpuBin = File(root, "gpu").apply { mkdirs() }
+        val mediaBin = File(root, "media").apply { mkdirs() }
         val lib = File(root, "lib").apply { mkdirs() }
         val etc = File(root, "etc").apply { mkdirs() }
         // Android app sandboxes have no writable /tmp, so keep runtime temp
@@ -68,6 +71,7 @@ nameserver 1.1.1.1
         optionalLinkTo(File(nativeDir, "libpdockerdirect.so"), File(dockerBin, "pdocker-direct"))
         optionalLinkTo(File(nativeDir, "libpdocker-ld-linux-aarch64.so"), File(dockerBin, "pdocker-ld-linux-aarch64"))
         optionalLinkTo(File(nativeDir, "libpdockergpuexecutor.so"), File(gpuBin, "pdocker-gpu-executor"))
+        optionalLinkTo(File(nativeDir, "libpdockermediaexecutor.so"), File(mediaBin, "pdocker-media-executor"))
         java.nio.file.Files.deleteIfExists(File(dockerBin, "proot").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "proot-loader").toPath())
         java.nio.file.Files.deleteIfExists(File(dockerBin, "pl").toPath())

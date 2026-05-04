@@ -1,37 +1,55 @@
 # pdocker-android
 
-**Docker-compatible containers for Android, packaged as a native APK.**
+**A Docker-compatible Android workbench in one native APK.**
 
-pdocker-android is an experimental Docker Engine-compatible runtime and
-workspace app for Android. It aims to make Compose projects, Dockerfiles,
-container filesystems, logs, and interactive shells usable from a normal app
-sandbox, without root and without Termux as the user-facing shell.
+pdocker-android turns an Android device into a portable container workspace:
+pull images, inspect root filesystems, edit Dockerfiles and Compose projects,
+watch build logs, open `-it`-style terminals, browse container files, and run
+development templates such as VS Code Server and llama.cpp from a normal app UI.
 
-The project is deliberately transparent about its limits: it is not upstream
-Docker, it cannot rely on Linux namespaces/cgroups/overlayfs inside a regular
-Android app, and the direct Android executor is still being hardened. The goal
-is a practical Docker-compatible surface for mobile development, inspection,
-self-build, and self-debug workflows.
+This is not "Docker Desktop for Android" and it does not pretend Android gives
+apps Linux host privileges. Instead, pdocker builds a practical Docker-like
+surface inside the app sandbox: a Docker Engine-compatible daemon, native
+Compose/Dockerfile controls, a direct Android executor, userspace storage, and
+explicit Android extensions for GPU, media, networking, and self-debugging.
 
-## Why this is interesting
+If you are interested in mobile development workstations, container runtime
+internals, Android sandbox limits, or running real developer environments from
+a phone or tablet, this repository is the experiment.
 
-- **One APK, Android-first workflow**: pdockerd runs inside a foreground Android
-  service, with a native UI for Compose, Dockerfile, images, containers,
-  persistent jobs, logs, editors, and terminals.
-- **Docker-compatible protocol surface**: pdockerd speaks Docker Engine API
-  over a Unix socket and keeps compatibility records for CLI/API behavior.
-- **No bundled upstream Docker CLI in the product APK**: the shipped UI uses
-  Engine API/native orchestration. Upstream Docker CLI/Compose may be staged by
-  tests, but they are not normal app payload.
-- **SDK28 direct-exec compatibility route**: the compat APK uses the scratch
-  `pdocker-direct` executor path for real process execution experiments while
-  keeping the API29+ route switchable.
-- **Real workspace UX**: VS Code Server, Continue, Codex, Claude Code,
-  llama.cpp GPU workspace templates, image/container file browsing, code
-  editing, and `-it`-style grouped terminal tabs are built into the app.
-- **GPU direction**: experimental Vulkan passthrough and a future
-  CUDA-compatible API shim are documented and benchmarked as first-class
-  pdocker extensions.
+## What You Can Do
+
+- **Manage projects visually**: Compose files, Dockerfiles, images, containers,
+  ports, jobs, logs, storage, terminals, and editor tabs live in one Android UI.
+- **Use Docker-shaped workflows**: `pdockerd` speaks the Docker Engine API over
+  a Unix socket, so compatibility can be tested against real Docker clients
+  while the product UI uses native Engine API calls.
+- **Inspect without starting a shell**: browse image rootfs trees and container
+  lower/upper views, copy files into editable projects, and edit writable
+  container layers directly.
+- **Keep sessions alive**: grouped terminal/log/editor tabs are designed for
+  long-running builds and container consoles instead of disposable shell views.
+- **Start real dev templates**: bundled project-library templates cover VS Code
+  Server with Continue/Codex/Claude Code, llama.cpp, ROS2/RViz/noVNC, and
+  Blender/noVNC experiments.
+- **Measure the hard parts**: GPU bridge, syscall mediation, storage reuse,
+  runtime overhead, and Docker API parity are tracked with repeatable tests.
+
+## Why It Is Different
+
+Android apps do not get Docker's normal toolbox: no privileged namespaces, no
+cgroups, no overlayfs mounts, no bridge network, and no raw host device access.
+pdocker treats that as the design challenge rather than hiding it.
+
+- The product APK does **not** bundle upstream Docker CLI or Compose binaries.
+- PRoot/talloc/proot-loader are **not** part of the default product APK.
+- The UI tells the truth when a feature is metadata-only, blocked, or still
+  experimental.
+- Compatibility decisions are documented under `docs/design/` and verified by
+  reusable tests under `docs/test/`.
+- Android-specific features, such as Vulkan/OpenCL GPU bridging and media
+  proxying through Camera2/AudioRecord/AudioTrack, are explicit pdocker
+  extensions rather than disguised raw `/dev` passthrough.
 
 ## Current status
 
@@ -39,10 +57,11 @@ self-build, and self-debug workflows.
 |---|---|
 | APK shell | Native Android UI, foreground daemon, boot/package-replaced restart, notification resident mode |
 | Engine API | Docker Engine API-compatible metadata, image, container, build, logs, and lifecycle endpoints |
-| Compose up | In-app orchestrator path, persistent job UI, streaming logs, build progress, retry/stop actions |
+| Compose up | In-app orchestrator path, persistent job UI, streaming logs, build progress, retry/stop actions; no product Docker CLI dependency |
 | Direct execution | SDK28 compat executor under active development; syscall mediation and performance profiling are tracked |
 | Filesystems | Image rootfs browser, container lower/upper merged view, editable writable layers, build prune |
-| TTY/editor UX | xterm.js terminal tabs, compact readonly log terminals, Japanese-friendly input, in-app editor |
+| TTY/editor UX | xterm.js terminal tabs, compact readonly log terminals, Japanese-friendly input, selection/copy controls, in-app editor |
+| GPU/media | Vulkan/OpenCL bridge experiments, llama.cpp GPU comparison workflow, Camera2/AudioRecord/AudioTrack media proxy scaffold |
 | Networking | Host-port style metadata and browser actions; bridge/IP parity is intentionally scoped as limited |
 | Licensing | External payloads are audited; PRoot/talloc/proot-loader are not part of the default product APK |
 
@@ -50,7 +69,28 @@ See [`docs/plan/STATUS.md`](docs/plan/STATUS.md) for the detailed
 implementation snapshot and [`docs/plan/TODO.md`](docs/plan/TODO.md) for the
 live task board.
 
-## Screens and workflows
+## What To Expect Today
+
+The most useful current workflows are:
+
+1. Install the compat APK on an SDK28-capable test route.
+2. Start `pdockerd` from the app.
+3. Pull or build an image from the native UI.
+4. Open image/container files directly from the app.
+5. Run Compose-style project actions and watch logs in persistent job cards.
+6. Use project templates for VS Code Server or llama.cpp experiments.
+
+The most important current limits are also explicit:
+
+- Android direct execution is still being hardened for broader image coverage.
+- Docker bridge networking is represented as metadata plus host-port behavior,
+  not a real Linux bridge namespace.
+- GPU acceleration is under active bridge work; llama.cpp reaches Vulkan
+  offload paths, but generic SPIR-V dispatch is still the current blocker.
+- Media devices are exposed through an Android API proxy contract, not raw
+  `/dev/video*` or `/dev/snd/*` passthrough.
+
+## Screens and Workflows
 
 The main UI is split into an upper control pane and a lower tool pane:
 
