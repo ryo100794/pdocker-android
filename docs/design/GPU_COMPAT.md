@@ -99,6 +99,29 @@ smoke through `vkQueueSubmit`. It is not a general Vulkan backend yet because
 only a small descriptor/buffer/dispatch subset is lowered. This is still more
 promising than raw passthrough on Android because the APK can use public NDK
 Vulkan APIs without asking a glibc process to load Bionic vendor libraries.
+
+## Backend Affinity Policy
+
+pdocker should preserve the application-facing GPU API as far down the stack as
+possible:
+
+- GL/GLES-looking work should run through the Android GL/GLES backend.
+- Vulkan-looking work should run through the Android Vulkan backend.
+- OpenCL-looking work should run through Android OpenCL when the app linker
+  namespace permits it.
+
+Cross-API lowering is a fallback, not the first choice. Translating OpenCL
+kernels to GLES, or Vulkan command streams to another API, adds avoidable costs
+in shader translation, descriptor/memory model adaptation, synchronization,
+and validation. A fallback is acceptable only when the same-device backend is
+unavailable or blocked, and the fallback must be explicit in logs and
+diagnostics.
+
+The current device demonstrates this rule: Android OpenCL exists on disk but is
+blocked for the untrusted app namespace, so OpenCL requests fall back to the
+GLES compute executor. Vulkan should follow the same affinity model: container
+Vulkan ICD first lowers to Android Vulkan, with GLES or other backends reserved
+for diagnostics and limited compatibility gaps.
 The visible contract is a device-independent `pdocker-gpu-command-v1` ABI. GPU
 backend choices such as GLES compute, Vulkan, OpenCL, NNAPI, or vendor-specific
 driver details belong below that ABI and must be absorbed by the APK-owned

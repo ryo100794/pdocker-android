@@ -104,6 +104,7 @@ static void json_fail(const char *stage, const char *message) {
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
             "\"backend_impl\":\"gles31_compute\","
+            "\"backend_affinity\":\"fallback\","
             "\"valid\":false,\"stage\":\"%s\",\"error\":\"%s\"}\n",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
             PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
@@ -314,7 +315,7 @@ static int run_vector_add_arrays_opencl(const float *a, const float *b, float *o
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-            "\"backend_impl\":\"android_opencl\",\"transport\":\"%s\","
+            "\"backend_impl\":\"android_opencl\",\"backend_affinity\":\"same-api\",\"transport\":\"%s\","
             "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
             "\"init_ms\":%.4f,\"compile_ms\":%.4f,\"upload_ms\":%.4f,"
             "\"dispatch_ms\":%.4f,\"download_ms\":%.4f,\"total_ms\":%.4f,"
@@ -487,7 +488,7 @@ static int run_vector_add_arrays(const float *a, const float *b, float *out, siz
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-            "\"backend_impl\":\"gles31_compute\",\"transport\":\"%s\","
+            "\"backend_impl\":\"gles31_compute\",\"backend_affinity\":\"fallback\",\"transport\":\"%s\","
             "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
             "\"compile_ms\":%.4f,\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
             "\"download_ms\":%.4f,\"total_ms\":%.4f,\"max_abs_error\":%.8f,"
@@ -506,7 +507,7 @@ static int run_vector_add_arrays_best(const float *a, const float *b, float *out
     if (strcmp(getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") ? getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") : "0", "1") != 0) {
         int rc = run_vector_add_arrays_opencl(a, b, out, n, transport ? transport : "opencl-command-queue");
         if (rc == 0) return 0;
-        fprintf(stderr, "pdocker-gpu-executor: Android OpenCL vector_add unavailable rc=%d; falling back to GLES compute\n", rc);
+        fprintf(stderr, "pdocker-gpu-executor: Android OpenCL vector_add unavailable rc=%d; falling back to GLES compute (cross-api fallback)\n", rc);
     }
     return run_vector_add_arrays(a, b, out, n, transport ? transport : "gles31-fallback");
 }
@@ -661,6 +662,8 @@ static void print_capabilities(const char *transport) {
             "\"transport\":\"%s\","
             "\"backend_impls\":[\"android_opencl\",\"gles31_compute\"],"
             "\"preferred_backend\":\"android_opencl\","
+            "\"fallback_backend\":\"gles31_compute\","
+            "\"backend_affinity_policy\":\"same-api-first\","
             "\"container_contract\":\"glibc-shim-command-queue\","
             "\"fd_shared_buffer\":true,"
             "\"process_exec\":true}\n",
