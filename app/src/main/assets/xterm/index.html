@@ -625,7 +625,7 @@
   }, true);
 
   if (!readOnly) {
-    PdockerBridge.start(PdockerBridge.initialCommand());
+    PdockerBridge.startInitial();
     term.focus();
   }
   setTimeout(() => { tuneIme(); pushResize(); }, 100);

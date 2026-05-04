@@ -1976,11 +1976,14 @@ class MainActivity : AppCompatActivity() {
         startDaemon()
         openTerminal(
             title,
-            "${Bridge.ENGINE_EXEC_PREFIX}$containerId",
+            engineExecTerminalCommand(containerId),
             group,
             contextualize = false,
         )
     }
+
+    private fun engineExecTerminalCommand(containerId: String): String =
+        "${Bridge.ENGINE_EXEC_PREFIX}${containerId.trim()}"
 
     private fun openEditor(file: File, group: String = workspaceGroup()) {
         val target = resolveProjectFile(file)

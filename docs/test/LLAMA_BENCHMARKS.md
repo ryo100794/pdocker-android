@@ -42,13 +42,17 @@ future Vulkan/CUDA-compatible runs.
 - Evidence: `Vulkan0 model buffer size` was present, offload was reported,
   `main: model loaded` was reached, and generic SPIR-V dispatches returned
   `valid=true` from the APK-owned Android Vulkan executor.
-- Short benchmark: CPU 0.095 tokens/s, GPU 0.052 tokens/s, speedup 0.55x.
-- Bridge profile: 258 generic SPIR-V samples, mean upload 109.26 ms, mean
-  dispatch 234.62 ms, mean download 7.61 ms.
+- Short benchmark after `VULKAN_DISPATCH_V2`: CPU 0.1559 tokens/s, GPU
+  0.1230 tokens/s, speedup 0.789x, `target_met=false`.
+- Bridge overhead phase: `served=true`, `gpu_layers=1`,
+  `blocker=served through generic SPIR-V, but bridge upload/copy overhead keeps
+  GPU below CPU throughput`.
+- Bridge profile: 258 generic SPIR-V samples, mean upload 40.38 ms, mean
+  dispatch 4.37 ms, mean download 4.57 ms.
 - Current blocker: the bridge is functionally alive but slower than CPU because
-  each dispatch copies buffer slices through the executor boundary. The next
-  work is persistent device-buffer registration/cache, descriptor/pipeline
-  caching by shader/layout, and reducing FD slice upload/download volume.
+  each dispatch copies buffer slices through the executor boundary.
+- Next action: reduce bridge upload/copy overhead with persistent registered
+  buffers, then rerun with larger `n_predict`.
 
 ## 2026-05-03 Vulkan-Requested Result
 
@@ -472,10 +476,10 @@ default.
 - Scenario: `scripts/android-llama-gpu-compare.sh --predict 4 --repeat 1 --gpu-layers 1 --gpu-ctx 512 --cpu-ctx 2048`.
 - Policy: llama.cpp source unchanged; GPU entry is the standard Vulkan loader
   through `pdocker-vulkan-icd.so`.
-- CPU baseline: 0.259 generated tokens/s for the short HTTP probe.
-- 10x target for this baseline: 2.587 generated tokens/s.
-- Forced Vulkan result: `served=true`, GPU 0.000 generated tokens/s, speedup
-  `0.0x`, `target_met=false`, with `gpu_layers=1`.
+- CPU baseline: 0.1559 generated tokens/s for the short HTTP probe.
+- 10x target for this baseline: 1.5589 generated tokens/s.
+- Forced Vulkan result: `served=true`, GPU 0.1230 generated tokens/s, speedup
+  `0.789x`, `target_met=false`, with `gpu_layers=1`.
 - GPU evidence: llama.cpp reached `Vulkan0 (pdocker Vulkan bridge (queue))`
   and allocated the offloaded output-layer Vulkan model buffer:
   `Vulkan0 model buffer size = 486.87 MiB`, `offloaded 1/37 layers to GPU`.
@@ -491,14 +495,17 @@ default.
   executor boundary. `scripts/smoke-vulkan-icd-bridge.sh` now verifies a
   minimal storage-buffer compute dispatch through the same socket path, and
   `scripts/verify-fast.sh` runs both Vulkan init and bridge smokes.
-- Diagnostic progress: allocation pNext tracing and range accounting are past
-  the earlier warmup assertion. The server loads and accepts the HTTP probe, but
-  prompt processing reaches a later generic SPIR-V dispatch where the Android
-  Vulkan executor reports `submit-generic-dispatch` and llama.cpp exits through
-  `vk::Queue::submit: ErrorFeatureNotPresent`.
-- Next blocker: lower the failing llama.cpp SPIR-V dispatch into the Android
-  GPU executor, or clamp the advertised Vulkan feature/capability surface so
-  llama.cpp selects a supported path.
+- Diagnostic progress: allocation pNext tracing, range accounting, generic
+  SPIR-V dispatch lowering, and server HTTP handling are past the earlier
+  blockers. The current bridge overhead phase is explicit in the JSON report:
+  it records `served=true`, CPU/GPU tokens per second, `gpu_layers=1`, the
+  10x target, `target_met=false`, and the next action.
+- Current blocker: served through generic SPIR-V, but bridge upload/copy
+  overhead keeps GPU below CPU throughput. Latest dispatch profile: 258
+  generic SPIR-V samples, mean upload 40.38 ms, mean dispatch 4.37 ms, mean
+  download 4.57 ms.
+- Next action: reduce bridge upload/copy overhead with persistent registered
+  buffers, then rerun with larger `n_predict`.
 - Recovery: the script restored CPU mode; `pdocker-llama-cpp` returned to
   `Up (healthy)` and `/v1/models` returned `model.gguf`.
 - UI note: the `llama.cpp GPU compare` card shown while this script runs is a
@@ -507,11 +514,6 @@ default.
 - Operation cleanup: the compare operation is marked failed on nonzero exit,
   ADB port forwarding is removed, and CPU mode is restored by default unless
   the diagnostic run explicitly passes `--no-restore`.
-- Diagnostic follow-up: adding `LLAMA_EXTRA_ARGS="--jinja --no-warmup"` moved
-  the failure from the explicit warmup message to slot initialization, but it
-  still hit the same `ggml_backend_buffer_get_alloc_size` range assertion.
-  This confirms the blocker is backend buffer accounting, not only the warmup
-  request path.
 
 ## Previous HTTP API Result
 

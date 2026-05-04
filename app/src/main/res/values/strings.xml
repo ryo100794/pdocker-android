@@ -180,7 +180,7 @@
     <string name="action_container_logs_fmt">Logs: %1$s</string>
     <string name="action_browse_container_files_fmt">Browse files: %1$s</string>
     <string name="action_container_terminal_fmt">Terminal (-it): %1$s</string>
-    <string name="detail_container_terminal">Open logs then attach an interactive shell</string>
+    <string name="detail_container_terminal">Attach an interactive shell via Engine exec</string>
     <string name="action_open_service_fmt">Open %1$s</string>
     <string name="action_open_vnc_service_fmt">Open VNC: %1$s</string>
     <string name="detail_open_vnc_client_fmt">Open in external VNC client at %1$s</string>

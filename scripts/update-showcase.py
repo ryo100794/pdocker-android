@@ -7,7 +7,6 @@ import argparse
 from datetime import date, timedelta
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -31,21 +30,6 @@ def write_or_check(path: Path, content: str, check: bool) -> bool:
     path.write_text(content, encoding="utf-8")
     print(f"updated {path.relative_to(ROOT)}")
     return True
-
-
-def git_short_ref() -> str:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=ROOT,
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-        return result.stdout.strip()
-    except Exception:
-        return "unknown"
 
 
 def snapshot_date(*texts: str) -> str:
@@ -227,7 +211,7 @@ def render_dashboard() -> str:
 {GENERATED}
 
 Source snapshot: `{snapshot_date(readme, status, todo, compat, json.dumps(llama))}`.
-Repository commit at generation time: `{git_short_ref()}`.
+Repository reference: source-controlled generated snapshot.
 
 This page is the GitHub-facing status board for pdocker-android. It is generated
 from repository-owned documents so the public story follows the implementation
@@ -307,7 +291,7 @@ def render_timeline() -> str:
 {GENERATED}
 
 Source snapshot: `{snapshot_date(todo, status)}`.
-Repository commit at generation time: `{git_short_ref()}`.
+Repository reference: source-controlled generated snapshot.
 
 This timeline is derived from the live TODO ledger and is meant for GitHub
 issues, release planning, and Wiki readers. It is not a promise of fixed

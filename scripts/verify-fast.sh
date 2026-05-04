@@ -23,6 +23,8 @@ run python3 -m py_compile \
   scripts/verify-build-profile.py \
   scripts/verify-dockerfile-standard.py \
   scripts/verify_direct_syscall_contracts.py \
+  scripts/verify-memory-pager-design.py \
+  scripts/verify-metadata-index.py \
   scripts/run_direct_syscall_scenarios.py \
   scripts/verify-project-library.py \
   scripts/verify-storage-metrics.py \
@@ -33,6 +35,9 @@ run python3 -m py_compile \
 
 run python3 docker-proot-setup/scripts/verify_runtime_contract.py
 run python3 scripts/verify_direct_syscall_contracts.py
+run python3 scripts/verify-memory-pager-design.py
+run python3 scripts/verify-metadata-index.py
+run python3 -m unittest discover -s tests/metadata_index -p 'test_*.py'
 run python3 scripts/run_direct_syscall_scenarios.py --lane local
 run cmp -s docker-proot-setup/bin/pdockerd app/src/main/assets/pdockerd/pdockerd
 run python3 scripts/verify-build-profile.py

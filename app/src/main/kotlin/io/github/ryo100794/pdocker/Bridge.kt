@@ -20,6 +20,7 @@ import org.json.JSONObject
  *
  * JS side calls:
  *   PdockerBridge.start("docker exec -it CID sh")
+ *   PdockerBridge.startInitial()
  *   PdockerBridge.input(base64_utf8)
  *   PdockerBridge.resize(rows, cols)
  *
@@ -91,6 +92,11 @@ class Bridge(
 
     @JavascriptInterface
     fun initialCommand(): String = initialCommand
+
+    @JavascriptInterface
+    fun startInitial() {
+        start(initialCommand)
+    }
 
     @JavascriptInterface
     fun readOnly(): Boolean = false

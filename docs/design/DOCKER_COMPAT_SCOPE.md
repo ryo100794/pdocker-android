@@ -110,11 +110,23 @@ proxy/rewrite layer**.
 Minimum acceptable product behavior:
 
 - `docker ps` and UI show requested ports.
-- UI distinguishes configured, listening, and blocked ports.
+- Engine/UI state distinguishes configured/planned, running-but-inactive,
+  active runtime/proxy records, and blocked/conflicting ports.
 - Compose service names resolve inside containers through generated hosts
   entries or a lightweight userland resolver.
 - `ports: ["18080:8080"]` eventually works by rewriting/brokering bind/listen
   behavior, not by launching a fake host process.
+
+Current scaffold:
+
+- `PdockerNetwork.PortMappingStatus` derives visible port state from Docker
+  `PortBindings`, container running state, runtime/proxy evidence, and peer
+  host-port claims.
+- A mapping is reported as `active` only when pdockerd runtime/proxy code has
+  recorded active evidence. A running container with only requested Docker port
+  metadata remains `inactive`.
+- The runtime remains `host-network-only`; the status structure does not imply
+  bridge networking, iptables NAT, or container-owned listener proof.
 
 Out of scope:
 

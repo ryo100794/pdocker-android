@@ -581,6 +581,38 @@ failure_axes = {
 dispatch_upload_ms = [float(m.group(1)) for m in re.finditer(r'"upload_ms":([0-9.]+)', log)]
 dispatch_ms = [float(m.group(1)) for m in re.finditer(r'"dispatch_ms":([0-9.]+)', log)]
 dispatch_download_ms = [float(m.group(1)) for m in re.finditer(r'"download_ms":([0-9.]+)', log)]
+copy_buffer_bytes = [
+    int(m.group(1))
+    for m in re.finditer(r"pdocker-vulkan-icd: copy-buffer .* bytes=([0-9]+) ok=1", log)
+]
+bridge_dispatch_profile = {
+    "samples": len(dispatch_ms),
+    "upload_ms_mean": (sum(dispatch_upload_ms) / len(dispatch_upload_ms)) if dispatch_upload_ms else 0.0,
+    "dispatch_ms_mean": (sum(dispatch_ms) / len(dispatch_ms)) if dispatch_ms else 0.0,
+    "download_ms_mean": (sum(dispatch_download_ms) / len(dispatch_download_ms)) if dispatch_download_ms else 0.0,
+    "copy_buffer_ops_in_log": len(copy_buffer_bytes),
+    "copy_buffer_bytes_in_log": sum(copy_buffer_bytes),
+}
+speedup = (gpu_tps / cpu_tps) if cpu_tps and gpu_tps else 0.0
+target_met = bool(cpu_tps and gpu_tps >= target_tps)
+next_action = (
+    "fix Vulkan buffer base/range accounting for scheduler warmup"
+    if evidence["buffer_range_assert_blocker"]
+    else
+    "split 4GiB+ Vulkan buffers / pinned host-buffer path"
+    if evidence["buffer_allocation_blocker"] or evidence["assert_blocker"]
+    else "lower generic SPIR-V dispatch into the Android Vulkan executor or clamp advertised capabilities"
+    if blocker_class == "vulkan_generic_spirv_dispatch"
+    else "inspect traced Android Vulkan feature/SPIR-V mismatch"
+    if evidence["android_vulkan_dispatch_blocker"] and evidence["executor_spirv_trace_seen"]
+    else "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
+    if evidence["spirv_dispatch_blocker"] or evidence["queue_submit_blocker"]
+    else "reduce bridge upload/copy overhead with persistent registered buffers; rerun with larger n_predict"
+    if evidence["generic_spirv_dispatch_seen"] and bool(int(gpu_served_s))
+    else "make Vulkan device discovery reliable"
+)
+if blocker_class == "bridge_dispatch_performance":
+    blocker_detail = "served through generic SPIR-V, but bridge upload/copy overhead keeps GPU below CPU throughput"
 result = {
     "schema": "pdocker.llama.gpu.compare.v1",
     "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -605,12 +637,7 @@ result = {
         "log_excerpt": log[-12000:],
         "evidence": evidence,
         "allocation_trace_bytes": allocations[-32:],
-        "bridge_dispatch_profile": {
-            "samples": len(dispatch_ms),
-            "upload_ms_mean": (sum(dispatch_upload_ms) / len(dispatch_upload_ms)) if dispatch_upload_ms else 0.0,
-            "dispatch_ms_mean": (sum(dispatch_ms) / len(dispatch_ms)) if dispatch_ms else 0.0,
-            "download_ms_mean": (sum(dispatch_download_ms) / len(dispatch_download_ms)) if dispatch_download_ms else 0.0,
-        },
+        "bridge_dispatch_profile": bridge_dispatch_profile,
         "diagnostics": {
             "blocker_class": blocker_class,
             "blocker_detail": blocker_detail,
@@ -624,9 +651,23 @@ result = {
         },
     },
     "comparison": {
-        "speedup": (gpu_tps / cpu_tps) if cpu_tps and gpu_tps else 0.0,
+        "speedup": speedup,
         "target_tokens_per_second": target_tps,
-        "target_met": bool(cpu_tps and gpu_tps >= target_tps),
+        "target_met": target_met,
+    },
+    "bridge_overhead_phase": {
+        "phase": "served_but_transfer_bound" if blocker_class == "bridge_dispatch_performance" else "not_yet_served",
+        "served": bool(int(gpu_served_s)),
+        "gpu_layers": int(gpu_layers),
+        "cpu_tokens_per_second": cpu_tps,
+        "gpu_tokens_per_second": gpu_tps,
+        "speedup": speedup,
+        "target_speedup": 10.0,
+        "target_tokens_per_second": target_tps,
+        "target_met": target_met,
+        "blocker": blocker_detail,
+        "next_action": next_action,
+        "bridge_dispatch_profile": bridge_dispatch_profile,
     },
     "operation": {
         "kind": "llama-gpu-compare",
@@ -634,22 +675,8 @@ result = {
         "container_surface": "pdocker-llama-cpp remains the container shown by Engine container listing",
         "cleanup": "remove adb port forward, mark failed operation on nonzero exit, restore CPU server unless --no-restore is passed",
     },
-    "next_blocker": (
-        "fix Vulkan buffer base/range accounting for scheduler warmup"
-        if evidence["buffer_range_assert_blocker"]
-        else
-        "split 4GiB+ Vulkan buffers / pinned host-buffer path"
-        if evidence["buffer_allocation_blocker"] or evidence["assert_blocker"]
-        else "lower generic SPIR-V dispatch into the Android Vulkan executor or clamp advertised capabilities"
-        if blocker_class == "vulkan_generic_spirv_dispatch"
-        else "inspect traced Android Vulkan feature/SPIR-V mismatch"
-        if evidence["android_vulkan_dispatch_blocker"] and evidence["executor_spirv_trace_seen"]
-        else "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
-        if evidence["spirv_dispatch_blocker"] or evidence["queue_submit_blocker"]
-        else "reduce bridge upload/copy overhead and benchmark with larger n_predict"
-        if evidence["generic_spirv_dispatch_seen"] and bool(int(gpu_served_s))
-        else "make Vulkan device discovery reliable"
-    ),
+    "next_blocker": blocker_detail,
+    "next_action": next_action,
 }
 Path(out_path).write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(json.dumps(result["comparison"], indent=2))

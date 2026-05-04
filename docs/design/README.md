@@ -18,6 +18,7 @@ tradeoffs, accepted behavior, and non-goals.
 | [`API29_DIRECT_EXEC_FEASIBILITY.md`](API29_DIRECT_EXEC_FEASIBILITY.md) | API 29+ direct execution feasibility notes |
 | [`GPU_COMPAT.md`](GPU_COMPAT.md) | Android GPU, Vulkan, cuVK, and benchmark design direction |
 | [`MEDIA_BRIDGE.md`](MEDIA_BRIDGE.md) | Android Camera2/AudioRecord/AudioTrack media bridge contract |
+| [`APK_MEMORY_PAGER.md`](APK_MEMORY_PAGER.md) | APK-scoped swap-like memory pager feasibility and page-fault strategy |
 | [`../../docker-proot-setup/docs/GPU_COMPAT.md`](../../docker-proot-setup/docs/GPU_COMPAT.md) | Backend GPU request/env contract |
 | [`../../docker-proot-setup/docs/NETWORK_COMPAT.md`](../../docker-proot-setup/docs/NETWORK_COMPAT.md) | Backend network metadata and port rewrite plan |
 
@@ -34,6 +35,9 @@ tradeoffs, accepted behavior, and non-goals.
   [`../../docker-proot-setup/docs/GPU_COMPAT.md`](../../docker-proot-setup/docs/GPU_COMPAT.md).
 - Treat [`MEDIA_BRIDGE.md`](MEDIA_BRIDGE.md) as the media contract; test files
   should record probes and link back here for readiness rules.
+- Treat [`APK_MEMORY_PAGER.md`](APK_MEMORY_PAGER.md) as the feasibility boundary
+  for swap-like behavior inside the APK. It is a pdocker extension, not Docker
+  compatibility.
 
 ## Maintenance
 

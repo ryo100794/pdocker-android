@@ -118,7 +118,7 @@ def main() -> int:
         "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script and "CPU server restored" in compare_script,
         "compare script avoids test Docker CLI": "/containers/create" in compare_script and "pdocker-runtime/docker-bin" not in compare_script and "docker run" not in compare_script,
         "compare docs record latest report": "llama-gpu-compare-latest.json" in compare_doc,
-        "compare docs record latest tps and blocker": "CPU baseline: 0.259 generated tokens/s" in compare_doc and "GPU 0.000 generated tokens/s" in compare_doc and "target_met=false" in compare_doc and "Next blocker: lower the failing llama.cpp SPIR-V dispatch" in compare_doc,
+        "compare docs record latest tps and blocker": "CPU baseline: 0.1559 generated tokens/s" in compare_doc and "GPU 0.1230 generated tokens/s" in compare_doc and "target_met=false" in compare_doc and "upload/copy" in compare_doc and "GPU below CPU" in compare_doc,
         "compare docs record operation ui visibility": "daemon operation/progress card" in compare_doc and "only object expected in `docker ps`" in compare_doc and "Operation cleanup" in compare_doc,
         "host native gpu baseline script is recorded": "pdocker.gpu.host_native.v1" in host_bench_script and "--bench-vulkan-matmul256-resident" in host_bench_script and "gpu-host-native-latest.json" in compare_doc,
         "compare todo records 10x task list": "llama.cpp Container GPU 10x Task List" in compare_todo,
@@ -135,7 +135,7 @@ def main() -> int:
         "latest compare records speedup and target": isinstance(compare_result.get("comparison", {}).get("speedup"), (int, float)) and compare_result.get("comparison", {}).get("target_met") is not None,
         "latest compare records gpu layer count": isinstance(compare_result.get("settings", {}).get("gpu_layers"), int),
         "latest compare records current blocker": bool(compare_result.get("next_blocker")),
-        "latest compare records blocker classification": compare_result.get("gpu", {}).get("diagnostics", {}).get("blocker_class") == "vulkan_generic_spirv_dispatch",
+        "latest compare records blocker classification": compare_result.get("gpu", {}).get("diagnostics", {}).get("blocker_class") in {"vulkan_generic_spirv_dispatch", "bridge_dispatch_performance"},
         "latest compare records generic spirv attempt": compare_result.get("gpu", {}).get("evidence", {}).get("generic_spirv_dispatch_attempted") is True,
         "latest compare records failure axes": all(
             axis in compare_result.get("gpu", {}).get("diagnostics", {}).get("failure_axes", {})

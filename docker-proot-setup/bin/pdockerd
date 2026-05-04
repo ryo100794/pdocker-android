@@ -2399,6 +2399,136 @@ HOST_NETWORK_LIMITATION_WARNING = (
 )
 
 
+PORT_MAPPING_INACTIVE_WARNING = (
+    "pdocker has recorded this published port, but no pdocker-owned "
+    "listener/proxy/rewrite is active for it yet."
+)
+
+
+def _all_container_states():
+    states = []
+    if not os.path.isdir(CONTAINERS_DIR):
+        return states
+    for cid in os.listdir(CONTAINERS_DIR):
+        state = load_container_state(cid)
+        if state:
+            states.append(state)
+    return states
+
+
+def _port_mapping_conflict(a, b):
+    if a["Protocol"] != b["Protocol"] or a["HostPort"] != b["HostPort"]:
+        return False
+    wildcard = ("", "0.0.0.0", "::")
+    return a["HostIp"] == b["HostIp"] or a["HostIp"] in wildcard or b["HostIp"] in wildcard
+
+
+def _port_mapping_claims(state):
+    claims = []
+    cid = state.get("Id", "")
+    pname = state.get("Name", cid[:12]).lstrip("/")
+    for item in (state.get("PdockerNetwork") or {}).get("PortRewrite") or []:
+        try:
+            host_port = int(item.get("HostPort") or 0)
+            container_port = int(item.get("ContainerPort") or 0)
+        except Exception:
+            continue
+        if host_port <= 0 or container_port <= 0:
+            continue
+        claims.append({
+            "ContainerId": cid,
+            "ContainerName": pname,
+            "ContainerPort": container_port,
+            "Protocol": item.get("Protocol") or "tcp",
+            "HostIp": item.get("HostIp") or "127.0.0.1",
+            "HostPort": host_port,
+        })
+    return claims
+
+
+def _port_mapping_active(item):
+    runtime_status = item.get("RuntimeStatus") or item.get("ProxyStatus")
+    if runtime_status == "active" or item.get("Active") is True:
+        return True
+    proxy = item.get("Proxy") if isinstance(item.get("Proxy"), dict) else {}
+    return proxy.get("Status") == "active" or proxy.get("Active") is True
+
+
+def _refresh_port_mapping_status(state, peer_states=None):
+    """Expose requested port mappings as planned/inactive/active/conflict state.
+
+    This is deliberately an Engine-visible scaffold, not a fake listener. A
+    mapping becomes active only when future runtime/proxy code records active
+    evidence on the PortRewrite entry.
+    """
+    pn = state.setdefault("PdockerNetwork", {})
+    claims = _port_mapping_claims(state)
+    if not claims:
+        pn["PortMappingStatus"] = []
+        pn["PortMappingSummary"] = {
+            "Runtime": "host-network-only",
+            "Active": 0,
+            "Inactive": 0,
+            "Planned": 0,
+            "Conflict": 0,
+        }
+        return state
+    peers = peer_states if peer_states is not None else _all_container_states()
+    peer_claims = []
+    for peer in peers:
+        if peer.get("Id") != state.get("Id"):
+            peer_claims.extend(_port_mapping_claims(peer))
+    running = bool((state.get("State") or {}).get("Running"))
+    rewrite = pn.get("PortRewrite") or []
+    statuses = []
+    counts = {"active": 0, "inactive": 0, "planned": 0, "conflict": 0}
+    for idx, claim in enumerate(claims):
+        conflicts = [
+            {
+                "ContainerId": peer["ContainerId"],
+                "ContainerName": peer["ContainerName"],
+                "HostIp": peer["HostIp"],
+                "HostPort": peer["HostPort"],
+                "Protocol": peer["Protocol"],
+            }
+            for peer in peer_claims
+            if _port_mapping_conflict(claim, peer)
+        ]
+        item = rewrite[idx] if idx < len(rewrite) else {}
+        if conflicts:
+            state_name = "conflict"
+            message = "requested host port is also claimed by another container"
+        elif _port_mapping_active(item):
+            state_name = "active"
+            message = "pdocker runtime reports an active listener/proxy/rewrite"
+        elif running:
+            state_name = "inactive"
+            message = PORT_MAPPING_INACTIVE_WARNING
+        else:
+            state_name = "planned"
+            message = "container is not running; published port is only configured"
+        counts[state_name] += 1
+        statuses.append({
+            **claim,
+            "State": state_name,
+            "Active": state_name == "active",
+            "Conflict": conflicts,
+            "Runtime": "host-network-only",
+            "Limitation": HOST_NETWORK_LIMITATION_WARNING,
+            "Message": message,
+            "ProxyTarget": item.get("ProxyTarget") or item.get("Target") or "",
+        })
+    pn["PortMappingStatus"] = statuses
+    pn["PortMappingSummary"] = {
+        "Runtime": "host-network-only",
+        "Active": counts["active"],
+        "Inactive": counts["inactive"],
+        "Planned": counts["planned"],
+        "Conflict": counts["conflict"],
+    }
+    return state
+
+
 def _network_warnings(config, port_rewrite):
     """Return user-visible warnings for Docker networking features we emulate."""
     hc = config.get("HostConfig") or {}
@@ -3507,6 +3637,7 @@ def create_container(config, name=None):
             "Networks": {},
         },
     }
+    _refresh_port_mapping_status(state)
     state["NetworkSettings"]["Networks"] = {
         net_name: _network_entry(state, net_name, _network_endpoint_config(config, net_name))
         for net_name in network_names
@@ -3645,12 +3776,14 @@ def reconcile_container_state(state):
         if st:
             _normalize_container_exit_state(st)
             state["State"] = st
+            _refresh_port_mapping_status(state)
             if cid:
                 save_container_state(cid, state)
         return state
     with running_lock:
         proc = running_containers.get(cid)
     if proc is not None and proc.poll() is None:
+        _refresh_port_mapping_status(state)
         _start_health_monitor(cid)
         return state
     pid = _container_live_pid(state)
@@ -3661,6 +3794,7 @@ def reconcile_container_state(state):
         if start_time:
             st["PidStartTime"] = start_time
         state["State"] = st
+        _refresh_port_mapping_status(state)
         _start_health_monitor(cid)
         return state
     st["Running"] = False
@@ -3675,6 +3809,7 @@ def reconcile_container_state(state):
     st["Error"] = st.get("Error") or "container process is not alive; state reconciled by pdockerd"
     st["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
     state["State"] = st
+    _refresh_port_mapping_status(state)
     save_container_state(cid, state)
     return state
 
@@ -4021,6 +4156,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         start_time = _pid_start_time(live_pid)
         if start_time:
             state["State"]["PidStartTime"] = start_time
+        _refresh_port_mapping_status(state)
         save_container_state(cid, state)
         _start_health_monitor(cid)
         return state
@@ -4067,6 +4203,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         state["State"].pop("PidStartTime", None)
         state["State"]["ExitCode"] = 126
         state["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+        _refresh_port_mapping_status(state)
         save_container_state(cid, state)
         raise RuntimeError(fault)
 
@@ -4080,6 +4217,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         state["State"].pop("PidStartTime", None)
         state["State"]["ExitCode"] = 126
         state["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+        _refresh_port_mapping_status(state)
         save_container_state(cid, state)
         attrs = _container_event_attrs(state)
         attrs["exitCode"] = 126
@@ -4118,6 +4256,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
             "FailingStreak": 0,
             "Log": [],
         }
+    _refresh_port_mapping_status(state)
     save_container_state(cid, state)
     record_event("container", "start", cid, _container_event_attrs(state))
     _start_health_monitor(cid)
@@ -4138,6 +4277,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
             s["State"]["Pid"] = 0
             s["State"].pop("PidStartTime", None)
             s["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
+            _refresh_port_mapping_status(s)
             save_container_state(cid, s)
             attrs = _container_event_attrs(s)
             attrs["exitCode"] = s["State"]["ExitCode"]

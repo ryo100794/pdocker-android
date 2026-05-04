@@ -20,8 +20,8 @@ or closes.
   allocation toward generic ggml SPIR-V dispatch, persistent command transport,
   and measured CPU-vs-GPU comparison artifacts. Current slice: `VULKAN_DISPATCH_V2`
   carries the compute entry point and specialization constants across the
-  container/APK bridge, and the fast lane now runs both llama-oriented Vulkan
-  init smoke and ICD bridge dispatch smoke.
+  container/APK bridge, serves the forced-GPU HTTP probe, and now exposes
+  bridge upload/copy overhead as the front performance blocker.
 - [next] [#5](https://github.com/ryo100794/pdocker-android/issues/5)
   Terminal `-it` argv safety: fix direct executor `execve` argv rewrite
   so `/bin/sh`, scripts, and `/usr/bin/[` preserve arguments inside the
@@ -41,9 +41,10 @@ or closes.
   hiding Vulkan devices, force Vulkan only for measured GPU attempts, run the
   compare flow after every bridge fix, and report `target_met`, speedup, GPU
   layer count, current blocker, thermal/device metadata, and artifact paths.
-- [next] Active port mapping: move published ports from metadata-only warnings
-  to active listener/proxy/rewrite state with clear inactive/blocked/active UI
-  labels and conflict handling for repeated internal ports.
+- [doing] Active port mapping: published ports now have an Engine-visible
+  `PdockerNetwork.PortMappingStatus` scaffold for planned/inactive/active/
+  conflict states while the runtime remains host-network-only. Next slice:
+  connect that state to real listener/proxy/rewrite evidence and UI labels.
 - [next] [#7](https://github.com/ryo100794/pdocker-android/issues/7)
   Android storage metrics verification: add device smoke/manual coverage
   that layer, image-view, container-private, total, and free-space values are
@@ -196,6 +197,12 @@ or closes.
   trapped syscall.
 - [next] Run optional PRoot/proot-like comparison only when an existing command
   is supplied; do not download or bundle external PRoot/fakechroot.
+- [next] Prototype APK-scoped memory pager. System swap/zram tuning is blocked
+  on production devices (`adb root` unavailable, `swapon` not permitted), so the
+  viable path is opt-in managed regions under pdocker control. Design recorded
+  in `docs/design/APK_MEMORY_PAGER.md`: first probe userfaultfd availability,
+  then prototype ptrace `SIGSEGV` interception for `PROT_NONE` managed pages,
+  then measure synthetic fault latency before any llama/container opt-in.
 - [doing] Profile remaining hot trapped syscalls after `newfstatat/openat` and
   decide which can be safely handled with fewer ptrace stops. Current tuning
   adds seccomp errno returns for probe syscalls and uses a blocking
@@ -536,11 +543,14 @@ Acceptance:
 
 ## P1: Port Rewrite and Networking
 
-Status: **metadata only**.
+Status: **active-state scaffold; forwarding still pending**.
 
 Temporary behavior:
 
 - Synthetic IPs and `PdockerNetwork.PortRewrite` are recorded.
+- `PdockerNetwork.PortMappingStatus` records planned, inactive, active, and
+  conflict states from requested host ports, container running state, runtime
+  evidence, and peer host-port claims.
 - Network mode is treated as a Compose-compatible host-network stub with stable
   network IDs, endpoint IDs, service aliases, and `/networks` metadata.
 - Port publishing warnings are surfaced.
@@ -554,8 +564,9 @@ Real implementation needed:
 3. Provide container DNS/alias resolution beyond `/etc/hosts` injection.
 4. Teach running containers to refresh peer aliases after network connect and
    disconnect without requiring a restart.
-5. Add UI state for active/inactive/blocked port mappings.
-6. Record the active host listener/proxy target for each published port and
+5. Add UI labels for active/inactive/blocked port mappings from
+   `PdockerNetwork.PortMappingStatus`.
+6. Record real active host listener/proxy target evidence for each published port and
    surface conflicts explicitly when a requested host port is already owned by
    another container.
 
@@ -692,21 +703,24 @@ Tasks:
    Vulkan model buffer through `pdocker-vulkan-icd.so`. The key fix was to
    advertise non-zero storage-buffer alignment from the ICD; llama.cpp remains
    unchanged.
-4. **[active] Lower the first real llama.cpp SPIR-V dispatches.**
-   Keep unknown shaders rejected. The bridge now records Android Vulkan
-   feature bits, SPIR-V capabilities/local size/hash, descriptor ranges, and
-   submit `VkResult` when a generic llama.cpp shader fails in the executor.
-   Use that trace to clamp unsupported advertised ICD features or implement the
-   minimal operations needed for one offloaded Qwen3 output/repeating layer.
+4. **[done] Lower the first real llama.cpp SPIR-V dispatches.**
+   `VULKAN_DISPATCH_V2` carries compute entry point and specialization
+   constants across the bridge, and the forced `--n-gpu-layers 1` run now
+   serves the HTTP benchmark through Android Vulkan generic SPIR-V dispatch.
 5. **[done] Fix Vulkan buffer base/range accounting during scheduler warmup.**
    Transfer-only submits now complete and llama.cpp reaches context
    construction, compute-buffer allocation, warmup, and server load without the
    previous `ggml_backend_buffer_get_alloc_size` range assertion. The latest
    front blocker is now the later Android `vkQueueSubmit`
    `VK_ERROR_FEATURE_NOT_PRESENT` path during prompt processing.
-6. **[next] Add persistent GPU command-ring transport.**
+6. **[active] Add persistent GPU command-ring transport.**
    Replace per-dispatch socket commands with shared ring descriptors, reusable
-   buffer handles, fences, and error records under `/run/pdocker-gpu`.
+   buffer handles, fences, and error records under `/run/pdocker-gpu`. Latest
+   8B Qwen3 Q4_K_M result after `VULKAN_DISPATCH_V2`: `served=true`,
+   CPU 0.1559 tok/s, GPU 0.1230 tok/s, speedup 0.789x,
+   `target_met=false`; front blocker is bridge upload/copy overhead, so the
+   next action is persistent registered buffers plus a larger `n_predict`
+   rerun.
 7. **[next] Establish small-model GPU green path.**
    Use the same unmodified llama.cpp container with a small GGUF model to prove
    model load, first token, and `llama-bench -ngl 1` before returning to 8B.
@@ -830,10 +844,11 @@ Next implementation slice:
   unmodified.
 - Implement the next llama Vulkan bridge blockers found on 2026-05-04:
   split or otherwise support 4 GiB+ model buffers, handle pinned host-buffer
-  paths without crashing, and lower real llama.cpp SPIR-V compute dispatches.
-  Current forced-GPU status: llama.cpp discovers `Vulkan0 (pdocker Vulkan
-  bridge (queue))` and reaches model loading, but Qwen3 8B Q4_K_M cannot serve
-  tokens on GPU yet.
+  paths without crashing, and reduce bridge upload/copy overhead now that real
+  llama.cpp SPIR-V dispatch serves HTTP. Current forced-GPU status after
+  `VULKAN_DISPATCH_V2`: Qwen3 8B Q4_K_M serves with `--n-gpu-layers 1`, but
+  GPU throughput is still below CPU because transfer-heavy bridge dispatches
+  dominate.
 - Keep CPU fallback healthy while GPU work is incomplete. CPU mode must hide
   Vulkan devices with `GGML_VK_VISIBLE_DEVICES=""` so llama.cpp does not enter
   Vulkan buffer scheduling with `--n-gpu-layers 0`.

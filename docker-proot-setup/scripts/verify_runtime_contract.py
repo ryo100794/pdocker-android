@@ -488,6 +488,69 @@ def test_network_metadata_contract() -> None:
         ok("network metadata records stable IDs, aliases, ports, IPs, and host-only warnings")
 
 
+def test_port_mapping_status_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("port_mapping_status", "no-proot", home_path)
+        seed_legacy_image(mod, "ubuntu:22.04")
+
+        def create_with_port(name: str, host_port: str):
+            return mod.create_container(
+                {
+                    "Image": "ubuntu:22.04",
+                    "Cmd": ["/bin/sh"],
+                    "ExposedPorts": {"8080/tcp": {}},
+                    "HostConfig": {
+                        "PortBindings": {
+                            "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": host_port}],
+                        },
+                    },
+                },
+                name=name,
+            )
+
+        planned = create_with_port("planned-port", "18080")
+        planned_status = planned["PdockerNetwork"]["PortMappingStatus"][0]
+        if planned_status.get("State") != "planned" or planned_status.get("Active"):
+            fail(f"created container port mapping should be planned: {planned_status!r}")
+        if planned["PdockerNetwork"]["PortMappingSummary"].get("Planned") != 1:
+            fail(f"planned summary mismatch: {planned['PdockerNetwork']!r}")
+
+        inactive = create_with_port("inactive-port", "18081")
+        inactive["State"]["Running"] = True
+        inactive["State"]["Status"] = "running"
+        mod._refresh_port_mapping_status(inactive)
+        inactive_status = inactive["PdockerNetwork"]["PortMappingStatus"][0]
+        if inactive_status.get("State") != "inactive" or inactive_status.get("Active"):
+            fail(f"running container without runtime listener should be inactive: {inactive_status!r}")
+        if "no pdocker-owned listener" not in inactive_status.get("Message", ""):
+            fail(f"inactive mapping must explain missing active listener: {inactive_status!r}")
+
+        active = create_with_port("active-port", "18082")
+        active["State"]["Running"] = True
+        active["State"]["Status"] = "running"
+        active["PdockerNetwork"]["PortRewrite"][0]["RuntimeStatus"] = "active"
+        active["PdockerNetwork"]["PortRewrite"][0]["ProxyTarget"] = "127.0.0.1:8080"
+        mod._refresh_port_mapping_status(active)
+        active_status = active["PdockerNetwork"]["PortMappingStatus"][0]
+        if active_status.get("State") != "active" or not active_status.get("Active"):
+            fail(f"runtime-marked mapping should be active: {active_status!r}")
+        if active_status.get("ProxyTarget") != "127.0.0.1:8080":
+            fail(f"active mapping should expose proxy target: {active_status!r}")
+
+        first = create_with_port("conflict-one", "18083")
+        second = create_with_port("conflict-two", "18083")
+        mod._refresh_port_mapping_status(first)
+        mod._refresh_port_mapping_status(second)
+        first_status = first["PdockerNetwork"]["PortMappingStatus"][0]
+        second_status = second["PdockerNetwork"]["PortMappingStatus"][0]
+        if first_status.get("State") != "conflict" or second_status.get("State") != "conflict":
+            fail(f"duplicate host ports should be conflict: {first_status!r}, {second_status!r}")
+        if second_status.get("Runtime") != "host-network-only":
+            fail(f"port status must keep host-network-only limitation visible: {second_status!r}")
+        ok("port mapping status distinguishes planned, inactive, active, and conflict")
+
+
 def seed_layered_image(mod, image: str, diff_ids: list[str], config: dict | None = None) -> None:
     img_dir = Path(mod.image_dir(mod.normalize_image(image)))
     rootfs = img_dir / "rootfs"
@@ -1046,6 +1109,7 @@ def main() -> int:
     test_default_no_proot_runtime_path()
     test_duplicate_name_resolution_contract()
     test_network_metadata_contract()
+    test_port_mapping_status_contract()
     test_dockerfile_unknown_instruction_rejected()
     test_direct_run_requires_real_executor()
     test_existing_tag_inline_run_cache()
