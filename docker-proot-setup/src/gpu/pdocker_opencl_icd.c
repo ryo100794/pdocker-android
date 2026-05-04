@@ -121,7 +121,10 @@ struct PdockerClProgram {
 
 struct PdockerClKernel {
     char *name;
+    cl_program program;
     cl_mem mem_args[16];
+    unsigned char scalar_args[16][32];
+    size_t arg_sizes[16];
 };
 
 struct PdockerClEvent {
@@ -237,6 +240,33 @@ static int send_vector_add_3fd(size_t n, int fd_a, int fd_b, int fd_out) {
     }
     close(socket_fd);
     return rc;
+}
+
+static void trace_unsupported_kernel(const cl_kernel kernel) {
+    const char *path = getenv("PDOCKER_OPENCL_ICD_TRACE");
+    if (!path || !path[0] || !kernel) return;
+    FILE *f = fopen(path, "a");
+    if (!f) return;
+    fprintf(f, "unsupported kernel name=%s\n", kernel->name ? kernel->name : "");
+    if (kernel->program && kernel->program->source) {
+        fprintf(f, "source-begin\n%s\nsource-end\n", kernel->program->source);
+    }
+    fclose(f);
+}
+
+static bool source_looks_like_vector_add(const char *source) {
+    if (!source) return false;
+    return strstr(source, "+ b[") != NULL ||
+           strstr(source, "+b[") != NULL ||
+           strstr(source, "a[i] + b[i]") != NULL ||
+           strstr(source, "a[i]+b[i]") != NULL;
+}
+
+static bool kernel_is_supported_vector_add(const cl_kernel kernel) {
+    if (!kernel || !kernel->program) return false;
+    if (!kernel->mem_args[0] || !kernel->mem_args[1] || !kernel->mem_args[2]) return false;
+    if (kernel->name && strstr(kernel->name, "add") != NULL) return source_looks_like_vector_add(kernel->program->source);
+    return source_looks_like_vector_add(kernel->program->source);
 }
 
 cl_int clGetPlatformIDs(cl_uint num_entries, cl_platform_id *platforms, cl_uint *num_platforms) {
@@ -470,6 +500,7 @@ cl_kernel clCreateKernel(cl_program program, const char *kernel_name, cl_int *er
         return NULL;
     }
     kernel->name = strdup(kernel_name);
+    kernel->program = program;
     set_error(errcode_ret, CL_SUCCESS);
     return kernel;
 }
@@ -486,6 +517,9 @@ cl_int clSetKernelArg(cl_kernel kernel, cl_uint arg_index, size_t arg_size, cons
     if (arg_index >= 16) return CL_INVALID_ARG_INDEX;
     if (arg_size == sizeof(cl_mem) && arg_value) {
         kernel->mem_args[arg_index] = *(const cl_mem *)arg_value;
+    } else if (arg_value && arg_size <= sizeof(kernel->scalar_args[arg_index])) {
+        memcpy(kernel->scalar_args[arg_index], arg_value, arg_size);
+        kernel->arg_sizes[arg_index] = arg_size;
     }
     return CL_SUCCESS;
 }
@@ -499,6 +533,10 @@ cl_int clEnqueueNDRangeKernel(cl_command_queue command_queue, cl_kernel kernel, 
     (void)event_wait_list;
     if (event) *event = NULL;
     if (!kernel) return CL_INVALID_KERNEL;
+    if (!kernel_is_supported_vector_add(kernel)) {
+        trace_unsupported_kernel(kernel);
+        return CL_INVALID_OPERATION;
+    }
     cl_mem a = kernel->mem_args[0];
     cl_mem b = kernel->mem_args[1];
     cl_mem out = kernel->mem_args[2];

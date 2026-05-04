@@ -101,7 +101,11 @@ The first scaffold now has two binaries:
   GPU entry point because the OpenCL API surface is smaller than Vulkan for an
   initial compatibility bridge. The current implementation is a vector-add
   proof that lowers one OpenCL command sequence into the neutral GPU command
-  queue; it is not yet a general llama.cpp GPU backend.
+  queue; it is not yet a general llama.cpp GPU backend. The APK executor first
+  tries Android native OpenCL by `dlopen`, but Android's untrusted-app linker
+  namespace may block vendor OpenCL libraries even when the files exist. In
+  that case the command remains valid and falls back to the executor's GLES
+  compute backend.
 
 The current shim supports capability probing, a temporary Unix-socket command
 path, a shared-buffer probe where the glibc shim passes a mapped buffer FD to
@@ -121,6 +125,9 @@ Until the OpenCL/Vulkan bridge covers real ggml/llama kernels and passes
 validation, llama.cpp GPU profile selection must stay on CPU fallback unless a
 raw diagnostic mode is explicitly requested or a pdocker GPU ICD is explicitly
 marked compute-ready.
+Unsupported OpenCL kernels must be traced and failed, not mapped to an
+incorrect fallback kernel. This prevents silent numerical corruption while the
+coverage is expanded.
 
 ## CUDA-compatible API
 

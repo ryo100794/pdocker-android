@@ -111,6 +111,36 @@ Latest device `/system/host` result on 2026-05-04:
 This is still a bridge milestone, not a llama.cpp GPU success. The next work is
 expanding OpenCL API and kernel lowering coverage without modifying llama.cpp.
 
+## 2026-05-04 APK Executor OpenCL Attempt
+
+The APK-side GPU executor now tries to run the vector-add bridge through
+Android's native OpenCL loader before falling back to GLES compute. This keeps
+the unmodified container application path as:
+
+```text
+glibc app -> libOpenCL.so / OpenCL ICD -> pdocker GPU command queue -> APK GPU executor
+```
+
+On the current device, the native OpenCL loader is present on disk but blocked
+from the untrusted app linker namespace:
+
+```text
+library "/vendor/lib64/libOpenCL.so" ... is not accessible for the namespace
+```
+
+The executor therefore falls back to GLES compute while preserving the
+container-facing OpenCL ABI. Latest device result:
+
+```json
+{"backend_impl":"gles31_compute","kernel":"vector_add","valid":true}
+```
+
+This means the current device can validate the OpenCL-to-pdocker bridge and GPU
+execution, but not vendor OpenCL execution from the APK process. The next
+generalization target is expanding the pdocker OpenCL ICD lowering layer toward
+llama/ggml kernels, with unsupported kernels traced rather than silently
+mis-executed.
+
 ## 2026-05-04 GPU Executor Boundary Probe
 
 The APK now includes `pdocker-gpu-executor`, a Bionic-side command executor

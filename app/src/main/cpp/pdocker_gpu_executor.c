@@ -11,9 +11,11 @@
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
 #include "pdocker_gpu_abi.h"
-#include <math.h>
+#include <dlfcn.h>
 #include <errno.h>
+#include <math.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +32,60 @@
 #ifndef EGL_OPENGL_ES3_BIT_KHR
 #define EGL_OPENGL_ES3_BIT_KHR 0x00000040
 #endif
+
+typedef int32_t ocl_int;
+typedef uint32_t ocl_uint;
+typedef uint64_t ocl_ulong;
+typedef uintptr_t ocl_bitfield;
+typedef ocl_bitfield ocl_device_type;
+typedef ocl_bitfield ocl_mem_flags;
+typedef ocl_uint ocl_bool;
+typedef intptr_t ocl_context_properties;
+typedef intptr_t ocl_queue_properties;
+
+typedef struct _cl_platform_id *ocl_platform_id;
+typedef struct _cl_device_id *ocl_device_id;
+typedef struct _cl_context *ocl_context;
+typedef struct _cl_command_queue *ocl_command_queue;
+typedef struct _cl_mem *ocl_mem;
+typedef struct _cl_program *ocl_program;
+typedef struct _cl_kernel *ocl_kernel;
+typedef struct _cl_event *ocl_event;
+
+#define OCL_SUCCESS 0
+#define OCL_TRUE 1
+#define OCL_DEVICE_TYPE_GPU (1u << 2)
+#define OCL_DEVICE_TYPE_DEFAULT (1u << 0)
+#define OCL_MEM_READ_WRITE (1u << 0)
+#define OCL_MEM_COPY_HOST_PTR (1u << 5)
+
+typedef struct {
+    void *lib;
+    ocl_platform_id platform;
+    ocl_device_id device;
+    ocl_context context;
+    ocl_command_queue queue;
+    ocl_int (*clGetPlatformIDs)(ocl_uint, ocl_platform_id *, ocl_uint *);
+    ocl_int (*clGetDeviceIDs)(ocl_platform_id, ocl_device_type, ocl_uint, ocl_device_id *, ocl_uint *);
+    ocl_context (*clCreateContext)(const ocl_context_properties *, ocl_uint, const ocl_device_id *, void (*)(const char *, const void *, size_t, void *), void *, ocl_int *);
+    ocl_command_queue (*clCreateCommandQueue)(ocl_context, ocl_device_id, ocl_bitfield, ocl_int *);
+    ocl_command_queue (*clCreateCommandQueueWithProperties)(ocl_context, ocl_device_id, const ocl_queue_properties *, ocl_int *);
+    ocl_mem (*clCreateBuffer)(ocl_context, ocl_mem_flags, size_t, void *, ocl_int *);
+    ocl_int (*clReleaseMemObject)(ocl_mem);
+    ocl_program (*clCreateProgramWithSource)(ocl_context, ocl_uint, const char **, const size_t *, ocl_int *);
+    ocl_int (*clBuildProgram)(ocl_program, ocl_uint, const ocl_device_id *, const char *, void (*)(ocl_program, void *), void *);
+    ocl_int (*clGetProgramBuildInfo)(ocl_program, ocl_device_id, ocl_uint, size_t, void *, size_t *);
+    ocl_int (*clReleaseProgram)(ocl_program);
+    ocl_kernel (*clCreateKernel)(ocl_program, const char *, ocl_int *);
+    ocl_int (*clReleaseKernel)(ocl_kernel);
+    ocl_int (*clSetKernelArg)(ocl_kernel, ocl_uint, size_t, const void *);
+    ocl_int (*clEnqueueWriteBuffer)(ocl_command_queue, ocl_mem, ocl_bool, size_t, size_t, const void *, ocl_uint, const ocl_event *, ocl_event *);
+    ocl_int (*clEnqueueReadBuffer)(ocl_command_queue, ocl_mem, ocl_bool, size_t, size_t, void *, ocl_uint, const ocl_event *, ocl_event *);
+    ocl_int (*clEnqueueNDRangeKernel)(ocl_command_queue, ocl_kernel, ocl_uint, const size_t *, const size_t *, const size_t *, ocl_uint, const ocl_event *, ocl_event *);
+    ocl_int (*clFinish)(ocl_command_queue);
+    ocl_int (*clReleaseCommandQueue)(ocl_command_queue);
+    ocl_int (*clReleaseContext)(ocl_context);
+} OpenClBackend;
 
 static FILE *g_json_out = NULL;
 
@@ -103,6 +159,191 @@ static GLuint make_ssbo(GLuint binding, const void *data, size_t bytes, GLenum u
     glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)bytes, data, usage);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, id);
     return id;
+}
+
+static void *load_symbol(void *lib, const char *name) {
+    void *sym = dlsym(lib, name);
+    if (!sym) fprintf(stderr, "pdocker-gpu-executor: OpenCL symbol missing: %s\n", name);
+    return sym;
+}
+
+static int load_opencl_backend(OpenClBackend *cl) {
+    memset(cl, 0, sizeof(*cl));
+    const char *last_error = "not attempted";
+    const char *env_path = getenv("PDOCKER_ANDROID_OPENCL_LIBRARY");
+    const char *paths[] = {
+        env_path && env_path[0] ? env_path : NULL,
+        "libOpenCL.so",
+        "/vendor/lib64/libOpenCL.so",
+        "/system/vendor/lib64/libOpenCL.so",
+        "/system/lib64/libOpenCL.so",
+        "/vendor/lib64/egl/libOpenCL.so",
+        NULL,
+    };
+    for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); ++i) {
+        if (!paths[i] || !paths[i][0]) continue;
+        cl->lib = dlopen(paths[i], RTLD_NOW | RTLD_LOCAL);
+        if (cl->lib) break;
+        last_error = dlerror();
+    }
+    if (!cl->lib) {
+        fprintf(stderr, "pdocker-gpu-executor: Android OpenCL dlopen failed: %s\n", last_error ? last_error : "unknown");
+        return -1;
+    }
+
+#define LOAD_OCL(name) do { \
+        cl->name = (void *)load_symbol(cl->lib, #name); \
+        if (!cl->name) return -2; \
+    } while (0)
+    LOAD_OCL(clGetPlatformIDs);
+    LOAD_OCL(clGetDeviceIDs);
+    LOAD_OCL(clCreateContext);
+    cl->clCreateCommandQueueWithProperties = (void *)dlsym(cl->lib, "clCreateCommandQueueWithProperties");
+    LOAD_OCL(clCreateCommandQueue);
+    LOAD_OCL(clCreateBuffer);
+    LOAD_OCL(clReleaseMemObject);
+    LOAD_OCL(clCreateProgramWithSource);
+    LOAD_OCL(clBuildProgram);
+    cl->clGetProgramBuildInfo = (void *)dlsym(cl->lib, "clGetProgramBuildInfo");
+    LOAD_OCL(clReleaseProgram);
+    LOAD_OCL(clCreateKernel);
+    LOAD_OCL(clReleaseKernel);
+    LOAD_OCL(clSetKernelArg);
+    LOAD_OCL(clEnqueueWriteBuffer);
+    LOAD_OCL(clEnqueueReadBuffer);
+    LOAD_OCL(clEnqueueNDRangeKernel);
+    LOAD_OCL(clFinish);
+    LOAD_OCL(clReleaseCommandQueue);
+    LOAD_OCL(clReleaseContext);
+#undef LOAD_OCL
+
+    ocl_int err = OCL_SUCCESS;
+    if (cl->clGetPlatformIDs(1, &cl->platform, NULL) != OCL_SUCCESS || !cl->platform) return -3;
+    if (cl->clGetDeviceIDs(cl->platform, OCL_DEVICE_TYPE_GPU, 1, &cl->device, NULL) != OCL_SUCCESS || !cl->device) {
+        if (cl->clGetDeviceIDs(cl->platform, OCL_DEVICE_TYPE_DEFAULT, 1, &cl->device, NULL) != OCL_SUCCESS || !cl->device) return -4;
+    }
+    cl->context = cl->clCreateContext(NULL, 1, &cl->device, NULL, NULL, &err);
+    if (err != OCL_SUCCESS || !cl->context) return -5;
+    if (cl->clCreateCommandQueueWithProperties) {
+        cl->queue = cl->clCreateCommandQueueWithProperties(cl->context, cl->device, NULL, &err);
+    } else {
+        cl->queue = cl->clCreateCommandQueue(cl->context, cl->device, 0, &err);
+    }
+    if (err != OCL_SUCCESS || !cl->queue) return -6;
+    return 0;
+}
+
+static void close_opencl_backend(OpenClBackend *cl) {
+    if (!cl) return;
+    if (cl->queue && cl->clReleaseCommandQueue) cl->clReleaseCommandQueue(cl->queue);
+    if (cl->context && cl->clReleaseContext) cl->clReleaseContext(cl->context);
+    if (cl->lib) dlclose(cl->lib);
+    memset(cl, 0, sizeof(*cl));
+}
+
+static int run_vector_add_arrays_opencl(const float *a, const float *b, float *out, size_t n, const char *transport) {
+    OpenClBackend cl;
+    double init_start = now_ms();
+    int load_rc = load_opencl_backend(&cl);
+    if (load_rc != 0) return load_rc;
+    double init_ms = now_ms() - init_start;
+
+    const size_t bytes = n * sizeof(float);
+    ocl_int err = OCL_SUCCESS;
+    ocl_mem buf_a = NULL;
+    ocl_mem buf_b = NULL;
+    ocl_mem buf_o = NULL;
+    ocl_program program = NULL;
+    ocl_kernel kernel = NULL;
+    double upload_start = now_ms();
+    buf_a = cl.clCreateBuffer(cl.context, OCL_MEM_READ_WRITE | OCL_MEM_COPY_HOST_PTR, bytes, (void *)a, &err);
+    if (err != OCL_SUCCESS || !buf_a) goto fail;
+    buf_b = cl.clCreateBuffer(cl.context, OCL_MEM_READ_WRITE | OCL_MEM_COPY_HOST_PTR, bytes, (void *)b, &err);
+    if (err != OCL_SUCCESS || !buf_b) goto fail;
+    buf_o = cl.clCreateBuffer(cl.context, OCL_MEM_READ_WRITE, bytes, NULL, &err);
+    if (err != OCL_SUCCESS || !buf_o) goto fail;
+    double upload_ms = now_ms() - upload_start;
+
+    double compile_start = now_ms();
+    const char *src =
+        "__kernel void pdocker_vector_add(__global const float *a, __global const float *b, __global float *out, const uint n) {\n"
+        "  size_t i = get_global_id(0);\n"
+        "  if (i < n) out[i] = a[i] + b[i];\n"
+        "}\n";
+    program = cl.clCreateProgramWithSource(cl.context, 1, &src, NULL, &err);
+    if (err != OCL_SUCCESS || !program) goto fail;
+    err = cl.clBuildProgram(program, 1, &cl.device, "", NULL, NULL);
+    if (err != OCL_SUCCESS) {
+        if (cl.clGetProgramBuildInfo) {
+            char log[1024];
+            size_t log_size = 0;
+            if (cl.clGetProgramBuildInfo(program, cl.device, 0x1183, sizeof(log), log, &log_size) == OCL_SUCCESS) {
+                fprintf(stderr, "pdocker-gpu-executor: OpenCL build failed: %.*s\n", (int)(log_size < sizeof(log) ? log_size : sizeof(log)), log);
+            }
+        }
+        goto fail_program;
+    }
+    kernel = cl.clCreateKernel(program, "pdocker_vector_add", &err);
+    if (err != OCL_SUCCESS || !kernel) goto fail_program;
+    double compile_ms = now_ms() - compile_start;
+
+    double dispatch_start = now_ms();
+    ocl_uint count = (ocl_uint)n;
+    cl.clSetKernelArg(kernel, 0, sizeof(buf_a), &buf_a);
+    cl.clSetKernelArg(kernel, 1, sizeof(buf_b), &buf_b);
+    cl.clSetKernelArg(kernel, 2, sizeof(buf_o), &buf_o);
+    cl.clSetKernelArg(kernel, 3, sizeof(count), &count);
+    size_t global = n;
+    err = cl.clEnqueueNDRangeKernel(cl.queue, kernel, 1, NULL, &global, NULL, 0, NULL, NULL);
+    if (err != OCL_SUCCESS) goto fail_kernel;
+    cl.clFinish(cl.queue);
+    double dispatch_ms = now_ms() - dispatch_start;
+
+    double download_start = now_ms();
+    err = cl.clEnqueueReadBuffer(cl.queue, buf_o, OCL_TRUE, 0, bytes, out, 0, NULL, NULL);
+    if (err != OCL_SUCCESS) goto fail_kernel;
+    cl.clFinish(cl.queue);
+    double download_ms = now_ms() - download_start;
+
+    double max_err = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        double e = fabs((double)out[i] - (double)(a[i] + b[i]));
+        if (e > max_err) max_err = e;
+    }
+    const int valid = max_err <= 0.0001;
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"backend_impl\":\"android_opencl\",\"transport\":\"%s\","
+            "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
+            "\"init_ms\":%.4f,\"compile_ms\":%.4f,\"upload_ms\":%.4f,"
+            "\"dispatch_ms\":%.4f,\"download_ms\":%.4f,\"total_ms\":%.4f,"
+            "\"max_abs_error\":%.8f,\"valid\":%s}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            transport ? transport : "opencl-local-process-buffer",
+            n, init_ms, compile_ms, upload_ms, dispatch_ms, download_ms,
+            init_ms + compile_ms + upload_ms + dispatch_ms + download_ms, max_err,
+            valid ? "true" : "false");
+    fflush(json_out());
+    cl.clReleaseKernel(kernel);
+    cl.clReleaseProgram(program);
+    cl.clReleaseMemObject(buf_a);
+    cl.clReleaseMemObject(buf_b);
+    cl.clReleaseMemObject(buf_o);
+    close_opencl_backend(&cl);
+    return valid ? 0 : 6;
+
+fail_kernel:
+    if (kernel) cl.clReleaseKernel(kernel);
+fail_program:
+    if (program) cl.clReleaseProgram(program);
+fail:
+    if (buf_a) cl.clReleaseMemObject(buf_a);
+    if (buf_b) cl.clReleaseMemObject(buf_b);
+    if (buf_o) cl.clReleaseMemObject(buf_o);
+    close_opencl_backend(&cl);
+    return -7;
 }
 
 typedef struct {
@@ -261,6 +502,15 @@ static int run_vector_add_arrays(const float *a, const float *b, float *out, siz
     return valid ? 0 : 6;
 }
 
+static int run_vector_add_arrays_best(const float *a, const float *b, float *out, size_t n, const char *transport) {
+    if (strcmp(getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") ? getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") : "0", "1") != 0) {
+        int rc = run_vector_add_arrays_opencl(a, b, out, n, transport ? transport : "opencl-command-queue");
+        if (rc == 0) return 0;
+        fprintf(stderr, "pdocker-gpu-executor: Android OpenCL vector_add unavailable rc=%d; falling back to GLES compute\n", rc);
+    }
+    return run_vector_add_arrays(a, b, out, n, transport ? transport : "gles31-fallback");
+}
+
 static int run_vector_add(void) {
     const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
     const size_t bytes = n * sizeof(float);
@@ -275,7 +525,7 @@ static int run_vector_add(void) {
         return 2;
     }
     fill_inputs(a, b, n);
-    int rc = run_vector_add_arrays(a, b, out, n, "local-process-buffer");
+    int rc = run_vector_add_arrays_best(a, b, out, n, "local-process-buffer");
     free(a);
     free(b);
     free(out);
@@ -302,7 +552,7 @@ static int run_vector_add_fd(int fd, size_t n) {
     float *a = (float *)map;
     float *b = a + n;
     float *out = b + n;
-    int rc = run_vector_add_arrays(a, b, out, n, "unix-socket-scm-rights-shared-buffer");
+    int rc = run_vector_add_arrays_best(a, b, out, n, "unix-socket-scm-rights-shared-buffer");
     munmap(map, total);
     close(fd);
     return rc;
@@ -337,8 +587,8 @@ static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n) {
         json_fail("mmap", strerror(errno));
         return 70;
     }
-    int rc = run_vector_add_arrays((const float *)map_a, (const float *)map_b, (float *)map_out, n,
-                                   "vulkan-icd-scm-rights-3buffer");
+    int rc = run_vector_add_arrays_best((const float *)map_a, (const float *)map_b, (float *)map_out, n,
+                                        "opencl-icd-scm-rights-3buffer");
     munmap(map_a, bytes);
     munmap(map_b, bytes);
     munmap(map_out, bytes);
@@ -401,7 +651,7 @@ static int run_registered_vector_add(RegisteredVectorBuffer *buffer) {
     float *a = (float *)buffer->map;
     float *b = a + buffer->n;
     float *out = b + buffer->n;
-    return run_vector_add_arrays(a, b, out, buffer->n, "unix-socket-registered-shared-buffer");
+    return run_vector_add_arrays_best(a, b, out, buffer->n, "unix-socket-registered-shared-buffer");
 }
 
 static void print_capabilities(const char *transport) {
@@ -409,7 +659,8 @@ static void print_capabilities(const char *transport) {
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
             "\"transport\":\"%s\","
-            "\"backend_impls\":[\"gles31_compute\"],"
+            "\"backend_impls\":[\"android_opencl\",\"gles31_compute\"],"
+            "\"preferred_backend\":\"android_opencl\","
             "\"container_contract\":\"glibc-shim-command-queue\","
             "\"fd_shared_buffer\":true,"
             "\"process_exec\":true}\n",

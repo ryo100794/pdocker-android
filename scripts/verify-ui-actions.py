@@ -52,6 +52,8 @@ def main() -> int:
     android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
     vulkan_smoke_src = (ROOT / "scripts/smoke-vulkan-icd-bridge.sh").read_text()
     opencl_smoke_src = (ROOT / "scripts/smoke-opencl-bridge.sh").read_text()
+    gpu_executor_src = (ROOT / "app/src/main/cpp/pdocker_gpu_executor.c").read_text()
+    opencl_icd_src = (ROOT / "docker-proot-setup/src/gpu/pdocker_opencl_icd.c").read_text()
     llama_profile_src = (ROOT / "app/src/main/assets/project-library/llama-cpp-gpu/scripts/pdocker-gpu-profile.sh").read_text()
     manifest_src = (ROOT / "app/src/main/AndroidManifest.xml").read_text()
     debug_receiver_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdDebugReceiver.kt").read_text()
@@ -85,6 +87,8 @@ def main() -> int:
     require("vulkan icd bridge has reusable smoke test", "VK_ICD_FILENAMES" in vulkan_smoke_src and "vkQueueSubmit" in vulkan_smoke_src and "PDOCKER_GPU_QUEUE_SOCKET" in vulkan_smoke_src)
     require("runtime installs glibc OpenCL ICD for containers", "libpdockeropenclicd.so" in runtime_src and "pdocker-opencl-icd.so" in runtime_src and "libOpenCL.so.1" in runtime_src and "PDOCKER_OPENCL_ICD_HOST_PATH" in pdockerd_bridge_src and "PDOCKER_OPENCL_ICD" in pdockerd_src and "/usr/local/lib/pdocker-opencl-icd.so" in pdockerd_src)
     require("opencl bridge has reusable smoke test", "clEnqueueNDRangeKernel" in opencl_smoke_src and "PDOCKER_GPU_QUEUE_SOCKET" in opencl_smoke_src and "pdocker-opencl-icd.so" in opencl_smoke_src)
+    require("gpu executor attempts Android OpenCL before GLES fallback", "dlopen" in gpu_executor_src and "android_opencl" in gpu_executor_src and "falling back to GLES compute" in gpu_executor_src)
+    require("opencl icd refuses unsupported kernels", "trace_unsupported_kernel" in opencl_icd_src and "kernel_is_supported_vector_add" in opencl_icd_src and "CL_INVALID_OPERATION" in opencl_icd_src)
     require("llama profile distinguishes ready OpenCL bridge from llama backend", "pdocker_opencl_icd_ready_signal" in llama_profile_src and "llama.cpp OpenCL kernel lowering is not complete yet" in llama_profile_src and "PDOCKER_OPENCL_API_VERSION" in llama_profile_src)
     require("pdockerd exposes bounded host environment diagnostics", 'path == "/system/host"' in pdockerd_src and "collect_host_environment" in pdockerd_src and '"Frameworks"' in pdockerd_src and '"OpenCL"' in pdockerd_src and '"NnApi"' in pdockerd_src and '"OpenCVPython"' not in pdockerd_src and '"PATH"' not in pdockerd_src.split("def collect_host_environment", 1)[1].split("def _direct_rootfs_path", 1)[0])
     require("ui renders host environment pane from engine api", "renderHostEnvironment()" in main_src and 'engine.getObject("/system/host")' in main_src and "widget_host_environment" in string_src and "host_environment_gpu_fmt" in string_src and "host_environment_vulkan_fmt" in string_src and "host_environment_opencl_fmt" in string_src and "host_environment_accel_fmt" in string_src)
