@@ -152,6 +152,7 @@ def run_daemon(
     gpu_executor = os.path.join(runtime_dir, "gpu", "pdocker-gpu-executor")
     if os.path.exists(gpu_executor):
         os.environ["PDOCKER_GPU_EXECUTOR"] = gpu_executor
+        os.environ["PDOCKER_GPU_EXECUTOR_AVAILABLE"] = "1"
         os.environ["PDOCKER_GPU_HOST_DIR"] = os.path.join(runtime_dir, "gpu")
         os.environ["PDOCKER_GPU_CONTAINER_DIR"] = "/run/pdocker-gpu"
         os.environ["PDOCKER_GPU_QUEUE_SOCKET"] = "/run/pdocker-gpu/pdocker-gpu.sock"
@@ -168,6 +169,11 @@ def run_daemon(
     if os.path.exists(vulkan_icd):
         os.environ["PDOCKER_VULKAN_ICD_HOST_PATH"] = vulkan_icd
         os.environ["PDOCKER_VULKAN_ICD_CONTAINER_PATH"] = "/usr/local/lib/pdocker-vulkan-icd.so"
+        os.environ["PDOCKER_VULKAN_ICD_KIND"] = "pdocker-bridge-minimal"
+        os.environ["PDOCKER_VULKAN_ICD_READY"] = "0"
+        os.environ["PDOCKER_VULKAN_API_VERSION"] = "1.1.0"
+    os.environ.setdefault("PDOCKER_OPENCL_ICD_KIND", "android-opencl-loader-probe")
+    os.environ.setdefault("PDOCKER_OPENCL_ICD_READY", "0")
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
