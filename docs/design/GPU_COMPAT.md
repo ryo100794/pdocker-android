@@ -141,10 +141,14 @@ The first scaffold now has two binaries:
   timings for host-vs-container overhead comparisons.
 - `pdocker-vulkan-icd.so`: Linux/glibc Vulkan ICD surface, injected as
   `/usr/local/lib/pdocker-vulkan-icd.so`. This is the standard Vulkan-loader
-  entry point for unmodified container applications. It currently exposes a
-  minimal discoverable ICD and is marked not compute-ready
-  (`PDOCKER_VULKAN_ICD_READY=0`) until Vulkan commands are lowered into the
-  pdocker GPU bridge.
+  entry point for unmodified container applications. It now exposes the
+  baseline that llama.cpp's ggml-vulkan initialization expects: Vulkan 1.2,
+  `VK_KHR_16bit_storage`, `storageBuffer16BitAccess`, compute subgroup
+  properties, two compute/transfer queue handles, host-visible coherent memory,
+  and common buffer/command stubs. It is still marked not compute-ready
+  (`PDOCKER_VULKAN_ICD_READY=0`) for real SPIR-V dispatch until shader lowering
+  is implemented; unknown real shader modules fail explicitly instead of being
+  mapped to a wrong fallback kernel.
 - `pdocker-opencl-icd.so`: Linux/glibc OpenCL ICD surface, also injected as
   `/usr/local/lib/libOpenCL.so` and `/usr/local/lib/libOpenCL.so.1` for images
   that link the OpenCL loader directly. This is the preferred first standard
@@ -208,6 +212,13 @@ bridge path. Bridge tests set `PDOCKER_GPU_GOVERNOR=force-gpu` so the real GPU
 transport remains continuously tested. Operators can force CPU with
 `PDOCKER_GPU_GOVERNOR=force-cpu` or tune the auto threshold with
 `PDOCKER_GPU_CPU_FALLBACK_MAX_VECTOR_ADD_N`.
+
+Vulkan follows the same correctness rule. The current ICD accepts the
+fake-SPIR-V vector-add smoke used for bridge transport testing, but rejects
+real shader modules that are not lowered yet. The next llama.cpp Vulkan step is
+to record enough SPIR-V/pipeline metadata to recognize ggml matmul-family
+shaders and lower those to resident-buffer executor commands without modifying
+llama.cpp itself.
 
 GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
 binds the APK runtime GPU directory there and direct execution rewrites

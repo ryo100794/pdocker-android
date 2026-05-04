@@ -46,6 +46,7 @@ typedef struct {
 typedef struct PdockerVkMemory PdockerVkMemory;
 typedef struct PdockerVkBuffer PdockerVkBuffer;
 typedef struct PdockerVkDescriptorSet PdockerVkDescriptorSet;
+typedef struct PdockerVkShaderModule PdockerVkShaderModule;
 typedef struct PdockerVkPipeline PdockerVkPipeline;
 typedef struct PdockerVkFence PdockerVkFence;
 
@@ -65,7 +66,13 @@ struct PdockerVkDescriptorSet {
     PdockerVkBuffer *storage_buffers[16];
 };
 
+struct PdockerVkShaderModule {
+    size_t code_size;
+    uint32_t first_word;
+};
+
 struct PdockerVkPipeline {
+    PdockerVkShaderModule *shader;
     uint32_t local_size_x;
 };
 
@@ -190,7 +197,162 @@ static int send_vector_add_3fd(size_t n, int fd_a, int fd_b, int fd_out) {
 }
 
 static uint32_t pdocker_api_version(void) {
-    return VK_MAKE_API_VERSION(0, 1, 1, 0);
+    return VK_API_VERSION_1_2;
+}
+
+static void copy_extension_properties(
+        const VkExtensionProperties *available,
+        uint32_t available_count,
+        uint32_t *pPropertyCount,
+        VkExtensionProperties *pProperties) {
+    if (!pPropertyCount) return;
+    if (!pProperties) {
+        *pPropertyCount = available_count;
+        return;
+    }
+    uint32_t count = *pPropertyCount < available_count ? *pPropertyCount : available_count;
+    for (uint32_t i = 0; i < count; ++i) pProperties[i] = available[i];
+    *pPropertyCount = count;
+}
+
+static void fill_physical_device_properties(VkPhysicalDeviceProperties *pProperties) {
+    if (!pProperties) return;
+    memset(pProperties, 0, sizeof(*pProperties));
+    pProperties->apiVersion = pdocker_api_version();
+    pProperties->driverVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
+    pProperties->vendorID = 0x5044; /* PD */
+    pProperties->deviceID = 0x0001;
+    pProperties->deviceType = bridge_available() ? VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+                                                 : VK_PHYSICAL_DEVICE_TYPE_CPU;
+    snprintf(pProperties->deviceName, sizeof(pProperties->deviceName),
+             "pdocker Vulkan bridge (%s)", bridge_available() ? "queue" : "offline");
+    pProperties->limits.maxComputeSharedMemorySize = 32768;
+    pProperties->limits.maxComputeWorkGroupCount[0] = 65535;
+    pProperties->limits.maxComputeWorkGroupCount[1] = 65535;
+    pProperties->limits.maxComputeWorkGroupCount[2] = 65535;
+    pProperties->limits.maxComputeWorkGroupInvocations = 256;
+    pProperties->limits.maxComputeWorkGroupSize[0] = 256;
+    pProperties->limits.maxComputeWorkGroupSize[1] = 256;
+    pProperties->limits.maxComputeWorkGroupSize[2] = 64;
+    pProperties->limits.maxPushConstantsSize = 256;
+    pProperties->limits.maxStorageBufferRange = 512u * 1024u * 1024u;
+    pProperties->limits.maxMemoryAllocationCount = 4096;
+    pProperties->limits.maxBoundDescriptorSets = 8;
+    pProperties->limits.maxPerStageDescriptorStorageBuffers = 64;
+    pProperties->limits.maxDescriptorSetStorageBuffers = 64;
+    pProperties->limits.timestampComputeAndGraphics = VK_FALSE;
+}
+
+static void fill_pnext_properties(void *pNext) {
+    for (VkBaseOutStructure *cur = (VkBaseOutStructure *)pNext; cur; cur = cur->pNext) {
+        switch (cur->sType) {
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES: {
+                VkPhysicalDeviceMaintenance3Properties *p = (VkPhysicalDeviceMaintenance3Properties *)cur;
+                p->maxPerSetDescriptors = 1024;
+                p->maxMemoryAllocationSize = 1024ull * 1024ull * 1024ull;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES: {
+                VkPhysicalDeviceSubgroupProperties *p = (VkPhysicalDeviceSubgroupProperties *)cur;
+                p->subgroupSize = 32;
+                p->supportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
+                p->supportedOperations =
+                    VK_SUBGROUP_FEATURE_BASIC_BIT |
+                    VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
+                    VK_SUBGROUP_FEATURE_BALLOT_BIT |
+                    VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
+                    VK_SUBGROUP_FEATURE_VOTE_BIT;
+                p->quadOperationsInAllStages = VK_FALSE;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES: {
+                VkPhysicalDeviceDriverProperties *p = (VkPhysicalDeviceDriverProperties *)cur;
+                p->driverID = VK_DRIVER_ID_MESA_LLVMPIPE;
+                snprintf(p->driverName, sizeof(p->driverName), "pdocker-vulkan-bridge");
+                snprintf(p->driverInfo, sizeof(p->driverInfo), "pdocker neutral Vulkan bridge");
+                p->conformanceVersion.major = 1;
+                p->conformanceVersion.minor = 2;
+                p->conformanceVersion.subminor = 0;
+                p->conformanceVersion.patch = 0;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES: {
+                VkPhysicalDeviceVulkan11Properties *p = (VkPhysicalDeviceVulkan11Properties *)cur;
+                p->subgroupSize = 32;
+                p->subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
+                p->subgroupSupportedOperations =
+                    VK_SUBGROUP_FEATURE_BASIC_BIT |
+                    VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
+                    VK_SUBGROUP_FEATURE_BALLOT_BIT |
+                    VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
+                    VK_SUBGROUP_FEATURE_VOTE_BIT;
+                p->subgroupQuadOperationsInAllStages = VK_FALSE;
+                p->maxMultiviewViewCount = 1;
+                p->maxMultiviewInstanceIndex = 1;
+                p->maxPerSetDescriptors = 1024;
+                p->maxMemoryAllocationSize = 1024ull * 1024ull * 1024ull;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES: {
+                VkPhysicalDeviceVulkan12Properties *p = (VkPhysicalDeviceVulkan12Properties *)cur;
+                p->driverID = VK_DRIVER_ID_MESA_LLVMPIPE;
+                snprintf(p->driverName, sizeof(p->driverName), "pdocker-vulkan-bridge");
+                snprintf(p->driverInfo, sizeof(p->driverInfo), "pdocker neutral Vulkan bridge");
+                p->conformanceVersion.major = 1;
+                p->conformanceVersion.minor = 2;
+                p->shaderRoundingModeRTEFloat16 = VK_FALSE;
+                p->shaderRoundingModeRTZFloat16 = VK_FALSE;
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
+static void fill_physical_device_features(VkPhysicalDeviceFeatures *pFeatures) {
+    if (!pFeatures) return;
+    memset(pFeatures, 0, sizeof(*pFeatures));
+    pFeatures->shaderInt64 = VK_TRUE;
+}
+
+static void fill_pnext_features(void *pNext) {
+    for (VkBaseOutStructure *cur = (VkBaseOutStructure *)pNext; cur; cur = cur->pNext) {
+        switch (cur->sType) {
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
+                VkPhysicalDeviceVulkan11Features *p = (VkPhysicalDeviceVulkan11Features *)cur;
+                p->storageBuffer16BitAccess = VK_TRUE;
+                p->uniformAndStorageBuffer16BitAccess = VK_TRUE;
+                p->storagePushConstant16 = VK_TRUE;
+                p->storageInputOutput16 = VK_FALSE;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
+                VkPhysicalDevice16BitStorageFeatures *p = (VkPhysicalDevice16BitStorageFeatures *)cur;
+                p->storageBuffer16BitAccess = VK_TRUE;
+                p->uniformAndStorageBuffer16BitAccess = VK_TRUE;
+                p->storagePushConstant16 = VK_TRUE;
+                p->storageInputOutput16 = VK_FALSE;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: {
+                VkPhysicalDeviceVulkan12Features *p = (VkPhysicalDeviceVulkan12Features *)cur;
+                p->shaderFloat16 = VK_FALSE;
+                p->shaderInt8 = VK_FALSE;
+                p->bufferDeviceAddress = VK_FALSE;
+                p->vulkanMemoryModel = VK_FALSE;
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: {
+                VkPhysicalDeviceShaderFloat16Int8Features *p = (VkPhysicalDeviceShaderFloat16Int8Features *)cur;
+                p->shaderFloat16 = VK_FALSE;
+                p->shaderInt8 = VK_FALSE;
+                break;
+            }
+            default:
+                break;
+        }
+    }
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t *pVersion) {
@@ -274,25 +436,7 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties(
         VkPhysicalDevice physicalDevice,
         VkPhysicalDeviceProperties *pProperties) {
     (void)physicalDevice;
-    if (!pProperties) return;
-    memset(pProperties, 0, sizeof(*pProperties));
-    pProperties->apiVersion = pdocker_api_version();
-    pProperties->driverVersion = VK_MAKE_API_VERSION(0, 0, 1, 0);
-    pProperties->vendorID = 0x5044; /* PD */
-    pProperties->deviceID = 0x0001;
-    pProperties->deviceType = bridge_available() ? VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
-                                                 : VK_PHYSICAL_DEVICE_TYPE_CPU;
-    snprintf(pProperties->deviceName, sizeof(pProperties->deviceName),
-             "pdocker GPU bridge (%s)", bridge_available() ? "queue" : "offline");
-    pProperties->limits.maxComputeSharedMemorySize = 32768;
-    pProperties->limits.maxComputeWorkGroupCount[0] = 65535;
-    pProperties->limits.maxComputeWorkGroupCount[1] = 65535;
-    pProperties->limits.maxComputeWorkGroupCount[2] = 65535;
-    pProperties->limits.maxComputeWorkGroupInvocations = 256;
-    pProperties->limits.maxComputeWorkGroupSize[0] = 256;
-    pProperties->limits.maxComputeWorkGroupSize[1] = 1;
-    pProperties->limits.maxComputeWorkGroupSize[2] = 1;
-    pProperties->limits.timestampComputeAndGraphics = VK_FALSE;
+    fill_physical_device_properties(pProperties);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties2(
@@ -300,22 +444,23 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceProperties2(
         VkPhysicalDeviceProperties2 *pProperties) {
     if (!pProperties) return;
     vkGetPhysicalDeviceProperties(physicalDevice, &pProperties->properties);
+    fill_pnext_properties(pProperties->pNext);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFeatures(
         VkPhysicalDevice physicalDevice,
         VkPhysicalDeviceFeatures *pFeatures) {
     (void)physicalDevice;
-    if (!pFeatures) return;
-    memset(pFeatures, 0, sizeof(*pFeatures));
+    fill_physical_device_features(pFeatures);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFeatures2(
         VkPhysicalDevice physicalDevice,
         VkPhysicalDeviceFeatures2 *pFeatures) {
     if (!pFeatures) return;
-    memset(&pFeatures->features, 0, sizeof(pFeatures->features));
     (void)physicalDevice;
+    fill_physical_device_features(&pFeatures->features);
+    fill_pnext_features(pFeatures->pNext);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFormatProperties(
@@ -383,11 +528,32 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceQueueFamilyProperties(
     if (*pQueueFamilyPropertyCount >= 1) {
         memset(&pQueueFamilyProperties[0], 0, sizeof(pQueueFamilyProperties[0]));
         pQueueFamilyProperties[0].queueFlags = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
-        pQueueFamilyProperties[0].queueCount = 1;
+        pQueueFamilyProperties[0].queueCount = 2;
         pQueueFamilyProperties[0].timestampValidBits = 0;
         pQueueFamilyProperties[0].minImageTransferGranularity.width = 1;
         pQueueFamilyProperties[0].minImageTransferGranularity.height = 1;
         pQueueFamilyProperties[0].minImageTransferGranularity.depth = 1;
+        *pQueueFamilyPropertyCount = 1;
+    }
+}
+
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceQueueFamilyProperties2(
+        VkPhysicalDevice physicalDevice,
+        uint32_t *pQueueFamilyPropertyCount,
+        VkQueueFamilyProperties2 *pQueueFamilyProperties) {
+    (void)physicalDevice;
+    if (!pQueueFamilyPropertyCount) return;
+    if (!pQueueFamilyProperties) {
+        *pQueueFamilyPropertyCount = 1;
+        return;
+    }
+    if (*pQueueFamilyPropertyCount >= 1) {
+        memset(&pQueueFamilyProperties[0].queueFamilyProperties, 0, sizeof(pQueueFamilyProperties[0].queueFamilyProperties));
+        pQueueFamilyProperties[0].queueFamilyProperties.queueFlags = VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT;
+        pQueueFamilyProperties[0].queueFamilyProperties.queueCount = 2;
+        pQueueFamilyProperties[0].queueFamilyProperties.minImageTransferGranularity.width = 1;
+        pQueueFamilyProperties[0].queueFamilyProperties.minImageTransferGranularity.height = 1;
+        pQueueFamilyProperties[0].queueFamilyProperties.minImageTransferGranularity.depth = 1;
         *pQueueFamilyPropertyCount = 1;
     }
 }
@@ -403,7 +569,7 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     pMemoryProperties->memoryTypes[0].heapIndex = 0;
     pMemoryProperties->memoryHeapCount = 1;
-    pMemoryProperties->memoryHeaps[0].size = 256u * 1024u * 1024u;
+    pMemoryProperties->memoryHeaps[0].size = 2ull * 1024ull * 1024ull * 1024ull;
     pMemoryProperties->memoryHeaps[0].flags = 0;
 }
 
@@ -520,6 +686,15 @@ VKAPI_ATTR void VKAPI_CALL vkUnmapMemory(VkDevice device, VkDeviceMemory memory)
     (void)memory;
 }
 
+VKAPI_ATTR void VKAPI_CALL vkGetDeviceMemoryCommitment(
+        VkDevice device,
+        VkDeviceMemory memory,
+        VkDeviceSize *pCommittedMemoryInBytes) {
+    (void)device;
+    PdockerVkMemory *m = (PdockerVkMemory *)memory;
+    if (pCommittedMemoryInBytes) *pCommittedMemoryInBytes = m ? (VkDeviceSize)m->size : 0;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL vkFlushMappedMemoryRanges(
         VkDevice device,
         uint32_t memoryRangeCount,
@@ -575,12 +750,10 @@ VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(
         VkExtensionProperties *pProperties) {
     (void)physicalDevice;
     (void)pLayerName;
-    if (!pPropertyCount) return VK_ERROR_INITIALIZATION_FAILED;
-    if (!pProperties) {
-        *pPropertyCount = 0;
-        return VK_SUCCESS;
-    }
-    *pPropertyCount = 0;
+    const VkExtensionProperties available[] = {
+        { VK_KHR_16BIT_STORAGE_EXTENSION_NAME, VK_KHR_16BIT_STORAGE_SPEC_VERSION },
+    };
+    copy_extension_properties(available, (uint32_t)(sizeof(available) / sizeof(available[0])), pPropertyCount, pProperties);
     return VK_SUCCESS;
 }
 
@@ -769,10 +942,15 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateShaderModule(
         const VkAllocationCallbacks *pAllocator,
         VkShaderModule *pShaderModule) {
     (void)device;
-    (void)pCreateInfo;
     (void)pAllocator;
-    if (!pShaderModule) return VK_ERROR_INITIALIZATION_FAILED;
-    *pShaderModule = (VkShaderModule)pdocker_alloc_handle(sizeof(PdockerHandle));
+    if (!pCreateInfo || !pShaderModule) return VK_ERROR_INITIALIZATION_FAILED;
+    PdockerVkShaderModule *shader = pdocker_alloc_handle(sizeof(*shader));
+    if (!shader) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    shader->code_size = pCreateInfo->codeSize;
+    shader->first_word = (pCreateInfo->pCode && pCreateInfo->codeSize >= sizeof(uint32_t))
+        ? pCreateInfo->pCode[0]
+        : 0;
+    *pShaderModule = (VkShaderModule)shader;
     return *pShaderModule ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
 }
 
@@ -800,6 +978,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateComputePipelines(
     for (uint32_t i = 0; i < createInfoCount; ++i) {
         PdockerVkPipeline *pipeline = pdocker_alloc_handle(sizeof(*pipeline));
         if (!pipeline) return VK_ERROR_OUT_OF_HOST_MEMORY;
+        pipeline->shader = (PdockerVkShaderModule *)pCreateInfos[i].stage.module;
         pipeline->local_size_x = 128;
         pPipelines[i] = (VkPipeline)pipeline;
     }
@@ -937,6 +1116,97 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
     if (cmd) cmd->dispatch_x = groupCountX;
 }
 
+VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(
+        VkCommandBuffer commandBuffer,
+        VkPipelineLayout layout,
+        VkShaderStageFlags stageFlags,
+        uint32_t offset,
+        uint32_t size,
+        const void *pValues) {
+    (void)commandBuffer;
+    (void)layout;
+    (void)stageFlags;
+    (void)offset;
+    (void)size;
+    (void)pValues;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(
+        VkCommandBuffer commandBuffer,
+        VkPipelineStageFlags srcStageMask,
+        VkPipelineStageFlags dstStageMask,
+        VkDependencyFlags dependencyFlags,
+        uint32_t memoryBarrierCount,
+        const VkMemoryBarrier *pMemoryBarriers,
+        uint32_t bufferMemoryBarrierCount,
+        const VkBufferMemoryBarrier *pBufferMemoryBarriers,
+        uint32_t imageMemoryBarrierCount,
+        const VkImageMemoryBarrier *pImageMemoryBarriers) {
+    (void)commandBuffer;
+    (void)srcStageMask;
+    (void)dstStageMask;
+    (void)dependencyFlags;
+    (void)memoryBarrierCount;
+    (void)pMemoryBarriers;
+    (void)bufferMemoryBarrierCount;
+    (void)pBufferMemoryBarriers;
+    (void)imageMemoryBarrierCount;
+    (void)pImageMemoryBarriers;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(
+        VkCommandBuffer commandBuffer,
+        VkBuffer srcBuffer,
+        VkBuffer dstBuffer,
+        uint32_t regionCount,
+        const VkBufferCopy *pRegions) {
+    (void)commandBuffer;
+    PdockerVkBuffer *src = (PdockerVkBuffer *)srcBuffer;
+    PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
+    if (!src || !dst || !src->memory || !dst->memory || !pRegions) return;
+    for (uint32_t i = 0; i < regionCount; ++i) {
+        const VkBufferCopy *r = &pRegions[i];
+        if ((size_t)(r->srcOffset + r->size) > src->memory->size ||
+            (size_t)(r->dstOffset + r->size) > dst->memory->size) {
+            continue;
+        }
+        memmove((char *)dst->memory->map + dst->memory_offset + r->dstOffset,
+                (const char *)src->memory->map + src->memory_offset + r->srcOffset,
+                (size_t)r->size);
+    }
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdFillBuffer(
+        VkCommandBuffer commandBuffer,
+        VkBuffer dstBuffer,
+        VkDeviceSize dstOffset,
+        VkDeviceSize size,
+        uint32_t data) {
+    (void)commandBuffer;
+    PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
+    if (!dst || !dst->memory) return;
+    size_t available = dst->memory->size > (size_t)(dst->memory_offset + dstOffset)
+        ? dst->memory->size - (size_t)(dst->memory_offset + dstOffset)
+        : 0;
+    size_t bytes = size == VK_WHOLE_SIZE ? available : (size_t)size;
+    if (bytes > available) bytes = available;
+    uint32_t *p = (uint32_t *)((char *)dst->memory->map + dst->memory_offset + dstOffset);
+    for (size_t i = 0; i < bytes / sizeof(uint32_t); ++i) p[i] = data;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(
+        VkCommandBuffer commandBuffer,
+        VkBuffer dstBuffer,
+        VkDeviceSize dstOffset,
+        VkDeviceSize dataSize,
+        const void *pData) {
+    (void)commandBuffer;
+    PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
+    if (!dst || !dst->memory || !pData) return;
+    if ((size_t)(dst->memory_offset + dstOffset + dataSize) > dst->memory->size) return;
+    memcpy((char *)dst->memory->map + dst->memory_offset + dstOffset, pData, (size_t)dataSize);
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
         VkQueue queue,
         uint32_t submitCount,
@@ -949,6 +1219,14 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
             PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)pSubmits[i].pCommandBuffers[j];
             if (!cmd || !cmd->set || !cmd->set->storage_buffers[0] ||
                 !cmd->set->storage_buffers[1] || !cmd->set->storage_buffers[2]) {
+                return VK_ERROR_FEATURE_NOT_PRESENT;
+            }
+            if (cmd->pipeline && cmd->pipeline->shader && cmd->pipeline->shader->code_size > sizeof(uint32_t)) {
+                if (getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+                    fprintf(stderr,
+                            "pdocker-vulkan-icd: real SPIR-V dispatch is not lowered yet code_size=%zu\n",
+                            cmd->pipeline->shader->code_size);
+                }
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
             PdockerVkBuffer *a = cmd->set->storage_buffers[0];
@@ -1135,6 +1413,7 @@ static PFN_vkVoidFunction proc_address(const char *pName) {
     MAP_PROC(vkGetPhysicalDeviceImageFormatProperties);
     MAP_PROC(vkGetPhysicalDeviceSparseImageFormatProperties);
     MAP_PROC(vkGetPhysicalDeviceQueueFamilyProperties);
+    MAP_PROC(vkGetPhysicalDeviceQueueFamilyProperties2);
     MAP_PROC(vkGetPhysicalDeviceMemoryProperties);
     MAP_PROC(vkGetPhysicalDeviceMemoryProperties2);
     MAP_PROC(vkEnumerateDeviceExtensionProperties);
@@ -1151,6 +1430,7 @@ static PFN_vkVoidFunction proc_address(const char *pName) {
     MAP_PROC(vkFreeMemory);
     MAP_PROC(vkMapMemory);
     MAP_PROC(vkUnmapMemory);
+    MAP_PROC(vkGetDeviceMemoryCommitment);
     MAP_PROC(vkFlushMappedMemoryRanges);
     MAP_PROC(vkInvalidateMappedMemoryRanges);
     MAP_PROC(vkBindBufferMemory);
@@ -1183,6 +1463,11 @@ static PFN_vkVoidFunction proc_address(const char *pName) {
     MAP_PROC(vkResetCommandBuffer);
     MAP_PROC(vkCmdBindPipeline);
     MAP_PROC(vkCmdBindDescriptorSets);
+    MAP_PROC(vkCmdPushConstants);
+    MAP_PROC(vkCmdPipelineBarrier);
+    MAP_PROC(vkCmdCopyBuffer);
+    MAP_PROC(vkCmdFillBuffer);
+    MAP_PROC(vkCmdUpdateBuffer);
     MAP_PROC(vkCmdDispatch);
     MAP_PROC(vkQueueSubmit);
     MAP_PROC(vkQueueWaitIdle);
