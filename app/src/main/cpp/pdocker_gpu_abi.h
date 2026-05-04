@@ -12,5 +12,8 @@
 #define PDOCKER_GPU_ABI_VERSION "0.1"
 #define PDOCKER_GPU_EXECUTOR_ROLE "gpu-command-executor"
 #define PDOCKER_GPU_LLM_ENGINE_LOCATION "container"
+#define PDOCKER_GPU_CONTAINER_CONTRACT "glibc-shim-command-queue"
+#define PDOCKER_GPU_VECTOR_ADD_DEFAULT_N 262144u
+#define PDOCKER_GPU_VECTOR_ADD_MAX_N 4194304u
 
 #endif

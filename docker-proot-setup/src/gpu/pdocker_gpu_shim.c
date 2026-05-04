@@ -13,9 +13,20 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <math.h>
+#include <stdint.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/syscall.h>
 #include <unistd.h>
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+static int connect_queue(void);
 
 static const char *env_or(const char *name, const char *fallback) {
     const char *v = getenv(name);
@@ -35,6 +46,7 @@ static void print_capabilities(void) {
            "\"executor_role\":\"%s\","
            "\"queue_socket_available\":%s,"
            "\"transport\":\"%s\","
+           "\"fd_shared_buffer\":true,"
            "\"backend_impl_visible_to_container\":false}\n",
            PDOCKER_GPU_COMMAND_API,
            PDOCKER_GPU_ABI_VERSION,
@@ -44,6 +56,136 @@ static void print_capabilities(void) {
            env_or("PDOCKER_GPU_EXECUTOR_ROLE", "apk-bionic-gpu-command-executor"),
            queue_ready ? "true" : "false",
            queue_ready ? "unix-socket-command-queue" : "command-queue-pending");
+}
+
+static void fill_inputs(float *a, float *b, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+        a[i] = (float)i * 0.25f;
+        b[i] = 1.0f - (float)i * 0.125f;
+    }
+}
+
+static int create_shared_fd(size_t bytes) {
+#ifdef __NR_memfd_create
+    int memfd = (int)syscall(__NR_memfd_create, "pdocker-gpu-vector-add", MFD_CLOEXEC);
+    if (memfd >= 0) {
+        if (ftruncate(memfd, (off_t)bytes) == 0) return memfd;
+        int err = errno;
+        close(memfd);
+        errno = err;
+        return -1;
+    }
+#endif
+    const char *dir = env_or("PDOCKER_GPU_SHARED_DIR", "/tmp");
+    char path[512];
+    snprintf(path, sizeof(path), "%s/pdocker-gpu-vector-add-XXXXXX", dir);
+    int fd = mkstemp(path);
+    if (fd < 0) return -1;
+    unlink(path);
+    if (ftruncate(fd, (off_t)bytes) != 0) {
+        int err = errno;
+        close(fd);
+        errno = err;
+        return -1;
+    }
+    return fd;
+}
+
+static int send_fd_command(int socket_fd, const char *command, int passed_fd) {
+    char control[CMSG_SPACE(sizeof(int))];
+    struct iovec iov;
+    struct msghdr msg;
+    memset(control, 0, sizeof(control));
+    memset(&iov, 0, sizeof(iov));
+    memset(&msg, 0, sizeof(msg));
+    iov.iov_base = (void *)command;
+    iov.iov_len = strlen(command);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+    memcpy(CMSG_DATA(cmsg), &passed_fd, sizeof(int));
+    msg.msg_controllen = cmsg->cmsg_len;
+    return sendmsg(socket_fd, &msg, 0) < 0 ? -errno : 0;
+}
+
+static int read_response_line(int fd, char *line, size_t line_size) {
+    if (!line || line_size == 0) return -EINVAL;
+    size_t off = 0;
+    while (off + 1 < line_size) {
+        char ch;
+        ssize_t n = read(fd, &ch, 1);
+        if (n == 0) break;
+        if (n < 0) return -errno;
+        line[off++] = ch;
+        if (ch == '\n') break;
+    }
+    line[off] = '\0';
+    return off > 0 ? 0 : -EIO;
+}
+
+static int vector_add_fd_on_socket(int fd, size_t n) {
+    if (n == 0 || n > PDOCKER_GPU_VECTOR_ADD_MAX_N) {
+        fprintf(stderr, "pdocker-gpu-shim: invalid vector size: %zu\n", n);
+        return 64;
+    }
+    const size_t bytes = n * sizeof(float);
+    const size_t total = bytes * 3;
+    int shared_fd = create_shared_fd(total);
+    if (shared_fd < 0) {
+        fprintf(stderr, "pdocker-gpu-shim: shared fd allocation failed: %s\n", strerror(errno));
+        return 70;
+    }
+    void *map = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, shared_fd, 0);
+    if (map == MAP_FAILED) {
+        fprintf(stderr, "pdocker-gpu-shim: mmap shared fd failed: %s\n", strerror(errno));
+        close(shared_fd);
+        return 70;
+    }
+    float *a = (float *)map;
+    float *b = a + n;
+    float *out = b + n;
+    fill_inputs(a, b, n);
+    memset(out, 0, bytes);
+
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "VECTOR_ADD_FD %zu\n", n);
+    int rc = send_fd_command(fd, cmd, shared_fd);
+    close(shared_fd);
+    if (rc != 0) {
+        fprintf(stderr, "pdocker-gpu-shim: send fd command failed: %s\n", strerror(-rc));
+        munmap(map, total);
+        return 70;
+    }
+    char line[4096];
+    rc = read_response_line(fd, line, sizeof(line));
+    double max_err = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        double err = fabs((double)out[i] - (double)(a[i] + b[i]));
+        if (err > max_err) max_err = err;
+    }
+    munmap(map, total);
+    if (rc != 0) {
+        fprintf(stderr, "pdocker-gpu-shim: response read failed: %s\n", strerror(-rc));
+        return 70;
+    }
+    fputs(line, stdout);
+    return max_err <= 0.0001 ? 0 : 6;
+}
+
+static int vector_add_fd_once(size_t n) {
+    int fd = connect_queue();
+    if (fd < 0) {
+        fprintf(stderr, "pdocker-gpu-shim: connect failed: %s\n", strerror(-fd));
+        return 69;
+    }
+    int rc = vector_add_fd_on_socket(fd, n);
+    close(fd);
+    return rc;
 }
 
 static void print_env(void) {
@@ -185,6 +327,29 @@ static int bench_noop(int count, int persistent) {
     return last;
 }
 
+static int bench_vector_add_fd(int count, int persistent) {
+    if (count <= 0) count = 1;
+    if (persistent) {
+        int fd = connect_queue();
+        if (fd < 0) {
+            fprintf(stderr, "pdocker-gpu-shim: persistent connect failed: %s\n", strerror(-fd));
+            return 69;
+        }
+        int last = 0;
+        for (int i = 0; i < count; ++i) {
+            last = vector_add_fd_on_socket(fd, PDOCKER_GPU_VECTOR_ADD_DEFAULT_N);
+            if (last != 0) break;
+        }
+        close(fd);
+        return last;
+    }
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        last = vector_add_fd_once(PDOCKER_GPU_VECTOR_ADD_DEFAULT_N);
+    }
+    return last;
+}
+
 static int parse_count(const char *s, int fallback) {
     if (!s || !s[0]) return fallback;
     char *end = NULL;
@@ -208,11 +373,20 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "--vector-add") == 0) {
         return send_command("VECTOR_ADD");
     }
+    if (strcmp(argv[1], "--vector-add-fd") == 0) {
+        return vector_add_fd_once(PDOCKER_GPU_VECTOR_ADD_DEFAULT_N);
+    }
     if (strcmp(argv[1], "--bench-vector-add") == 0) {
         return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5), 0);
     }
     if (strcmp(argv[1], "--bench-vector-add-persistent") == 0) {
         return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
+    }
+    if (strcmp(argv[1], "--bench-vector-add-fd") == 0) {
+        return bench_vector_add_fd(parse_count(argc > 2 ? argv[2] : NULL, 5), 0);
+    }
+    if (strcmp(argv[1], "--bench-vector-add-fd-persistent") == 0) {
+        return bench_vector_add_fd(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
     }
     if (strcmp(argv[1], "--bench-noop") == 0) {
         return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5), 0);
@@ -220,6 +394,6 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "--bench-noop-persistent") == 0) {
         return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
     }
-    fprintf(stderr, "usage: %s [--capabilities|--env|--queue-probe|--vector-add|--bench-vector-add N|--bench-vector-add-persistent N|--bench-noop N|--bench-noop-persistent N]\n", argv[0]);
+    fprintf(stderr, "usage: %s [--capabilities|--env|--queue-probe|--vector-add|--vector-add-fd|--bench-vector-add N|--bench-vector-add-persistent N|--bench-vector-add-fd N|--bench-vector-add-fd-persistent N|--bench-noop N|--bench-noop-persistent N]\n", argv[0]);
     return 64;
 }

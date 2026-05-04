@@ -57,6 +57,10 @@ The GPU profile action writes:
 - `profiles/pdocker-gpu-diagnostics.json`, with the selected backend,
   recommendation reason, memory/thread/context choices, and CUDA/Vulkan signal
   booleans
+- pdocker GPU bridge evidence when available. The profile script probes
+  `pdocker-gpu-shim --queue-probe` and `--vector-add-fd`; a successful FD
+  shared-buffer probe is recorded as bridge readiness, not as llama.cpp GPU
+  acceleration until the llama backend is wired to the bridge.
 
 All startup, download, status-page, and `llama-server` output is written to
 stdout/stderr so `docker logs pdocker-llama-cpp` can show it. The same stream is

@@ -55,8 +55,21 @@ vulkan_icd_signal="false"
 vulkaninfo_signal="false"
 nvidia_device_signal="false"
 opencl_signal="false"
+bridge_shim_signal="false"
+bridge_queue_signal="false"
+bridge_fd_signal="false"
+bridge_probe_json=""
+bridge_fd_probe_json=""
 mode="${PDOCKER_GPU_MODE:-${PDOCKER_GPU:-auto}}"
 mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
+
+run_probe() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 10 "$@" 2>/dev/null || true
+  else
+    "$@" 2>/dev/null || true
+  fi
+}
 
 if [[ "${PDOCKER_CUDA_COMPAT:-}" = "1" ]]; then
   cuda_signal="true"
@@ -73,6 +86,19 @@ fi
 if [[ "${PDOCKER_OPENCL_PASSTHROUGH:-}" = "1" || -n "${OCL_ICD_VENDORS:-}" || -e /etc/OpenCL/vendors/pdocker-android.icd ]]; then
   opencl_signal="true"
 fi
+if command -v pdocker-gpu-shim >/dev/null 2>&1; then
+  bridge_shim_signal="true"
+fi
+if [[ -n "${PDOCKER_GPU_QUEUE_SOCKET:-}" || -S /run/pdocker-gpu/pdocker-gpu.sock ]]; then
+  bridge_queue_signal="true"
+fi
+if [[ "$bridge_shim_signal" = "true" && "$bridge_queue_signal" = "true" ]]; then
+  bridge_probe_json="$(run_probe pdocker-gpu-shim --queue-probe | tail -n 1)"
+  bridge_fd_probe_json="$(run_probe pdocker-gpu-shim --vector-add-fd | tail -n 1)"
+  if printf '%s' "$bridge_fd_probe_json" | grep -q '"valid":true'; then
+    bridge_fd_signal="true"
+  fi
+fi
 
 if [[ "$mode" = "cpu" || "$mode" = "off" || "$mode" = "none" || "${PDOCKER_GPU_AUTO:-}" = "0" ]]; then
   backend="cpu"
@@ -83,20 +109,22 @@ elif [[ "$mode" = "vulkan-raw" || "$mode" = "android-vulkan-raw" ]]; then
   ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
   reason="raw Android Vulkan library exposure was explicitly requested"
 elif [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || "${PDOCKER_CUDA_COMPAT:-}" = "1" || -e /dev/nvidia0 ]]; then
-  if [[ "$mode" = "cuda" || "$mode" = "cuda-compat" || -e /dev/nvidia0 ]]; then
-    backend="cuda-compat"
-    ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
-    reason="CUDA-compatible mode was explicitly requested or an NVIDIA device is present"
+  backend="cpu"
+  ngl="0"
+  if [[ "$bridge_fd_signal" = "true" ]]; then
+    reason="CUDA-compatible mode was requested and the pdocker GPU bridge validated, but llama.cpp bridge backend is not wired yet; using CPU fallback"
   else
-    backend="cpu"
-    ngl="0"
-    reason="GPU negotiation signals are present, but no validated glibc GPU bridge exists"
+    reason="CUDA-compatible mode was requested, but no validated glibc GPU bridge exists; using CPU fallback"
   fi
 elif command -v vulkaninfo >/dev/null 2>&1 && vulkaninfo --summary >/dev/null 2>&1; then
   backend="vulkan"
   ngl="${LLAMA_ARG_N_GPU_LAYERS:-999}"
   reason="vulkaninfo --summary succeeded"
   vulkaninfo_signal="true"
+elif [[ "$bridge_fd_signal" = "true" ]]; then
+  backend="cpu"
+  ngl="0"
+  reason="pdocker GPU bridge validated a shared-buffer command, but llama.cpp bridge backend is not wired yet; using CPU fallback"
 fi
 
 cat > "$out" <<EOF
@@ -125,7 +153,18 @@ cat > "$diagnostics" <<EOF
     "vulkaninfo_summary": $vulkaninfo_signal,
     "nvidia_device": $nvidia_device_signal,
     "pdocker_opencl_passthrough": $opencl_signal,
-    "ocl_icd_vendors": "$(json_escape "${OCL_ICD_VENDORS:-}")"
+    "ocl_icd_vendors": "$(json_escape "${OCL_ICD_VENDORS:-}")",
+    "pdocker_gpu_shim": $bridge_shim_signal,
+    "pdocker_gpu_queue": $bridge_queue_signal,
+    "pdocker_gpu_fd_shared_buffer": $bridge_fd_signal
+  },
+  "pdocker_gpu_bridge": {
+    "api": "$(json_escape "${PDOCKER_GPU_COMMAND_API:-pdocker-gpu-command-v1}")",
+    "queue_socket": "$(json_escape "${PDOCKER_GPU_QUEUE_SOCKET:-/run/pdocker-gpu/pdocker-gpu.sock}")",
+    "shared_dir": "$(json_escape "${PDOCKER_GPU_SHARED_DIR:-/run/pdocker-gpu}")",
+    "capability_probe": "$(json_escape "$bridge_probe_json")",
+    "fd_vector_add_probe": "$(json_escape "$bridge_fd_probe_json")",
+    "llama_backend_wired": false
   },
   "outputs": {
     "env": "$(json_escape "$out")",

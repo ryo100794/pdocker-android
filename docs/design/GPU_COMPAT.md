@@ -90,13 +90,15 @@ The first scaffold now has two binaries:
 - `pdocker-gpu-executor`: Android/Bionic APK-side executor probe. It owns
   Android GPU APIs and advertises the same neutral command ABI.
 
-The current shim supports capability probing plus a temporary Unix-socket
-command path for early measurement. It is not the final transport; the
-shared-memory queue, buffer table, and fence protocol are still pending.
-The temporary socket transport is allowed only as a measurement scaffold.
-Benchmarks must separate NOOP/control overhead from upload/dispatch/download
-work, and real LLM integration must use persistent transport plus buffer reuse
-so bridge overhead is not paid per tiny ggml operation.
+The current shim supports capability probing, a temporary Unix-socket command
+path, and a first shared-buffer probe where the glibc shim passes a mapped
+buffer FD to the APK executor with `SCM_RIGHTS`. This validates the intended
+direction but is not the final transport; the reusable buffer table,
+command-ring, and fence protocol are still pending. The temporary socket
+transport is allowed only as a measurement scaffold. Benchmarks must separate
+NOOP/control overhead from upload/dispatch/download work, and real LLM
+integration must use persistent transport plus buffer reuse so bridge overhead
+is not paid per tiny ggml operation.
 GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
 binds the APK runtime GPU directory there and direct execution rewrites
 `connect(AF_UNIX)` socket paths, so container code never needs Android app-data
@@ -167,23 +169,26 @@ Recommended decision thresholds:
 - defer GPU when transfer overhead dominates, validation fails, or thermal
   throttling erases the gain
 
-Latest quick smoke on Sony SOG15, 2026-05-02, using the Android-side
+Latest quick smoke on Sony SOG15, 2026-05-04, using the Android-side
 `gles31_compute` backend:
 
 | Kernel | CPU scalar total | GLES 3.1 total | CPU/GLES |
 |---|---:|---:|---:|
-| `vector_add_cold` n=262144 local_size=256 | 25.41 ms | 12.13 ms | 2.09x |
-| `vector_add` stream n=262144 local_size=128 | 25.41 ms | 3.25 ms | 7.82x |
-| `saxpy` n=262144 | 29.94 ms | 4.20 ms | 7.12x |
-| `matmul_fp32` 64x64 | 33.00 ms | 1.14 ms | 28.91x |
+| `vector_add_cold` n=262144 local_size=256 | 41.69 ms | 48.94 ms | 0.85x |
+| `vector_add` stream n=262144 local_size=256 | 41.69 ms | 3.75 ms | 11.12x |
+| `saxpy` n=262144 | 47.87 ms | 10.72 ms | 4.47x |
+| `matmul_fp32` 64x64 | 45.18 ms | 2.29 ms | 19.70x |
 
 This confirms that the benchmark can observe GPU speedup on this device for
 workloads with enough arithmetic intensity. `vector_add_cold` measures the
 one-shot path including shader compilation, upload, dispatch, and download.
 The tuned `vector_add` stream path reuses the compiled kernel, selects the
 fastest tested workgroup size, and still includes upload/dispatch/download
-time. On the latest SOG15 smoke run the selected workgroup size is 128 and the
-stream path is about 7.82x faster than the CPU scalar baseline.
+time. On the latest SOG15 smoke run the selected workgroup size is 256 and the
+stream path is about 11.12x faster than the CPU scalar baseline. The cold
+one-shot `vector_add` path is slower than CPU because it includes shader
+compilation and setup; this is why the llama path must reuse kernels, buffers,
+and bridge transport instead of paying cold-start cost per operation.
 
 Benchmark outputs should be JSON Lines and CSV under:
 
@@ -203,11 +208,12 @@ state, and thermal state when available.
    loading, CPU wall time and GPU timestamp timing when available.
 3. Matrix baseline: CPU reference, simple Vulkan matmul, tiled Vulkan matmul,
    GFLOPS and numerical error reporting.
-4. glibc bridge ABI: container-facing shim, shared-memory transport, command
-   buffers, fence/error model, and Bionic GPU-executor lifecycle. The executor
-   runs GPU commands only; application engines such as llama.cpp remain in the
-   container. The container-facing ABI must be device-independent; backend
-   differences are handled by executor capability probing and command lowering.
+4. glibc bridge ABI: container-facing shim, FD-passed shared-buffer transport,
+   reusable buffer table, command buffers, fence/error model, and Bionic
+   GPU-executor lifecycle. The executor runs GPU commands only; application
+   engines such as llama.cpp remain in the container. The container-facing ABI
+   must be device-independent; backend differences are handled by executor
+   capability probing and command lowering.
 5. cuVK runtime: CUDA-shaped allocation/copy/module/kernel launch API backed by
    the bridge runtime.
 6. CUDA subset transpiler: parse restricted CUDA-like kernels, emit GLSL/SPIR-V

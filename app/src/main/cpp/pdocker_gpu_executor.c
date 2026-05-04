@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -171,20 +172,8 @@ static void destroy_gpu_context(GpuContext *ctx) {
     memset(ctx, 0, sizeof(*ctx));
 }
 
-static int run_vector_add(void) {
-    const size_t n = 262144;
+static int run_vector_add_arrays(const float *a, const float *b, float *out, size_t n, const char *transport) {
     const size_t bytes = n * sizeof(float);
-    float *a = (float *)malloc(bytes);
-    float *b = (float *)malloc(bytes);
-    float *out = (float *)calloc(n, sizeof(float));
-    if (!a || !b || !out) {
-        free(a);
-        free(b);
-        free(out);
-        json_fail("alloc", "host allocation failed");
-        return 2;
-    }
-    fill_inputs(a, b, n);
 
     double compile_start = now_ms();
     const char *src =
@@ -200,18 +189,12 @@ static int run_vector_add(void) {
         "}\n";
     GLuint shader = compile_shader(src);
     if (!shader) {
-        free(a);
-        free(b);
-        free(out);
         json_fail("compile", "compute shader compile failed");
         return 3;
     }
     GLuint program = link_program(shader);
     glDeleteShader(shader);
     if (!program) {
-        free(a);
-        free(b);
-        free(out);
         json_fail("link", "compute program link failed");
         return 4;
     }
@@ -241,9 +224,6 @@ static int run_vector_add(void) {
         glDeleteBuffers(1, &buf_b);
         glDeleteBuffers(1, &buf_o);
         glDeleteProgram(program);
-        free(a);
-        free(b);
-        free(out);
         json_fail("download", "glMapBufferRange failed");
         return 5;
     }
@@ -261,26 +241,71 @@ static int run_vector_add(void) {
     glDeleteBuffers(1, &buf_b);
     glDeleteBuffers(1, &buf_o);
     glDeleteProgram(program);
-    free(a);
-    free(b);
-    free(out);
 
     const int valid = max_err <= 0.0001;
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-            "\"backend_impl\":\"gles31_compute\","
+            "\"backend_impl\":\"gles31_compute\",\"transport\":\"%s\","
             "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
             "\"compile_ms\":%.4f,\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
             "\"download_ms\":%.4f,\"total_ms\":%.4f,\"max_abs_error\":%.8f,"
             "\"valid\":%s}\n",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
             PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            transport ? transport : "local-process-buffer",
             n, compile_ms, upload_ms, dispatch_ms, download_ms,
             compile_ms + upload_ms + dispatch_ms + download_ms, max_err,
             valid ? "true" : "false");
     fflush(json_out());
     return valid ? 0 : 6;
+}
+
+static int run_vector_add(void) {
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(n, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_inputs(a, b, n);
+    int rc = run_vector_add_arrays(a, b, out, n, "local-process-buffer");
+    free(a);
+    free(b);
+    free(out);
+    return rc;
+}
+
+static int run_vector_add_fd(int fd, size_t n) {
+    if (fd < 0) {
+        json_fail("fd", "missing shared buffer fd");
+        return 64;
+    }
+    if (n == 0 || n > PDOCKER_GPU_VECTOR_ADD_MAX_N) {
+        json_fail("fd", "invalid vector size");
+        return 64;
+    }
+    const size_t bytes = n * sizeof(float);
+    const size_t total = bytes * 3;
+    void *map = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED) {
+        json_fail("mmap", strerror(errno));
+        close(fd);
+        return 70;
+    }
+    float *a = (float *)map;
+    float *b = a + n;
+    float *out = b + n;
+    int rc = run_vector_add_arrays(a, b, out, n, "unix-socket-scm-rights-shared-buffer");
+    munmap(map, total);
+    close(fd);
+    return rc;
 }
 
 static void print_capabilities(const char *transport) {
@@ -290,6 +315,7 @@ static void print_capabilities(const char *transport) {
             "\"transport\":\"%s\","
             "\"backend_impls\":[\"gles31_compute\"],"
             "\"container_contract\":\"glibc-shim-command-queue\","
+            "\"fd_shared_buffer\":true,"
             "\"process_exec\":true}\n",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
             PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
@@ -345,6 +371,37 @@ static int parse_count(const char *s, int fallback) {
     return (int)n;
 }
 
+static int recv_command_with_optional_fd(int cfd, char *cmd, size_t cmd_size, int *passed_fd) {
+    if (!cmd || cmd_size == 0 || !passed_fd) return -EINVAL;
+    *passed_fd = -1;
+    char control[CMSG_SPACE(sizeof(int))];
+    struct iovec iov;
+    struct msghdr msg;
+    memset(control, 0, sizeof(control));
+    memset(&iov, 0, sizeof(iov));
+    memset(&msg, 0, sizeof(msg));
+    iov.iov_base = cmd;
+    iov.iov_len = cmd_size - 1;
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+    ssize_t n = recvmsg(cfd, &msg, 0);
+    if (n <= 0) return (int)n;
+    cmd[n] = '\0';
+    cmd[strcspn(cmd, "\r\n")] = '\0';
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+         cmsg != NULL;
+         cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+        if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS &&
+            cmsg->cmsg_len >= CMSG_LEN(sizeof(int))) {
+            memcpy(passed_fd, CMSG_DATA(cmsg), sizeof(int));
+            break;
+        }
+    }
+    return (int)n;
+}
+
 static int run_vector_command_with_context(void) {
     int rc = run_vector_add();
     return rc;
@@ -396,28 +453,36 @@ static int serve_socket(const char *path) {
             perror("accept");
             break;
         }
-        FILE *io = fdopen(cfd, "r+");
-        if (!io) {
+        FILE *out = fdopen(dup(cfd), "w");
+        if (!out) {
             close(cfd);
             continue;
         }
-        setvbuf(io, NULL, _IONBF, 0);
-        char cmd[128];
-        while (fgets(cmd, sizeof(cmd), io)) {
-            cmd[strcspn(cmd, "\r\n")] = '\0';
-            g_json_out = io;
+        setvbuf(out, NULL, _IONBF, 0);
+        char cmd[160];
+        for (;;) {
+            int passed_fd = -1;
+            int nread = recv_command_with_optional_fd(cfd, cmd, sizeof(cmd), &passed_fd);
+            if (nread <= 0) break;
+            g_json_out = out;
             if (strcmp(cmd, "CAPABILITIES") == 0) {
                 print_capabilities("unix-socket-command-queue");
             } else if (strcmp(cmd, "NOOP") == 0) {
                 print_noop();
             } else if (strcmp(cmd, "VECTOR_ADD") == 0) {
                 (void)run_vector_command_with_context();
+            } else if (strncmp(cmd, "VECTOR_ADD_FD ", 14) == 0) {
+                size_t n = (size_t)strtoull(cmd + 14, NULL, 10);
+                (void)run_vector_add_fd(passed_fd, n);
+                passed_fd = -1;
             } else {
+                if (passed_fd >= 0) close(passed_fd);
                 json_fail("command", "unknown command");
             }
             g_json_out = NULL;
         }
-        fclose(io);
+        fclose(out);
+        close(cfd);
     }
     destroy_gpu_context(&ctx);
     close(sfd);

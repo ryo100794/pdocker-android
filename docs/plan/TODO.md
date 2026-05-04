@@ -581,20 +581,25 @@ Scaffold completed:
 - APK-side `pdocker-gpu-executor` capability/vector-add probe.
 - Container-side Linux/glibc `pdocker-gpu-shim` capability probe injected into
   GPU-requesting containers.
+- First shared-buffer transport probe: the glibc shim creates a mapped vector
+  buffer and passes its FD to the Android/Bionic executor with `SCM_RIGHTS`.
+  This proves the bridge can move data without exposing Android GPU libraries
+  to the glibc container, but it is still a benchmark scaffold.
 
 Next implementation slice:
 
-- Replace the temporary socket command transport with a shared-memory command
-  queue. The socket path is now useful for measuring and debugging, but only as
-  a scaffold.
+- Replace the temporary socket command transport and per-command FD allocation
+  with a persistent shared-memory command queue, reusable buffer table, and
+  fence/error protocol. The socket path is now useful for measuring and
+  debugging, but only as a scaffold.
 - Keep persistent transport semantics. Benchmarks show one-connection-per-GPU
   command adds measurable overhead and is the wrong shape for LLM workloads.
 - Keep container-visible paths under `/run/pdocker-gpu`; do not expose Android
   app-data absolute paths to container code.
 - Add queue lifecycle under pdockerd so container processes never call Android
   vendor libraries directly.
-- Add a real buffer/fence protocol and run vector-add through shim -> executor
-  with reusable buffers before enabling llama.cpp backend integration.
+- Add a real reusable buffer/fence protocol and then wire a minimal ggml/llama
+  GPU backend path to the bridge.
 
 Acceptance:
 
