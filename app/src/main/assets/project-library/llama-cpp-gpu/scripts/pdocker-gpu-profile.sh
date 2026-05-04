@@ -56,6 +56,8 @@ vulkaninfo_signal="false"
 pdocker_vulkan_icd_signal="false"
 nvidia_device_signal="false"
 opencl_signal="false"
+pdocker_opencl_icd_signal="false"
+pdocker_opencl_icd_ready_signal="false"
 bridge_shim_signal="false"
 bridge_queue_signal="false"
 bridge_fd_signal="false"
@@ -89,6 +91,12 @@ if [[ -e /dev/nvidia0 ]]; then
 fi
 if [[ "${PDOCKER_OPENCL_PASSTHROUGH:-}" = "1" || -n "${OCL_ICD_VENDORS:-}" || -e /etc/OpenCL/vendors/pdocker-android.icd ]]; then
   opencl_signal="true"
+fi
+if [[ "${PDOCKER_OPENCL_ICD_KIND:-}" = pdocker-* || "${PDOCKER_OPENCL_ICD:-}" = *pdocker-opencl-icd.so || -e /usr/local/lib/pdocker-opencl-icd.so ]]; then
+  pdocker_opencl_icd_signal="true"
+fi
+if [[ "$pdocker_opencl_icd_signal" = "true" && "${PDOCKER_OPENCL_ICD_READY:-0}" = "1" ]]; then
+  pdocker_opencl_icd_ready_signal="true"
 fi
 if command -v pdocker-gpu-shim >/dev/null 2>&1; then
   bridge_shim_signal="true"
@@ -127,6 +135,14 @@ elif [[ "$pdocker_vulkan_icd_signal" = "true" && "${PDOCKER_VULKAN_ICD_READY:-0}
     reason="pdocker Vulkan ICD is visible and the GPU bridge validates, but the Vulkan compute lowering is not complete yet; using CPU fallback"
   else
     reason="pdocker Vulkan ICD is visible, but the GPU bridge is not validated yet; using CPU fallback"
+  fi
+elif [[ "$pdocker_opencl_icd_ready_signal" = "true" ]]; then
+  backend="cpu"
+  ngl="0"
+  if [[ "$bridge_fd_signal" = "true" ]]; then
+    reason="pdocker OpenCL ICD is ready and the shared-buffer GPU bridge validates, but llama.cpp OpenCL kernel lowering is not complete yet; using CPU fallback"
+  else
+    reason="pdocker OpenCL ICD is ready, but the shared-buffer GPU bridge did not validate yet; using CPU fallback"
   fi
 elif command -v vulkaninfo >/dev/null 2>&1 && vulkaninfo --summary >/dev/null 2>&1; then
   backend="vulkan"
@@ -168,6 +184,11 @@ cat > "$diagnostics" <<EOF
     "vulkaninfo_summary": $vulkaninfo_signal,
     "nvidia_device": $nvidia_device_signal,
     "pdocker_opencl_passthrough": $opencl_signal,
+    "pdocker_opencl_icd": $pdocker_opencl_icd_signal,
+    "pdocker_opencl_icd_kind": "$(json_escape "${PDOCKER_OPENCL_ICD_KIND:-}")",
+    "pdocker_opencl_icd_ready": "$(json_escape "${PDOCKER_OPENCL_ICD_READY:-0}")",
+    "pdocker_opencl_api_version": "$(json_escape "${PDOCKER_OPENCL_API_VERSION:-}")",
+    "pdocker_opencl_icd_path": "$(json_escape "${PDOCKER_OPENCL_ICD:-}")",
     "ocl_icd_vendors": "$(json_escape "${OCL_ICD_VENDORS:-}")",
     "pdocker_gpu_shim": $bridge_shim_signal,
     "pdocker_gpu_queue": $bridge_queue_signal,
