@@ -564,8 +564,10 @@ Real implementation needed:
 1. Add Vulkan backend to `android-gpu-bench`.
 2. Add device/thermal/driver metadata to benchmark artifacts.
 3. Replace raw host-library exposure with a glibc-facing GPU bridge: container
-   shim/device ABI, shared-memory transport, Bionic sidecar process, fences,
-   error propagation, and lifecycle management.
+   shim/device ABI, shared-memory command queue, Bionic GPU-executor process,
+   fences, error propagation, and lifecycle management. The executor may run
+   GPU commands only; llama.cpp and other app engines must stay inside the
+   container.
 4. Implement minimal container-facing Vulkan/OpenCL validation against that
    bridge, not against directly exposed Android libraries.
 5. Implement CUDA-compatible shim API only as a real library/runtime, not just

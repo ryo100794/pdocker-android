@@ -41,8 +41,10 @@ Ubuntu/glibc process.
 
 Conclusion: directly exposing Android host GPU libraries into the image is a
 diagnostic dead end, not the production design. The container-facing side must
-remain glibc-compatible and talk to an APK-owned Android/Bionic GPU sidecar
-through a thin pdocker bridge.
+remain glibc-compatible and talk to an APK-owned Android/Bionic GPU command
+executor through a thin pdocker bridge. The executor is not a host-side
+llama.cpp RPC inference service; `llama-server`, model loading, tokenization,
+sampling, and HTTP serving stay inside the container.
 
 Official `llama-bench` with `-p 16 -n 8 -r 2 -ngl 999 -t 8` is stored at
 `docs/test/llama-bench-tool-vulkan-requested-p16-n8-r2.json`:
@@ -66,7 +68,8 @@ OpenCL library depends on Bionic/Android libraries (`liblog.so`,
 `libcutils.so`, `libc++.so`, `libc.so`, `libm.so`, `libdl.so`). So the OpenCL
 result matches Vulkan: passthrough metadata and file exposure work as
 diagnostics, but direct loading from a glibc container is not a working GPU
-backend. OpenCL also needs the glibc bridge plus Android/Bionic sidecar model.
+backend. OpenCL also needs the glibc bridge plus Android/Bionic GPU-executor
+model.
 
 ## Latest HTTP API Result
 

@@ -73,6 +73,7 @@ def main() -> int:
         "compose model url syntax": re.search(r'\$\{LLAMA_MODEL_URL:-[^}]+\}', llama_compose) is not None,
         "Dockerfile modern Vulkan headers": "FROM ubuntu:24.04" in llama_dockerfile,
         "Dockerfile llama.cpp source": "ggml-org/llama.cpp" in llama_dockerfile,
+        "Dockerfile keeps llama engine local": "-DGGML_RPC=ON" not in llama_dockerfile and "LLAMA_ARG_RPC" not in llama_compose + start,
         "Dockerfile Vulkan build": "-DGGML_VULKAN=ON" in llama_dockerfile,
         "Dockerfile Vulkan shader compiler": "glslc" in llama_dockerfile,
         "Dockerfile SPIR-V headers": "spirv-headers" in llama_dockerfile and "spirv-tools" in llama_dockerfile,

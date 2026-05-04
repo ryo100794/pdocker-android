@@ -66,13 +66,18 @@ The production direction is therefore:
 ```text
 glibc container process
   -> pdocker-owned glibc shim library or device ABI
-  -> stable RPC/shared-memory command queue
-  -> Android/Bionic GPU sidecar owned by the APK
+  -> stable shared-memory command queue or narrow ioctl-like control plane
+  -> Android/Bionic GPU executor owned by the APK
   -> Vulkan/OpenCL/NNAPI/other Android GPU API
 ```
 
 The container must see a glibc-compatible ABI. Android GPU libraries may be
 used only behind the APK/sidecar boundary, not as direct glibc `dlopen` targets.
+The Android side must be a GPU command executor, not a host-side LLM engine.
+For llama.cpp, model loading, tokenization, sampling, HTTP serving, scheduling,
+and ggml graph ownership stay in the container process. The bridge may execute
+GPU kernels, move buffers, and signal fences, but it must not replace
+`llama-server` with a host RPC inference service.
 Until that bridge exists and passes validation, llama.cpp GPU profile selection
 must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
 
@@ -176,7 +181,9 @@ state, and thermal state when available.
 3. Matrix baseline: CPU reference, simple Vulkan matmul, tiled Vulkan matmul,
    GFLOPS and numerical error reporting.
 4. glibc bridge ABI: container-facing shim, shared-memory transport, command
-   buffers, fence/error model, and Bionic sidecar lifecycle.
+   buffers, fence/error model, and Bionic GPU-executor lifecycle. The executor
+   runs GPU commands only; application engines such as llama.cpp remain in the
+   container.
 5. cuVK runtime: CUDA-shaped allocation/copy/module/kernel launch API backed by
    the bridge runtime.
 6. CUDA subset transpiler: parse restricted CUDA-like kernels, emit GLSL/SPIR-V

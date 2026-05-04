@@ -65,7 +65,10 @@ When Vulkan mode is requested, pdockerd:
 
 This is diagnostic-only raw exposure unless `PDOCKER_GPU_MODE=vulkan-raw` is
 explicitly selected for an experiment. A successful backend must instead use a
-pdocker-owned glibc shim and marshal GPU work to an Android/Bionic sidecar.
+pdocker-owned glibc shim and marshal GPU work to an Android/Bionic GPU
+executor. The executor must not become a host-side inference engine; for
+llama.cpp, the container keeps model loading, tokenization, scheduling,
+sampling, and HTTP serving.
 
 When OpenCL mode is requested, pdockerd:
 

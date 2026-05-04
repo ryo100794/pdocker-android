@@ -6,6 +6,9 @@ It includes:
 
 - `llama-server` built from `ggml-org/llama.cpp`.
 - Vulkan-oriented build flags (`GGML_VULKAN=ON`) for Android GPU passthrough.
+- The LLM engine, model loading, tokenizer, HTTP API, sampler, and llama.cpp
+  scheduler stay inside the container. This template does not offload the
+  llama.cpp engine to a host-side RPC server.
 - CPU fallback with OpenMP/OpenBLAS packages available.
 - A server-only CMake build target so templates do not spend time compiling
   unrelated llama.cpp tools and examples.
@@ -65,5 +68,9 @@ downloads the model at runtime; it is not bundled into the APK.
 
 The compose file requests Docker-compatible `gpus: all`. pdockerd maps that to
 its Vulkan passthrough / CUDA-compatible negotiation state where available.
+GPU acceleration is considered real only when the glibc llama.cpp process uses
+a container-facing pdocker GPU shim. Android/Bionic GPU libraries and services
+may sit behind that shim, but they must not own the LLM engine or replace the
+container's llama-server process.
 The default llama-server port is `18081`, offset from common development ports
 to reduce collisions with Android/Termux services.
