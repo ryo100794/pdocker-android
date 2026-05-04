@@ -538,8 +538,9 @@ Temporary behavior:
 - llama.cpp GPU template, model volume, optional model download, and logs script
   exist.
 - Current SOG15 run starts the real `llama-server` and serves HTTP on
-  `127.0.0.1:18081`, but GPU diagnostics select CPU fallback because Vulkan
-  and CUDA-compatible container signals are not visible yet.
+  `127.0.0.1:18081`. GPU diagnostics can now expose the pdocker Vulkan/OpenCL
+  bridge path, but normal product mode must stay on CPU fallback until the
+  bridge can serve tokens faster than CPU with validated llama.cpp workloads.
 
 Real implementation needed:
 
@@ -795,8 +796,11 @@ Acceptance:
 Fast tests, run on most builds:
 
 - `bash scripts/verify-fast.sh`
-- `python3 scripts/verify-dockerfile-standard.py`
-- `python3 docker-proot-setup/scripts/verify_runtime_contract.py`
+- This already includes Dockerfile standardness, project-library checks,
+  terminal/editor contracts, UI action wiring, backend compatibility audit, and
+  `docker-proot-setup/scripts/verify_runtime_contract.py`.
+- Keep GPU implementation out of the normal fast gate; use static/project
+  contract checks here unless a GPU-facing script was changed.
 
 Heavy tests, run before major runtime changes:
 
@@ -806,16 +810,39 @@ Heavy tests, run before major runtime changes:
   device Engine/helper smoke.
 - `bash scripts/android-device-smoke.sh --no-install` as the full Android
   runtime smoke. It should pass the tiny direct build/compose path on the SDK28
-  compat flavor; failures here are release blockers.
+  compat flavor, including `compose up`, logs, non-TTY exec, Engine
+  `Tty=true` exec, and `compose down`; failures here are release blockers.
+- Add `docker run --rm ubuntu:22.04 echo hi` to the Android smoke gate so
+  single-container process execution stays covered outside Compose.
 - Default dev workspace `docker compose up --detach --build --remove-orphans`
   on device. This is intentionally heavier than the smoke test and is the gate
-  for VS Code Server/Codex/Continue usability.
+  for VS Code Server/Codex/Continue usability. Verify `docker compose logs`
+  and `curl -I http://127.0.0.1:18080/`.
+- llama CPU checks: when the model/server is already present, use
+  `bash scripts/android-llama-bench.sh --predict 1 --repeat 1` as a quick
+  sanity pass; use `--predict 8 --repeat 3` plus
+  `bash scripts/android-llama-tool-bench.sh` for long CPU baseline runs.
+- llama GPU completion gate: `bash scripts/android-llama-gpu-compare.sh` must
+  write `docs/test/llama-gpu-compare-latest.json`, copy it to
+  `files/pdocker/bench`, report `target_met`, current blocker, GPU layer count,
+  and restore CPU mode after the experiment. Do not claim GPU completion until
+  the same unmodified llama.cpp image/model beats the CPU baseline by the
+  target ratio.
 - Runtime performance bench:
   `bash scripts/android-runtime-bench.sh` for short direct syscall stats, and
   `bash scripts/android-runtime-bench.sh --apt-update` for the slow apt wall
   clock path. Optional existing proot comparison:
   `bash scripts/android-runtime-bench.sh --proot-cmd '<command>'`.
-- GPU benchmark scenarios after GPU/runtime changes
+- Storage metrics gate: keep static coverage in `scripts/verify-ui-actions.py`,
+  and add Android smoke/manual verification that layer, image-view,
+  container-private, total, and free-space metrics are nonnegative and refresh
+  after build/prune/rebuild.
+- GPU bridge/executor scenarios after GPU/runtime changes:
+  `bash scripts/bench-gpu-bridge.sh 3` for a quick local scaffold check,
+  `bash scripts/bench-gpu-bridge.sh 50` for long overhead tracking, and
+  `bash scripts/android-device-smoke.sh --quick --gpu-bench --no-install` after
+  APK packaging or GPU runtime changes. Track NOOP/control overhead,
+  persistent transport, FD/shared-buffer, and registered-buffer ratios.
 
 Never mark a temporary workaround as complete unless the acceptance check for
 the real behavior passes.

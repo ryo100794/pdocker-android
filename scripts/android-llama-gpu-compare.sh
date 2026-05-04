@@ -114,7 +114,7 @@ start_cpu() {
 }
 
 start_gpu() {
-  run_as "$project_prefix; docker rm -f $(printf "%q" "$CONTAINER") >/dev/null 2>&1 || true; docker run -d --name $(printf "%q" "$CONTAINER") --gpus all -p $REMOTE_PORT:$REMOTE_PORT -v \"\$PWD/models:/models\" -v \"\$PWD/workspace:/workspace\" -v \"\$PWD/profiles:/profiles\" -e PDOCKER_GPU=auto -e PDOCKER_GPU_AUTO=1 -e PDOCKER_GPU_MODE=vulkan-raw -e PDOCKER_VULKAN_ICD_TRACE_ALLOC=1 -e GGML_VK_FORCE_MAX_BUFFER_SIZE=8589934592 -e GGML_VK_FORCE_MAX_ALLOCATION_SIZE=8589934592 -e LLAMA_ARG_MODEL=/models/model.gguf -e LLAMA_ARG_CTX=$GPU_CTX -e LLAMA_ARG_N_GPU_LAYERS=$GPU_LAYERS -e LLAMA_ARG_PORT=$REMOTE_PORT -e LLAMA_LOG_FILE=/workspace/logs/llama-server.log $(printf "%q" "$IMAGE")"
+  run_as "$project_prefix; docker rm -f $(printf "%q" "$CONTAINER") >/dev/null 2>&1 || true; docker run -d --name $(printf "%q" "$CONTAINER") --gpus all -p $REMOTE_PORT:$REMOTE_PORT -v \"\$PWD/models:/models\" -v \"\$PWD/workspace:/workspace\" -v \"\$PWD/profiles:/profiles\" -e PDOCKER_GPU=auto -e PDOCKER_GPU_AUTO=1 -e PDOCKER_GPU_MODE=vulkan-raw -e PDOCKER_VULKAN_ICD_TRACE_ALLOC=1 -e PDOCKER_VULKAN_MAX_BUFFER_BYTES=536870912 -e GGML_VK_FORCE_MAX_BUFFER_SIZE=536870912 -e GGML_VK_FORCE_MAX_ALLOCATION_SIZE=536870912 -e GGML_VK_SUBALLOCATION_BLOCK_SIZE=536870912 -e LLAMA_ARG_MODEL=/models/model.gguf -e LLAMA_ARG_CTX=$GPU_CTX -e LLAMA_ARG_N_GPU_LAYERS=$GPU_LAYERS -e LLAMA_ARG_PORT=$REMOTE_PORT -e LLAMA_LOG_FILE=/workspace/logs/llama-server.log $(printf "%q" "$IMAGE")"
 }
 
 bench_http() {

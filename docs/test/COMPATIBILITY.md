@@ -115,7 +115,7 @@ suite and should be recorded separately when it is run to completion.
 | Image pull/list/inspect/delete | Good | Pull uses `crane export`; public registries work, private registry auth is not complete. |
 | Image save/load | Partial | Docker-style tar exchange works for the implemented flattened image format. Multi-platform indexes, zstd layers, and all OCI edge cases are not complete. |
 | Container create/start/stop/kill/wait/rm | Good | Implemented through the Android direct userspace runner and state files. No cgroups or namespaces. |
-| Logs/attach/exec | Partial | Raw stream and hijack paths exist. Non-TTY exec works; `docker run -t` and `docker exec -it` still need PTY integration into the container side. |
+| Logs/attach/exec | Partial | Raw stream and hijack paths exist. Non-TTY exec works, and Android smoke covers a basic Engine `exec` with `Tty=true`. Full Docker attach parity, `docker run -t`, detach-key behavior, resize propagation, and broad interactive terminal cases still need more coverage. |
 | `docker cp` archive API | Partial | HEAD/GET/PUT support Docker tar and `X-Docker-Container-Path-Stat`. cow_bind reads prefer upper then lower, writes target upper. Directory merge of lower+upper entries is still incomplete. |
 | Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. |
 | Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
@@ -157,8 +157,10 @@ Known gaps:
   layers, and private registry credential flow.
 - Full Dockerfile frontend behavior, BuildKit features, complete
   `.dockerignore` parity, and multi-stage/cross-platform build behavior.
-- Android execution backend parity: repair/replace PRoot so container binaries
-  exec reliably on-device, then promote full ADB smoke to required pass.
+- Android execution backend parity: extend the no-PRoot direct runtime beyond
+  the current supported smoke paths, keep full ADB smoke as a release blocker,
+  and add focused regressions for every syscall/runtime gap found by larger
+  build and compose workloads.
 - Full overlayfs semantics for deletions, rename, metadata operations, and
   merged directory listings in cow_bind mode.
 - Strict libcow xattr preservation and fchmod/fchown on read-only file
@@ -179,7 +181,8 @@ Known gaps:
 2. Improve protocol fidelity:
    - Add regression tests for chunked upload bodies and hijacked attach/exec
      across Docker CLI versions.
-   - Add PTY plumbing for `docker run -t` and `docker exec -it`.
+   - Expand PTY coverage for `docker run -t`, `docker exec -it`, resize,
+     detach keys, and UI terminal selection/copy behavior.
 
 3. Improve data exchange:
    - Add OCI manifest-list/index import/export tests.

@@ -56,6 +56,7 @@ typedef struct PdockerVkFence PdockerVkFence;
 
 #define PDOCKER_VK_MAX_STORAGE_BUFFERS 16
 #define PDOCKER_VK_MAX_PUSH_BYTES 256
+#define PDOCKER_VK_REQUIREMENT_ALIGNMENT 16ull
 
 struct PdockerVkMemory {
     size_t size;
@@ -67,6 +68,8 @@ struct PdockerVkMemory {
 
 struct PdockerVkBuffer {
     size_t size;
+    VkDeviceSize requirements_size;
+    VkDeviceSize requirements_alignment;
     PdockerVkMemory *memory;
     VkDeviceSize memory_offset;
 };
@@ -135,6 +138,27 @@ static VkDeviceSize pdocker_vulkan_heap_size(void) {
         }
     }
     return (VkDeviceSize)(8ull * 1024ull * 1024ull * 1024ull);
+}
+
+static VkDeviceSize align_device_size(VkDeviceSize value, VkDeviceSize alignment) {
+    if (alignment == 0) return value;
+    VkDeviceSize rem = value % alignment;
+    if (rem == 0) return value;
+    return value + alignment - rem;
+}
+
+static VkDeviceSize pdocker_vulkan_max_buffer_size(void) {
+    const char *env = getenv("PDOCKER_VULKAN_MAX_BUFFER_BYTES");
+    if (env && env[0]) {
+        char *end = NULL;
+        unsigned long long value = strtoull(env, &end, 10);
+        if (end && *end == '\0' && value >= 16ull * 1024ull * 1024ull) {
+            return (VkDeviceSize)value;
+        }
+    }
+    const VkDeviceSize heap = pdocker_vulkan_heap_size();
+    const VkDeviceSize bridge_default = (VkDeviceSize)(512ull * 1024ull * 1024ull);
+    return heap < bridge_default ? heap : bridge_default;
 }
 
 static VkDeviceSize pdocker_vulkan_host_heap_size(void) {
@@ -442,7 +466,8 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.maxComputeWorkGroupSize[1] = 256;
     pProperties->limits.maxComputeWorkGroupSize[2] = 64;
     pProperties->limits.maxPushConstantsSize = 256;
-    pProperties->limits.maxStorageBufferRange = 0xffffffffu;
+    VkDeviceSize max_buffer = pdocker_vulkan_max_buffer_size();
+    pProperties->limits.maxStorageBufferRange = max_buffer > UINT32_MAX ? UINT32_MAX : (uint32_t)max_buffer;
     pProperties->limits.maxMemoryAllocationCount = 4096;
     pProperties->limits.maxBoundDescriptorSets = 8;
     pProperties->limits.maxPerStageDescriptorStorageBuffers = 64;
@@ -460,13 +485,13 @@ static void fill_pnext_properties(void *pNext) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES: {
                 VkPhysicalDeviceMaintenance3Properties *p = (VkPhysicalDeviceMaintenance3Properties *)cur;
                 p->maxPerSetDescriptors = 1024;
-                p->maxMemoryAllocationSize = pdocker_vulkan_heap_size();
+                p->maxMemoryAllocationSize = pdocker_vulkan_max_buffer_size();
                 break;
             }
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES: {
                 VkPhysicalDeviceMaintenance4Properties *p = (VkPhysicalDeviceMaintenance4Properties *)cur;
-                p->maxBufferSize = pdocker_vulkan_heap_size();
+                p->maxBufferSize = pdocker_vulkan_max_buffer_size();
                 break;
             }
 #endif
@@ -508,7 +533,7 @@ static void fill_pnext_properties(void *pNext) {
                 p->maxMultiviewViewCount = 1;
                 p->maxMultiviewInstanceIndex = 1;
                 p->maxPerSetDescriptors = 1024;
-                p->maxMemoryAllocationSize = pdocker_vulkan_heap_size();
+                p->maxMemoryAllocationSize = pdocker_vulkan_max_buffer_size();
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES: {
@@ -819,9 +844,20 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(
     (void)device;
     (void)pAllocator;
     if (!pCreateInfo || !pBuffer) return VK_ERROR_INITIALIZATION_FAILED;
+    if (pCreateInfo->size == 0 || pCreateInfo->size > pdocker_vulkan_max_buffer_size()) {
+        if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: create-buffer rejected size=%llu max=%llu\n",
+                    (unsigned long long)pCreateInfo->size,
+                    (unsigned long long)pdocker_vulkan_max_buffer_size());
+        }
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    }
     PdockerVkBuffer *buffer = pdocker_alloc_handle(sizeof(*buffer));
     if (!buffer) return VK_ERROR_OUT_OF_HOST_MEMORY;
     buffer->size = (size_t)pCreateInfo->size;
+    buffer->requirements_alignment = PDOCKER_VK_REQUIREMENT_ALIGNMENT;
+    buffer->requirements_size = align_device_size(pCreateInfo->size, buffer->requirements_alignment);
     if (trace_allocations()) {
         fprintf(stderr,
                 "pdocker-vulkan-icd: create-buffer size=%zu usage=0x%x sharing=%u\n",
@@ -850,8 +886,8 @@ VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(
     if (!pMemoryRequirements) return;
     PdockerVkBuffer *b = (PdockerVkBuffer *)buffer;
     memset(pMemoryRequirements, 0, sizeof(*pMemoryRequirements));
-    pMemoryRequirements->size = b ? (VkDeviceSize)b->size : 0;
-    pMemoryRequirements->alignment = 16;
+    pMemoryRequirements->size = b ? b->requirements_size : 0;
+    pMemoryRequirements->alignment = b && b->requirements_alignment ? b->requirements_alignment : PDOCKER_VK_REQUIREMENT_ALIGNMENT;
     pMemoryRequirements->memoryTypeBits = 0x3;
     if (trace_allocations()) {
         fprintf(stderr,
@@ -895,6 +931,17 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(
     (void)device;
     (void)pAllocator;
     if (!pAllocateInfo || !pMemory) return VK_ERROR_INITIALIZATION_FAILED;
+    if (pAllocateInfo->allocationSize == 0 ||
+        pAllocateInfo->allocationSize > pdocker_vulkan_max_buffer_size()) {
+        if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: allocate rejected size=%llu max=%llu type=%u\n",
+                    (unsigned long long)pAllocateInfo->allocationSize,
+                    (unsigned long long)pdocker_vulkan_max_buffer_size(),
+                    pAllocateInfo->memoryTypeIndex);
+        }
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    }
     PdockerVkMemory *memory = pdocker_alloc_handle(sizeof(*memory));
     if (!memory) return VK_ERROR_OUT_OF_HOST_MEMORY;
     memory->size = (size_t)pAllocateInfo->allocationSize;
@@ -1013,7 +1060,24 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(
     (void)device;
     PdockerVkBuffer *b = (PdockerVkBuffer *)buffer;
     if (!b || !memory) return VK_ERROR_INITIALIZATION_FAILED;
-    b->memory = (PdockerVkMemory *)memory;
+    PdockerVkMemory *m = (PdockerVkMemory *)memory;
+    VkDeviceSize alignment = b->requirements_alignment ? b->requirements_alignment : PDOCKER_VK_REQUIREMENT_ALIGNMENT;
+    VkDeviceSize needed = b->requirements_size ? b->requirements_size : align_device_size((VkDeviceSize)b->size, alignment);
+    if ((memoryOffset % alignment) != 0 ||
+        memoryOffset > (VkDeviceSize)m->size ||
+        needed > (VkDeviceSize)m->size - memoryOffset) {
+        if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: bind-buffer rejected buffer_size=%zu req_size=%llu memory_size=%zu offset=%llu alignment=%llu\n",
+                    b->size,
+                    (unsigned long long)needed,
+                    m->size,
+                    (unsigned long long)memoryOffset,
+                    (unsigned long long)alignment);
+        }
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    }
+    b->memory = m;
     b->memory_offset = memoryOffset;
     if (trace_allocations()) {
         fprintf(stderr,

@@ -12,7 +12,7 @@ must become real implementations later, see [`TODO.md`](TODO.md).
 | layer | size | status |
 |---|---|---|
 | **pdockerd** (Python single-file daemon, docker-proot-setup/bin) | 3500 LOC | Engine API 1.43-compatible, ~30 endpoints |
-| **APK** (pdocker-android) | 31 MB | install, foreground service, Engine API, image pull/browse/edit flows; Android direct container execution is blocked until the executor lands |
+| **APK** (pdocker-android) | 31 MB | install, foreground service, Engine API, image pull/browse/edit flows; Android direct container execution works for the current supported smoke paths |
 | **Workspace UI** | native widgets + xterm.js 5.3 + JNI pty tabs + editor | Compose, Dockerfile, images, containers, and `-it`-style sessions share one console surface |
 
 ## Implementation overview
@@ -48,9 +48,16 @@ What's been confirmed working on the current Android 15 test device:
 - `curl --unix-socket .../pdockerd.sock http://d/_ping` → `OK`
 - `docker version` (CLI 29.4 client → pdockerd 0.1 server) → both sides report API 1.43
 - `docker pull ubuntu:latest` → 132 MB image landed under `filesDir/pdocker/{images,layers}/` in 52s
-- `docker compose up --build` reaches the first Dockerfile `RUN` and then
-  fails honestly because Android direct mode cannot execute container
-  processes yet; no fake service listener is started.
+- Tiny SDK28 compat `docker build` and `docker compose up --build` execute real
+  container processes through `pdocker-direct`; compose logs show service
+  stdout and `compose down` stops the service.
+- The default VS Code/Codex/Continue workspace has been built and started on
+  SOG15 through the direct runtime. The real code-server endpoint responds on
+  `127.0.0.1:18080` with HTTP 302 to `./?folder=/workspace`.
+- The llama.cpp GPU workspace starts through the UI/Engine-compatible compose
+  path in CPU fallback mode. The 8B Qwen3 GGUF server responds on
+  `127.0.0.1:18081`, `/v1/models` reports the loaded model, and `docker logs`
+  streams real llama-server output.
 - xterm.js WebView terminal → spawns sh with `PATH=runtime/docker-bin:...` and `DOCKER_HOST=unix://...` so user can type `docker ps` directly
 - Terminal UTF-8 output is decoded through `TextDecoder`, uses an Android/CJK
   monospace font stack, disables IME autocorrect/capitalization, and reports
@@ -77,10 +84,10 @@ What's been confirmed working on the current Android 15 test device:
   instead of leaving a dead card, so build/compose progress remains visible
   when the lower terminal tab is not selected.
 - Terminal UI → one screen can host multiple PTY-backed sessions and switch
-  between them with tabs. `DOCKER_HOST` is prewired, which is the app-side
-  equivalent of `docker run -it` / `docker exec -it` until Engine attach TTY is
-  complete. Back navigation returns to the workspace without closing the
-  terminal Activity, so live PTY tabs remain available when reopened.
+  between them with tabs. `DOCKER_HOST` is prewired, container terminal actions
+  use the Engine exec path with `Tty=true`, and the Android smoke covers a basic
+  interactive exec exchange. Back navigation returns to the workspace without
+  closing the terminal Activity, so live PTY tabs remain available when reopened.
 - Main UI → Compose and Dockerfile tabs can create/edit project files through
   the in-app text editor under `filesDir/pdocker/projects`.
 - Main UI → Sessions lists recent editable project/imported files as native

@@ -12,6 +12,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "app" / "src" / "main" / "assets"
 LIBRARY = ASSETS / "project-library" / "library.json"
+LLAMA_GPU_COMPARE_BRIDGE_MAX_BYTES = "536870912"
+LLAMA_GPU_COMPARE_BRIDGE_LIMITS = (
+    "PDOCKER_VULKAN_MAX_BUFFER_BYTES",
+    "GGML_VK_FORCE_MAX_BUFFER_SIZE",
+    "GGML_VK_FORCE_MAX_ALLOCATION_SIZE",
+    "GGML_VK_SUBALLOCATION_BLOCK_SIZE",
+)
 
 
 def fail(msg: str) -> None:
@@ -27,6 +34,36 @@ def read(path: Path) -> str:
     if not path.is_file():
         fail(f"missing {path.relative_to(ROOT)}")
     return path.read_text()
+
+
+def check_llama_gpu_compare_contract(compare_script: str) -> None:
+    policy_checks = {
+        "reports unmodified llama.cpp policy": '"llama_cpp_modified": False' in compare_script,
+        "documents unmodified llama.cpp run": "without\nmodifying llama.cpp" in compare_script,
+        "does not patch llama.cpp during compare": re.search(
+            r"\b(?:git\s+(?:apply|am|checkout|reset)|patch\s+-p|sed\s+-i|perl\s+-[0-9]*pi)\b",
+            compare_script,
+        )
+        is None,
+    }
+    for name, passed in policy_checks.items():
+        if not passed:
+            fail(f"compare script {name}")
+
+    bridge_limits = {
+        name: re.findall(rf"-e {re.escape(name)}=([0-9]+)\b", compare_script)
+        for name in LLAMA_GPU_COMPARE_BRIDGE_LIMITS
+    }
+    for name, values in bridge_limits.items():
+        if not values:
+            fail(f"compare script missing {name} Vulkan bridge clamp")
+        if values != [LLAMA_GPU_COMPARE_BRIDGE_MAX_BYTES]:
+            fail(
+                f"compare script {name} must equal "
+                f"{LLAMA_GPU_COMPARE_BRIDGE_MAX_BYTES}, got {values}"
+            )
+    if {values[0] for values in bridge_limits.values()} != {LLAMA_GPU_COMPARE_BRIDGE_MAX_BYTES}:
+        fail("compare script Vulkan bridge clamps must use one byte value")
 
 
 def main() -> int:
@@ -52,6 +89,7 @@ def main() -> int:
     for name, passed in compare_expectations.items():
         if not passed:
             fail(name)
+    check_llama_gpu_compare_contract(compare_script)
     ok("llama gpu 10x comparison scenario is recorded")
 
     data = json.loads(read(LIBRARY))
