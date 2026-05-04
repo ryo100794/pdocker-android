@@ -3082,7 +3082,10 @@ def create_container(config, name=None):
             "OOMKilled": False,
             "Dead": False,
             "Pid": 0,
+            "PidStartTime": "",
             "ExitCode": 0,
+            "PdockerRawReturnCode": 0,
+            "PdockerSignal": 0,
             "Error": "",
             "StartedAt": "0001-01-01T00:00:00Z",
             "FinishedAt": "0001-01-01T00:00:00Z",
@@ -3215,22 +3218,37 @@ def reconcile_container_state(state):
     cid = state.get("Id")
     st = state.get("State") or {}
     if not cid or not st.get("Running"):
+        if st:
+            _normalize_container_exit_state(st)
+            state["State"] = st
+            if cid:
+                save_container_state(cid, state)
         return state
     with running_lock:
         proc = running_containers.get(cid)
     if proc is not None and proc.poll() is None:
         _start_health_monitor(cid)
         return state
-    pid = int(st.get("Pid") or 0)
-    if pid > 0 and _pid_alive(pid):
+    pid = _container_live_pid(state)
+    if pid > 0:
         st["Running"] = True
         st["Status"] = "running"
+        start_time = _pid_start_time(pid)
+        if start_time:
+            st["PidStartTime"] = start_time
         state["State"] = st
         _start_health_monitor(cid)
         return state
     st["Running"] = False
     st["Status"] = "exited"
-    st["ExitCode"] = st.get("ExitCode", 0) if st.get("ExitCode", 0) else -129
+    st["Pid"] = 0
+    st.pop("PidStartTime", None)
+    if st.get("ExitCode", 0):
+        _normalize_container_exit_state(st)
+    else:
+        _record_container_return_code(st, 255)
+    _normalize_container_exit_state(st)
+    st["Error"] = st.get("Error") or "container process is not alive; state reconciled by pdockerd"
     st["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
     state["State"] = st
     save_container_state(cid, state)
@@ -3377,14 +3395,78 @@ def _pid_alive(pid):
         return False
 
 
+def _pid_start_time(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            stat = f.read()
+    except OSError:
+        return ""
+    try:
+        after_comm = stat.rsplit(") ", 1)[1]
+        fields = after_comm.split()
+        # /proc/<pid>/stat field 22 is starttime. After stripping pid and
+        # comm, field 3 is index 0, so field 22 is index 19.
+        return fields[19]
+    except (IndexError, ValueError):
+        return ""
+
+
 def _container_live_pid(state):
     try:
         pid = int(((state or {}).get("State") or {}).get("Pid") or 0)
     except (TypeError, ValueError):
         return 0
-    if pid > 0 and _pid_alive(pid):
-        return pid
-    return 0
+    if pid <= 0 or not _pid_alive(pid):
+        return 0
+    st = (state or {}).get("State") or {}
+    expected_start = str(st.get("PidStartTime") or "")
+    actual_start = _pid_start_time(pid)
+    if not expected_start or not actual_start or expected_start != actual_start:
+        return 0
+    return pid
+
+
+def _docker_exit_code(returncode):
+    try:
+        rc = int(returncode)
+    except (TypeError, ValueError):
+        return 255
+    if rc < 0:
+        return min(255, 128 + abs(rc))
+    return rc
+
+
+def _record_container_return_code(st, returncode):
+    try:
+        raw = int(returncode)
+    except (TypeError, ValueError):
+        raw = 255
+    st["PdockerRawReturnCode"] = raw
+    st["PdockerSignal"] = abs(raw) if raw < 0 else 0
+    st["ExitCode"] = _docker_exit_code(raw)
+
+
+def _normalize_container_exit_state(st):
+    if not st or st.get("Running"):
+        return st
+    try:
+        pid = int(st.get("Pid") or 0)
+    except (TypeError, ValueError):
+        pid = 0
+    if pid > 0:
+        st["PdockerLastPid"] = pid
+        st["Pid"] = 0
+    st.pop("PidStartTime", None)
+    try:
+        exit_code = int(st.get("ExitCode", 0))
+    except (TypeError, ValueError):
+        exit_code = 255
+    if exit_code < 0:
+        _record_container_return_code(st, exit_code)
+    elif exit_code > 255:
+        st.setdefault("PdockerRawReturnCode", exit_code)
+        st["ExitCode"] = 255
+    return st
 
 
 def _signal_pid_group(pid, sig):
@@ -3499,6 +3581,9 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         state.setdefault("State", {})["Running"] = True
         state["State"]["Status"] = "running"
         state["State"]["Pid"] = live_pid
+        start_time = _pid_start_time(live_pid)
+        if start_time:
+            state["State"]["PidStartTime"] = start_time
         save_container_state(cid, state)
         _start_health_monitor(cid)
         return state
@@ -3548,6 +3633,8 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
             log_file.write((fault + "\n").encode("utf-8", "replace"))
         state["State"]["Running"] = False
         state["State"]["Status"] = "exited"
+        state["State"]["Pid"] = 0
+        state["State"].pop("PidStartTime", None)
         state["State"]["ExitCode"] = 126
         state["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
         save_container_state(cid, state)
@@ -3559,6 +3646,8 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
             log_file.write((fault + "\n").encode("utf-8", "replace"))
         state["State"]["Running"] = False
         state["State"]["Status"] = "exited"
+        state["State"]["Pid"] = 0
+        state["State"].pop("PidStartTime", None)
         state["State"]["ExitCode"] = 126
         state["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
         save_container_state(cid, state)
@@ -3589,6 +3678,9 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     state["State"]["Running"] = True
     state["State"]["Status"] = "running"
     state["State"]["Pid"] = proc.pid
+    start_time = _pid_start_time(proc.pid)
+    if start_time:
+        state["State"]["PidStartTime"] = start_time
     state["State"]["StartedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
     if _container_healthcheck(state):
         state["State"]["Health"] = {
@@ -3612,11 +3704,14 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
                 return
             s["State"]["Running"] = False
             s["State"]["Status"] = "exited"
-            s["State"]["ExitCode"] = rc
+            _record_container_return_code(s["State"], rc)
+            s["State"]["Pid"] = 0
+            s["State"].pop("PidStartTime", None)
             s["State"]["FinishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S.000000000Z", time.gmtime())
             save_container_state(cid, s)
             attrs = _container_event_attrs(s)
-            attrs["exitCode"] = rc
+            attrs["exitCode"] = s["State"]["ExitCode"]
+            attrs["pdockerRawReturnCode"] = s["State"].get("PdockerRawReturnCode", s["State"]["ExitCode"])
             record_event("container", "die", cid, attrs)
             if (s.get("HostConfig") or {}).get("AutoRemove"):
                 remove_container(cid, force=True)

@@ -629,6 +629,31 @@ Tasks:
     do not appear in `docker ps`; container cards are reconciled only from
     Engine API `/containers/json?all=1`.
 
+11. **[doing] Rework project/container identity.**
+    Stop using project-name prefixes as the primary relationship key. Compose
+    launches now label containers with a stable pdocker project ID, project
+    directory, project name, and compose service name; UI cards must prefer
+    those labels and Engine container IDs over name guesses. Name matching is
+    only a legacy fallback for containers created before labels existed.
+12. **[next] Add a local SQLite project index.**
+    Add an app-owned database for `projects`, `compose_services`,
+    `containers`, `images`, and `jobs`. The database is an index and
+    relationship layer, not a replacement for Docker-compatible Engine state:
+    container truth remains Engine ID/state, image truth remains image ID and
+    layer digests, and project truth can later attach git remote/branch/status.
+    Do not store file contents in SQLite. For overlay/COW, store metadata only:
+    path, lower layer digest, upper path, whiteout state, size, mtime, and the
+    owning project/container IDs. File payloads remain in content-addressed
+    layers and upperdirs.
+    The database must be disposable: store `schema_version`, run consistency
+    checks on startup, and rebuild the index from `projects/*/compose.yaml`,
+    `containers/*/state.json`, image configs, layer manifests, and upperdirs
+    whenever the DB is missing, corrupt, or has dangling references.
+    Use SQLite WAL for normal operation, periodically checkpoint to a replica
+    such as `metadata.snapshot.sqlite`, and write a small manifest containing
+    source hashes/counts so startup can decide whether to trust the primary DB,
+    fall back to the replica, or rebuild from the filesystem.
+
 Current 2026-05-04 blocker:
 
 - Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge, allocate

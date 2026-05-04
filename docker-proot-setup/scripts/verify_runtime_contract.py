@@ -241,6 +241,7 @@ def test_start_container_reconciles_live_pid() -> None:
         state["State"]["Running"] = False
         state["State"]["Status"] = "exited"
         state["State"]["Pid"] = os.getpid()
+        state["State"]["PidStartTime"] = mod._pid_start_time(os.getpid())
         state["State"]["ExitCode"] = 1
         mod.save_container_state(state["Id"], state)
 
@@ -250,7 +251,38 @@ def test_start_container_reconciles_live_pid() -> None:
             fail("start_container did not preserve the live runtime pid")
         if not saved["State"]["Running"] or saved["State"]["Status"] != "running":
             fail(f"start_container did not reconcile live pid to running: {saved['State']!r}")
-        ok("container start reconciles live pid without double-starting")
+        ok("container start reconciles verified live pid without double-starting")
+
+
+def test_start_container_rejects_reused_pid() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("start_reused_pid", "no-proot", home_path)
+        image = "ubuntu:22.04"
+        img_dir = Path(mod.image_dir(mod.normalize_image(image)))
+        rootfs = img_dir / "rootfs"
+        (rootfs / "bin").mkdir(parents=True)
+        (rootfs / "bin" / "sh").write_text("#!/bin/sh\n")
+        (img_dir / "config.json").write_text('{"config":{"Cmd":["/bin/sh"],"Env":[]}}')
+        state = mod.create_container({"Image": image, "Cmd": ["/bin/sh"]}, name="reused-pid")
+        state["State"]["Running"] = True
+        state["State"]["Status"] = "running"
+        state["State"]["Pid"] = os.getpid()
+        state["State"]["PidStartTime"] = "definitely-not-this-process"
+        mod.save_container_state(state["Id"], state)
+
+        try:
+            mod.start_container(state["Id"])
+        except RuntimeError:
+            pass
+        else:
+            fail("start_container treated a reused pid as the live container process")
+        saved = mod.load_container_state(state["Id"])
+        if saved["State"]["Running"]:
+            fail(f"reused pid remained running: {saved['State']!r}")
+        if saved["State"].get("Pid") != 0:
+            fail(f"reused pid was not cleared: {saved['State']!r}")
+        ok("container start rejects reused pid identity")
 
 
 def test_default_no_proot_runtime_path() -> None:
@@ -585,6 +617,7 @@ def main() -> int:
     test_direct_executor_process_capability_contract()
     test_direct_backend_rejects_fake_container_start()
     test_start_container_reconciles_live_pid()
+    test_start_container_rejects_reused_pid()
     test_default_no_proot_runtime_path()
     test_dockerfile_unknown_instruction_rejected()
     test_direct_run_requires_real_executor()

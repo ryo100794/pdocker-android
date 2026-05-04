@@ -201,6 +201,10 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_JOB_LINES = 200
         private const val MAX_JOB_LOG_VIEW_BYTES = 256 * 1024
         private const val PDOCKER_SERVICE_URL_LABEL_PREFIX = "io.github.ryo100794.pdocker.service-url."
+        private const val PDOCKER_PROJECT_ID_LABEL = "io.github.ryo100794.pdocker.project-id"
+        private const val PDOCKER_PROJECT_DIR_LABEL = "io.github.ryo100794.pdocker.project-dir"
+        private const val PDOCKER_PROJECT_NAME_LABEL = "io.github.ryo100794.pdocker.project-name"
+        private const val PDOCKER_COMPOSE_SERVICE_LABEL = "io.github.ryo100794.pdocker.compose-service"
         private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
         private const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
         private const val ACTION_SMOKE_COMPOSE_UP = "io.github.ryo100794.pdocker.action.SMOKE_COMPOSE_UP"
@@ -1296,7 +1300,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 emit("Container $containerName Creating")
                 out.appendLine("Container $containerName Creating")
-                val id = createContainer(containerName, service.toContainerConfig(image, dir))
+                val id = createContainer(containerName, service.toContainerConfig(image, dir, projectIdFor(dir)))
                 if (runtimeBlocked) {
                     val prepared = "Container $containerName Prepared for inspection (container runtime unavailable)"
                     emit(prepared)
@@ -1467,7 +1471,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun ComposeService.toContainerConfig(imageName: String, projectDir: File): JSONObject {
+    private fun projectIdFor(projectDir: File): String =
+        runCatching { projectDir.canonicalFile.absolutePath }
+            .getOrDefault(projectDir.absolutePath)
+
+    private fun ComposeService.toContainerConfig(imageName: String, projectDir: File, projectId: String): JSONObject {
         val exposedPorts = JSONObject()
         val portBindings = JSONObject()
         ports.forEach { spec ->
@@ -1513,6 +1521,13 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val labels = JSONObject()
+            .put(PDOCKER_PROJECT_ID_LABEL, projectId)
+            .put(PDOCKER_PROJECT_DIR_LABEL, projectDir.absolutePath)
+            .put(PDOCKER_PROJECT_NAME_LABEL, projectDir.name)
+            .put(PDOCKER_COMPOSE_SERVICE_LABEL, name)
+            .put("com.docker.compose.project", projectDir.name)
+            .put("com.docker.compose.service", name)
+            .put("com.docker.compose.oneoff", "False")
         serviceLinks.forEachIndexed { index, link ->
             if (link.port != null) {
                 labels.put("$PDOCKER_SERVICE_URL_LABEL_PREFIX${link.port}", link.label)
@@ -2799,11 +2814,11 @@ class MainActivity : AppCompatActivity() {
                 editable = editable,
                 services = services,
                 serviceUrls = serviceUrls,
-                serviceHealth = projectServiceHealthSummary(serviceUrls, dir.name),
+                serviceHealth = projectServiceHealthSummary(serviceUrls, dir),
                 modelSummary = projectModelSummary(dir),
                 gpuProfileSummary = projectGpuProfileSummary(dir),
                 gpuDiagnostics = File(dir, "profiles/pdocker-gpu-diagnostics.json").takeIf { it.isFile },
-                containerStatusSummary = projectContainerStatusSummary(dir.name),
+                containerStatusSummary = projectContainerStatusSummary(dir),
                 jobSummary = projectJobSummary(dir.name),
             )
         }.sortedWith(compareBy<ProjectSummary> {
@@ -2842,8 +2857,8 @@ class MainActivity : AppCompatActivity() {
         else -> 3
     }
 
-    private fun projectContainerStatusSummary(projectName: String): String {
-        val snapshots = projectContainerSnapshots(projectName)
+    private fun projectContainerStatusSummary(projectDir: File): String {
+        val snapshots = projectContainerSnapshots(projectDir)
         if (snapshots.isEmpty()) {
             return if (lastContainerSnapshotAt == 0L) {
                 getString(R.string.container_status_syncing)
@@ -2858,18 +2873,27 @@ class MainActivity : AppCompatActivity() {
         return getString(R.string.container_inventory_fmt, snapshots.size, running)
     }
 
-    private fun projectContainerSnapshots(projectName: String): List<JSONObject> =
-        containerSnapshot.filter { obj ->
-            val names = obj.optJSONArray("Names")
-            if (names == null) {
-                false
-            } else {
-                (0 until names.length()).any { index ->
-                    val name = names.optString(index).trim('/')
-                    name == projectName || name.startsWith("$projectName-") || name.startsWith("pdocker-$projectName")
+    private fun projectContainerSnapshots(projectDir: File): List<JSONObject> {
+        val projectId = projectIdFor(projectDir)
+        val projectName = projectDir.name
+        val composeNames = parseComposeServices(projectDir)
+            .map { it.containerName.ifBlank { "${projectDir.name}-${it.name}-1" } }
+            .toSet()
+        return containerSnapshot.filter { obj ->
+            val labels = obj.optJSONObject("Labels")
+            val labelledProject = labels?.optString(PDOCKER_PROJECT_ID_LABEL).orEmpty()
+            when {
+                labelledProject.isNotBlank() -> labelledProject == projectId
+                else -> {
+                    val names = obj.optJSONArray("Names")
+                    names != null && (0 until names.length()).any { index ->
+                        val name = names.optString(index).trim('/')
+                        name in composeNames || name == projectName || name.startsWith("$projectName-")
+                    }
                 }
             }
         }
+    }
 
     private fun containerSnapshotIsRunning(obj: JSONObject): Boolean =
         obj.optString("State").equals("running", ignoreCase = true) ||
@@ -2931,11 +2955,11 @@ class MainActivity : AppCompatActivity() {
             ?.let { it.label to it.url.orEmpty() }
     }
 
-    private fun projectServiceHealthSummary(urls: List<Pair<String, String>>, projectName: String): String {
+    private fun projectServiceHealthSummary(urls: List<Pair<String, String>>, projectDir: File): String {
         if (urls.isEmpty()) return "-"
-        val snapshots = projectContainerSnapshots(projectName)
+        val snapshots = projectContainerSnapshots(projectDir)
         if (lastContainerSnapshotAt > 0L && snapshots.none { containerSnapshotIsRunning(it) }) {
-            return projectContainerStatusSummary(projectName)
+            return projectContainerStatusSummary(projectDir)
         }
         urls.forEach { (_, url) -> scheduleServiceHealthProbe(url) }
         return urls.take(4).joinToString(", ") { (label, url) ->

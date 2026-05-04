@@ -31,6 +31,7 @@ def read(path: Path) -> str:
 
 def main() -> int:
     compare_script = read(ROOT / "scripts" / "android-llama-gpu-compare.sh")
+    host_bench_script = read(ROOT / "scripts" / "android-gpu-host-bench.sh")
     compare_doc = read(ROOT / "docs" / "test" / "LLAMA_BENCHMARKS.md")
     compare_todo = read(ROOT / "docs" / "plan" / "TODO.md")
     compare_expectations = {
@@ -44,6 +45,7 @@ def main() -> int:
         "compare script reports operation to ui": "operation_notify" in compare_script and "POST /system/operations" in compare_script and "llama-gpu-compare" in compare_script,
         "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script,
         "compare docs record latest report": "llama-gpu-compare-latest.json" in compare_doc,
+        "host native gpu baseline script is recorded": "pdocker.gpu.host_native.v1" in host_bench_script and "--bench-vulkan-matmul256-resident" in host_bench_script and "gpu-host-native-latest.json" in compare_doc,
         "compare todo records 10x task list": "llama.cpp Container GPU 10x Task List" in compare_todo,
         "compare todo preserves no llama patch policy": "llama.cpp source must remain unmodified" in compare_todo,
     }

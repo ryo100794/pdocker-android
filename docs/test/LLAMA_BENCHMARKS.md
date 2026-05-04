@@ -383,11 +383,22 @@ container-vs-host overhead comparisons.
 Follow-up host/container comparison on 2026-05-04:
 
 - Repeatable script: `scripts/android-gpu-compare-bench.sh 8`.
+- Host-only baseline script: `scripts/android-gpu-host-bench.sh --runs 5`.
+- Latest host-only JSON: `docs/test/gpu-host-native-latest.json`.
+- Latest host-only table: `docs/test/gpu-host-native-latest.md`.
 - Latest JSON: `docs/test/gpu-host-container-comparison-latest.json`.
 - Latest table: `docs/test/gpu-host-container-comparison-latest.md`.
 - Device: `10.62.90.13:37669`.
 - Container: `device-smoke-app-1`.
 - Warmup samples discarded per series: `3`.
+- Latest host-only CPU matmul256 steady median: `34.8216 ms`.
+- Latest host-only Vulkan resident-buffer matmul256 steady median:
+  `0.6666 ms`.
+- Latest host-only CPU matmul256 / Vulkan resident matmul256 ratio:
+  `52.2337x`.
+- Latest host-only CPU vector-add steady median: `0.0667 ms`.
+- Latest host-only Vulkan resident-buffer vector-add steady median:
+  `0.5002 ms`.
 - Host CPU vector-add steady median: `0.0836 ms`.
 - Host Vulkan transfer vector-add steady median: `5.5497 ms`.
 - Host Vulkan resident-buffer vector-add steady median: `0.6522 ms`.
@@ -413,7 +424,10 @@ used for this class when it wins; the OpenCL ICD now has this CPU-emulated
 path in auto mode, while bridge smokes force GPU explicitly. The host-side
 Vulkan path shows useful GPU behavior once buffers are resident and reused:
 the resident matmul256 probe is about `37.8x` faster than the CPU scalar
-reference. The current container bridge still behaves like a transfer path for
+reference in the host/container comparison and about `52.2x` faster in the
+host-only native baseline. This confirms the APK-side Android Vulkan executor
+is native GPU execution, not CPU emulation. The current container bridge still
+behaves like a transfer path for
 vector-add, so the next optimization target is persistent registered GPU
 buffers across the container/APK boundary before llama GPU mode is enabled by
 default.
