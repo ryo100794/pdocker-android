@@ -9,12 +9,23 @@
 #include "pdocker_gpu_abi.h"
 
 #include <stdbool.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/syscall.h>
+#include <sys/un.h>
+#include <unistd.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_icd.h>
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
 
 typedef struct {
     VK_LOADER_DATA loader;
@@ -32,12 +43,145 @@ typedef struct {
     VK_LOADER_DATA loader;
 } PdockerVkQueue;
 
+typedef struct PdockerVkMemory PdockerVkMemory;
+typedef struct PdockerVkBuffer PdockerVkBuffer;
+typedef struct PdockerVkDescriptorSet PdockerVkDescriptorSet;
+typedef struct PdockerVkPipeline PdockerVkPipeline;
+
+struct PdockerVkMemory {
+    size_t size;
+    int fd;
+    void *map;
+};
+
+struct PdockerVkBuffer {
+    size_t size;
+    PdockerVkMemory *memory;
+    VkDeviceSize memory_offset;
+};
+
+struct PdockerVkDescriptorSet {
+    PdockerVkBuffer *storage_buffers[16];
+};
+
+struct PdockerVkPipeline {
+    uint32_t local_size_x;
+};
+
+typedef struct {
+    VK_LOADER_DATA loader;
+    PdockerVkPipeline *pipeline;
+    PdockerVkDescriptorSet *set;
+    uint32_t dispatch_x;
+} PdockerVkCommandBuffer;
+
+typedef struct {
+    int unused;
+} PdockerHandle;
+
 static PdockerVkPhysicalDevice g_device;
 static PdockerVkQueue g_queue;
+
+static void *pdocker_alloc_handle(size_t size) {
+    return calloc(1, size ? size : sizeof(PdockerHandle));
+}
+
+static int create_shared_fd(size_t bytes) {
+#ifdef __NR_memfd_create
+    int memfd = (int)syscall(__NR_memfd_create, "pdocker-vulkan-memory", MFD_CLOEXEC);
+    if (memfd >= 0) {
+        if (ftruncate(memfd, (off_t)bytes) == 0) return memfd;
+        int err = errno;
+        close(memfd);
+        errno = err;
+        return -1;
+    }
+#endif
+    const char *dir = getenv("PDOCKER_GPU_SHARED_DIR");
+    if (!dir || !dir[0]) dir = "/tmp";
+    char path[512];
+    snprintf(path, sizeof(path), "%s/pdocker-vulkan-memory-XXXXXX", dir);
+    int fd = mkstemp(path);
+    if (fd < 0) return -1;
+    unlink(path);
+    if (ftruncate(fd, (off_t)bytes) != 0) {
+        int err = errno;
+        close(fd);
+        errno = err;
+        return -1;
+    }
+    return fd;
+}
 
 static bool bridge_available(void) {
     const char *socket_path = getenv("PDOCKER_GPU_QUEUE_SOCKET");
     return socket_path && socket_path[0];
+}
+
+static int connect_queue(void) {
+    const char *path = getenv("PDOCKER_GPU_QUEUE_SOCKET");
+    if (!path || !path[0]) return -ENOENT;
+    if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return -ENAMETOOLONG;
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return -errno;
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        int err = errno;
+        close(fd);
+        return -err;
+    }
+    return fd;
+}
+
+static int send_vector_add_3fd(size_t n, int fd_a, int fd_b, int fd_out) {
+    int socket_fd = connect_queue();
+    if (socket_fd < 0) return socket_fd;
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "VECTOR_ADD_3FD %zu\n", n);
+    int fds[3] = { fd_a, fd_b, fd_out };
+    char control[CMSG_SPACE(sizeof(fds))];
+    struct iovec iov;
+    struct msghdr msg;
+    memset(control, 0, sizeof(control));
+    memset(&iov, 0, sizeof(iov));
+    memset(&msg, 0, sizeof(msg));
+    iov.iov_base = cmd;
+    iov.iov_len = strlen(cmd);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(fds));
+    memcpy(CMSG_DATA(cmsg), fds, sizeof(fds));
+    msg.msg_controllen = sizeof(control);
+    int rc = 0;
+    if (sendmsg(socket_fd, &msg, 0) < 0) {
+        rc = -errno;
+    } else {
+        char line[4096];
+        size_t off = 0;
+        while (off + 1 < sizeof(line)) {
+            char ch;
+            ssize_t r = read(socket_fd, &ch, 1);
+            if (r <= 0) break;
+            line[off++] = ch;
+            if (ch == '\n') break;
+        }
+        line[off] = '\0';
+        if (getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+            fprintf(stderr, "pdocker-vulkan-icd: bridge response: %s", line);
+            if (off == 0 || line[off - 1] != '\n') fprintf(stderr, "\n");
+        }
+        if (strstr(line, "\"valid\":true") == NULL) rc = -EIO;
+    }
+    close(socket_fd);
+    return rc;
 }
 
 static uint32_t pdocker_api_version(void) {
@@ -258,6 +402,137 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(
     pMemoryProperties->memoryHeaps[0].flags = 0;
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(
+        VkDevice device,
+        const VkBufferCreateInfo *pCreateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkBuffer *pBuffer) {
+    (void)device;
+    (void)pAllocator;
+    if (!pCreateInfo || !pBuffer) return VK_ERROR_INITIALIZATION_FAILED;
+    PdockerVkBuffer *buffer = pdocker_alloc_handle(sizeof(*buffer));
+    if (!buffer) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    buffer->size = (size_t)pCreateInfo->size;
+    *pBuffer = (VkBuffer)buffer;
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(
+        VkDevice device,
+        VkBuffer buffer,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)buffer);
+}
+
+VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(
+        VkDevice device,
+        VkBuffer buffer,
+        VkMemoryRequirements *pMemoryRequirements) {
+    (void)device;
+    if (!pMemoryRequirements) return;
+    PdockerVkBuffer *b = (PdockerVkBuffer *)buffer;
+    memset(pMemoryRequirements, 0, sizeof(*pMemoryRequirements));
+    pMemoryRequirements->size = b ? (VkDeviceSize)b->size : 0;
+    pMemoryRequirements->alignment = 16;
+    pMemoryRequirements->memoryTypeBits = 1;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(
+        VkDevice device,
+        const VkMemoryAllocateInfo *pAllocateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkDeviceMemory *pMemory) {
+    (void)device;
+    (void)pAllocator;
+    if (!pAllocateInfo || !pMemory) return VK_ERROR_INITIALIZATION_FAILED;
+    PdockerVkMemory *memory = pdocker_alloc_handle(sizeof(*memory));
+    if (!memory) return VK_ERROR_OUT_OF_HOST_MEMORY;
+    memory->size = (size_t)pAllocateInfo->allocationSize;
+    memory->fd = create_shared_fd(memory->size);
+    if (memory->fd < 0) {
+        free(memory);
+        return VK_ERROR_OUT_OF_HOST_MEMORY;
+    }
+    memory->map = mmap(NULL, memory->size, PROT_READ | PROT_WRITE, MAP_SHARED, memory->fd, 0);
+    if (memory->map == MAP_FAILED) {
+        close(memory->fd);
+        free(memory);
+        return VK_ERROR_MEMORY_MAP_FAILED;
+    }
+    *pMemory = (VkDeviceMemory)memory;
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkFreeMemory(
+        VkDevice device,
+        VkDeviceMemory memory,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    PdockerVkMemory *m = (PdockerVkMemory *)memory;
+    if (!m) return;
+    if (m->map && m->map != MAP_FAILED) munmap(m->map, m->size);
+    if (m->fd >= 0) close(m->fd);
+    free(m);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(
+        VkDevice device,
+        VkDeviceMemory memory,
+        VkDeviceSize offset,
+        VkDeviceSize size,
+        VkMemoryMapFlags flags,
+        void **ppData) {
+    (void)device;
+    (void)size;
+    (void)flags;
+    if (!memory || !ppData) return VK_ERROR_MEMORY_MAP_FAILED;
+    PdockerVkMemory *m = (PdockerVkMemory *)memory;
+    if ((size_t)offset > m->size) return VK_ERROR_MEMORY_MAP_FAILED;
+    *ppData = (char *)m->map + offset;
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkUnmapMemory(VkDevice device, VkDeviceMemory memory) {
+    (void)device;
+    (void)memory;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkFlushMappedMemoryRanges(
+        VkDevice device,
+        uint32_t memoryRangeCount,
+        const VkMappedMemoryRange *pMemoryRanges) {
+    (void)device;
+    (void)memoryRangeCount;
+    (void)pMemoryRanges;
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkInvalidateMappedMemoryRanges(
+        VkDevice device,
+        uint32_t memoryRangeCount,
+        const VkMappedMemoryRange *pMemoryRanges) {
+    (void)device;
+    (void)memoryRangeCount;
+    (void)pMemoryRanges;
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(
+        VkDevice device,
+        VkBuffer buffer,
+        VkDeviceMemory memory,
+        VkDeviceSize memoryOffset) {
+    (void)device;
+    PdockerVkBuffer *b = (PdockerVkBuffer *)buffer;
+    if (!b || !memory) return VK_ERROR_INITIALIZATION_FAILED;
+    b->memory = (PdockerVkMemory *)memory;
+    b->memory_offset = memoryOffset;
+    return VK_SUCCESS;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL vkEnumerateDeviceExtensionProperties(
         VkPhysicalDevice physicalDevice,
         const char *pLayerName,
@@ -322,16 +597,281 @@ VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue(
     if (pQueue) *pQueue = (VkQueue)&g_queue;
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorSetLayout(
+        VkDevice device,
+        const VkDescriptorSetLayoutCreateInfo *pCreateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkDescriptorSetLayout *pSetLayout) {
+    (void)device;
+    (void)pCreateInfo;
+    (void)pAllocator;
+    if (!pSetLayout) return VK_ERROR_INITIALIZATION_FAILED;
+    *pSetLayout = (VkDescriptorSetLayout)pdocker_alloc_handle(sizeof(PdockerHandle));
+    return *pSetLayout ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorSetLayout(
+        VkDevice device,
+        VkDescriptorSetLayout descriptorSetLayout,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)descriptorSetLayout);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreatePipelineLayout(
+        VkDevice device,
+        const VkPipelineLayoutCreateInfo *pCreateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkPipelineLayout *pPipelineLayout) {
+    (void)device;
+    (void)pCreateInfo;
+    (void)pAllocator;
+    if (!pPipelineLayout) return VK_ERROR_INITIALIZATION_FAILED;
+    *pPipelineLayout = (VkPipelineLayout)pdocker_alloc_handle(sizeof(PdockerHandle));
+    return *pPipelineLayout ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyPipelineLayout(
+        VkDevice device,
+        VkPipelineLayout pipelineLayout,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)pipelineLayout);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorPool(
+        VkDevice device,
+        const VkDescriptorPoolCreateInfo *pCreateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkDescriptorPool *pDescriptorPool) {
+    (void)device;
+    (void)pCreateInfo;
+    (void)pAllocator;
+    if (!pDescriptorPool) return VK_ERROR_INITIALIZATION_FAILED;
+    *pDescriptorPool = (VkDescriptorPool)pdocker_alloc_handle(sizeof(PdockerHandle));
+    return *pDescriptorPool ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorPool(
+        VkDevice device,
+        VkDescriptorPool descriptorPool,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)descriptorPool);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkAllocateDescriptorSets(
+        VkDevice device,
+        const VkDescriptorSetAllocateInfo *pAllocateInfo,
+        VkDescriptorSet *pDescriptorSets) {
+    (void)device;
+    if (!pAllocateInfo || !pDescriptorSets) return VK_ERROR_INITIALIZATION_FAILED;
+    for (uint32_t i = 0; i < pAllocateInfo->descriptorSetCount; ++i) {
+        PdockerVkDescriptorSet *set = pdocker_alloc_handle(sizeof(*set));
+        if (!set) return VK_ERROR_OUT_OF_HOST_MEMORY;
+        pDescriptorSets[i] = (VkDescriptorSet)set;
+    }
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkUpdateDescriptorSets(
+        VkDevice device,
+        uint32_t descriptorWriteCount,
+        const VkWriteDescriptorSet *pDescriptorWrites,
+        uint32_t descriptorCopyCount,
+        const VkCopyDescriptorSet *pDescriptorCopies) {
+    (void)device;
+    (void)descriptorCopyCount;
+    (void)pDescriptorCopies;
+    for (uint32_t i = 0; i < descriptorWriteCount; ++i) {
+        const VkWriteDescriptorSet *w = &pDescriptorWrites[i];
+        PdockerVkDescriptorSet *set = (PdockerVkDescriptorSet *)w->dstSet;
+        if (!set || w->descriptorType != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || !w->pBufferInfo) continue;
+        for (uint32_t j = 0; j < w->descriptorCount; ++j) {
+            uint32_t binding = w->dstBinding + j;
+            if (binding < 16) set->storage_buffers[binding] = (PdockerVkBuffer *)w->pBufferInfo[j].buffer;
+        }
+    }
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateShaderModule(
+        VkDevice device,
+        const VkShaderModuleCreateInfo *pCreateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkShaderModule *pShaderModule) {
+    (void)device;
+    (void)pCreateInfo;
+    (void)pAllocator;
+    if (!pShaderModule) return VK_ERROR_INITIALIZATION_FAILED;
+    *pShaderModule = (VkShaderModule)pdocker_alloc_handle(sizeof(PdockerHandle));
+    return *pShaderModule ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyShaderModule(
+        VkDevice device,
+        VkShaderModule shaderModule,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)shaderModule);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateComputePipelines(
+        VkDevice device,
+        VkPipelineCache pipelineCache,
+        uint32_t createInfoCount,
+        const VkComputePipelineCreateInfo *pCreateInfos,
+        const VkAllocationCallbacks *pAllocator,
+        VkPipeline *pPipelines) {
+    (void)device;
+    (void)pipelineCache;
+    (void)pCreateInfos;
+    (void)pAllocator;
+    if (!pPipelines) return VK_ERROR_INITIALIZATION_FAILED;
+    for (uint32_t i = 0; i < createInfoCount; ++i) {
+        PdockerVkPipeline *pipeline = pdocker_alloc_handle(sizeof(*pipeline));
+        if (!pipeline) return VK_ERROR_OUT_OF_HOST_MEMORY;
+        pipeline->local_size_x = 128;
+        pPipelines[i] = (VkPipeline)pipeline;
+    }
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyPipeline(
+        VkDevice device,
+        VkPipeline pipeline,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)pipeline);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateCommandPool(
+        VkDevice device,
+        const VkCommandPoolCreateInfo *pCreateInfo,
+        const VkAllocationCallbacks *pAllocator,
+        VkCommandPool *pCommandPool) {
+    (void)device;
+    (void)pCreateInfo;
+    (void)pAllocator;
+    if (!pCommandPool) return VK_ERROR_INITIALIZATION_FAILED;
+    *pCommandPool = (VkCommandPool)pdocker_alloc_handle(sizeof(PdockerHandle));
+    return *pCommandPool ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkDestroyCommandPool(
+        VkDevice device,
+        VkCommandPool commandPool,
+        const VkAllocationCallbacks *pAllocator) {
+    (void)device;
+    (void)pAllocator;
+    free((void *)commandPool);
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkAllocateCommandBuffers(
+        VkDevice device,
+        const VkCommandBufferAllocateInfo *pAllocateInfo,
+        VkCommandBuffer *pCommandBuffers) {
+    (void)device;
+    if (!pAllocateInfo || !pCommandBuffers) return VK_ERROR_INITIALIZATION_FAILED;
+    for (uint32_t i = 0; i < pAllocateInfo->commandBufferCount; ++i) {
+        PdockerVkCommandBuffer *cmd = pdocker_alloc_handle(sizeof(*cmd));
+        if (!cmd) return VK_ERROR_OUT_OF_HOST_MEMORY;
+        set_loader_magic_value(cmd);
+        pCommandBuffers[i] = (VkCommandBuffer)cmd;
+    }
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(
+        VkCommandBuffer commandBuffer,
+        const VkCommandBufferBeginInfo *pBeginInfo) {
+    (void)pBeginInfo;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
+    if (!cmd) return VK_ERROR_INITIALIZATION_FAILED;
+    cmd->pipeline = NULL;
+    cmd->set = NULL;
+    cmd->dispatch_x = 0;
+    return VK_SUCCESS;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer commandBuffer) {
+    return commandBuffer ? VK_SUCCESS : VK_ERROR_INITIALIZATION_FAILED;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdBindPipeline(
+        VkCommandBuffer commandBuffer,
+        VkPipelineBindPoint pipelineBindPoint,
+        VkPipeline pipeline) {
+    (void)pipelineBindPoint;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
+    if (cmd) cmd->pipeline = (PdockerVkPipeline *)pipeline;
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdBindDescriptorSets(
+        VkCommandBuffer commandBuffer,
+        VkPipelineBindPoint pipelineBindPoint,
+        VkPipelineLayout layout,
+        uint32_t firstSet,
+        uint32_t descriptorSetCount,
+        const VkDescriptorSet *pDescriptorSets,
+        uint32_t dynamicOffsetCount,
+        const uint32_t *pDynamicOffsets) {
+    (void)pipelineBindPoint;
+    (void)layout;
+    (void)firstSet;
+    (void)dynamicOffsetCount;
+    (void)pDynamicOffsets;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
+    if (cmd && descriptorSetCount > 0 && pDescriptorSets) {
+        cmd->set = (PdockerVkDescriptorSet *)pDescriptorSets[0];
+    }
+}
+
+VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
+        VkCommandBuffer commandBuffer,
+        uint32_t groupCountX,
+        uint32_t groupCountY,
+        uint32_t groupCountZ) {
+    (void)groupCountY;
+    (void)groupCountZ;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
+    if (cmd) cmd->dispatch_x = groupCountX;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
         VkQueue queue,
         uint32_t submitCount,
         const VkSubmitInfo *pSubmits,
         VkFence fence) {
     (void)queue;
-    (void)submitCount;
-    (void)pSubmits;
     (void)fence;
-    return VK_ERROR_FEATURE_NOT_PRESENT;
+    for (uint32_t i = 0; i < submitCount; ++i) {
+        for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; ++j) {
+            PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)pSubmits[i].pCommandBuffers[j];
+            if (!cmd || !cmd->set || !cmd->set->storage_buffers[0] ||
+                !cmd->set->storage_buffers[1] || !cmd->set->storage_buffers[2]) {
+                return VK_ERROR_FEATURE_NOT_PRESENT;
+            }
+            PdockerVkBuffer *a = cmd->set->storage_buffers[0];
+            PdockerVkBuffer *b = cmd->set->storage_buffers[1];
+            PdockerVkBuffer *out = cmd->set->storage_buffers[2];
+            if (!a->memory || !b->memory || !out->memory) return VK_ERROR_MEMORY_MAP_FAILED;
+            size_t n = a->size / sizeof(float);
+            if (b->size / sizeof(float) < n) n = b->size / sizeof(float);
+            if (out->size / sizeof(float) < n) n = out->size / sizeof(float);
+            if (cmd->dispatch_x && cmd->pipeline && cmd->pipeline->local_size_x) {
+                size_t dispatched = (size_t)cmd->dispatch_x * cmd->pipeline->local_size_x;
+                if (dispatched < n) n = dispatched;
+            }
+            int rc = send_vector_add_3fd(n, a->memory->fd, b->memory->fd, out->memory->fd);
+            if (rc != 0) return VK_ERROR_DEVICE_LOST;
+        }
+    }
+    return VK_SUCCESS;
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueWaitIdle(VkQueue queue) {
@@ -372,6 +912,36 @@ static PFN_vkVoidFunction proc_address(const char *pName) {
     MAP_PROC(vkCreateDevice);
     MAP_PROC(vkDestroyDevice);
     MAP_PROC(vkGetDeviceQueue);
+    MAP_PROC(vkCreateBuffer);
+    MAP_PROC(vkDestroyBuffer);
+    MAP_PROC(vkGetBufferMemoryRequirements);
+    MAP_PROC(vkAllocateMemory);
+    MAP_PROC(vkFreeMemory);
+    MAP_PROC(vkMapMemory);
+    MAP_PROC(vkUnmapMemory);
+    MAP_PROC(vkFlushMappedMemoryRanges);
+    MAP_PROC(vkInvalidateMappedMemoryRanges);
+    MAP_PROC(vkBindBufferMemory);
+    MAP_PROC(vkCreateDescriptorSetLayout);
+    MAP_PROC(vkDestroyDescriptorSetLayout);
+    MAP_PROC(vkCreatePipelineLayout);
+    MAP_PROC(vkDestroyPipelineLayout);
+    MAP_PROC(vkCreateDescriptorPool);
+    MAP_PROC(vkDestroyDescriptorPool);
+    MAP_PROC(vkAllocateDescriptorSets);
+    MAP_PROC(vkUpdateDescriptorSets);
+    MAP_PROC(vkCreateShaderModule);
+    MAP_PROC(vkDestroyShaderModule);
+    MAP_PROC(vkCreateComputePipelines);
+    MAP_PROC(vkDestroyPipeline);
+    MAP_PROC(vkCreateCommandPool);
+    MAP_PROC(vkDestroyCommandPool);
+    MAP_PROC(vkAllocateCommandBuffers);
+    MAP_PROC(vkBeginCommandBuffer);
+    MAP_PROC(vkEndCommandBuffer);
+    MAP_PROC(vkCmdBindPipeline);
+    MAP_PROC(vkCmdBindDescriptorSets);
+    MAP_PROC(vkCmdDispatch);
     MAP_PROC(vkQueueSubmit);
     MAP_PROC(vkQueueWaitIdle);
     MAP_PROC(vkDeviceWaitIdle);

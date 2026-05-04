@@ -258,6 +258,9 @@ class MainActivity : AppCompatActivity() {
     private var lastStorageMetricsAt = 0L
     private var daemonOperations: List<DaemonOperation> = emptyList()
     private var daemonOperationsRefreshing = false
+    private var hostEnvironment: JSONObject? = null
+    private var hostEnvironmentRefreshing = false
+    private var lastHostEnvironmentAt = 0L
 
     private val pdockerHome: File by lazy { File(filesDir, "pdocker") }
     private val imageRoot: File by lazy { File(pdockerHome, "images") }
@@ -499,6 +502,7 @@ class MainActivity : AppCompatActivity() {
         addWidget(getString(R.string.widget_compose_projects), composeFiles().size.toString(), projectRoot.absolutePath)
         addWidget(getString(R.string.widget_dockerfiles), dockerfiles().size.toString(), getString(R.string.detail_dockerfiles_inventory))
         renderStorageMetrics()
+        renderHostEnvironment()
         renderDaemonOperations()
         renderProjectDashboard()
         renderDockerJobs()
@@ -719,6 +723,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderDiagnostics() {
         addSection(getString(R.string.section_diagnostics))
+        renderHostEnvironment()
         addAction(getString(R.string.action_start_pdockerd), getString(R.string.detail_start_pdockerd)) { startDaemon() }
         addAction(getString(R.string.action_stop_pdockerd), getString(R.string.detail_stop_pdockerd)) {
             startService(Intent(this, PdockerdService::class.java).setAction(PdockerdService.ACTION_STOP))
@@ -881,6 +886,134 @@ class MainActivity : AppCompatActivity() {
                 if (changed && currentTab == Tab.Overview) renderContent()
             }
         }
+    }
+
+    private fun renderHostEnvironment() {
+        refreshHostEnvironmentAsync()
+        val env = hostEnvironment
+        if (env == null) {
+            addWidget(
+                getString(R.string.widget_host_environment),
+                getString(R.string.host_environment_loading),
+                getString(R.string.detail_host_environment_loading),
+                detailLines = 5,
+            )
+            return
+        }
+        addWidget(
+            getString(R.string.widget_host_environment),
+            hostEnvironmentSummary(env),
+            hostEnvironmentDetails(env),
+            detailLines = 8,
+        ) {
+            refreshHostEnvironmentAsync(force = true)
+        }
+    }
+
+    private fun refreshHostEnvironmentAsync(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (hostEnvironmentRefreshing) return
+        if (!force && hostEnvironment != null && now - lastHostEnvironmentAt < 30_000L) return
+        hostEnvironmentRefreshing = true
+        thread(isDaemon = true, name = "pdocker-host-environment") {
+            val env = runCatching { engine.getObject("/system/host") }.getOrNull()
+            ui.post {
+                hostEnvironment = env ?: hostEnvironment
+                lastHostEnvironmentAt = System.currentTimeMillis()
+                hostEnvironmentRefreshing = false
+                if (currentTab == Tab.Overview || currentTab == Tab.Sessions) renderContent()
+            }
+        }
+    }
+
+    private fun hostEnvironmentSummary(env: JSONObject): String {
+        val host = env.optJSONObject("Host")
+        val runtime = env.optJSONObject("Runtime")
+        val gpu = env.optJSONObject("Gpu")
+        val machine = host?.optString("Machine").orEmpty().ifBlank { "-" }
+        val backend = runtime?.optString("Backend").orEmpty().ifBlank { "-" }
+        val vulkan = gpu?.optString("VulkanIcdKind").orEmpty().ifBlank { "vulkan-icd" }
+        val ready = if (gpu?.optBoolean("VulkanIcdReady", false) == true) "ready" else "probe"
+        return getString(R.string.host_environment_summary_fmt, machine, backend, vulkan, ready)
+    }
+
+    private fun hostEnvironmentDetails(env: JSONObject): String {
+        val host = env.optJSONObject("Host")
+        val hardware = env.optJSONObject("Hardware")
+        val software = env.optJSONObject("Software")
+        val runtime = env.optJSONObject("Runtime")
+        val gpu = env.optJSONObject("Gpu")
+        val frameworks = env.optJSONObject("Frameworks")
+        val vulkan = frameworks?.optJSONObject("Vulkan")
+        val eglGles = frameworks?.optJSONObject("EglOpenGles")
+        val opencl = frameworks?.optJSONObject("OpenCL")
+        val nnapi = frameworks?.optJSONObject("NnApi")
+        val ahb = frameworks?.optJSONObject("AndroidHardwareBuffer")
+        val mediaCodec = frameworks?.optJSONObject("MediaCodec")
+        val paths = env.optJSONObject("Paths")
+        val helperStatus = listOf("DirectExecutor", "GpuExecutor", "GpuShim", "VulkanIcd")
+            .map { key ->
+                val obj = paths?.optJSONObject(key)
+                "$key=${if (obj?.optBoolean("Exists", false) == true) "ok" else "missing"}"
+            }
+            .joinToString(" ")
+        return listOf(
+            getString(R.string.host_environment_kernel_fmt, host?.optString("Release").orEmpty().ifBlank { "-" }),
+            getString(
+                R.string.host_environment_hardware_fmt,
+                hardware?.optInt("ProcessorCount", 0) ?: 0,
+                formatBytes(hardware?.optLong("MemTotal", 0L) ?: 0L),
+                formatBytes(hardware?.optLong("MemAvailable", 0L) ?: 0L),
+            ),
+            getString(R.string.host_environment_python_fmt, software?.optString("Python").orEmpty().ifBlank { "-" }),
+            getString(
+                R.string.host_environment_runtime_fmt,
+                runtime?.optString("Driver").orEmpty().ifBlank { "-" },
+                runtime?.optString("Platform").orEmpty().ifBlank { "-" },
+                runtime?.optString("DockerApiVersion").orEmpty().ifBlank { "-" },
+            ),
+            getString(
+                R.string.host_environment_gpu_fmt,
+                gpu?.optString("CommandApi").orEmpty().ifBlank { "-" },
+                if (gpu?.optBoolean("ExecutorAvailable", false) == true) "yes" else "no",
+            ),
+            getString(
+                R.string.host_environment_vulkan_fmt,
+                vulkan?.optString("ApiVersion").orEmpty().ifBlank { gpu?.optString("VulkanApiVersion").orEmpty().ifBlank { "-" } },
+                vulkan?.optString("IcdKind").orEmpty().ifBlank { gpu?.optString("VulkanIcdKind").orEmpty().ifBlank { "-" } },
+                if (vulkan?.optBoolean("IcdReady", false) == true) "ready" else "probe",
+            ),
+            getString(
+                R.string.host_environment_gles_fmt,
+                eglGles?.optString("ComputeApi").orEmpty().ifBlank { "OpenGL ES" },
+                if (eglGles?.optBoolean("EglAvailable", false) == true) "yes" else "no",
+                if (eglGles?.optBoolean("GlesAvailable", false) == true) "yes" else "no",
+            ),
+            getString(
+                R.string.host_environment_opencl_fmt,
+                openclStatus(opencl),
+                if (opencl?.optBoolean("IcdReady", false) == true) "ready" else "probe",
+            ),
+            getString(
+                R.string.host_environment_accel_fmt,
+                if (nnapi?.optBoolean("RuntimeAvailable", false) == true) "yes" else "no",
+                if (ahb?.optJSONObject("Library")?.optBoolean("Available", false) == true) "yes" else "no",
+                if (mediaCodec?.optJSONObject("Library")?.optBoolean("Available", false) == true) "yes" else "no",
+            ),
+            helperStatus,
+        ).joinToString("\n")
+    }
+
+    private fun openclStatus(opencl: JSONObject?): String {
+        if (opencl == null) return "missing"
+        val api = opencl.optString("ApiVersion").ifBlank { "api unknown" }
+        val loader = opencl.optJSONObject("Loader")
+        val loaderText = if (loader?.optBoolean("Available", false) == true) {
+            loader.optString("Path").ifBlank { "loader available" }
+        } else {
+            "loader missing"
+        }
+        return "$api, $loaderText"
     }
 
     private fun diskUsage(root: File, excludeInodes: Set<String> = emptySet()): DiskUsage {

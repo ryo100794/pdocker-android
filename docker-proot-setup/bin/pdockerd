@@ -341,6 +341,175 @@ def runtime_process_unavailable_message():
     return RUNTIME_BACKEND.process_unavailable_message()
 
 
+def _read_meminfo():
+    info = {}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                key, _, rest = line.partition(":")
+                parts = rest.strip().split()
+                if parts and parts[0].isdigit():
+                    info[key] = int(parts[0]) * 1024
+    except OSError:
+        pass
+    return info
+
+
+def _path_info(path):
+    data = {"Path": path or "", "Exists": False}
+    if not path:
+        return data
+    try:
+        st = os.stat(path)
+    except OSError as e:
+        data["Error"] = str(e)
+        return data
+    data.update({
+        "Exists": True,
+        "Size": st.st_size,
+        "Mode": oct(st.st_mode & 0o7777),
+        "MTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(st.st_mtime)),
+        "RealPath": os.path.realpath(path),
+    })
+    return data
+
+
+def _library_probe(names, extra_paths=None):
+    extra_paths = extra_paths or []
+    for path in extra_paths:
+        if path and os.path.exists(path):
+            return {"Available": True, "Path": path}
+    found = ""
+    try:
+        import ctypes.util
+        for name in names:
+            found = ctypes.util.find_library(name) or ""
+            if found:
+                break
+    except Exception:
+        found = ""
+    return {"Available": bool(found), "Path": found}
+
+
+def _device_node_probe(paths):
+    return [{"Path": path, "Exists": os.path.exists(path)} for path in paths]
+
+
+def collect_host_environment(api_version):
+    uname = os.uname()
+    meminfo = _read_meminfo()
+    env_keys = [
+        "PDOCKER_RUNTIME_BACKEND",
+        "PDOCKER_DIRECT_EXECUTOR",
+        "PDOCKER_GPU_EXECUTOR",
+        "PDOCKER_GPU_EXECUTOR_AVAILABLE",
+        "PDOCKER_GPU_COMMAND_API",
+        "PDOCKER_GPU_SHIM_HOST_PATH",
+        "PDOCKER_VULKAN_ICD_HOST_PATH",
+        "PDOCKER_VULKAN_ICD_KIND",
+        "PDOCKER_VULKAN_ICD_READY",
+        "PDOCKER_PLATFORM",
+        "ANDROID_ROOT",
+        "ANDROID_DATA",
+        "TMPDIR",
+    ]
+    selected_env = {key: os.environ.get(key, "") for key in env_keys if os.environ.get(key, "")}
+    helper_paths = {
+        "DirectExecutor": os.environ.get("PDOCKER_DIRECT_EXECUTOR", DIRECT_EXECUTOR),
+        "GpuExecutor": os.environ.get("PDOCKER_GPU_EXECUTOR", ""),
+        "GpuShim": os.environ.get("PDOCKER_GPU_SHIM_HOST_PATH", ""),
+        "VulkanIcd": os.environ.get("PDOCKER_VULKAN_ICD_HOST_PATH", ""),
+        "Crane": CRANE,
+        "Libcow": LIBCOW,
+    }
+    return {
+        "Host": {
+            "Hostname": socket.gethostname(),
+            "Sysname": uname.sysname,
+            "Release": uname.release,
+            "Version": uname.version,
+            "Machine": uname.machine,
+        },
+        "Hardware": {
+            "ProcessorCount": os.cpu_count() or 1,
+            "MemTotal": meminfo.get("MemTotal", 0),
+            "MemAvailable": meminfo.get("MemAvailable", 0),
+        },
+        "Software": {
+            "Python": sys.version.split()[0],
+            "Executable": sys.executable,
+            "Pid": os.getpid(),
+            "Cwd": os.getcwd(),
+        },
+        "Runtime": {
+            "Backend": runtime_backend_kind(),
+            "Driver": runtime_driver_name(),
+            "OperatingSystem": runtime_operating_system(),
+            "Platform": PLATFORM,
+            "DockerApiVersion": api_version,
+            "PdockerHome": PDOCKER_HOME,
+            "ProjectDir": _PROJECT_DIR,
+            "TmpDir": PDOCKER_TMP,
+        },
+        "Gpu": {
+            "CommandApi": os.environ.get("PDOCKER_GPU_COMMAND_API", ""),
+            "ExecutorAvailable": os.environ.get("PDOCKER_GPU_EXECUTOR_AVAILABLE", "0") == "1",
+            "ExecutorRole": os.environ.get("PDOCKER_GPU_EXECUTOR_ROLE", ""),
+            "LlmEngineLocation": os.environ.get("PDOCKER_GPU_LLM_ENGINE_LOCATION", ""),
+            "VulkanIcdKind": os.environ.get("PDOCKER_VULKAN_ICD_KIND", ""),
+            "VulkanIcdReady": os.environ.get("PDOCKER_VULKAN_ICD_READY", "0") == "1",
+            "VulkanApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.1.0"),
+            "VulkanLoaderIcdJson": os.environ.get("VK_ICD_FILENAMES", ""),
+        },
+        "Frameworks": {
+            "Vulkan": {
+                "ApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.1.0"),
+                "IcdKind": os.environ.get("PDOCKER_VULKAN_ICD_KIND", ""),
+                "IcdReady": os.environ.get("PDOCKER_VULKAN_ICD_READY", "0") == "1",
+            },
+            "EglOpenGles": {
+                "EglAvailable": os.path.exists("/system/lib64/libEGL.so") or os.path.exists("/vendor/lib64/libEGL.so"),
+                "GlesAvailable": os.path.exists("/system/lib64/libGLESv3.so") or os.path.exists("/vendor/lib64/libGLESv3.so"),
+                "ComputeApi": "OpenGL ES 3.1",
+                "ExecutorBackend": "gles31_compute",
+            },
+            "OpenCL": {
+                "ApiVersion": os.environ.get("PDOCKER_OPENCL_API_VERSION", ""),
+                "IcdKind": os.environ.get("PDOCKER_OPENCL_ICD_KIND", ""),
+                "IcdReady": os.environ.get("PDOCKER_OPENCL_ICD_READY", "0") == "1",
+                "Loader": _library_probe(
+                    ["OpenCL"],
+                    [
+                        "/system/lib64/libOpenCL.so",
+                        "/vendor/lib64/libOpenCL.so",
+                        "/vendor/lib64/egl/libOpenCL.so",
+                    ],
+                ),
+            },
+            "NnApi": {
+                "RuntimeAvailable": os.path.exists("/system/lib64/libneuralnetworks.so"),
+                "Library": _library_probe(["neuralnetworks"], ["/system/lib64/libneuralnetworks.so"]),
+            },
+            "AndroidHardwareBuffer": {
+                "Library": _library_probe(["android"], ["/system/lib64/libandroid.so"]),
+                "BridgeCandidate": True,
+            },
+            "MediaCodec": {
+                "Library": _library_probe(["mediandk"], ["/system/lib64/libmediandk.so"]),
+            },
+            "GpuDeviceNodes": _device_node_probe([
+                "/dev/kgsl-3d0",
+                "/dev/mali0",
+                "/dev/dri/renderD128",
+                "/dev/ion",
+                "/dev/dma_heap/system",
+            ]),
+        },
+        "Environment": selected_env,
+        "Paths": {name: _path_info(path) for name, path in helper_paths.items()},
+    }
+
+
 _direct_executor_probe_cache = {}
 
 
@@ -4092,6 +4261,10 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/system/operations" and method == "GET":
             self._send_json(200, list_active_operations())
+            return
+
+        if path == "/system/host" and method == "GET":
+            self._send_json(200, collect_host_environment(self.API_VERSION))
             return
 
         # --- Images ---

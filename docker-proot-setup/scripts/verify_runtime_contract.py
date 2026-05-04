@@ -425,6 +425,48 @@ def test_active_operations_contract() -> None:
         ok("daemon active operations are listed independently of UI jobs")
 
 
+def test_host_environment_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        direct = home_path / "pdocker-direct"
+        direct.write_text("#!/bin/sh\nexit 0\n")
+        direct.chmod(0o755)
+        gpu = home_path / "pdocker-gpu-executor"
+        gpu.write_text("#!/bin/sh\nexit 0\n")
+        gpu.chmod(0o755)
+        mod = load_pdockerd_with_env(
+            "host_environment",
+            "no-proot",
+            home_path,
+            {
+                "PDOCKER_DIRECT_EXECUTOR": str(direct),
+                "PDOCKER_GPU_EXECUTOR": str(gpu),
+                "PDOCKER_GPU_EXECUTOR_AVAILABLE": "1",
+                "PDOCKER_GPU_COMMAND_API": "pdocker-gpu-command-v1",
+                "PDOCKER_VULKAN_ICD_KIND": "pdocker-bridge-minimal",
+                "PDOCKER_VULKAN_ICD_READY": "0",
+            },
+        )
+        env = mod.collect_host_environment("1.43")
+        if env.get("Runtime", {}).get("DockerApiVersion") != "1.43":
+            fail(f"host environment API version missing: {env!r}")
+        if env.get("Gpu", {}).get("CommandApi") != "pdocker-gpu-command-v1":
+            fail(f"host environment GPU command api missing: {env!r}")
+        if env.get("Frameworks", {}).get("Vulkan", {}).get("ApiVersion") != "1.1.0":
+            fail(f"host environment Vulkan API version missing: {env!r}")
+        if "OpenCL" not in env.get("Frameworks", {}):
+            fail(f"host environment OpenCL diagnostic missing: {env!r}")
+        if "NnApi" not in env.get("Frameworks", {}):
+            fail(f"host environment NNAPI diagnostic missing: {env!r}")
+        if "OpenCVPython" in env.get("Frameworks", {}):
+            fail(f"host environment should stay focused on GPU/NPU, not OpenCV: {env!r}")
+        if not env.get("Paths", {}).get("DirectExecutor", {}).get("Exists"):
+            fail(f"host environment direct executor path missing: {env!r}")
+        if "PATH" in env.get("Environment", {}):
+            fail(f"host environment must not dump broad process environment: {env!r}")
+        ok("host environment contract exposes bounded runtime diagnostics")
+
+
 def test_gpu_shim_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
@@ -505,6 +547,7 @@ def main() -> int:
     test_existing_tag_full_image_cache()
     test_build_cache_contract()
     test_active_operations_contract()
+    test_host_environment_contract()
     test_gpu_shim_contract()
     return 0
 

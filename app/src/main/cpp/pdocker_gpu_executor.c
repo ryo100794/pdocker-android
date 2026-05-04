@@ -308,6 +308,43 @@ static int run_vector_add_fd(int fd, size_t n) {
     return rc;
 }
 
+static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n) {
+    if (fd_a < 0 || fd_b < 0 || fd_out < 0) {
+        if (fd_a >= 0) close(fd_a);
+        if (fd_b >= 0) close(fd_b);
+        if (fd_out >= 0) close(fd_out);
+        json_fail("fd", "missing vector buffer fd");
+        return 64;
+    }
+    if (n == 0 || n > PDOCKER_GPU_VECTOR_ADD_MAX_N) {
+        close(fd_a);
+        close(fd_b);
+        close(fd_out);
+        json_fail("fd", "invalid vector size");
+        return 64;
+    }
+    const size_t bytes = n * sizeof(float);
+    void *map_a = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd_a, 0);
+    void *map_b = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd_b, 0);
+    void *map_out = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd_out, 0);
+    close(fd_a);
+    close(fd_b);
+    close(fd_out);
+    if (map_a == MAP_FAILED || map_b == MAP_FAILED || map_out == MAP_FAILED) {
+        if (map_a != MAP_FAILED) munmap(map_a, bytes);
+        if (map_b != MAP_FAILED) munmap(map_b, bytes);
+        if (map_out != MAP_FAILED) munmap(map_out, bytes);
+        json_fail("mmap", strerror(errno));
+        return 70;
+    }
+    int rc = run_vector_add_arrays((const float *)map_a, (const float *)map_b, (float *)map_out, n,
+                                   "vulkan-icd-scm-rights-3buffer");
+    munmap(map_a, bytes);
+    munmap(map_b, bytes);
+    munmap(map_out, bytes);
+    return rc;
+}
+
 typedef struct {
     void *map;
     size_t n;
@@ -430,10 +467,11 @@ static int parse_count(const char *s, int fallback) {
     return (int)n;
 }
 
-static int recv_command_with_optional_fd(int cfd, char *cmd, size_t cmd_size, int *passed_fd) {
-    if (!cmd || cmd_size == 0 || !passed_fd) return -EINVAL;
-    *passed_fd = -1;
-    char control[CMSG_SPACE(sizeof(int))];
+static int recv_command_with_fds(int cfd, char *cmd, size_t cmd_size, int *passed_fds, size_t max_fds, size_t *fd_count) {
+    if (!cmd || cmd_size == 0 || !passed_fds || !fd_count) return -EINVAL;
+    *fd_count = 0;
+    for (size_t i = 0; i < max_fds; ++i) passed_fds[i] = -1;
+    char control[CMSG_SPACE(sizeof(int) * 4)];
     struct iovec iov;
     struct msghdr msg;
     memset(control, 0, sizeof(control));
@@ -454,11 +492,23 @@ static int recv_command_with_optional_fd(int cfd, char *cmd, size_t cmd_size, in
          cmsg = CMSG_NXTHDR(&msg, cmsg)) {
         if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS &&
             cmsg->cmsg_len >= CMSG_LEN(sizeof(int))) {
-            memcpy(passed_fd, CMSG_DATA(cmsg), sizeof(int));
+            size_t bytes = cmsg->cmsg_len - CMSG_LEN(0);
+            size_t count = bytes / sizeof(int);
+            if (count > max_fds) count = max_fds;
+            memcpy(passed_fds, CMSG_DATA(cmsg), count * sizeof(int));
+            *fd_count = count;
             break;
         }
     }
     return (int)n;
+}
+
+static int recv_command_with_optional_fd(int cfd, char *cmd, size_t cmd_size, int *passed_fd) {
+    int fds[1] = { -1 };
+    size_t count = 0;
+    int rc = recv_command_with_fds(cfd, cmd, cmd_size, fds, 1, &count);
+    *passed_fd = count > 0 ? fds[0] : -1;
+    return rc;
 }
 
 static int run_vector_command_with_context(void) {
@@ -522,8 +572,9 @@ static int serve_socket(const char *path) {
         RegisteredVectorBuffer registered;
         memset(&registered, 0, sizeof(registered));
         for (;;) {
-            int passed_fd = -1;
-            int nread = recv_command_with_optional_fd(cfd, cmd, sizeof(cmd), &passed_fd);
+            int passed_fds[4] = { -1, -1, -1, -1 };
+            size_t passed_fd_count = 0;
+            int nread = recv_command_with_fds(cfd, cmd, sizeof(cmd), passed_fds, 4, &passed_fd_count);
             if (nread <= 0) break;
             g_json_out = out;
             if (strcmp(cmd, "CAPABILITIES") == 0) {
@@ -534,17 +585,27 @@ static int serve_socket(const char *path) {
                 (void)run_vector_command_with_context();
             } else if (strncmp(cmd, "VECTOR_ADD_FD ", 14) == 0) {
                 size_t n = (size_t)strtoull(cmd + 14, NULL, 10);
-                (void)run_vector_add_fd(passed_fd, n);
-                passed_fd = -1;
+                (void)run_vector_add_fd(passed_fds[0], n);
+                passed_fds[0] = -1;
             } else if (strncmp(cmd, "REGISTER_VECTOR_FD ", 19) == 0) {
                 size_t n = (size_t)strtoull(cmd + 19, NULL, 10);
-                (void)register_vector_buffer(&registered, passed_fd, n);
-                passed_fd = -1;
+                (void)register_vector_buffer(&registered, passed_fds[0], n);
+                passed_fds[0] = -1;
             } else if (strcmp(cmd, "VECTOR_ADD_REGISTERED") == 0) {
                 (void)run_registered_vector_add(&registered);
+            } else if (strncmp(cmd, "VECTOR_ADD_3FD ", 15) == 0) {
+                size_t n = (size_t)strtoull(cmd + 15, NULL, 10);
+                if (passed_fd_count < 3) {
+                    json_fail("fd", "VECTOR_ADD_3FD requires three fds");
+                } else {
+                    (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n);
+                    passed_fds[0] = passed_fds[1] = passed_fds[2] = -1;
+                }
             } else {
-                if (passed_fd >= 0) close(passed_fd);
                 json_fail("command", "unknown command");
+            }
+            for (size_t i = 0; i < passed_fd_count && i < 4; ++i) {
+                if (passed_fds[i] >= 0) close(passed_fds[i]);
             }
             g_json_out = NULL;
         }

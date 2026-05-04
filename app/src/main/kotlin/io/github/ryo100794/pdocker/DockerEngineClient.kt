@@ -53,6 +53,12 @@ class DockerEngineClient(private val socket: File) {
         return JSONArray(resp.text.ifBlank { "[]" })
     }
 
+    fun getObject(path: String): JSONObject {
+        val resp = request("GET", path)
+        require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }
+        return JSONObject(resp.text.ifBlank { "{}" })
+    }
+
     fun post(path: String): Response {
         val resp = request("POST", path)
         require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }

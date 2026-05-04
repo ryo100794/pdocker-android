@@ -50,6 +50,7 @@ def main() -> int:
     bridge_src = BRIDGE.read_text()
     pdockerd_bridge_src = PDOCKERD_BRIDGE.read_text()
     android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
+    vulkan_smoke_src = (ROOT / "scripts/smoke-vulkan-icd-bridge.sh").read_text()
     manifest_src = (ROOT / "app/src/main/AndroidManifest.xml").read_text()
     debug_receiver_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdDebugReceiver.kt").read_text()
     engine_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/DockerEngineClient.kt").read_text()
@@ -79,6 +80,9 @@ def main() -> int:
     require("runtime installs backend-neutral gpu executor helper", "libpdockergpuexecutor.so" in runtime_src and "pdocker-gpu-executor" in runtime_src and "PDOCKER_GPU_COMMAND_API" in pdockerd_bridge_src and "PDOCKER_GPU_LLM_ENGINE_LOCATION" in pdockerd_src)
     require("runtime installs glibc gpu shim for containers", "libpdockergpushim.so" in runtime_src and "pdocker-gpu-shim" in runtime_src and "PDOCKER_GPU_SHIM_HOST_PATH" in pdockerd_bridge_src and "PDOCKER_GPU_SHIM" in pdockerd_src)
     require("runtime installs glibc Vulkan ICD for containers", "libpdockervulkanicd.so" in runtime_src and "pdocker-vulkan-icd.so" in runtime_src and "PDOCKER_VULKAN_ICD_HOST_PATH" in pdockerd_bridge_src and "PDOCKER_VULKAN_ICD" in pdockerd_src and "/usr/local/lib/pdocker-vulkan-icd.so" in pdockerd_src)
+    require("vulkan icd bridge has reusable smoke test", "VK_ICD_FILENAMES" in vulkan_smoke_src and "vkQueueSubmit" in vulkan_smoke_src and "PDOCKER_GPU_QUEUE_SOCKET" in vulkan_smoke_src)
+    require("pdockerd exposes bounded host environment diagnostics", 'path == "/system/host"' in pdockerd_src and "collect_host_environment" in pdockerd_src and '"Frameworks"' in pdockerd_src and '"OpenCL"' in pdockerd_src and '"NnApi"' in pdockerd_src and '"OpenCVPython"' not in pdockerd_src and '"PATH"' not in pdockerd_src.split("def collect_host_environment", 1)[1].split("def _direct_rootfs_path", 1)[0])
+    require("ui renders host environment pane from engine api", "renderHostEnvironment()" in main_src and 'engine.getObject("/system/host")' in main_src and "widget_host_environment" in string_src and "host_environment_gpu_fmt" in string_src and "host_environment_vulkan_fmt" in string_src and "host_environment_opencl_fmt" in string_src and "host_environment_accel_fmt" in string_src)
     service_src = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdService.kt").read_text()
     require("pdockerd service starts gpu executor socket", "--serve-socket" in service_src and "pdocker-gpu.sock" in service_src and "gpuExecutorProcess" in service_src and "PDOCKER_GPU_QUEUE_SOCKET" in pdockerd_bridge_src)
     require("direct runtime advertises implemented bind support", "PDOCKER_USE_COW_BIND" in pdockerd_bridge_src and 'if DIRECT_EXECUTOR and os.path.exists(DIRECT_EXECUTOR)' in pdockerd_src and '"cow-bind=1" in output' in pdockerd_src and "cow-bind=0" in direct_src and "bind-path-rewrite=1" in direct_src)

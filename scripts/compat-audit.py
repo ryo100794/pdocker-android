@@ -100,6 +100,7 @@ def check_static_api() -> list[Check]:
         "build": r'path == "/build"',
         "build dockerignore": r'apply_dockerignore',
         "events": r'path == "/events"',
+        "system host diagnostics": r'path == "/system/host"',
     }
     checks = []
     for name, pattern in expected.items():
@@ -148,6 +149,7 @@ def check_protocol_smoke() -> list[Check]:
             ("GET", "/images/json", 200),
             ("GET", "/volumes", 200),
             ("GET", "/networks", 200),
+            ("GET", "/system/host", 200),
             ("GET", "/events?since=0&until=0", 200),
             ("GET", "/v1.43/version", 200),
         ]
