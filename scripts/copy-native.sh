@@ -69,7 +69,7 @@ echo "staged libcow (glibc) -> $JNI_DIR/libcow.so"
 # Linux/glibc container shim built by scripts/build-gpu-shim.sh. Executable
 # helpers are intentionally named lib*.so so Android extracts them to
 # nativeLibraryDir.
-for lib in libpdockerpty.so libpdockerdirect.so libpdockergpuexecutor.so libpdockergpushim.so libpdockervulkanicd.so; do
+for lib in libpdockerpty.so libpdockerdirect.so libpdockergpuexecutor.so libpdockergpushim.so libpdockervulkanicd.so libpdockeropenclicd.so; do
     p="$APP/jniLibs/arm64-v8a/$lib"
     if [[ ! -f "$p" ]]; then
         echo "warn: $p missing — run scripts/build-native-termux.sh first" >&2

@@ -476,6 +476,9 @@ def test_gpu_shim_contract() -> None:
         vulkan_icd = home_path / "pdocker-vulkan-icd.so"
         vulkan_icd.write_text("icd")
         vulkan_icd.chmod(0o755)
+        opencl_icd = home_path / "pdocker-opencl-icd.so"
+        opencl_icd.write_text("opencl")
+        opencl_icd.chmod(0o755)
         mod = load_pdockerd_with_env(
             "gpu_shim",
             "no-proot",
@@ -485,6 +488,8 @@ def test_gpu_shim_contract() -> None:
                 "PDOCKER_GPU_SHIM_CONTAINER_PATH": "/usr/local/bin/pdocker-gpu-shim",
                 "PDOCKER_VULKAN_ICD_HOST_PATH": str(vulkan_icd),
                 "PDOCKER_VULKAN_ICD_CONTAINER_PATH": "/usr/local/lib/pdocker-vulkan-icd.so",
+                "PDOCKER_OPENCL_ICD_HOST_PATH": str(opencl_icd),
+                "PDOCKER_OPENCL_ICD_CONTAINER_PATH": "/usr/local/lib/pdocker-opencl-icd.so",
                 "PDOCKER_GPU_EXECUTOR": str(home_path / "pdocker-gpu-executor"),
                 "PDOCKER_GPU_HOST_DIR": str(home_path),
                 "PDOCKER_GPU_CONTAINER_DIR": "/run/pdocker-gpu",
@@ -501,6 +506,7 @@ def test_gpu_shim_contract() -> None:
                         "Driver": "pdocker-gpu",
                         "Count": -1,
                         "Capabilities": [["gpu"]],
+                        "Options": {"pdocker.opencl": "opencl"},
                     }
                 ]
             }
@@ -523,12 +529,24 @@ def test_gpu_shim_contract() -> None:
             fail(f"pdocker Vulkan ICD kind missing: {env!r}")
         if env.get("PDOCKER_VULKAN_ICD_READY") != "0":
             fail(f"pdocker Vulkan ICD must not claim compute readiness yet: {env!r}")
+        if env.get("PDOCKER_OPENCL_ICD") != "/usr/local/lib/pdocker-opencl-icd.so":
+            fail(f"pdocker OpenCL ICD env missing: {env!r}")
+        if env.get("PDOCKER_OPENCL_ICD_KIND") != "pdocker-bridge-minimal":
+            fail(f"pdocker OpenCL ICD kind missing: {env!r}")
+        if env.get("PDOCKER_OPENCL_API_VERSION") != "1.2":
+            fail(f"pdocker OpenCL API version missing: {env!r}")
         expected_bind = f"{shim}:/usr/local/bin/pdocker-gpu-shim:ro"
         if expected_bind not in binds:
             fail(f"gpu shim bind missing {expected_bind!r}: {binds!r}")
         expected_icd_bind = f"{vulkan_icd}:/usr/local/lib/pdocker-vulkan-icd.so:ro"
         if expected_icd_bind not in binds:
             fail(f"gpu Vulkan ICD bind missing {expected_icd_bind!r}: {binds!r}")
+        expected_opencl_bind = f"{opencl_icd}:/usr/local/lib/pdocker-opencl-icd.so:ro"
+        if expected_opencl_bind not in binds:
+            fail(f"gpu OpenCL ICD bind missing {expected_opencl_bind!r}: {binds!r}")
+        expected_opencl_lib_bind = f"{opencl_icd}:/usr/local/lib/libOpenCL.so.1:ro"
+        if expected_opencl_lib_bind not in binds:
+            fail(f"gpu OpenCL lib bind missing {expected_opencl_lib_bind!r}: {binds!r}")
         expected_gpu_dir_bind = f"{home_path}:/run/pdocker-gpu"
         if expected_gpu_dir_bind not in binds:
             fail(f"gpu runtime dir bind missing {expected_gpu_dir_bind!r}: {binds!r}")

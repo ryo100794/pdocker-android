@@ -73,6 +73,44 @@ diagnostics, but direct loading from a glibc container is not a working GPU
 backend. OpenCL also needs the glibc bridge plus Android/Bionic GPU-executor
 model.
 
+## 2026-05-04 pdocker OpenCL ICD Bridge
+
+pdocker now packages a glibc-facing OpenCL bridge as
+`pdocker-opencl-icd.so`. For GPU-requesting containers, pdockerd bind-mounts
+the same binary as:
+
+- `/usr/local/lib/pdocker-opencl-icd.so`
+- `/usr/local/lib/libOpenCL.so`
+- `/usr/local/lib/libOpenCL.so.1`
+
+The container ICD file points to the pdocker bridge, not to Android vendor
+`libOpenCL.so`. The bridge currently proves the standard OpenCL entry point by
+lowering a vector-add command sequence through `PDOCKER_GPU_QUEUE_SOCKET` into
+the APK-owned GPU executor. This keeps Android/Bionic GPU libraries below the
+bridge and avoids exposing them directly to glibc applications.
+
+Reusable local smoke:
+
+```sh
+bash scripts/smoke-opencl-bridge.sh
+```
+
+Latest local result:
+
+- `maxErr=0.00000000`
+- first output: `1.000`
+- last output: `128.875`
+
+Latest device `/system/host` result on 2026-05-04:
+
+- `Frameworks.OpenCL.ApiVersion`: `1.2`
+- `Frameworks.OpenCL.IcdKind`: `pdocker-bridge-minimal`
+- `Frameworks.OpenCL.IcdReady`: `true`
+- `Paths.OpenClIcd.Exists`: `true`
+
+This is still a bridge milestone, not a llama.cpp GPU success. The next work is
+expanding OpenCL API and kernel lowering coverage without modifying llama.cpp.
+
 ## 2026-05-04 GPU Executor Boundary Probe
 
 The APK now includes `pdocker-gpu-executor`, a Bionic-side command executor

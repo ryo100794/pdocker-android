@@ -408,6 +408,9 @@ def collect_host_environment(api_version):
         "PDOCKER_VULKAN_ICD_HOST_PATH",
         "PDOCKER_VULKAN_ICD_KIND",
         "PDOCKER_VULKAN_ICD_READY",
+        "PDOCKER_OPENCL_ICD_HOST_PATH",
+        "PDOCKER_OPENCL_ICD_KIND",
+        "PDOCKER_OPENCL_ICD_READY",
         "PDOCKER_PLATFORM",
         "ANDROID_ROOT",
         "ANDROID_DATA",
@@ -419,6 +422,7 @@ def collect_host_environment(api_version):
         "GpuExecutor": os.environ.get("PDOCKER_GPU_EXECUTOR", ""),
         "GpuShim": os.environ.get("PDOCKER_GPU_SHIM_HOST_PATH", ""),
         "VulkanIcd": os.environ.get("PDOCKER_VULKAN_ICD_HOST_PATH", ""),
+        "OpenClIcd": os.environ.get("PDOCKER_OPENCL_ICD_HOST_PATH", ""),
         "Crane": CRANE,
         "Libcow": LIBCOW,
     }
@@ -474,9 +478,10 @@ def collect_host_environment(api_version):
                 "ExecutorBackend": "gles31_compute",
             },
             "OpenCL": {
-                "ApiVersion": os.environ.get("PDOCKER_OPENCL_API_VERSION", ""),
+                "ApiVersion": os.environ.get("PDOCKER_OPENCL_API_VERSION", "1.2"),
                 "IcdKind": os.environ.get("PDOCKER_OPENCL_ICD_KIND", ""),
                 "IcdReady": os.environ.get("PDOCKER_OPENCL_ICD_READY", "0") == "1",
+                "IcdPath": os.environ.get("PDOCKER_OPENCL_ICD_HOST_PATH", ""),
                 "Loader": _library_probe(
                     ["OpenCL"],
                     [
@@ -1991,6 +1996,10 @@ def _gpu_env(state):
         env.update({
             "PDOCKER_OPENCL_PASSTHROUGH": "1",
             "OCL_ICD_VENDORS": "/etc/OpenCL/vendors",
+            "PDOCKER_OPENCL_ICD": os.environ.get("PDOCKER_OPENCL_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-opencl-icd.so"),
+            "PDOCKER_OPENCL_ICD_KIND": os.environ.get("PDOCKER_OPENCL_ICD_KIND", "pdocker-bridge-minimal"),
+            "PDOCKER_OPENCL_ICD_READY": os.environ.get("PDOCKER_OPENCL_ICD_READY", "0"),
+            "PDOCKER_OPENCL_API_VERSION": os.environ.get("PDOCKER_OPENCL_API_VERSION", "1.2"),
         })
     return env
 
@@ -2012,11 +2021,16 @@ def _gpu_binds(state):
     shim_guest = os.environ.get("PDOCKER_GPU_SHIM_CONTAINER_PATH", "/usr/local/bin/pdocker-gpu-shim")
     vulkan_icd_host = os.environ.get("PDOCKER_VULKAN_ICD_HOST_PATH")
     vulkan_icd_guest = os.environ.get("PDOCKER_VULKAN_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-vulkan-icd.so")
+    opencl_icd_host = os.environ.get("PDOCKER_OPENCL_ICD_HOST_PATH")
+    opencl_icd_guest = os.environ.get("PDOCKER_OPENCL_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-opencl-icd.so")
     gpu_host_dir = os.environ.get("PDOCKER_GPU_HOST_DIR")
     gpu_guest_dir = os.environ.get("PDOCKER_GPU_CONTAINER_DIR", "/run/pdocker-gpu")
     candidates = [
         (shim_host, shim_guest, True),
         (vulkan_icd_host, vulkan_icd_guest, True),
+        (opencl_icd_host, opencl_icd_guest, True),
+        (opencl_icd_host, "/usr/local/lib/libOpenCL.so", True),
+        (opencl_icd_host, "/usr/local/lib/libOpenCL.so.1", True),
         (gpu_host_dir, gpu_guest_dir, False),
         ("/dev/kgsl-3d0", "/dev/kgsl-3d0", False),
         ("/dev/dri", "/dev/dri", False),
@@ -3115,8 +3129,7 @@ def create_container(config, name=None):
             }, indent=2) + "\n",
         )
     if "opencl" in state.get("PdockerGpu", {}).get("Modes", []):
-        opencl_lib = "/vendor/lib64/libOpenCL.so" \
-            if os.path.exists("/vendor/lib64/libOpenCL.so") else "/system/vendor/lib64/libOpenCL.so"
+        opencl_lib = os.environ.get("PDOCKER_OPENCL_ICD_CONTAINER_PATH", "/usr/local/lib/pdocker-opencl-icd.so")
         _write_container_file(
             state,
             cdir,

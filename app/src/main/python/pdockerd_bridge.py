@@ -172,8 +172,17 @@ def run_daemon(
         os.environ["PDOCKER_VULKAN_ICD_KIND"] = "pdocker-bridge-minimal"
         os.environ["PDOCKER_VULKAN_ICD_READY"] = "0"
         os.environ["PDOCKER_VULKAN_API_VERSION"] = "1.1.0"
-    os.environ.setdefault("PDOCKER_OPENCL_ICD_KIND", "android-opencl-loader-probe")
-    os.environ.setdefault("PDOCKER_OPENCL_ICD_READY", "0")
+    opencl_icd = os.path.join(runtime_dir, "lib", "pdocker-opencl-icd.so")
+    if os.path.exists(opencl_icd):
+        os.environ["PDOCKER_OPENCL_ICD_HOST_PATH"] = opencl_icd
+        os.environ["PDOCKER_OPENCL_ICD_CONTAINER_PATH"] = "/usr/local/lib/pdocker-opencl-icd.so"
+        os.environ["PDOCKER_OPENCL_LIBRARY_CONTAINER_PATH"] = "/usr/local/lib/libOpenCL.so"
+        os.environ["PDOCKER_OPENCL_ICD_KIND"] = "pdocker-bridge-minimal"
+        os.environ["PDOCKER_OPENCL_ICD_READY"] = "1"
+        os.environ["PDOCKER_OPENCL_API_VERSION"] = "1.2"
+    else:
+        os.environ.setdefault("PDOCKER_OPENCL_ICD_KIND", "android-opencl-loader-probe")
+        os.environ.setdefault("PDOCKER_OPENCL_ICD_READY", "0")
 
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")

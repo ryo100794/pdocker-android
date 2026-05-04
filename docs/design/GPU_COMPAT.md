@@ -95,6 +95,13 @@ The first scaffold now has two binaries:
   minimal discoverable ICD and is marked not compute-ready
   (`PDOCKER_VULKAN_ICD_READY=0`) until Vulkan commands are lowered into the
   pdocker GPU bridge.
+- `pdocker-opencl-icd.so`: Linux/glibc OpenCL ICD surface, also injected as
+  `/usr/local/lib/libOpenCL.so` and `/usr/local/lib/libOpenCL.so.1` for images
+  that link the OpenCL loader directly. This is the preferred first standard
+  GPU entry point because the OpenCL API surface is smaller than Vulkan for an
+  initial compatibility bridge. The current implementation is a vector-add
+  proof that lowers one OpenCL command sequence into the neutral GPU command
+  queue; it is not yet a general llama.cpp GPU backend.
 
 The current shim supports capability probing, a temporary Unix-socket command
 path, a shared-buffer probe where the glibc shim passes a mapped buffer FD to
@@ -110,9 +117,10 @@ GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
 binds the APK runtime GPU directory there and direct execution rewrites
 `connect(AF_UNIX)` socket paths, so container code never needs Android app-data
 absolute paths.
-Until that bridge exists and passes validation, llama.cpp GPU profile selection
-must stay on CPU fallback unless a raw diagnostic mode is explicitly requested
-or the pdocker Vulkan ICD is explicitly marked compute-ready.
+Until the OpenCL/Vulkan bridge covers real ggml/llama kernels and passes
+validation, llama.cpp GPU profile selection must stay on CPU fallback unless a
+raw diagnostic mode is explicitly requested or a pdocker GPU ICD is explicitly
+marked compute-ready.
 
 ## CUDA-compatible API
 

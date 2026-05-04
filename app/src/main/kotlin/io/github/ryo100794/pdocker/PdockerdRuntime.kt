@@ -24,6 +24,8 @@ import java.io.File
  *       ├── libcow.so      (-> nativeLibraryDir/libcow.so)
  *       ├── pdocker-gpu-shim (-> nativeLibraryDir/libpdockergpushim.so)
  *       ├── pdocker-vulkan-icd.so (-> nativeLibraryDir/libpdockervulkanicd.so)
+ *       ├── pdocker-opencl-icd.so (-> nativeLibraryDir/libpdockeropenclicd.so)
+ *       ├── libOpenCL.so   (-> nativeLibraryDir/libpdockeropenclicd.so)
  *       └── pdocker-rootfs-shim.so (-> nativeLibraryDir/libpdocker-rootfs-shim.so)
  *
  * pdockerd derives _PROJECT_DIR = dirname(dirname(__file__)), so running
@@ -79,6 +81,9 @@ nameserver 1.1.1.1
         linkTo(File(nativeDir, "libcow.so"),           File(lib, "libcow.so"))
         optionalLinkTo(File(nativeDir, "libpdockergpushim.so"), File(lib, "pdocker-gpu-shim"))
         optionalLinkTo(File(nativeDir, "libpdockervulkanicd.so"), File(lib, "pdocker-vulkan-icd.so"))
+        optionalLinkTo(File(nativeDir, "libpdockeropenclicd.so"), File(lib, "pdocker-opencl-icd.so"))
+        optionalLinkTo(File(nativeDir, "libpdockeropenclicd.so"), File(lib, "libOpenCL.so"))
+        optionalLinkTo(File(nativeDir, "libpdockeropenclicd.so"), File(lib, "libOpenCL.so.1"))
         optionalLinkTo(File(nativeDir, "libpdocker-rootfs-shim.so"), File(lib, "pdocker-rootfs-shim.so"))
         java.nio.file.Files.deleteIfExists(File(lib, "libtalloc.so").toPath())
 
