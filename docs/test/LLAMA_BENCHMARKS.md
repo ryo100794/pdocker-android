@@ -145,6 +145,8 @@ This compares:
 - glibc shim bridge with a persistent socket connection.
 - glibc shim bridge passing a shared vector buffer FD with `SCM_RIGHTS`, both
   one-connection-per-command and persistent-connection forms.
+- glibc shim bridge registering a shared vector buffer once, then reusing it
+  for repeated commands on the same connection.
 
 Important caveat: process-level wall time is not a fair direct-vs-bridge
 comparison because the direct path includes Android executable startup while
@@ -203,9 +205,22 @@ This confirms the bridge can pass a container-owned shared buffer into the
 Android GPU executor and receive validated output without exposing Android
 vendor GPU libraries to the glibc process. It still allocates and maps a fresh
 buffer per command, so it is a bridge substrate measurement, not the final
-llama.cpp GPU backend. The next optimization step is reusable buffers plus
-fences so llama/ggml operations can chain work without repeated allocation,
-mapping, or per-operation connection setup.
+llama.cpp GPU backend.
+
+Follow-up repeat8 after adding a registered shared-buffer probe:
+
+- Direct executor warm total mean: 3.5770 ms.
+- Persistent command bridge warm total mean: 1.7593 ms.
+- Persistent FD shared-buffer bridge warm total mean: 3.1626 ms.
+- Registered shared-buffer bridge warm total mean: 2.6267 ms.
+- Registered shared-buffer wall per run: 25.2951 ms.
+
+These short repeat8 values are noisy and the direct process path is still not
+a fair wall-clock baseline because it includes process startup. The important
+directional improvement is structural: the bridge can now register a buffer
+once and submit repeated commands against it. The next optimization step is a
+real multi-buffer table plus fences so llama/ggml operations can chain work
+without repeated allocation, mapping, or per-operation connection setup.
 
 The container-facing socket path is `/run/pdocker-gpu/pdocker-gpu.sock`.
 pdockerd bind-maps the APK runtime GPU directory to `/run/pdocker-gpu`, and the

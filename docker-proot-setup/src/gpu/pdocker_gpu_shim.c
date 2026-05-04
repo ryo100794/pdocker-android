@@ -350,6 +350,81 @@ static int bench_vector_add_fd(int count, int persistent) {
     return last;
 }
 
+static int bench_vector_add_registered(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    const size_t total = bytes * 3;
+    int shared_fd = create_shared_fd(total);
+    if (shared_fd < 0) {
+        fprintf(stderr, "pdocker-gpu-shim: shared fd allocation failed: %s\n", strerror(errno));
+        return 70;
+    }
+    void *map = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, shared_fd, 0);
+    if (map == MAP_FAILED) {
+        fprintf(stderr, "pdocker-gpu-shim: mmap shared fd failed: %s\n", strerror(errno));
+        close(shared_fd);
+        return 70;
+    }
+    float *a = (float *)map;
+    float *b = a + n;
+    float *out = b + n;
+    fill_inputs(a, b, n);
+    memset(out, 0, bytes);
+
+    int fd = connect_queue();
+    if (fd < 0) {
+        fprintf(stderr, "pdocker-gpu-shim: persistent connect failed: %s\n", strerror(-fd));
+        munmap(map, total);
+        close(shared_fd);
+        return 69;
+    }
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "REGISTER_VECTOR_FD %zu\n", n);
+    int rc = send_fd_command(fd, cmd, shared_fd);
+    close(shared_fd);
+    if (rc != 0) {
+        fprintf(stderr, "pdocker-gpu-shim: register fd command failed: %s\n", strerror(-rc));
+        close(fd);
+        munmap(map, total);
+        return 70;
+    }
+    char line[4096];
+    rc = read_response_line(fd, line, sizeof(line));
+    if (rc != 0) {
+        fprintf(stderr, "pdocker-gpu-shim: register response failed: %s\n", strerror(-rc));
+        close(fd);
+        munmap(map, total);
+        return 70;
+    }
+
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        if (dprintf(fd, "VECTOR_ADD_REGISTERED\n") < 0) {
+            last = 70;
+            break;
+        }
+        rc = read_response_line(fd, line, sizeof(line));
+        if (rc != 0) {
+            last = 70;
+            break;
+        }
+        double max_err = 0.0;
+        for (size_t j = 0; j < n; ++j) {
+            double err = fabs((double)out[j] - (double)(a[j] + b[j]));
+            if (err > max_err) max_err = err;
+        }
+        fputs(line, stdout);
+        if (max_err > 0.0001) {
+            last = 6;
+            break;
+        }
+    }
+    close(fd);
+    munmap(map, total);
+    return last;
+}
+
 static int parse_count(const char *s, int fallback) {
     if (!s || !s[0]) return fallback;
     char *end = NULL;
@@ -388,12 +463,15 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "--bench-vector-add-fd-persistent") == 0) {
         return bench_vector_add_fd(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
     }
+    if (strcmp(argv[1], "--bench-vector-add-registered") == 0) {
+        return bench_vector_add_registered(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
     if (strcmp(argv[1], "--bench-noop") == 0) {
         return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5), 0);
     }
     if (strcmp(argv[1], "--bench-noop-persistent") == 0) {
         return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
     }
-    fprintf(stderr, "usage: %s [--capabilities|--env|--queue-probe|--vector-add|--vector-add-fd|--bench-vector-add N|--bench-vector-add-persistent N|--bench-vector-add-fd N|--bench-vector-add-fd-persistent N|--bench-noop N|--bench-noop-persistent N]\n", argv[0]);
+    fprintf(stderr, "usage: %s [--capabilities|--env|--queue-probe|--vector-add|--vector-add-fd|--bench-vector-add N|--bench-vector-add-persistent N|--bench-vector-add-fd N|--bench-vector-add-fd-persistent N|--bench-vector-add-registered N|--bench-noop N|--bench-noop-persistent N]\n", argv[0]);
     return 64;
 }

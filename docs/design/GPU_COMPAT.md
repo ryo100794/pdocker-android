@@ -91,14 +91,15 @@ The first scaffold now has two binaries:
   Android GPU APIs and advertises the same neutral command ABI.
 
 The current shim supports capability probing, a temporary Unix-socket command
-path, and a first shared-buffer probe where the glibc shim passes a mapped
-buffer FD to the APK executor with `SCM_RIGHTS`. This validates the intended
-direction but is not the final transport; the reusable buffer table,
-command-ring, and fence protocol are still pending. The temporary socket
-transport is allowed only as a measurement scaffold. Benchmarks must separate
-NOOP/control overhead from upload/dispatch/download work, and real LLM
-integration must use persistent transport plus buffer reuse so bridge overhead
-is not paid per tiny ggml operation.
+path, a shared-buffer probe where the glibc shim passes a mapped buffer FD to
+the APK executor with `SCM_RIGHTS`, and a first registered-buffer probe where
+that FD is mapped once per connection and reused. This validates the intended
+direction but is not the final transport; the command ring, reusable buffer
+table across real ggml tensors, and fence protocol are still pending. The
+temporary socket transport is allowed only as a measurement scaffold.
+Benchmarks must separate NOOP/control overhead from upload/dispatch/download
+work, and real LLM integration must use persistent transport plus buffer reuse
+so bridge overhead is not paid per tiny ggml operation.
 GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
 binds the APK runtime GPU directory there and direct execution rewrites
 `connect(AF_UNIX)` socket paths, so container code never needs Android app-data

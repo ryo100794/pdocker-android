@@ -308,6 +308,65 @@ static int run_vector_add_fd(int fd, size_t n) {
     return rc;
 }
 
+typedef struct {
+    void *map;
+    size_t n;
+    size_t total;
+} RegisteredVectorBuffer;
+
+static void clear_registered_vector_buffer(RegisteredVectorBuffer *buffer) {
+    if (!buffer) return;
+    if (buffer->map && buffer->map != MAP_FAILED) {
+        munmap(buffer->map, buffer->total);
+    }
+    memset(buffer, 0, sizeof(*buffer));
+}
+
+static int register_vector_buffer(RegisteredVectorBuffer *buffer, int fd, size_t n) {
+    if (!buffer || fd < 0) {
+        json_fail("fd", "missing shared buffer fd");
+        return 64;
+    }
+    if (n == 0 || n > PDOCKER_GPU_VECTOR_ADD_MAX_N) {
+        close(fd);
+        json_fail("fd", "invalid vector size");
+        return 64;
+    }
+    const size_t bytes = n * sizeof(float);
+    const size_t total = bytes * 3;
+    void *map = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (map == MAP_FAILED) {
+        json_fail("mmap", strerror(errno));
+        return 70;
+    }
+    clear_registered_vector_buffer(buffer);
+    buffer->map = map;
+    buffer->n = n;
+    buffer->total = total;
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"transport\":\"unix-socket-registered-shared-buffer\","
+            "\"kernel\":\"register_vector_buffer\",\"problem_size\":\"n=%zu\","
+            "\"valid\":true}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION, n);
+    fflush(json_out());
+    return 0;
+}
+
+static int run_registered_vector_add(RegisteredVectorBuffer *buffer) {
+    if (!buffer || !buffer->map || buffer->n == 0) {
+        json_fail("registered-buffer", "no registered vector buffer");
+        return 64;
+    }
+    float *a = (float *)buffer->map;
+    float *b = a + buffer->n;
+    float *out = b + buffer->n;
+    return run_vector_add_arrays(a, b, out, buffer->n, "unix-socket-registered-shared-buffer");
+}
+
 static void print_capabilities(const char *transport) {
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
@@ -460,6 +519,8 @@ static int serve_socket(const char *path) {
         }
         setvbuf(out, NULL, _IONBF, 0);
         char cmd[160];
+        RegisteredVectorBuffer registered;
+        memset(&registered, 0, sizeof(registered));
         for (;;) {
             int passed_fd = -1;
             int nread = recv_command_with_optional_fd(cfd, cmd, sizeof(cmd), &passed_fd);
@@ -475,12 +536,19 @@ static int serve_socket(const char *path) {
                 size_t n = (size_t)strtoull(cmd + 14, NULL, 10);
                 (void)run_vector_add_fd(passed_fd, n);
                 passed_fd = -1;
+            } else if (strncmp(cmd, "REGISTER_VECTOR_FD ", 19) == 0) {
+                size_t n = (size_t)strtoull(cmd + 19, NULL, 10);
+                (void)register_vector_buffer(&registered, passed_fd, n);
+                passed_fd = -1;
+            } else if (strcmp(cmd, "VECTOR_ADD_REGISTERED") == 0) {
+                (void)run_registered_vector_add(&registered);
             } else {
                 if (passed_fd >= 0) close(passed_fd);
                 json_fail("command", "unknown command");
             }
             g_json_out = NULL;
         }
+        clear_registered_vector_buffer(&registered);
         fclose(out);
         close(cfd);
     }

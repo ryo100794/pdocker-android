@@ -585,13 +585,16 @@ Scaffold completed:
   buffer and passes its FD to the Android/Bionic executor with `SCM_RIGHTS`.
   This proves the bridge can move data without exposing Android GPU libraries
   to the glibc container, but it is still a benchmark scaffold.
+- First registered-buffer transport probe: the executor can map a shared
+  vector buffer once for a connection and run repeated commands against that
+  registered buffer.
 
 Next implementation slice:
 
-- Replace the temporary socket command transport and per-command FD allocation
-  with a persistent shared-memory command queue, reusable buffer table, and
-  fence/error protocol. The socket path is now useful for measuring and
-  debugging, but only as a scaffold.
+- Replace the temporary socket command transport with a persistent shared-memory
+  command ring, multi-buffer table, and fence/error protocol. The socket path
+  and single registered vector buffer are now useful for measuring and
+  debugging, but only as scaffolds.
 - Keep persistent transport semantics. Benchmarks show one-connection-per-GPU
   command adds measurable overhead and is the wrong shape for LLM workloads.
 - Keep container-visible paths under `/run/pdocker-gpu`; do not expose Android
