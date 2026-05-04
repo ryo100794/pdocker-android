@@ -2799,7 +2799,7 @@ class MainActivity : AppCompatActivity() {
                 editable = editable,
                 services = services,
                 serviceUrls = serviceUrls,
-                serviceHealth = projectServiceHealthSummary(serviceUrls),
+                serviceHealth = projectServiceHealthSummary(serviceUrls, dir.name),
                 modelSummary = projectModelSummary(dir),
                 gpuProfileSummary = projectGpuProfileSummary(dir),
                 gpuDiagnostics = File(dir, "profiles/pdocker-gpu-diagnostics.json").takeIf { it.isFile },
@@ -2871,6 +2871,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private fun containerSnapshotIsRunning(obj: JSONObject): Boolean =
+        obj.optString("State").equals("running", ignoreCase = true) ||
+            obj.optString("Status").startsWith("Up", ignoreCase = true)
+
     private fun projectJobSummary(projectName: String): String {
         val jobs = dockerJobs.filter { it.group == projectName || projectName in it.command }
         if (jobs.isEmpty()) return "-"
@@ -2927,8 +2931,12 @@ class MainActivity : AppCompatActivity() {
             ?.let { it.label to it.url.orEmpty() }
     }
 
-    private fun projectServiceHealthSummary(urls: List<Pair<String, String>>): String {
+    private fun projectServiceHealthSummary(urls: List<Pair<String, String>>, projectName: String): String {
         if (urls.isEmpty()) return "-"
+        val snapshots = projectContainerSnapshots(projectName)
+        if (lastContainerSnapshotAt > 0L && snapshots.none { containerSnapshotIsRunning(it) }) {
+            return projectContainerStatusSummary(projectName)
+        }
         urls.forEach { (_, url) -> scheduleServiceHealthProbe(url) }
         return urls.take(4).joinToString(", ") { (label, url) ->
             "$label:${serviceHealth[url] ?: getString(R.string.service_health_checking)}"

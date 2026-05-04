@@ -160,6 +160,7 @@ def main() -> int:
     require("docker ps columns include separators", 'val separator = "  "' in main_src and "joinToString(separator)" in main_src)
     require("docker ps clipping stays monospace ascii", 'compact.take(width - 3) + "...' in main_src and '"…"' not in main_src.split("private fun formatContainers", 1)[1].split("private fun formatPortsForPs", 1)[0])
     require("container tab reconciles state from engine snapshot", "containerSnapshotLookup" in main_src and "refreshContainerSnapshotAsync" in main_src and 'engine.getArray("/containers/json?all=1")' in main_src and 'snapshot?.optString("Status")' in main_src)
+    require("project service health is gated by engine container state", "projectServiceHealthSummary(serviceUrls, dir.name)" in main_src and "snapshots.none { containerSnapshotIsRunning(it) }" in main_src)
     bridge_src_now = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt").read_text()
     require("container exposes explicit engine api it terminal", "action_container_terminal_fmt" in string_src and "detail_container_terminal" in string_src and "ENGINE_EXEC_PREFIX" in main_src and "/exec/$execId/start" in bridge_src_now and '"Cmd", listOf("/bin/sh")' in bridge_src_now and "docker exec -it" not in main_src)
     require("container console avoids host shell fallback", "openDockerInteractiveTerminal" in main_src and "ENGINE_EXEC_PREFIX" in main_src and "dockerCommand(" not in main_src.split("private fun openDockerInteractiveTerminal", 1)[1].split("private fun openEditor", 1)[0])
