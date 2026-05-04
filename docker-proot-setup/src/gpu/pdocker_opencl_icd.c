@@ -225,7 +225,7 @@ static int send_vector_add_3fd(size_t n, int fd_a, int fd_b, int fd_out) {
     int socket_fd = connect_queue();
     if (socket_fd < 0) return socket_fd;
     char cmd[80];
-    snprintf(cmd, sizeof(cmd), "VECTOR_ADD_3FD %zu\n", n);
+    snprintf(cmd, sizeof(cmd), "OPENCL_VECTOR_ADD_3FD %zu\n", n);
     int fds[3] = { fd_a, fd_b, fd_out };
     char control[CMSG_SPACE(sizeof(fds))];
     struct iovec iov;

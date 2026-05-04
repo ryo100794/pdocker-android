@@ -332,6 +332,35 @@ directly from a glibc container, which remains out of scope. The viable path is
 standard Vulkan loader compatibility in the container, backed by pdocker's ICD
 and APK-owned executor.
 
+Follow-up APK executor Vulkan compute probe on 2026-05-04:
+
+- Command: `pdocker-gpu-executor --bench-vulkan-vector-add 1`.
+- Device: `10.62.90.13:37669`.
+- Backend: `android_vulkan`.
+- Backend affinity: `same-api`.
+- Kernel: `vector_add`.
+- Result: `valid=true`, `max_abs_error=0.00000000`.
+- Timing: init `121.3690 ms`, compile `25.6011 ms`, upload `2.7919 ms`,
+  dispatch `1.2833 ms`, download `1.4367 ms`, total `152.4820 ms`.
+
+This is the first confirmed APK-side Vulkan compute execution path. The
+remaining work is connecting the Vulkan ICD bridge to reusable Vulkan executor
+objects instead of one-shot vector-add setup, then expanding descriptor,
+pipeline, command-buffer, and fence coverage toward llama/ggml workloads.
+
+Follow-up Android device smoke result:
+
+- Command: `ANDROID_SERIAL=10.62.90.13:37669 ADB=adb scripts/android-device-smoke.sh --quick --gpu-bench --no-install`.
+- Vulkan executor backend: `android_vulkan`.
+- Backend affinity: `same-api`.
+- Result: `valid=true`, `max_abs_error=0.00000000`.
+- Timing: init `119.2271 ms`, compile `14.6046 ms`, upload `3.1205 ms`,
+  dispatch `0.9291 ms`, download `0.4504 ms`, total `138.3317 ms`.
+- OpenCL probe: still blocked by Android untrusted-app linker namespace on this
+  device.
+- GLES benchmark remains healthy: stream vector-add total `1.3796 ms`, SAXPY
+  `3.0361 ms`, 64x64 matmul `1.6183 ms`.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.

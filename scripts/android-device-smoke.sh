@@ -143,6 +143,14 @@ run_gpu_bench() {
   return 1
 }
 
+run_gpu_executor_bench() {
+  echo "[pdocker smoke] gpu executor same-api probes"
+  run_as 'files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-vulkan-vector-add 1' | tee /tmp/pdocker-smoke-vulkan-executor.json
+  grep -q '"backend_impl":"android_vulkan"' /tmp/pdocker-smoke-vulkan-executor.json
+  grep -q '"valid":true' /tmp/pdocker-smoke-vulkan-executor.json
+  run_as 'files/pdocker-runtime/gpu/pdocker-gpu-executor --bench-opencl-vector-add 1 || true' | tee /tmp/pdocker-smoke-opencl-executor.json
+}
+
 echo "[pdocker smoke] device: $(run_adb get-serialno)"
 
 if [[ "$INSTALL" -eq 1 ]]; then
@@ -185,6 +193,7 @@ else
 fi
 
 if [[ "$GPU_BENCH" -eq 1 ]]; then
+  run_gpu_executor_bench
   run_gpu_bench
 fi
 

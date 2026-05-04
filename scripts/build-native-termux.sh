@@ -118,7 +118,7 @@ echo "==> building libpdockergpuexecutor.so"
 "$CLANG" "${EXEC_FLAGS[@]}" \
     -o "$JNI_DIR/libpdockergpuexecutor.so" \
     "$ROOT/app/src/main/cpp/pdocker_gpu_executor.c" \
-    -lEGL -lGLESv3 -llog -ldl -lm
+    -lEGL -lGLESv3 -lvulkan -llog -ldl -lm
 strip_rpath "$JNI_DIR/libpdockergpuexecutor.so"
 file "$JNI_DIR/libpdockergpuexecutor.so" | head -1
 

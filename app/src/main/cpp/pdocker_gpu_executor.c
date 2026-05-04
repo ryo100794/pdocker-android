@@ -10,6 +10,7 @@
  */
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
+#include <vulkan/vulkan.h>
 #include "pdocker_gpu_abi.h"
 #include <dlfcn.h>
 #include <errno.h>
@@ -86,6 +87,58 @@ typedef struct {
     ocl_int (*clReleaseCommandQueue)(ocl_command_queue);
     ocl_int (*clReleaseContext)(ocl_context);
 } OpenClBackend;
+
+typedef enum {
+    GPU_API_AUTO = 0,
+    GPU_API_VULKAN = 1,
+    GPU_API_OPENCL = 2,
+} GpuApiAffinity;
+
+static const uint32_t kVectorAddSpv[] = {
+    0x07230203, 0x00010000, 0x0008000b, 0x0000002c, 0x00000000, 0x00020011, 0x00000001, 0x0006000b,
+    0x00000001, 0x4c534c47, 0x6474732e, 0x3035342e, 0x00000000, 0x0003000e, 0x00000000, 0x00000001,
+    0x0006000f, 0x00000005, 0x00000004, 0x6e69616d, 0x00000000, 0x0000000b, 0x00060010, 0x00000004,
+    0x00000011, 0x00000080, 0x00000001, 0x00000001, 0x00030003, 0x00000002, 0x000001c2, 0x00040005,
+    0x00000004, 0x6e69616d, 0x00000000, 0x00030005, 0x00000008, 0x00000069, 0x00080005, 0x0000000b,
+    0x475f6c67, 0x61626f6c, 0x766e496c, 0x7461636f, 0x496e6f69, 0x00000044, 0x00030005, 0x00000012,
+    0x0000004f, 0x00040006, 0x00000012, 0x00000000, 0x0000006f, 0x00030005, 0x00000014, 0x00000000,
+    0x00030005, 0x00000019, 0x00000041, 0x00040006, 0x00000019, 0x00000000, 0x00000061, 0x00030005,
+    0x0000001b, 0x00000000, 0x00030005, 0x00000021, 0x00000042, 0x00040006, 0x00000021, 0x00000000,
+    0x00000062, 0x00030005, 0x00000023, 0x00000000, 0x00040047, 0x0000000b, 0x0000000b, 0x0000001c,
+    0x00040047, 0x00000011, 0x00000006, 0x00000004, 0x00030047, 0x00000012, 0x00000003, 0x00040048,
+    0x00000012, 0x00000000, 0x00000019, 0x00050048, 0x00000012, 0x00000000, 0x00000023, 0x00000000,
+    0x00030047, 0x00000014, 0x00000019, 0x00040047, 0x00000014, 0x00000021, 0x00000002, 0x00040047,
+    0x00000014, 0x00000022, 0x00000000, 0x00040047, 0x00000018, 0x00000006, 0x00000004, 0x00030047,
+    0x00000019, 0x00000003, 0x00040048, 0x00000019, 0x00000000, 0x00000018, 0x00050048, 0x00000019,
+    0x00000000, 0x00000023, 0x00000000, 0x00030047, 0x0000001b, 0x00000018, 0x00040047, 0x0000001b,
+    0x00000021, 0x00000000, 0x00040047, 0x0000001b, 0x00000022, 0x00000000, 0x00040047, 0x00000020,
+    0x00000006, 0x00000004, 0x00030047, 0x00000021, 0x00000003, 0x00040048, 0x00000021, 0x00000000,
+    0x00000018, 0x00050048, 0x00000021, 0x00000000, 0x00000023, 0x00000000, 0x00030047, 0x00000023,
+    0x00000018, 0x00040047, 0x00000023, 0x00000021, 0x00000001, 0x00040047, 0x00000023, 0x00000022,
+    0x00000000, 0x00040047, 0x0000002b, 0x0000000b, 0x00000019, 0x00020013, 0x00000002, 0x00030021,
+    0x00000003, 0x00000002, 0x00040015, 0x00000006, 0x00000020, 0x00000000, 0x00040020, 0x00000007,
+    0x00000007, 0x00000006, 0x00040017, 0x00000009, 0x00000006, 0x00000003, 0x00040020, 0x0000000a,
+    0x00000001, 0x00000009, 0x0004003b, 0x0000000a, 0x0000000b, 0x00000001, 0x0004002b, 0x00000006,
+    0x0000000c, 0x00000000, 0x00040020, 0x0000000d, 0x00000001, 0x00000006, 0x00030016, 0x00000010,
+    0x00000020, 0x0003001d, 0x00000011, 0x00000010, 0x0003001e, 0x00000012, 0x00000011, 0x00040020,
+    0x00000013, 0x00000002, 0x00000012, 0x0004003b, 0x00000013, 0x00000014, 0x00000002, 0x00040015,
+    0x00000015, 0x00000020, 0x00000001, 0x0004002b, 0x00000015, 0x00000016, 0x00000000, 0x0003001d,
+    0x00000018, 0x00000010, 0x0003001e, 0x00000019, 0x00000018, 0x00040020, 0x0000001a, 0x00000002,
+    0x00000019, 0x0004003b, 0x0000001a, 0x0000001b, 0x00000002, 0x00040020, 0x0000001d, 0x00000002,
+    0x00000010, 0x0003001d, 0x00000020, 0x00000010, 0x0003001e, 0x00000021, 0x00000020, 0x00040020,
+    0x00000022, 0x00000002, 0x00000021, 0x0004003b, 0x00000022, 0x00000023, 0x00000002, 0x0004002b,
+    0x00000006, 0x00000029, 0x00000080, 0x0004002b, 0x00000006, 0x0000002a, 0x00000001, 0x0006002c,
+    0x00000009, 0x0000002b, 0x00000029, 0x0000002a, 0x0000002a, 0x00050036, 0x00000002, 0x00000004,
+    0x00000000, 0x00000003, 0x000200f8, 0x00000005, 0x0004003b, 0x00000007, 0x00000008, 0x00000007,
+    0x00050041, 0x0000000d, 0x0000000e, 0x0000000b, 0x0000000c, 0x0004003d, 0x00000006, 0x0000000f,
+    0x0000000e, 0x0003003e, 0x00000008, 0x0000000f, 0x0004003d, 0x00000006, 0x00000017, 0x00000008,
+    0x0004003d, 0x00000006, 0x0000001c, 0x00000008, 0x00060041, 0x0000001d, 0x0000001e, 0x0000001b,
+    0x00000016, 0x0000001c, 0x0004003d, 0x00000010, 0x0000001f, 0x0000001e, 0x0004003d, 0x00000006,
+    0x00000024, 0x00000008, 0x00060041, 0x0000001d, 0x00000025, 0x00000023, 0x00000016, 0x00000024,
+    0x0004003d, 0x00000010, 0x00000026, 0x00000025, 0x00050081, 0x00000010, 0x00000027, 0x0000001f,
+    0x00000026, 0x00060041, 0x0000001d, 0x00000028, 0x00000014, 0x00000016, 0x00000017, 0x0003003e,
+    0x00000028, 0x00000027, 0x000100fd, 0x00010038,
+};
 
 static FILE *g_json_out = NULL;
 
@@ -240,6 +293,340 @@ static void close_opencl_backend(OpenClBackend *cl) {
     if (cl->context && cl->clReleaseContext) cl->clReleaseContext(cl->context);
     if (cl->lib) dlclose(cl->lib);
     memset(cl, 0, sizeof(*cl));
+}
+
+static uint32_t find_vulkan_memory_type(VkPhysicalDevice physical_device, uint32_t type_bits, VkMemoryPropertyFlags flags) {
+    VkPhysicalDeviceMemoryProperties props;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &props);
+    for (uint32_t i = 0; i < props.memoryTypeCount; ++i) {
+        if ((type_bits & (1u << i)) && (props.memoryTypes[i].propertyFlags & flags) == flags) return i;
+    }
+    return UINT32_MAX;
+}
+
+typedef struct {
+    VkBuffer buffer;
+    VkDeviceMemory memory;
+    void *map;
+} VulkanVectorBuffer;
+
+static int create_vulkan_vector_buffer(VkPhysicalDevice physical_device, VkDevice device, size_t bytes, const void *initial, VulkanVectorBuffer *out) {
+    memset(out, 0, sizeof(*out));
+    VkBufferCreateInfo bci = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size = (VkDeviceSize)bytes,
+        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VkResult rc = vkCreateBuffer(device, &bci, NULL, &out->buffer);
+    if (rc != VK_SUCCESS) return -10;
+    VkMemoryRequirements req;
+    vkGetBufferMemoryRequirements(device, out->buffer, &req);
+    uint32_t memory_type = find_vulkan_memory_type(
+        physical_device,
+        req.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (memory_type == UINT32_MAX) return -11;
+    VkMemoryAllocateInfo mai = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = req.size,
+        .memoryTypeIndex = memory_type,
+    };
+    rc = vkAllocateMemory(device, &mai, NULL, &out->memory);
+    if (rc != VK_SUCCESS) return -12;
+    rc = vkBindBufferMemory(device, out->buffer, out->memory, 0);
+    if (rc != VK_SUCCESS) return -13;
+    rc = vkMapMemory(device, out->memory, 0, (VkDeviceSize)bytes, 0, &out->map);
+    if (rc != VK_SUCCESS || !out->map) return -14;
+    if (initial) memcpy(out->map, initial, bytes);
+    return 0;
+}
+
+static void destroy_vulkan_vector_buffer(VkDevice device, VulkanVectorBuffer *buf) {
+    if (!buf) return;
+    if (buf->map) vkUnmapMemory(device, buf->memory);
+    if (buf->buffer) vkDestroyBuffer(device, buf->buffer, NULL);
+    if (buf->memory) vkFreeMemory(device, buf->memory, NULL);
+    memset(buf, 0, sizeof(*buf));
+}
+
+static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *out, size_t n, const char *transport) {
+    double init_start = now_ms();
+    const char *fail_stage = "start";
+    VkResult fail_result = VK_SUCCESS;
+    VkInstance instance = VK_NULL_HANDLE;
+    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue queue = VK_NULL_HANDLE;
+    VkShaderModule shader = VK_NULL_HANDLE;
+    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+    VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkCommandPool command_pool = VK_NULL_HANDLE;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    VulkanVectorBuffer buffers[3];
+    memset(buffers, 0, sizeof(buffers));
+
+    VkApplicationInfo app = {
+        .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+        .pApplicationName = "pdocker-gpu-executor",
+        .apiVersion = VK_API_VERSION_1_0,
+    };
+    VkInstanceCreateInfo ici = {
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+        .pApplicationInfo = &app,
+    };
+    VkResult rc = vkCreateInstance(&ici, NULL, &instance);
+    if (rc != VK_SUCCESS) {
+        fprintf(stderr, "pdocker-gpu-executor: Vulkan stage=create-instance rc=%d\n", rc);
+        return -20;
+    }
+
+    uint32_t physical_count = 0;
+    fail_stage = "enumerate-physical-count";
+    rc = vkEnumeratePhysicalDevices(instance, &physical_count, NULL);
+    if (rc != VK_SUCCESS || physical_count == 0) { fail_result = rc; goto fail; }
+    VkPhysicalDevice physical_devices[8];
+    if (physical_count > 8) physical_count = 8;
+    fail_stage = "enumerate-physical";
+    rc = vkEnumeratePhysicalDevices(instance, &physical_count, physical_devices);
+    if (rc != VK_SUCCESS || physical_count == 0) { fail_result = rc; goto fail; }
+    physical_device = physical_devices[0];
+
+    uint32_t family_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &family_count, NULL);
+    if (family_count == 0) { fail_stage = "queue-family-count"; goto fail; }
+    VkQueueFamilyProperties families[16];
+    if (family_count > 16) family_count = 16;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &family_count, families);
+    uint32_t queue_family = UINT32_MAX;
+    for (uint32_t i = 0; i < family_count; ++i) {
+        if (families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            queue_family = i;
+            break;
+        }
+    }
+    if (queue_family == UINT32_MAX) { fail_stage = "queue-family-compute"; goto fail; }
+
+    float priority = 1.0f;
+    VkDeviceQueueCreateInfo qci = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .queueFamilyIndex = queue_family,
+        .queueCount = 1,
+        .pQueuePriorities = &priority,
+    };
+    VkDeviceCreateInfo dci = {
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .queueCreateInfoCount = 1,
+        .pQueueCreateInfos = &qci,
+    };
+    fail_stage = "create-device";
+    rc = vkCreateDevice(physical_device, &dci, NULL, &device);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    vkGetDeviceQueue(device, queue_family, 0, &queue);
+    double init_ms = now_ms() - init_start;
+
+    const size_t bytes = n * sizeof(float);
+    double upload_start = now_ms();
+    fail_stage = "create-buffer-a";
+    if (create_vulkan_vector_buffer(physical_device, device, bytes, a, &buffers[0]) != 0) goto fail;
+    fail_stage = "create-buffer-b";
+    if (create_vulkan_vector_buffer(physical_device, device, bytes, b, &buffers[1]) != 0) goto fail;
+    fail_stage = "create-buffer-out";
+    if (create_vulkan_vector_buffer(physical_device, device, bytes, NULL, &buffers[2]) != 0) goto fail;
+    double upload_ms = now_ms() - upload_start;
+
+    double compile_start = now_ms();
+    VkShaderModuleCreateInfo smci = {
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .codeSize = sizeof(kVectorAddSpv),
+        .pCode = kVectorAddSpv,
+    };
+    fail_stage = "create-shader-module";
+    rc = vkCreateShaderModule(device, &smci, NULL, &shader);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorSetLayoutBinding bindings[3];
+    memset(bindings, 0, sizeof(bindings));
+    for (uint32_t i = 0; i < 3; ++i) {
+        bindings[i].binding = i;
+        bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[i].descriptorCount = 1;
+        bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    }
+    VkDescriptorSetLayoutCreateInfo dslci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .bindingCount = 3,
+        .pBindings = bindings,
+    };
+    fail_stage = "create-descriptor-set-layout";
+    rc = vkCreateDescriptorSetLayout(device, &dslci, NULL, &set_layout);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkPipelineLayoutCreateInfo plci = {
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .setLayoutCount = 1,
+        .pSetLayouts = &set_layout,
+    };
+    fail_stage = "create-pipeline-layout";
+    rc = vkCreatePipelineLayout(device, &plci, NULL, &pipeline_layout);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkComputePipelineCreateInfo cpci = {
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .stage = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+            .module = shader,
+            .pName = "main",
+        },
+        .layout = pipeline_layout,
+    };
+    fail_stage = "create-compute-pipeline";
+    rc = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpci, NULL, &pipeline);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    double compile_ms = now_ms() - compile_start;
+
+    VkDescriptorPoolSize pool_size = {
+        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 3,
+    };
+    VkDescriptorPoolCreateInfo dpci = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .maxSets = 1,
+        .poolSizeCount = 1,
+        .pPoolSizes = &pool_size,
+    };
+    fail_stage = "create-descriptor-pool";
+    rc = vkCreateDescriptorPool(device, &dpci, NULL, &descriptor_pool);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    VkDescriptorSetAllocateInfo dsai = {
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .descriptorPool = descriptor_pool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &set_layout,
+    };
+    fail_stage = "allocate-descriptor-set";
+    rc = vkAllocateDescriptorSets(device, &dsai, &descriptor_set);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkDescriptorBufferInfo infos[3];
+    VkWriteDescriptorSet writes[3];
+    memset(writes, 0, sizeof(writes));
+    for (uint32_t i = 0; i < 3; ++i) {
+        infos[i].buffer = buffers[i].buffer;
+        infos[i].offset = 0;
+        infos[i].range = (VkDeviceSize)bytes;
+        writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[i].dstSet = descriptor_set;
+        writes[i].dstBinding = i;
+        writes[i].descriptorCount = 1;
+        writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[i].pBufferInfo = &infos[i];
+    }
+    vkUpdateDescriptorSets(device, 3, writes, 0, NULL);
+
+    VkCommandPoolCreateInfo cpoci = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .queueFamilyIndex = queue_family,
+    };
+    fail_stage = "create-command-pool";
+    rc = vkCreateCommandPool(device, &cpoci, NULL, &command_pool);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkCommandBufferAllocateInfo cbai = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = command_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    fail_stage = "allocate-command-buffer";
+    rc = vkAllocateCommandBuffers(device, &cbai, &command_buffer);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+
+    double dispatch_start = now_ms();
+    VkCommandBufferBeginInfo cbi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    fail_stage = "begin-command-buffer";
+    rc = vkBeginCommandBuffer(command_buffer, &cbi);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    vkCmdDispatch(command_buffer, (uint32_t)((n + 127) / 128), 1, 1);
+    fail_stage = "end-command-buffer";
+    rc = vkEndCommandBuffer(command_buffer);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    fail_stage = "create-fence";
+    rc = vkCreateFence(device, &fci, NULL, &fence);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    VkSubmitInfo submit = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &command_buffer,
+    };
+    fail_stage = "queue-submit";
+    rc = vkQueueSubmit(queue, 1, &submit, fence);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    fail_stage = "wait-fence";
+    rc = vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    double dispatch_ms = now_ms() - dispatch_start;
+
+    double download_start = now_ms();
+    memcpy(out, buffers[2].map, bytes);
+    double download_ms = now_ms() - download_start;
+
+    double max_err = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        double e = fabs((double)out[i] - (double)(a[i] + b[i]));
+        if (e > max_err) max_err = e;
+    }
+    const int valid = max_err <= 0.0001;
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"backend_impl\":\"android_vulkan\",\"backend_affinity\":\"same-api\",\"transport\":\"%s\","
+            "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
+            "\"init_ms\":%.4f,\"compile_ms\":%.4f,\"upload_ms\":%.4f,"
+            "\"dispatch_ms\":%.4f,\"download_ms\":%.4f,\"total_ms\":%.4f,"
+            "\"max_abs_error\":%.8f,\"valid\":%s}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            transport ? transport : "vulkan-local-process-buffer",
+            n, init_ms, compile_ms, upload_ms, dispatch_ms, download_ms,
+            init_ms + compile_ms + upload_ms + dispatch_ms + download_ms, max_err,
+            valid ? "true" : "false");
+    fflush(json_out());
+
+    if (fence) vkDestroyFence(device, fence, NULL);
+    if (command_pool) vkDestroyCommandPool(device, command_pool, NULL);
+    if (descriptor_pool) vkDestroyDescriptorPool(device, descriptor_pool, NULL);
+    if (pipeline) vkDestroyPipeline(device, pipeline, NULL);
+    if (pipeline_layout) vkDestroyPipelineLayout(device, pipeline_layout, NULL);
+    if (set_layout) vkDestroyDescriptorSetLayout(device, set_layout, NULL);
+    if (shader) vkDestroyShaderModule(device, shader, NULL);
+    destroy_vulkan_vector_buffer(device, &buffers[0]);
+    destroy_vulkan_vector_buffer(device, &buffers[1]);
+    destroy_vulkan_vector_buffer(device, &buffers[2]);
+    if (device) vkDestroyDevice(device, NULL);
+    if (instance) vkDestroyInstance(instance, NULL);
+    return valid ? 0 : 6;
+
+fail:
+    fprintf(stderr, "pdocker-gpu-executor: Vulkan vector_add failed stage=%s rc=%d\n", fail_stage, fail_result);
+    if (fence) vkDestroyFence(device, fence, NULL);
+    if (command_pool) vkDestroyCommandPool(device, command_pool, NULL);
+    if (descriptor_pool) vkDestroyDescriptorPool(device, descriptor_pool, NULL);
+    if (pipeline) vkDestroyPipeline(device, pipeline, NULL);
+    if (pipeline_layout) vkDestroyPipelineLayout(device, pipeline_layout, NULL);
+    if (set_layout) vkDestroyDescriptorSetLayout(device, set_layout, NULL);
+    if (shader) vkDestroyShaderModule(device, shader, NULL);
+    if (device) {
+        destroy_vulkan_vector_buffer(device, &buffers[0]);
+        destroy_vulkan_vector_buffer(device, &buffers[1]);
+        destroy_vulkan_vector_buffer(device, &buffers[2]);
+        vkDestroyDevice(device, NULL);
+    }
+    if (instance) vkDestroyInstance(instance, NULL);
+    return -21;
 }
 
 static int run_vector_add_arrays_opencl(const float *a, const float *b, float *out, size_t n, const char *transport) {
@@ -503,8 +890,15 @@ static int run_vector_add_arrays(const float *a, const float *b, float *out, siz
     return valid ? 0 : 6;
 }
 
-static int run_vector_add_arrays_best(const float *a, const float *b, float *out, size_t n, const char *transport) {
-    if (strcmp(getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") ? getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") : "0", "1") != 0) {
+static int run_vector_add_arrays_best(const float *a, const float *b, float *out, size_t n, const char *transport, GpuApiAffinity affinity) {
+    if (affinity == GPU_API_VULKAN && strcmp(getenv("PDOCKER_GPU_DISABLE_ANDROID_VULKAN") ? getenv("PDOCKER_GPU_DISABLE_ANDROID_VULKAN") : "0", "1") != 0) {
+        int rc = run_vector_add_arrays_vulkan(a, b, out, n, transport ? transport : "vulkan-command-queue");
+        if (rc == 0) return 0;
+        fprintf(stderr, "pdocker-gpu-executor: Android Vulkan vector_add unavailable rc=%d; falling back to GLES compute (cross-api fallback)\n", rc);
+        return run_vector_add_arrays(a, b, out, n, transport ? transport : "vulkan-to-gles31-fallback");
+    }
+    if ((affinity == GPU_API_OPENCL || affinity == GPU_API_AUTO) &&
+        strcmp(getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") ? getenv("PDOCKER_GPU_DISABLE_ANDROID_OPENCL") : "0", "1") != 0) {
         int rc = run_vector_add_arrays_opencl(a, b, out, n, transport ? transport : "opencl-command-queue");
         if (rc == 0) return 0;
         fprintf(stderr, "pdocker-gpu-executor: Android OpenCL vector_add unavailable rc=%d; falling back to GLES compute (cross-api fallback)\n", rc);
@@ -526,14 +920,14 @@ static int run_vector_add(void) {
         return 2;
     }
     fill_inputs(a, b, n);
-    int rc = run_vector_add_arrays_best(a, b, out, n, "local-process-buffer");
+    int rc = run_vector_add_arrays_best(a, b, out, n, "local-process-buffer", GPU_API_AUTO);
     free(a);
     free(b);
     free(out);
     return rc;
 }
 
-static int run_vector_add_fd(int fd, size_t n) {
+static int run_vector_add_fd(int fd, size_t n, GpuApiAffinity affinity) {
     if (fd < 0) {
         json_fail("fd", "missing shared buffer fd");
         return 64;
@@ -553,13 +947,13 @@ static int run_vector_add_fd(int fd, size_t n) {
     float *a = (float *)map;
     float *b = a + n;
     float *out = b + n;
-    int rc = run_vector_add_arrays_best(a, b, out, n, "unix-socket-scm-rights-shared-buffer");
+    int rc = run_vector_add_arrays_best(a, b, out, n, "unix-socket-scm-rights-shared-buffer", affinity);
     munmap(map, total);
     close(fd);
     return rc;
 }
 
-static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n) {
+static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n, GpuApiAffinity affinity) {
     if (fd_a < 0 || fd_b < 0 || fd_out < 0) {
         if (fd_a >= 0) close(fd_a);
         if (fd_b >= 0) close(fd_b);
@@ -589,7 +983,8 @@ static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n) {
         return 70;
     }
     int rc = run_vector_add_arrays_best((const float *)map_a, (const float *)map_b, (float *)map_out, n,
-                                        "opencl-icd-scm-rights-3buffer");
+                                        affinity == GPU_API_VULKAN ? "vulkan-icd-scm-rights-3buffer" : "opencl-icd-scm-rights-3buffer",
+                                        affinity);
     munmap(map_a, bytes);
     munmap(map_b, bytes);
     munmap(map_out, bytes);
@@ -652,7 +1047,7 @@ static int run_registered_vector_add(RegisteredVectorBuffer *buffer) {
     float *a = (float *)buffer->map;
     float *b = a + buffer->n;
     float *out = b + buffer->n;
-    return run_vector_add_arrays_best(a, b, out, buffer->n, "unix-socket-registered-shared-buffer");
+    return run_vector_add_arrays_best(a, b, out, buffer->n, "unix-socket-registered-shared-buffer", GPU_API_AUTO);
 }
 
 static void print_capabilities(const char *transport) {
@@ -702,6 +1097,58 @@ static int bench_vector_add(int count) {
         last = run_vector_add();
     }
     destroy_gpu_context(&ctx);
+    return last;
+}
+
+static int bench_vulkan_vector_add(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(n, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_inputs(a, b, n);
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        memset(out, 0, bytes);
+        last = run_vector_add_arrays_vulkan(a, b, out, n, "direct-vulkan-local-process-buffer");
+    }
+    free(a);
+    free(b);
+    free(out);
+    return last;
+}
+
+static int bench_opencl_vector_add(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(n, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_inputs(a, b, n);
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        memset(out, 0, bytes);
+        last = run_vector_add_arrays_opencl(a, b, out, n, "direct-opencl-local-process-buffer");
+    }
+    free(a);
+    free(b);
+    free(out);
     return last;
 }
 
@@ -839,7 +1286,7 @@ static int serve_socket(const char *path) {
                 (void)run_vector_command_with_context();
             } else if (strncmp(cmd, "VECTOR_ADD_FD ", 14) == 0) {
                 size_t n = (size_t)strtoull(cmd + 14, NULL, 10);
-                (void)run_vector_add_fd(passed_fds[0], n);
+                (void)run_vector_add_fd(passed_fds[0], n, GPU_API_AUTO);
                 passed_fds[0] = -1;
             } else if (strncmp(cmd, "REGISTER_VECTOR_FD ", 19) == 0) {
                 size_t n = (size_t)strtoull(cmd + 19, NULL, 10);
@@ -847,12 +1294,28 @@ static int serve_socket(const char *path) {
                 passed_fds[0] = -1;
             } else if (strcmp(cmd, "VECTOR_ADD_REGISTERED") == 0) {
                 (void)run_registered_vector_add(&registered);
+            } else if (strncmp(cmd, "OPENCL_VECTOR_ADD_3FD ", 22) == 0) {
+                size_t n = (size_t)strtoull(cmd + 22, NULL, 10);
+                if (passed_fd_count < 3) {
+                    json_fail("fd", "OPENCL_VECTOR_ADD_3FD requires three fds");
+                } else {
+                    (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n, GPU_API_OPENCL);
+                    passed_fds[0] = passed_fds[1] = passed_fds[2] = -1;
+                }
+            } else if (strncmp(cmd, "VULKAN_VECTOR_ADD_3FD ", 22) == 0) {
+                size_t n = (size_t)strtoull(cmd + 22, NULL, 10);
+                if (passed_fd_count < 3) {
+                    json_fail("fd", "VULKAN_VECTOR_ADD_3FD requires three fds");
+                } else {
+                    (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n, GPU_API_VULKAN);
+                    passed_fds[0] = passed_fds[1] = passed_fds[2] = -1;
+                }
             } else if (strncmp(cmd, "VECTOR_ADD_3FD ", 15) == 0) {
                 size_t n = (size_t)strtoull(cmd + 15, NULL, 10);
                 if (passed_fd_count < 3) {
                     json_fail("fd", "VECTOR_ADD_3FD requires three fds");
                 } else {
-                    (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n);
+                    (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n, GPU_API_AUTO);
                     passed_fds[0] = passed_fds[1] = passed_fds[2] = -1;
                 }
             } else {
@@ -883,6 +1346,12 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--bench-vector-add") == 0) {
         return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
+    if (argc > 1 && strcmp(argv[1], "--bench-vulkan-vector-add") == 0) {
+        return bench_vulkan_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
+    if (argc > 1 && strcmp(argv[1], "--bench-opencl-vector-add") == 0) {
+        return bench_opencl_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
     }
     if (argc > 1 && strcmp(argv[1], "--bench-noop") == 0) {
         return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5));
