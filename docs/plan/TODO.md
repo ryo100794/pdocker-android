@@ -579,12 +579,12 @@ Tasks:
 2. **[done] Vulkan device discovery reaches llama.cpp.**
    Forced Vulkan mode now reaches `Vulkan0 (pdocker Vulkan bridge (queue))`
    instead of `ggml_vulkan: No devices found`.
-3. **[active] Make GPU model-buffer allocation serve-safe.**
-   The forced `--n-gpu-layers 1` path currently reaches model loading but
-   blocks at Vulkan buffer or pinned host-buffer allocation. Implement 4 GiB+
-   tensor buffer splitting or equivalent large-buffer virtualization in
-   `pdocker-vulkan-icd.so`, keeping the llama.cpp binary unchanged.
-4. **[next] Lower the first real llama.cpp SPIR-V dispatches.**
+3. **[done] Make the first GPU model-buffer allocation pass.**
+   The forced `--n-gpu-layers 1` path now allocates the offloaded output-layer
+   Vulkan model buffer through `pdocker-vulkan-icd.so`. The key fix was to
+   advertise non-zero storage-buffer alignment from the ICD; llama.cpp remains
+   unchanged.
+4. **[active] Lower the first real llama.cpp SPIR-V dispatches.**
    Keep unknown shaders rejected, but add a trace classifier and implement the
    minimal operations needed for one offloaded Qwen3 output/repeating layer.
 5. **[next] Add persistent GPU command-ring transport.**
@@ -603,10 +603,11 @@ Tasks:
 
 Current 2026-05-04 blocker:
 
-- Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge and begin
-  model loading, but cannot serve tokens yet. The latest blocker is large
-  Vulkan model buffers and pinned host-buffer scheduling. CPU mode is restored
-  as the usable path after GPU experiments.
+- Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge, allocate
+  the first offloaded Vulkan model buffer, and report `offloaded 1/37 layers to
+  GPU`. It still cannot serve tokens because llama.cpp reaches
+  `vk::Queue::submit: ErrorFeatureNotPresent`. CPU mode is restored as the
+  usable path after GPU experiments.
 
 Temporary behavior:
 

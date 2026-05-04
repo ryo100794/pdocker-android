@@ -106,6 +106,10 @@ static VkDeviceSize pdocker_vulkan_heap_size(void) {
     return (VkDeviceSize)(8ull * 1024ull * 1024ull * 1024ull);
 }
 
+static bool trace_allocations(void) {
+    return getenv("PDOCKER_VULKAN_ICD_TRACE_ALLOC") != NULL;
+}
+
 static void *pdocker_alloc_handle(size_t size) {
     return calloc(1, size ? size : sizeof(PdockerHandle));
 }
@@ -253,6 +257,9 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.maxBoundDescriptorSets = 8;
     pProperties->limits.maxPerStageDescriptorStorageBuffers = 64;
     pProperties->limits.maxDescriptorSetStorageBuffers = 64;
+    pProperties->limits.minStorageBufferOffsetAlignment = 16;
+    pProperties->limits.minUniformBufferOffsetAlignment = 16;
+    pProperties->limits.nonCoherentAtomSize = 64;
     pProperties->limits.timestampComputeAndGraphics = VK_FALSE;
 }
 
@@ -369,6 +376,13 @@ static void fill_pnext_features(void *pNext) {
                 p->shaderInt8 = VK_FALSE;
                 break;
             }
+#ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES: {
+                VkPhysicalDeviceMaintenance4Features *p = (VkPhysicalDeviceMaintenance4Features *)cur;
+                p->maintenance4 = VK_TRUE;
+                break;
+            }
+#endif
             default:
                 break;
         }
@@ -613,6 +627,13 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(
     PdockerVkBuffer *buffer = pdocker_alloc_handle(sizeof(*buffer));
     if (!buffer) return VK_ERROR_OUT_OF_HOST_MEMORY;
     buffer->size = (size_t)pCreateInfo->size;
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: create-buffer size=%zu usage=0x%x sharing=%u\n",
+                buffer->size,
+                (unsigned)pCreateInfo->usage,
+                (unsigned)pCreateInfo->sharingMode);
+    }
     *pBuffer = (VkBuffer)buffer;
     return VK_SUCCESS;
 }
@@ -637,6 +658,13 @@ VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(
     pMemoryRequirements->size = b ? (VkDeviceSize)b->size : 0;
     pMemoryRequirements->alignment = 16;
     pMemoryRequirements->memoryTypeBits = 1;
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: buffer-requirements size=%llu alignment=%llu typeBits=0x%x\n",
+                (unsigned long long)pMemoryRequirements->size,
+                (unsigned long long)pMemoryRequirements->alignment,
+                (unsigned)pMemoryRequirements->memoryTypeBits);
+    }
 }
 
 VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements2(
@@ -658,7 +686,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(
     PdockerVkMemory *memory = pdocker_alloc_handle(sizeof(*memory));
     if (!memory) return VK_ERROR_OUT_OF_HOST_MEMORY;
     memory->size = (size_t)pAllocateInfo->allocationSize;
-    if (getenv("PDOCKER_VULKAN_ICD_TRACE_ALLOC")) {
+    if (trace_allocations()) {
         fprintf(stderr, "pdocker-vulkan-icd: allocate %zu bytes\n", memory->size);
     }
     memory->fd = create_shared_fd(memory->size);
@@ -702,6 +730,13 @@ VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(
     if (!memory || !ppData) return VK_ERROR_MEMORY_MAP_FAILED;
     PdockerVkMemory *m = (PdockerVkMemory *)memory;
     if ((size_t)offset > m->size) return VK_ERROR_MEMORY_MAP_FAILED;
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: map offset=%llu size=%llu allocation=%zu\n",
+                (unsigned long long)offset,
+                (unsigned long long)size,
+                m->size);
+    }
     *ppData = (char *)m->map + offset;
     return VK_SUCCESS;
 }
@@ -750,6 +785,13 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(
     if (!b || !memory) return VK_ERROR_INITIALIZATION_FAILED;
     b->memory = (PdockerVkMemory *)memory;
     b->memory_offset = memoryOffset;
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: bind-buffer buffer_size=%zu memory_size=%zu offset=%llu\n",
+                b->size,
+                b->memory->size,
+                (unsigned long long)memoryOffset);
+    }
     return VK_SUCCESS;
 }
 

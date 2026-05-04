@@ -156,7 +156,9 @@ evidence = {
     "serve_reachable": bool(int(gpu_served_s)),
     "buffer_allocation_blocker": "unable to allocate Vulkan0 buffer" in log,
     "assert_blocker": "GGML_ASSERT" in log,
-    "spirv_dispatch_blocker": "real SPIR-V dispatch is not lowered yet" in log,
+    "gpu_model_buffer_seen": "Vulkan0 model buffer size" in log,
+    "queue_submit_blocker": "vk::Queue::submit: ErrorFeatureNotPresent" in log,
+    "spirv_dispatch_blocker": "real SPIR-V dispatch is not lowered yet" in log or "vk::Queue::submit: ErrorFeatureNotPresent" in log,
 }
 allocations = [
     int(m.group(1))
@@ -196,7 +198,7 @@ result = {
         "split 4GiB+ Vulkan buffers / pinned host-buffer path"
         if evidence["buffer_allocation_blocker"] or evidence["assert_blocker"]
         else "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
-        if evidence["vulkan_device_seen"]
+        if evidence["vulkan_device_seen"] or evidence["queue_submit_blocker"]
         else "make Vulkan device discovery reliable"
     ),
 }
