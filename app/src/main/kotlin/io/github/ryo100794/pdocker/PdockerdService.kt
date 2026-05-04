@@ -27,6 +27,7 @@ import java.io.File
 class PdockerdService : Service() {
 
     private var pdockerThread: Thread? = null
+    private var gpuExecutorProcess: Process? = null
     private var startWakeLock: PowerManager.WakeLock? = null
     @Volatile private var stopFlag = false
     @Volatile private var userStopped = false
@@ -69,6 +70,7 @@ class PdockerdService : Service() {
     override fun onDestroy() {
         stopFlag = true
         pdockerThread?.interrupt()
+        stopGpuExecutor()
         releaseStartWakeLock()
         if (!userStopped) {
             scheduleRestart()
@@ -118,6 +120,7 @@ class PdockerdService : Service() {
 
     private fun startPdockerd() {
         val runtime = PdockerdRuntime.prepare(this)
+        startGpuExecutor(runtime)
         val home = File(filesDir, "pdocker").apply { mkdirs() }
         val sock = File(home, "pdockerd.sock")
         stopFlag = false
@@ -144,6 +147,38 @@ class PdockerdService : Service() {
                 }
             }
         }, "pdockerd").also { it.start() }
+    }
+
+    private fun startGpuExecutor(runtime: File) {
+        if (gpuExecutorProcess?.isAlive == true) return
+        val executor = File(runtime, "gpu/pdocker-gpu-executor")
+        if (!executor.canExecute()) {
+            Log.i(TAG, "GPU executor unavailable at $executor")
+            return
+        }
+        val socket = File(runtime, "gpu/pdocker-gpu.sock")
+        runCatching {
+            socket.delete()
+            val process = ProcessBuilder(executor.absolutePath, "--serve-socket", socket.absolutePath)
+                .redirectErrorStream(true)
+                .start()
+            gpuExecutorProcess = process
+            Thread({
+                process.inputStream.bufferedReader().useLines { lines ->
+                    lines.forEach { Log.i(TAG, "gpu-executor: $it") }
+                }
+            }, "pdocker-gpu-executor-log").apply {
+                isDaemon = true
+                start()
+            }
+        }.onFailure {
+            Log.w(TAG, "failed to start GPU executor", it)
+        }
+    }
+
+    private fun stopGpuExecutor() {
+        gpuExecutorProcess?.destroy()
+        gpuExecutorProcess = null
     }
 
     private fun holdStartWakeLock() {

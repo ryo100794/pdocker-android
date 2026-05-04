@@ -152,6 +152,7 @@ def run_daemon(
     gpu_executor = os.path.join(runtime_dir, "gpu", "pdocker-gpu-executor")
     if os.path.exists(gpu_executor):
         os.environ["PDOCKER_GPU_EXECUTOR"] = gpu_executor
+        os.environ["PDOCKER_GPU_QUEUE_SOCKET"] = os.path.join(runtime_dir, "gpu", "pdocker-gpu.sock")
         os.environ["PDOCKER_GPU_COMMAND_API"] = "pdocker-gpu-command-v1"
         os.environ["PDOCKER_GPU_ABI_VERSION"] = "0.1"
         os.environ["PDOCKER_GPU_EXECUTOR_ROLE"] = "gpu-command-executor"

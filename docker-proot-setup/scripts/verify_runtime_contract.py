@@ -439,6 +439,7 @@ def test_gpu_shim_contract() -> None:
                 "PDOCKER_GPU_SHIM_HOST_PATH": str(shim),
                 "PDOCKER_GPU_SHIM_CONTAINER_PATH": "/usr/local/bin/pdocker-gpu-shim",
                 "PDOCKER_GPU_EXECUTOR": str(home_path / "pdocker-gpu-executor"),
+                "PDOCKER_GPU_QUEUE_SOCKET": str(home_path / "pdocker-gpu.sock"),
                 "PDOCKER_GPU_COMMAND_API": "pdocker-gpu-command-v1",
                 "PDOCKER_GPU_ABI_VERSION": "0.1",
             },
@@ -462,6 +463,8 @@ def test_gpu_shim_contract() -> None:
             fail(f"gpu command api missing: {env!r}")
         if env.get("PDOCKER_GPU_LLM_ENGINE_LOCATION") != "container":
             fail(f"gpu engine location must stay container: {env!r}")
+        if env.get("PDOCKER_GPU_QUEUE_SOCKET") != str(home_path / "pdocker-gpu.sock"):
+            fail(f"gpu queue socket env missing: {env!r}")
         expected_bind = f"{shim}:/usr/local/bin/pdocker-gpu-shim:ro"
         if expected_bind not in binds:
             fail(f"gpu shim bind missing {expected_bind!r}: {binds!r}")

@@ -130,6 +130,63 @@ This confirms the container-visible contract remains device-independent. It is
 not an acceleration claim until `transport` changes from
 `command-queue-pending` to a validated queue implementation.
 
+## 2026-05-04 GPU Bridge Overhead Probe
+
+The first shim-to-executor transport is now measurable with:
+
+```sh
+bash scripts/bench-gpu-bridge.sh 50 docs/test/gpu-bridge-bench-repeat50.json
+```
+
+This compares:
+
+- direct APK-side executor loop;
+- glibc shim bridge with one socket connection per command;
+- glibc shim bridge with a persistent socket connection.
+
+Important caveat: process-level wall time is not a fair direct-vs-bridge
+comparison because the direct path includes Android executable startup while
+the bridge path uses a server that is already resident. The useful early signal
+is the warm internal `total_ms` reported by the GPU command itself.
+
+Latest local repeat50 result:
+
+- Direct executor warm total mean: 1.3851 ms.
+- One-connection-per-command bridge warm total mean: 1.5915 ms, about 1.15x
+  direct.
+- Persistent bridge warm total mean: 1.2640 ms, within measurement noise of
+  direct.
+- NOOP wall per run: direct 13.4684 ms, bridge 2.9931 ms, persistent bridge
+  2.1316 ms. This is mostly process/socket/stdio measurement overhead, not GPU
+  work.
+
+Follow-up repeat50 with explicit NOOP separation:
+
+- Direct executor warm total mean: 1.3851 ms.
+- Non-persistent bridge warm total mean: 1.5915 ms, about 1.15x direct.
+- Persistent bridge warm total mean: 1.2640 ms, effectively noise-limited for
+  this coarse GPU command.
+- A later noisy repeat showed direct process wall time larger than bridge wall
+  time, which is not a valid acceleration signal. It demonstrates why host
+  executable startup and JSON/stdio wall measurements must not be used as the
+  primary bridge overhead metric.
+
+Interpretation:
+
+- The direct host benchmark is too coarse if it includes executable startup,
+  shader cache warmup, JSON output, or upload/download costs.
+- Bridge tuning must therefore track NOOP/control overhead separately from
+  upload, dispatch, and download.
+- Persistent transport is mandatory; one socket connection per GPU command is
+  useful only as a diagnostic worst case.
+
+Conclusion: the current socket bridge is good enough as a tuning scaffold, but
+the LLM path must use persistent transport, buffer reuse, and batched commands.
+Single-command connection churn is explicitly not acceptable for real ggml
+backend work. The next lower-overhead bridge target remains shared memory for
+buffer tables plus a small persistent control channel for command submission
+and fences.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.

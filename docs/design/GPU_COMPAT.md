@@ -90,9 +90,13 @@ The first scaffold now has two binaries:
 - `pdocker-gpu-executor`: Android/Bionic APK-side executor probe. It owns
   Android GPU APIs and advertises the same neutral command ABI.
 
-The current shim is a capability probe only. It intentionally reports
-`transport=command-queue-pending` until the shared-memory queue, buffer table,
-and fence protocol are implemented.
+The current shim supports capability probing plus a temporary Unix-socket
+command path for early measurement. It is not the final transport; the
+shared-memory queue, buffer table, and fence protocol are still pending.
+The temporary socket transport is allowed only as a measurement scaffold.
+Benchmarks must separate NOOP/control overhead from upload/dispatch/download
+work, and real LLM integration must use persistent transport plus buffer reuse
+so bridge overhead is not paid per tiny ggml operation.
 Until that bridge exists and passes validation, llama.cpp GPU profile selection
 must stay on CPU fallback unless a raw diagnostic mode is explicitly requested.
 

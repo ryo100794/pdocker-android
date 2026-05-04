@@ -584,11 +584,15 @@ Scaffold completed:
 
 Next implementation slice:
 
-- Replace shim capability probe with a shared-memory command queue.
+- Replace the temporary socket command transport with a shared-memory command
+  queue. The socket path is now useful for measuring and debugging, but only as
+  a scaffold.
+- Keep persistent transport semantics. Benchmarks show one-connection-per-GPU
+  command adds measurable overhead and is the wrong shape for LLM workloads.
 - Add queue lifecycle under pdockerd so container processes never call Android
   vendor libraries directly.
 - Add a real buffer/fence protocol and run vector-add through shim -> executor
-  before enabling llama.cpp backend integration.
+  with reusable buffers before enabling llama.cpp backend integration.
 
 Acceptance:
 

@@ -1801,6 +1801,8 @@ def _gpu_env(state):
     }
     if os.environ.get("PDOCKER_GPU_EXECUTOR"):
         env["PDOCKER_GPU_EXECUTOR_AVAILABLE"] = "1"
+    if os.environ.get("PDOCKER_GPU_QUEUE_SOCKET"):
+        env["PDOCKER_GPU_QUEUE_SOCKET"] = os.environ["PDOCKER_GPU_QUEUE_SOCKET"]
     if "vulkan" in modes:
         env.update({
             "PDOCKER_VULKAN_PASSTHROUGH": "1",

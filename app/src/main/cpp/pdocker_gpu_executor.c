@@ -12,10 +12,16 @@
 #include <GLES3/gl31.h>
 #include "pdocker_gpu_abi.h"
 #include <math.h>
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <time.h>
+#include <unistd.h>
 
 #ifndef GL_COMPUTE_SHADER
 #define GL_COMPUTE_SHADER 0x91B9
@@ -24,6 +30,12 @@
 #define EGL_OPENGL_ES3_BIT_KHR 0x00000040
 #endif
 
+static FILE *g_json_out = NULL;
+
+static FILE *json_out(void) {
+    return g_json_out ? g_json_out : stdout;
+}
+
 static double now_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -31,13 +43,15 @@ static double now_ms(void) {
 }
 
 static void json_fail(const char *stage, const char *message) {
-    printf("{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
-           "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-           "\"backend_impl\":\"gles31_compute\","
-           "\"valid\":false,\"stage\":\"%s\",\"error\":\"%s\"}\n",
-           PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
-           PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
-           stage, message ? message : "unknown");
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"backend_impl\":\"gles31_compute\","
+            "\"valid\":false,\"stage\":\"%s\",\"error\":\"%s\"}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            stage, message ? message : "unknown");
+    fflush(json_out());
 }
 
 static void fill_inputs(float *a, float *b, size_t n) {
@@ -88,6 +102,73 @@ static GLuint make_ssbo(GLuint binding, const void *data, size_t bytes, GLenum u
     glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)bytes, data, usage);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, id);
     return id;
+}
+
+typedef struct {
+    EGLDisplay display;
+    EGLSurface surface;
+    EGLContext context;
+} GpuContext;
+
+static int init_gpu_context(GpuContext *ctx) {
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (ctx->display == EGL_NO_DISPLAY) {
+        json_fail("egl", "eglGetDisplay failed");
+        return 10;
+    }
+    EGLint major = 0, minor = 0;
+    if (!eglInitialize(ctx->display, &major, &minor)) {
+        json_fail("egl", "eglInitialize failed");
+        return 11;
+    }
+    const EGLint attrs[] = {
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_RED_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE, 8,
+        EGL_NONE,
+    };
+    EGLConfig config;
+    EGLint count = 0;
+    if (!eglChooseConfig(ctx->display, attrs, &config, 1, &count) || count <= 0) {
+        eglTerminate(ctx->display);
+        json_fail("egl", "OpenGL ES 3 config unavailable");
+        return 12;
+    }
+    const EGLint ctx_attrs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+    ctx->context = eglCreateContext(ctx->display, config, EGL_NO_CONTEXT, ctx_attrs);
+    if (ctx->context == EGL_NO_CONTEXT) {
+        eglTerminate(ctx->display);
+        json_fail("egl", "eglCreateContext failed");
+        return 13;
+    }
+    const EGLint surf_attrs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
+    ctx->surface = eglCreatePbufferSurface(ctx->display, config, surf_attrs);
+    if (ctx->surface == EGL_NO_SURFACE) {
+        eglDestroyContext(ctx->display, ctx->context);
+        eglTerminate(ctx->display);
+        json_fail("egl", "eglCreatePbufferSurface failed");
+        return 14;
+    }
+    if (!eglMakeCurrent(ctx->display, ctx->surface, ctx->surface, ctx->context)) {
+        eglDestroySurface(ctx->display, ctx->surface);
+        eglDestroyContext(ctx->display, ctx->context);
+        eglTerminate(ctx->display);
+        json_fail("egl", "eglMakeCurrent failed");
+        return 15;
+    }
+    return 0;
+}
+
+static void destroy_gpu_context(GpuContext *ctx) {
+    if (!ctx || !ctx->display) return;
+    eglMakeCurrent(ctx->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (ctx->surface) eglDestroySurface(ctx->display, ctx->surface);
+    if (ctx->context) eglDestroyContext(ctx->display, ctx->context);
+    eglTerminate(ctx->display);
+    memset(ctx, 0, sizeof(*ctx));
 }
 
 static int run_vector_add(void) {
@@ -185,87 +266,178 @@ static int run_vector_add(void) {
     free(out);
 
     const int valid = max_err <= 0.0001;
-    printf("{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
-           "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-           "\"backend_impl\":\"gles31_compute\","
-           "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
-           "\"compile_ms\":%.4f,\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
-           "\"download_ms\":%.4f,\"total_ms\":%.4f,\"max_abs_error\":%.8f,"
-           "\"valid\":%s}\n",
-           PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
-           PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
-           n, compile_ms, upload_ms, dispatch_ms, download_ms,
-           compile_ms + upload_ms + dispatch_ms + download_ms, max_err,
-           valid ? "true" : "false");
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"backend_impl\":\"gles31_compute\","
+            "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
+            "\"compile_ms\":%.4f,\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
+            "\"download_ms\":%.4f,\"total_ms\":%.4f,\"max_abs_error\":%.8f,"
+            "\"valid\":%s}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            n, compile_ms, upload_ms, dispatch_ms, download_ms,
+            compile_ms + upload_ms + dispatch_ms + download_ms, max_err,
+            valid ? "true" : "false");
+    fflush(json_out());
     return valid ? 0 : 6;
 }
 
+static void print_capabilities(const char *transport) {
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"transport\":\"%s\","
+            "\"backend_impls\":[\"gles31_compute\"],"
+            "\"container_contract\":\"glibc-shim-command-queue\","
+            "\"process_exec\":true}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            transport);
+    fflush(json_out());
+}
+
+static void print_noop(void) {
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"kernel\":\"noop\",\"total_ms\":0.0,\"valid\":true}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION);
+    fflush(json_out());
+}
+
+static int run_gpu_once(void) {
+    GpuContext ctx;
+    int rc = init_gpu_context(&ctx);
+    if (rc != 0) return rc;
+    rc = run_vector_add();
+    destroy_gpu_context(&ctx);
+    return rc;
+}
+
+static int bench_vector_add(int count) {
+    if (count <= 0) count = 1;
+    GpuContext ctx;
+    int rc = init_gpu_context(&ctx);
+    if (rc != 0) return rc;
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        last = run_vector_add();
+    }
+    destroy_gpu_context(&ctx);
+    return last;
+}
+
+static int bench_noop(int count) {
+    if (count <= 0) count = 1;
+    for (int i = 0; i < count; ++i) {
+        print_noop();
+    }
+    return 0;
+}
+
+static int parse_count(const char *s, int fallback) {
+    if (!s || !s[0]) return fallback;
+    char *end = NULL;
+    long n = strtol(s, &end, 10);
+    if (!end || *end || n <= 0 || n > 10000) return fallback;
+    return (int)n;
+}
+
+static int run_vector_command_with_context(void) {
+    int rc = run_vector_add();
+    return rc;
+}
+
+static int serve_socket(const char *path) {
+    if (!path || !path[0]) {
+        fprintf(stderr, "pdocker-gpu-executor: missing socket path\n");
+        return 64;
+    }
+    if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) {
+        fprintf(stderr, "pdocker-gpu-executor: socket path too long: %s\n", path);
+        return 64;
+    }
+    signal(SIGPIPE, SIG_IGN);
+    int sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sfd < 0) {
+        perror("socket");
+        return 70;
+    }
+    unlink(path);
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+    if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        perror("bind");
+        close(sfd);
+        return 70;
+    }
+    chmod(path, 0600);
+    if (listen(sfd, 8) != 0) {
+        perror("listen");
+        close(sfd);
+        return 70;
+    }
+    GpuContext ctx;
+    int init_rc = init_gpu_context(&ctx);
+    if (init_rc != 0) {
+        close(sfd);
+        unlink(path);
+        return init_rc;
+    }
+    fprintf(stderr, "pdocker-gpu-executor: serving %s api=%s\n", path, PDOCKER_GPU_COMMAND_API);
+    for (;;) {
+        int cfd = accept(sfd, NULL, NULL);
+        if (cfd < 0) {
+            if (errno == EINTR) continue;
+            perror("accept");
+            break;
+        }
+        FILE *io = fdopen(cfd, "r+");
+        if (!io) {
+            close(cfd);
+            continue;
+        }
+        setvbuf(io, NULL, _IONBF, 0);
+        char cmd[128];
+        while (fgets(cmd, sizeof(cmd), io)) {
+            cmd[strcspn(cmd, "\r\n")] = '\0';
+            g_json_out = io;
+            if (strcmp(cmd, "CAPABILITIES") == 0) {
+                print_capabilities("unix-socket-command-queue");
+            } else if (strcmp(cmd, "NOOP") == 0) {
+                print_noop();
+            } else if (strcmp(cmd, "VECTOR_ADD") == 0) {
+                (void)run_vector_command_with_context();
+            } else {
+                json_fail("command", "unknown command");
+            }
+            g_json_out = NULL;
+        }
+        fclose(io);
+    }
+    destroy_gpu_context(&ctx);
+    close(sfd);
+    unlink(path);
+    return 70;
+}
+
 int main(int argc, char **argv) {
-    (void)argv;
     if (argc > 1 && strcmp(argv[1], "--capabilities") == 0) {
-        printf("{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
-               "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-               "\"transport\":\"self-test-now; command-queue-next\","
-               "\"backend_impls\":[\"gles31_compute\"],"
-               "\"container_contract\":\"glibc-shim-command-queue\","
-               "\"process_exec\":true}\n",
-               PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
-               PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION);
+        print_capabilities("self-test-now; unix-socket-command-queue");
         return 0;
     }
-
-    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (display == EGL_NO_DISPLAY) {
-        json_fail("egl", "eglGetDisplay failed");
-        return 10;
+    if (argc > 2 && strcmp(argv[1], "--serve-socket") == 0) {
+        return serve_socket(argv[2]);
     }
-    EGLint major = 0, minor = 0;
-    if (!eglInitialize(display, &major, &minor)) {
-        json_fail("egl", "eglInitialize failed");
-        return 11;
+    if (argc > 1 && strcmp(argv[1], "--bench-vector-add") == 0) {
+        return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
     }
-    const EGLint attrs[] = {
-        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_RED_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
-        EGL_BLUE_SIZE, 8,
-        EGL_NONE,
-    };
-    EGLConfig config;
-    EGLint count = 0;
-    if (!eglChooseConfig(display, attrs, &config, 1, &count) || count <= 0) {
-        eglTerminate(display);
-        json_fail("egl", "OpenGL ES 3 config unavailable");
-        return 12;
+    if (argc > 1 && strcmp(argv[1], "--bench-noop") == 0) {
+        return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5));
     }
-    const EGLint ctx_attrs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
-    EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, ctx_attrs);
-    if (context == EGL_NO_CONTEXT) {
-        eglTerminate(display);
-        json_fail("egl", "eglCreateContext failed");
-        return 13;
-    }
-    const EGLint surf_attrs[] = { EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE };
-    EGLSurface surface = eglCreatePbufferSurface(display, config, surf_attrs);
-    if (surface == EGL_NO_SURFACE) {
-        eglDestroyContext(display, context);
-        eglTerminate(display);
-        json_fail("egl", "eglCreatePbufferSurface failed");
-        return 14;
-    }
-    if (!eglMakeCurrent(display, surface, surface, context)) {
-        eglDestroySurface(display, surface);
-        eglDestroyContext(display, context);
-        eglTerminate(display);
-        json_fail("egl", "eglMakeCurrent failed");
-        return 15;
-    }
-
-    int rc = run_vector_add();
-    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroySurface(display, surface);
-    eglDestroyContext(display, context);
-    eglTerminate(display);
-    return rc;
+    return run_gpu_once();
 }
