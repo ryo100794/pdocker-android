@@ -9,16 +9,22 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import http.client
 import json
 import os
 import shutil
 import tempfile
 import sys
+import threading
+import time
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parent
 PDOCKERD = ROOT / "bin" / "pdockerd"
+ANDROID_MANIFEST = REPO_ROOT / "app" / "src" / "main" / "AndroidManifest.xml"
+ANDROID_BRIDGE = REPO_ROOT / "app" / "src" / "main" / "python" / "pdockerd_bridge.py"
 
 
 def fail(msg: str) -> None:
@@ -302,9 +308,9 @@ def test_duplicate_name_resolution_contract() -> None:
         old_id = "1" * 64
         new_id = "2" * 64
         name = "stale-name"
-        for cid, created in (
-            (old_id, "2026-01-01T00:00:00.000000000Z"),
-            (new_id, "2026-01-02T00:00:00.000000000Z"),
+        for cid, created, running, status, log_text in (
+            (old_id, "2026-01-01T00:00:00.000000000Z", False, "exited", "old duplicate log\n"),
+            (new_id, "2026-01-02T00:00:00.000000000Z", True, "running", "new duplicate log\n"),
         ):
             (Path(mod.CONTAINERS_DIR) / cid).mkdir(parents=True)
             mod.save_container_state(
@@ -313,27 +319,74 @@ def test_duplicate_name_resolution_contract() -> None:
                     "Id": cid,
                     "Name": f"/{name}",
                     "Created": created,
-                    "State": {"Running": False, "Status": "exited", "Pid": 0},
+                    "State": {"Running": running, "Status": status, "Pid": 0},
                 },
             )
+            (Path(mod.LOGS_DIR) / f"{cid}.log").write_text(log_text)
 
         matches = mod.find_containers(name)
         if [state["Id"] for state in matches] != [new_id, old_id]:
             fail(f"duplicate name lookup did not return newest-first matches: {matches!r}")
+
+        srv = mod.ThreadingTCPHTTPServer(("127.0.0.1", 0), mod.DockerAPIHandler)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+
+        def request(method: str, target: str) -> tuple[int, bytes]:
+            conn = http.client.HTTPConnection(srv.server_address[0], srv.server_address[1], timeout=5)
+            try:
+                conn.request(method, target)
+                resp = conn.getresponse()
+                return resp.status, resp.read()
+            finally:
+                conn.close()
+
+        def raw_stream_payload(body: bytes) -> bytes:
+            if not body:
+                return b""
+            if len(body) < 8:
+                fail(f"raw log stream too short: {body!r}")
+            size = int.from_bytes(body[4:8], "big")
+            return body[8:8 + size]
+
+        try:
+            status, body = request("GET", f"/containers/{name}/logs")
+            if status != 200:
+                fail(f"name logs request failed with HTTP {status}: {body!r}")
+            if raw_stream_payload(body) != b"new duplicate log\n":
+                fail(f"name logs did not resolve newest duplicate: {body!r}")
+
+            status, body = request("GET", f"/containers/{old_id}/logs")
+            if status != 200:
+                fail(f"ID logs request failed with HTTP {status}: {body!r}")
+            if raw_stream_payload(body) != b"old duplicate log\n":
+                fail(f"ID logs did not resolve the exact container object: {body!r}")
+
+            try:
+                mod.create_container({"Image": "unused:latest"}, name=name)
+            except ValueError as exc:
+                if new_id not in str(exc):
+                    fail(f"duplicate create conflict did not report newest match: {exc}")
+            else:
+                fail("duplicate container name should reject create_container")
+
+            status, body = request("DELETE", f"/containers/{name}?force=1")
+            if status != 204:
+                fail(f"name delete did not clean duplicate containers, HTTP {status}: {body!r}")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            thread.join(timeout=5)
+
+        if mod.find_containers(name):
+            fail("name delete left stale duplicate matches behind")
+        seed_legacy_image(mod, "unused:latest")
         try:
             mod.create_container({"Image": "unused:latest"}, name=name)
         except ValueError as exc:
-            if new_id not in str(exc):
-                fail(f"duplicate create conflict did not report newest match: {exc}")
+            fail(f"container name was still blocked after name delete cleaned duplicates: {exc}")
         else:
-            fail("duplicate container name should reject create_container")
-
-        removed = [state["Id"] for state in matches if mod.remove_container(state["Id"], force=True)]
-        if removed != [new_id, old_id]:
-            fail(f"duplicate name cleanup did not remove both matches: {removed!r}")
-        if mod.find_containers(name):
-            fail("duplicate name cleanup left stale matches behind")
-        ok("duplicate container names resolve newest-first and can be cleaned up")
+            ok("duplicate container names resolve newest-first, keep log truth, and clean by name")
 
 
 def seed_legacy_image(mod, image: str) -> None:
@@ -444,6 +497,88 @@ def seed_layered_image(mod, image: str, diff_ids: list[str], config: dict | None
         tree.mkdir(parents=True, exist_ok=True)
     mod._save_image_manifest(str(img_dir), diff_ids, config or {"config": {"Env": []}})
     (img_dir / "config.json").write_text(json.dumps(config or {"config": {"Env": []}}))
+    (img_dir / "image_ref").write_text(mod.normalize_image(image))
+
+
+def test_storage_summary_distinguishes_layer_and_upper_bytes() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("storage_summary", "no-proot", home_path)
+        layers = {
+            "aaa": 10,
+            "bbb": 20,
+            "ccc": 30,
+        }
+        for did, size in layers.items():
+            layer_dir = Path(mod.LAYERS_DIR) / did
+            tree = layer_dir / "tree"
+            tree.mkdir(parents=True, exist_ok=True)
+            (tree / f"{did}.txt").write_bytes(b"x" * size)
+            (layer_dir / "meta.json").write_text(json.dumps({"size": size}))
+        seed_layered_image(mod, "local/one:latest", ["aaa", "bbb"])
+        seed_layered_image(mod, "local/two:latest", ["aaa", "ccc"])
+
+        cid = "c" * 64
+        cdir = Path(mod.CONTAINERS_DIR) / cid
+        upper = cdir / "upper"
+        upper.mkdir(parents=True)
+        (upper / "changed.txt").write_bytes(b"1234567")
+        state = {
+            "Id": cid,
+            "Name": "/storage-test",
+            "Image": mod.normalize_image("local/one:latest"),
+            "ImageId": mod.image_id(mod.normalize_image("local/one:latest")),
+            "Cmd": ["/bin/sh"],
+            "Created": "2026-05-04T00:00:00Z",
+            "Labels": {},
+            "Storage": {
+                "Mode": "cow_bind",
+                "LowerDir": str(Path(mod.image_dir(mod.normalize_image("local/one:latest"))) / "rootfs"),
+                "UpperDir": str(upper),
+            },
+            "State": {"Running": False, "Status": "created", "ExitCode": 0, "Pid": 0},
+            "NetworkSettings": {},
+        }
+        mod.save_container_state(cid, state)
+
+        summary = mod.collect_storage_summary()
+        if summary.get("SharedLayerBytes") != 60:
+            fail(f"layer pool bytes should be counted once: {summary!r}")
+        if summary.get("ContainerUpperBytes") != 7:
+            fail(f"container upper bytes mismatch: {summary!r}")
+        if summary.get("UniqueBytes") != 67:
+            fail(f"unique total must be layer pool plus upper bytes: {summary!r}")
+        if "must not be added" not in summary.get("PdockerStorage", {}).get("Overlap", ""):
+            fail(f"storage summary must explain overlapping views: {summary!r}")
+
+        images = {img["RepoTags"][0]: img for img in mod.list_images()}
+        one = images.get("local/one:latest")
+        if not one or one.get("VirtualSize") != 30 or one.get("SharedSize") != 10 or one.get("UniqueSize") != 20:
+            fail(f"image storage sizes should split virtual/shared/unique bytes: {images!r}")
+        containers = mod.list_containers(all_=True)
+        if len(containers) != 1 or containers[0].get("SizeRw") != 7:
+            fail(f"container summary must expose upper/private bytes: {containers!r}")
+
+        srv = mod.ThreadingTCPHTTPServer(("127.0.0.1", 0), mod.DockerAPIHandler)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection(srv.server_address[0], srv.server_address[1], timeout=5)
+            try:
+                conn.request("GET", "/system/df")
+                resp = conn.getresponse()
+                body = resp.read()
+            finally:
+                conn.close()
+        finally:
+            srv.shutdown()
+            srv.server_close()
+        if resp.status != 200:
+            fail(f"/system/df status mismatch: {resp.status}, body={body!r}")
+        endpoint = json.loads(body.decode("utf-8"))
+        if endpoint.get("UniqueBytes") != 67 or endpoint.get("ContainerUpperBytes") != 7:
+            fail(f"/system/df storage truth mismatch: {endpoint!r}")
+        ok("storage summary separates shared layers, image views, and container upper bytes")
 
 
 def test_dockerfile_unknown_instruction_rejected() -> None:
@@ -615,6 +750,18 @@ def test_active_operations_contract() -> None:
         ok("daemon active operations are listed independently of UI jobs")
 
 
+def test_active_operations_prune_stale_idle_entries() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        mod = load_pdockerd_with_env("active_ops_stale", "no-proot", Path(home))
+        mod.OPERATION_IDLE_STALE_SECONDS = 10
+        op_id = mod.start_operation("diagnostic", "llama.cpp GPU compare", "forced Vulkan")
+        with mod.active_operations_lock:
+            mod.active_operations[op_id]["UpdatedAt"] = time.time() - 11
+        if mod.list_active_operations():
+            fail("stale daemon operation should be pruned before UI listing")
+        ok("stale daemon operations are pruned from UI-visible state")
+
+
 def test_host_environment_contract() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
@@ -635,6 +782,16 @@ def test_host_environment_contract() -> None:
                 "PDOCKER_GPU_COMMAND_API": "pdocker-gpu-command-v1",
                 "PDOCKER_VULKAN_ICD_KIND": "pdocker-bridge-minimal",
                 "PDOCKER_VULKAN_ICD_READY": "0",
+                "PDOCKER_MEDIA_CONTAINER_DIR": "/run/pdocker-media",
+                "PDOCKER_MEDIA_QUEUE_SOCKET": "/run/pdocker-media/pdocker-media.sock",
+                "PDOCKER_MEDIA_SHARED_DIR": "/run/pdocker-media",
+                "PDOCKER_MEDIA_COMMAND_API": "pdocker-media-command-v1",
+                "PDOCKER_MEDIA_ABI_VERSION": "0.1",
+                "PDOCKER_MEDIA_STATUS": "scaffold-disabled",
+                "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "0",
+                "PDOCKER_MEDIA_CAPTURE_READY": "0",
+                "PDOCKER_MEDIA_CAMERA_READY": "0",
+                "PDOCKER_MEDIA_AUDIO_READY": "0",
             },
         )
         env = mod.collect_host_environment("1.43")
@@ -650,11 +807,124 @@ def test_host_environment_contract() -> None:
             fail(f"host environment NNAPI diagnostic missing: {env!r}")
         if "OpenCVPython" in env.get("Frameworks", {}):
             fail(f"host environment should stay focused on GPU/NPU, not OpenCV: {env!r}")
+        media = env.get("Media", {})
+        if media.get("QueueSocket") != "/run/pdocker-media/pdocker-media.sock":
+            fail(f"host environment media socket contract missing: {env!r}")
+        if media.get("Status") != "scaffold-disabled" or media.get("CaptureReady"):
+            fail(f"host environment must report media scaffold disabled: {env!r}")
         if not env.get("Paths", {}).get("DirectExecutor", {}).get("Exists"):
             fail(f"host environment direct executor path missing: {env!r}")
         if "PATH" in env.get("Environment", {}):
             fail(f"host environment must not dump broad process environment: {env!r}")
         ok("host environment contract exposes bounded runtime diagnostics")
+
+
+def test_media_bridge_scaffold_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env(
+            "media_scaffold",
+            "no-proot",
+            home_path,
+            {
+                "PDOCKER_MEDIA_HOST_DIR": str(home_path),
+                "PDOCKER_MEDIA_CONTAINER_DIR": "/run/pdocker-media",
+                "PDOCKER_MEDIA_QUEUE_SOCKET": "/run/pdocker-media/pdocker-media.sock",
+                "PDOCKER_MEDIA_SHARED_DIR": "/run/pdocker-media",
+                "PDOCKER_MEDIA_COMMAND_API": "pdocker-media-command-v1",
+                "PDOCKER_MEDIA_ABI_VERSION": "0.1",
+                "PDOCKER_MEDIA_STATUS": "scaffold-disabled",
+                "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "0",
+                "PDOCKER_MEDIA_CAPTURE_READY": "0",
+                "PDOCKER_MEDIA_CAMERA_READY": "0",
+                "PDOCKER_MEDIA_AUDIO_READY": "0",
+            },
+        )
+        state = {
+            "HostConfig": {
+                "DeviceRequests": [
+                    {
+                        "Driver": "pdocker-media",
+                        "Count": -1,
+                        "Capabilities": [["camera", "audio"]],
+                    }
+                ]
+            },
+            "Labels": {"io.pdocker.media": "camera"},
+        }
+        env = mod._media_env(state)
+        binds = mod._media_binds(state)
+        media = mod.collect_media_environment()
+        expected_modes = [
+            "audio.capture",
+            "audio.playback",
+            "audio.usb.multichannel",
+            "camera.front",
+            "camera.rear",
+            "video.camera2",
+        ]
+        if sorted(mod._media_request_modes(state)) != expected_modes:
+            fail(f"media request modes mismatch: {env!r}")
+        if env.get("PDOCKER_MEDIA_QUEUE_SOCKET") != "/run/pdocker-media/pdocker-media.sock":
+            fail(f"media queue socket env missing: {env!r}")
+        if env.get("PDOCKER_MEDIA_STATUS") != "scaffold-disabled":
+            fail(f"media status must remain scaffold-disabled: {env!r}")
+        if env.get("PDOCKER_MEDIA_CAPTURE_READY") != "0" or env.get("PDOCKER_MEDIA_ENABLED") != "0":
+            fail(f"media capture readiness must be false: {env!r}")
+        if media.get("CaptureReady") or media.get("CameraReady") or media.get("AudioReady"):
+            fail(f"media diagnostics must not claim capture readiness: {media!r}")
+        expected_bind = f"{home_path}:/run/pdocker-media"
+        if expected_bind not in binds:
+            fail(f"media runtime dir bind missing {expected_bind!r}: {binds!r}")
+        srv = mod.ThreadingTCPHTTPServer(("127.0.0.1", 0), mod.DockerAPIHandler)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection(srv.server_address[0], srv.server_address[1], timeout=5)
+            try:
+                conn.request("GET", "/system/media")
+                resp = conn.getresponse()
+                body = resp.read()
+            finally:
+                conn.close()
+        finally:
+            srv.shutdown()
+            srv.server_close()
+        if resp.status != 200:
+            fail(f"/system/media status mismatch: {resp.status}, body={body!r}")
+        endpoint = json.loads(body.decode("utf-8"))
+        if endpoint.get("QueueSocket") != "/run/pdocker-media/pdocker-media.sock":
+            fail(f"/system/media socket contract mismatch: {endpoint!r}")
+        if endpoint.get("CaptureReady"):
+            fail(f"/system/media must report disabled capture: {endpoint!r}")
+        ok("media bridge scaffold exposes socket contract without capture")
+
+
+def test_android_media_static_contract() -> None:
+    manifest = ANDROID_MANIFEST.read_text()
+    bridge = ANDROID_BRIDGE.read_text()
+    for permission in (
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE_CAMERA",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    ):
+        if permission not in manifest:
+            fail(f"Android manifest missing media permission {permission}")
+    if 'android:foregroundServiceType="dataSync"' not in manifest:
+        fail("pdockerd service must stay dataSync until capture is implemented")
+    for feature in (
+        'android:name="android.hardware.camera"',
+        'android:name="android.hardware.camera.any"',
+        'android:name="android.hardware.microphone"',
+    ):
+        if feature not in manifest:
+            fail(f"Android manifest must mark media hardware optional: {feature}")
+    if "/run/pdocker-media/pdocker-media.sock" not in bridge:
+        fail("Chaquopy bridge missing media queue socket contract")
+    if 'PDOCKER_MEDIA_CAPTURE_READY"] = "0"' not in bridge:
+        fail("Chaquopy bridge must keep media capture disabled in Phase-0")
+    ok("Android media manifest and bridge scaffold are statically guarded")
 
 
 def test_gpu_shim_contract() -> None:
@@ -758,8 +1028,12 @@ def main() -> int:
     test_existing_tag_inline_run_cache()
     test_existing_tag_full_image_cache()
     test_build_cache_contract()
+    test_storage_summary_distinguishes_layer_and_upper_bytes()
     test_active_operations_contract()
+    test_active_operations_prune_stale_idle_entries()
     test_host_environment_contract()
+    test_media_bridge_scaffold_contract()
+    test_android_media_static_contract()
     test_gpu_shim_contract()
     return 0
 

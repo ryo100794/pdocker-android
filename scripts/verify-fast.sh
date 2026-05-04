@@ -14,12 +14,16 @@ run python3 -m py_compile \
   scripts/compat-audit.py \
   scripts/verify-build-profile.py \
   scripts/verify-dockerfile-standard.py \
+  scripts/verify_direct_syscall_contracts.py \
+  scripts/run_direct_syscall_scenarios.py \
   scripts/verify-project-library.py \
   scripts/verify-ui-actions.py \
   scripts/verify_terminal_editor_contracts.py \
   docker-proot-setup/scripts/verify_runtime_contract.py
 
 run python3 docker-proot-setup/scripts/verify_runtime_contract.py
+run python3 scripts/verify_direct_syscall_contracts.py
+run python3 scripts/run_direct_syscall_scenarios.py --tier fast-local --list
 run cmp -s docker-proot-setup/bin/pdockerd app/src/main/assets/pdockerd/pdockerd
 run python3 scripts/verify-build-profile.py
 run python3 scripts/verify-dockerfile-standard.py

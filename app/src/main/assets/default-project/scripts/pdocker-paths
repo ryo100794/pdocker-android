@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+show_path() {
+  local label="$1"
+  local path="$2"
+  local state="missing"
+  if [[ -S "$path" ]]; then
+    state="socket"
+  elif [[ -d "$path" ]]; then
+    state="directory"
+  elif [[ -e "$path" ]]; then
+    state="present"
+  fi
+  printf '%-24s %s (%s)\n' "$label:" "$path" "$state"
+}
+
+workspace="${PDOCKER_WORKSPACE_DIR:-/workspace}"
+project="${PDOCKER_PROJECT_DIR:-/pdocker/project}"
+projects="${PDOCKER_PROJECTS_DIR:-/pdocker/projects}"
+home="${PDOCKER_HOME:-/pdocker/host}"
+engine="${PDOCKER_ENGINE_SOCKET:-$home/pdockerd.sock}"
+
+show_path "workspace" "$workspace"
+show_path "current project" "$project"
+show_path "project library" "$projects"
+show_path "pdocker home" "$home"
+show_path "engine socket" "$engine"
+show_path "docker socket" "/var/run/docker.sock"
+
+echo
+echo "Android app paths:"
+echo "  filesDir/pdocker"
+echo "  filesDir/pdocker/projects"
+echo "  filesDir/pdocker/projects/default"
+echo "  filesDir/pdocker/pdockerd.sock"
+
+echo
+if docker_host="$(pdocker-engine-env --value 2>/dev/null)"; then
+  echo "Engine available: DOCKER_HOST=$docker_host"
+else
+  echo "Engine unavailable: start pdockerd in the app and mount its socket/path into this container."
+fi

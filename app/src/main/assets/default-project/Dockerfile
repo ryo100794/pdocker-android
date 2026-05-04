@@ -38,6 +38,17 @@ RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && npm --version \
     && rm -rf /var/lib/apt/lists/*
 
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && chmod a+r /etc/apt/keyrings/docker.gpg \
+    && . /etc/os-release \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" > /etc/apt/sources.list.d/docker.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+    && docker --version \
+    && docker compose version \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN if [ "$CODE_SERVER_VERSION" = "latest" ]; then \
       curl -fsSL https://code-server.dev/install.sh | sh; \
     else \
@@ -55,9 +66,10 @@ RUN mkdir -p /workspace "$CODE_SERVER_USER_DATA_DIR/User" "$CODE_SERVER_EXTENSIO
        done
 
 COPY scripts/start-code-server.sh /usr/local/bin/start-code-server
+COPY scripts/pdocker-* /usr/local/bin/
 COPY vscode/settings.json /workspace/.vscode-server/data/User/settings.json
 COPY continue/config.yaml /workspace/.continue/config.yaml
-RUN chmod +x /usr/local/bin/start-code-server
+RUN chmod +x /usr/local/bin/start-code-server /usr/local/bin/pdocker-*
 
 WORKDIR /workspace
 EXPOSE 18080

@@ -184,6 +184,43 @@ def run_daemon(
         os.environ.setdefault("PDOCKER_OPENCL_ICD_KIND", "android-opencl-loader-probe")
         os.environ.setdefault("PDOCKER_OPENCL_ICD_READY", "0")
 
+    media_host_dir = os.path.join(runtime_dir, "media")
+    os.makedirs(media_host_dir, exist_ok=True)
+    media_executor = os.path.join(media_host_dir, "pdocker-media-executor")
+    media_descriptor = os.path.join(media_host_dir, "pdocker-media-capabilities.json")
+    os.environ["PDOCKER_MEDIA_HOST_DIR"] = media_host_dir
+    os.environ["PDOCKER_MEDIA_CONTAINER_DIR"] = "/run/pdocker-media"
+    os.environ["PDOCKER_MEDIA_QUEUE_SOCKET"] = "/run/pdocker-media/pdocker-media.sock"
+    os.environ["PDOCKER_MEDIA_SHARED_DIR"] = "/run/pdocker-media"
+    os.environ["PDOCKER_MEDIA_DESCRIPTOR_HOST_PATH"] = media_descriptor
+    os.environ["PDOCKER_MEDIA_DESCRIPTOR_PATH"] = "/run/pdocker-media/pdocker-media-capabilities.json"
+    os.environ["PDOCKER_MEDIA_COMMAND_API"] = "pdocker-media-command-v1"
+    os.environ["PDOCKER_MEDIA_ABI_VERSION"] = "0.1"
+    os.environ["PDOCKER_MEDIA_EXECUTOR_ROLE"] = "android-media-command-executor"
+    os.environ["PDOCKER_MEDIA_CONTRACT"] = "linux-like-socket-env-v1"
+    os.environ["PDOCKER_MEDIA_DEVICE_PASSTHROUGH"] = "0"
+    os.environ["PDOCKER_MEDIA_VIDEO_API"] = "android-camera2"
+    os.environ["PDOCKER_MEDIA_AUDIO_API"] = "android-audiorecord-audiotrack"
+    os.environ["PDOCKER_MEDIA_AUDIO_DEVICE_API"] = "android-audiomanager"
+    os.environ["PDOCKER_MEDIA_CAPABILITIES"] = ",".join([
+        "video.camera2",
+        "camera.front",
+        "camera.rear",
+        "camera.external",
+        "audio.capture",
+        "audio.playback",
+        "audio.usb.multichannel",
+    ])
+    os.environ["PDOCKER_MEDIA_CAPTURE_READY"] = "0"
+    os.environ["PDOCKER_MEDIA_CAMERA_READY"] = "0"
+    os.environ["PDOCKER_MEDIA_AUDIO_READY"] = "0"
+    os.environ["PDOCKER_MEDIA_STATUS"] = "phase1-control-plane-only"
+    os.environ["PDOCKER_MEDIA_EXECUTOR_AVAILABLE"] = "0"
+    if os.path.exists(media_executor):
+        os.environ["PDOCKER_MEDIA_EXECUTOR"] = media_executor
+        os.environ["PDOCKER_MEDIA_EXECUTOR_AVAILABLE"] = "1"
+        os.environ["PDOCKER_MEDIA_STATUS"] = "executor-present-capture-disabled"
+
     bin_dir = os.path.join(runtime_dir, "docker-bin")
     os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
 

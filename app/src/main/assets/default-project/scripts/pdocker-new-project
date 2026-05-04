@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: pdocker-new-project NAME [TEMPLATE]
+
+Create a project under /pdocker/projects. TEMPLATE may be:
+  blank                 create a minimal Dockerfile and compose.yaml
+  <installed-project>   copy an existing project/template from /pdocker/projects
+  /absolute/path        copy a mounted template directory
+USAGE
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 1 || $# -gt 2 ]]; then
+  usage
+  [[ $# -lt 1 || $# -gt 2 ]] && exit 2 || exit 0
+fi
+
+name="$1"
+template="${2:-blank}"
+projects="${PDOCKER_PROJECTS_DIR:-/pdocker/projects}"
+dest="$projects/$name"
+
+if [[ ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Project name may contain only letters, numbers, dot, underscore, and dash." >&2
+  exit 2
+fi
+if [[ ! -d "$projects" ]]; then
+  echo "Project root is not mounted: $projects" >&2
+  exit 1
+fi
+if [[ -e "$dest" ]]; then
+  echo "Project already exists: $dest" >&2
+  exit 1
+fi
+
+copy_template() {
+  local src="$1"
+  if [[ "$(cd "$src" && pwd -P)" == "$(mkdir -p "$(dirname "$dest")" && cd "$(dirname "$dest")" && pwd -P)/$name" ]]; then
+    echo "Template and destination are the same path." >&2
+    exit 1
+  fi
+  mkdir -p "$dest"
+  (
+    cd "$src"
+    tar \
+      --exclude './.git' \
+      --exclude './node_modules' \
+      --exclude './workspace/node_modules' \
+      --exclude './workspace/.vscode-server' \
+      --exclude './.pdocker-template-version' \
+      -cf - .
+  ) | (
+    cd "$dest"
+    tar -xf -
+  )
+}
+
+if [[ "$template" == "blank" ]]; then
+  mkdir -p "$dest/workspace"
+  cat > "$dest/Dockerfile" <<'DOCKERFILE'
+FROM ubuntu:22.04
+CMD ["/bin/bash", "-lc", "echo hello from pdocker && sleep infinity"]
+DOCKERFILE
+  cat > "$dest/compose.yaml" <<'COMPOSE'
+services:
+  app:
+    build: .
+    image: local/pdocker-blank:latest
+    command: ["/bin/bash", "-lc", "echo hello from compose && sleep infinity"]
+    volumes:
+      - ./workspace:/workspace
+COMPOSE
+elif [[ "$template" = /* && -d "$template" ]]; then
+  copy_template "$template"
+elif [[ -d "$projects/$template" ]]; then
+  copy_template "$projects/$template"
+elif [[ -d "/pdocker/project-library/$template" ]]; then
+  copy_template "/pdocker/project-library/$template"
+elif [[ -d "/workspace/templates/$template" ]]; then
+  copy_template "/workspace/templates/$template"
+else
+  echo "Template not found: $template" >&2
+  echo "Run pdocker-projects to see installed templates, or use 'blank'." >&2
+  exit 1
+fi
+
+printf '%s\n' "created: $dest"

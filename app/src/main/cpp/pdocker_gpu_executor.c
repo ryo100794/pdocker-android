@@ -389,6 +389,12 @@ typedef struct {
 } VulkanVectorBuffer;
 
 typedef struct {
+    uint32_t binding;
+    off_t offset;
+    size_t size;
+} VulkanDispatchBinding;
+
+typedef struct {
     int ready;
     VkInstance instance;
     VkPhysicalDevice physical_device;
@@ -402,10 +408,161 @@ typedef struct {
     VkPipeline pipeline;
     VkPipeline matmul_pipeline;
     VkCommandPool command_pool;
+    uint32_t api_version;
+    VkPhysicalDeviceFeatures physical_features;
+    VkPhysicalDevice16BitStorageFeatures physical_storage16;
+    VkPhysicalDeviceShaderFloat16Int8Features physical_float16_int8;
+    VkPhysicalDeviceSubgroupProperties subgroup_properties;
     double init_ms;
 } VulkanRuntime;
 
 static VulkanRuntime g_vulkan_runtime;
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t bound;
+    uint32_t local_size[3];
+    uint32_t capability_count;
+    uint32_t capabilities[24];
+    uint64_t hash;
+    int valid;
+    int truncated;
+} SpirvTraceSummary;
+
+static const char *spirv_capability_name(uint32_t capability) {
+    switch (capability) {
+        case 1: return "Shader";
+        case 9: return "Float16";
+        case 10: return "Float64";
+        case 11: return "Int64";
+        case 12: return "Int64Atomics";
+        case 22: return "Int16";
+        case 39: return "Int8";
+        case 61: return "GroupNonUniform";
+        case 62: return "GroupNonUniformVote";
+        case 63: return "GroupNonUniformArithmetic";
+        case 64: return "GroupNonUniformBallot";
+        case 65: return "GroupNonUniformShuffle";
+        case 66: return "GroupNonUniformShuffleRelative";
+        case 67: return "GroupNonUniformQuad";
+        case 68: return "GroupNonUniformClustered";
+        case 4433: return "StorageBuffer16BitAccess";
+        case 4434: return "UniformAndStorageBuffer16BitAccess";
+        case 4435: return "StoragePushConstant16";
+        default: return "cap";
+    }
+}
+
+static SpirvTraceSummary summarize_spirv(const uint32_t *code, size_t bytes) {
+    SpirvTraceSummary s;
+    memset(&s, 0, sizeof(s));
+    s.local_size[0] = s.local_size[1] = s.local_size[2] = 0;
+    s.hash = 1469598103934665603ull;
+    if (!code) return s;
+    const uint8_t *raw = (const uint8_t *)code;
+    for (size_t i = 0; i < bytes; ++i) {
+        s.hash ^= raw[i];
+        s.hash *= 1099511628211ull;
+    }
+    if (bytes < 20 || (bytes % sizeof(uint32_t)) != 0) return s;
+    const size_t words = bytes / sizeof(uint32_t);
+    s.magic = code[0];
+    s.version = code[1];
+    s.bound = code[3];
+    if (s.magic != 0x07230203u) return s;
+    s.valid = 1;
+    for (size_t i = 5; i < words;) {
+        uint32_t inst = code[i];
+        uint16_t word_count = (uint16_t)(inst >> 16);
+        uint16_t op = (uint16_t)(inst & 0xffffu);
+        if (word_count == 0 || i + word_count > words) {
+            s.truncated = 1;
+            break;
+        }
+        if (op == 17 && word_count >= 2) {
+            uint32_t cap = code[i + 1];
+            int seen = 0;
+            for (uint32_t c = 0; c < s.capability_count; ++c) {
+                if (s.capabilities[c] == cap) {
+                    seen = 1;
+                    break;
+                }
+            }
+            if (!seen && s.capability_count < (uint32_t)(sizeof(s.capabilities) / sizeof(s.capabilities[0]))) {
+                s.capabilities[s.capability_count++] = cap;
+            }
+        } else if (op == 16 && word_count >= 6 && code[i + 2] == 17) {
+            s.local_size[0] = code[i + 3];
+            s.local_size[1] = code[i + 4];
+            s.local_size[2] = code[i + 5];
+        }
+        i += word_count;
+    }
+    return s;
+}
+
+static void log_vulkan_feature_trace(const VulkanRuntime *rt) {
+    if (!rt) return;
+    fprintf(stderr,
+            "pdocker-gpu-executor: Android Vulkan features api=%u.%u shaderInt64=%u "
+            "storage16={ssbo:%u,ubo_ssbo:%u,push:%u,io:%u} "
+            "float16=%u int8=%u subgroup={size:%u,stages:0x%x,ops:0x%x}\n",
+            VK_API_VERSION_MAJOR(rt->api_version),
+            VK_API_VERSION_MINOR(rt->api_version),
+            rt->physical_features.shaderInt64,
+            rt->physical_storage16.storageBuffer16BitAccess,
+            rt->physical_storage16.uniformAndStorageBuffer16BitAccess,
+            rt->physical_storage16.storagePushConstant16,
+            rt->physical_storage16.storageInputOutput16,
+            rt->physical_float16_int8.shaderFloat16,
+            rt->physical_float16_int8.shaderInt8,
+            rt->subgroup_properties.subgroupSize,
+            rt->subgroup_properties.supportedStages,
+            rt->subgroup_properties.supportedOperations);
+}
+
+static void log_spirv_trace(
+        const SpirvTraceSummary *summary,
+        const VulkanDispatchBinding *bindings,
+        size_t binding_count,
+        size_t push_size,
+        uint32_t gx,
+        uint32_t gy,
+        uint32_t gz) {
+    if (!summary) return;
+    fprintf(stderr,
+            "pdocker-gpu-executor: SPIR-V trace valid=%u truncated=%u hash=0x%016llx "
+            "magic=0x%08x version=0x%08x bound=%u local_size=%u,%u,%u "
+            "dispatch=%u,%u,%u push=%zu bindings=%zu caps=",
+            summary->valid,
+            summary->truncated,
+            (unsigned long long)summary->hash,
+            summary->magic,
+            summary->version,
+            summary->bound,
+            summary->local_size[0],
+            summary->local_size[1],
+            summary->local_size[2],
+            gx,
+            gy,
+            gz,
+            push_size,
+            binding_count);
+    for (uint32_t i = 0; i < summary->capability_count; ++i) {
+        fprintf(stderr, "%s%s(%u)", i ? "," : "", spirv_capability_name(summary->capabilities[i]), summary->capabilities[i]);
+    }
+    if (summary->capability_count == 0) fprintf(stderr, "none");
+    fprintf(stderr, "\n");
+    for (size_t i = 0; i < binding_count; ++i) {
+        fprintf(stderr,
+                "pdocker-gpu-executor: SPIR-V binding[%zu] binding=%u fd_offset=%lld bytes=%zu\n",
+                i,
+                bindings[i].binding,
+                (long long)bindings[i].offset,
+                bindings[i].size);
+    }
+}
 
 static int create_vulkan_vector_buffer(VkPhysicalDevice physical_device, VkDevice device, size_t bytes, const void *initial, VulkanVectorBuffer *out) {
     memset(out, 0, sizeof(*out));
@@ -475,6 +632,46 @@ static int init_vulkan_runtime(VulkanRuntime *rt) {
     rc = vkEnumeratePhysicalDevices(rt->instance, &physical_count, physical_devices);
     if (rc != VK_SUCCESS || physical_count == 0) goto fail;
     rt->physical_device = physical_devices[0];
+    VkPhysicalDeviceProperties device_properties;
+    memset(&device_properties, 0, sizeof(device_properties));
+    vkGetPhysicalDeviceProperties(rt->physical_device, &device_properties);
+    rt->api_version = device_properties.apiVersion;
+    memset(&rt->physical_features, 0, sizeof(rt->physical_features));
+    vkGetPhysicalDeviceFeatures(rt->physical_device, &rt->physical_features);
+    memset(&rt->physical_storage16, 0, sizeof(rt->physical_storage16));
+    memset(&rt->physical_float16_int8, 0, sizeof(rt->physical_float16_int8));
+    memset(&rt->subgroup_properties, 0, sizeof(rt->subgroup_properties));
+    rt->physical_storage16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+    rt->physical_float16_int8.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+    rt->subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    PFN_vkGetPhysicalDeviceFeatures2 get_features2 =
+        (PFN_vkGetPhysicalDeviceFeatures2)vkGetInstanceProcAddr(rt->instance, "vkGetPhysicalDeviceFeatures2");
+    if (!get_features2) {
+        get_features2 = (PFN_vkGetPhysicalDeviceFeatures2)vkGetInstanceProcAddr(rt->instance, "vkGetPhysicalDeviceFeatures2KHR");
+    }
+    if (get_features2) {
+        VkPhysicalDeviceFeatures2 features2;
+        memset(&features2, 0, sizeof(features2));
+        features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        features2.pNext = &rt->physical_storage16;
+        rt->physical_storage16.pNext = &rt->physical_float16_int8;
+        get_features2(rt->physical_device, &features2);
+        rt->physical_features = features2.features;
+        rt->physical_storage16.pNext = NULL;
+        rt->physical_float16_int8.pNext = NULL;
+    }
+    PFN_vkGetPhysicalDeviceProperties2 get_properties2 =
+        (PFN_vkGetPhysicalDeviceProperties2)vkGetInstanceProcAddr(rt->instance, "vkGetPhysicalDeviceProperties2");
+    if (!get_properties2) {
+        get_properties2 = (PFN_vkGetPhysicalDeviceProperties2)vkGetInstanceProcAddr(rt->instance, "vkGetPhysicalDeviceProperties2KHR");
+    }
+    if (get_properties2) {
+        VkPhysicalDeviceProperties2 properties2;
+        memset(&properties2, 0, sizeof(properties2));
+        properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        properties2.pNext = &rt->subgroup_properties;
+        get_properties2(rt->physical_device, &properties2);
+    }
     uint32_t family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, NULL);
     if (family_count == 0) { stage = "queue-family-count"; goto fail; }
@@ -496,11 +693,21 @@ static int init_vulkan_runtime(VulkanRuntime *rt) {
         .queueCount = 1,
         .pQueuePriorities = &priority,
     };
-    VkPhysicalDeviceFeatures enabled_features;
-    memset(&enabled_features, 0, sizeof(enabled_features));
-    vkGetPhysicalDeviceFeatures(rt->physical_device, &enabled_features);
+    VkPhysicalDeviceFeatures enabled_features = rt->physical_features;
+    VkPhysicalDevice16BitStorageFeatures enabled_storage16;
+    memset(&enabled_storage16, 0, sizeof(enabled_storage16));
+    enabled_storage16.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES;
+    enabled_storage16.storageBuffer16BitAccess = rt->physical_storage16.storageBuffer16BitAccess;
+    enabled_storage16.uniformAndStorageBuffer16BitAccess = rt->physical_storage16.uniformAndStorageBuffer16BitAccess;
+    enabled_storage16.storagePushConstant16 = rt->physical_storage16.storagePushConstant16;
+    enabled_storage16.storageInputOutput16 = rt->physical_storage16.storageInputOutput16;
     VkDeviceCreateInfo dci = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = (rt->api_version >= VK_API_VERSION_1_1 &&
+                  (enabled_storage16.storageBuffer16BitAccess ||
+                  enabled_storage16.uniformAndStorageBuffer16BitAccess ||
+                  enabled_storage16.storagePushConstant16 ||
+                  enabled_storage16.storageInputOutput16)) ? &enabled_storage16 : NULL,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &qci,
         .pEnabledFeatures = &enabled_features,
@@ -1102,12 +1309,6 @@ static int run_vector_add_3fd(int fd_a, int fd_b, int fd_out, size_t n, GpuApiAf
     return rc;
 }
 
-typedef struct {
-    uint32_t binding;
-    off_t offset;
-    size_t size;
-} VulkanDispatchBinding;
-
 static int hex_decode(const char *hex, uint8_t *out, size_t out_size) {
     if (!hex || !out) return -1;
     size_t len = strlen(hex);
@@ -1193,9 +1394,14 @@ static int run_vulkan_dispatch_fd(
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
     VkCommandBuffer command_buffer = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
+    SpirvTraceSummary spirv_summary;
+    int have_spirv_summary = 0;
     memset(vk_buffers, 0, sizeof(vk_buffers));
+    memset(&spirv_summary, 0, sizeof(spirv_summary));
     if (!shader_code) return -21;
     if (read_fd_exact(shader_fd, shader_code, shader_size, 0) != 0) goto cleanup;
+    spirv_summary = summarize_spirv(shader_code, shader_size);
+    have_spirv_summary = 1;
 
     double upload_start = now_ms();
     for (size_t i = 0; i < binding_count; ++i) {
@@ -1327,7 +1533,23 @@ static int run_vulkan_dispatch_fd(
 cleanup:
     if (ret != 0) {
         fprintf(stderr, "pdocker-gpu-executor: generic Vulkan dispatch failed stage=%s rc=%d\n", fail_stage, rc);
-        json_fail("vulkan-dispatch", fail_stage);
+        log_vulkan_feature_trace(rt);
+        if (have_spirv_summary) {
+            log_spirv_trace(&spirv_summary, bindings, binding_count, push_size, gx, gy, gz);
+        }
+        fprintf(json_out(),
+                "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+                "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+                "\"backend_impl\":\"android_vulkan\",\"kernel\":\"generic_spirv\","
+                "\"valid\":false,\"stage\":\"vulkan-dispatch\",\"error\":\"%s\","
+                "\"vk_result\":%d,\"shader_bytes\":%zu,\"bindings\":%zu,"
+                "\"dispatch\":[%u,%u,%u],\"push_bytes\":%zu,"
+                "\"spirv_hash\":\"0x%016llx\"}\n",
+                PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+                PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+                fail_stage, rc, shader_size, binding_count, gx, gy, gz, push_size,
+                (unsigned long long)spirv_summary.hash);
+        fflush(json_out());
     }
     if (fence) vkDestroyFence(rt->device, fence, NULL);
     if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);

@@ -12,6 +12,31 @@ This board is the operating task list. Keep the detailed sections below as the
 source of context, but update this board first when work starts, gets blocked,
 or closes.
 
+### Next Queue Generated 2026-05-04
+
+- [next] Real listener service health: probe the actual device listener for
+  default workspace `18080` and llama `18081`, correlate it with Engine
+  container ID, health status, and logs, and never mark a service healthy from
+  compose/job metadata alone.
+- [next] ID/label-based container truth: reconcile project cards, logs,
+  lifecycle actions, and duplicate-name cleanup from Engine container IDs plus
+  pdocker project/service labels. Container names are display hints and legacy
+  fallbacks only.
+- [next] llama GPU performance workflow after Vulkan clamp: keep CPU fallback
+  hiding Vulkan devices, force Vulkan only for measured GPU attempts, run the
+  compare flow after every bridge fix, and report `target_met`, speedup, GPU
+  layer count, current blocker, thermal/device metadata, and artifact paths.
+- [next] Active port mapping: move published ports from metadata-only warnings
+  to active listener/proxy/rewrite state with clear inactive/blocked/active UI
+  labels and conflict handling for repeated internal ports.
+- [next] Android storage metrics verification: add device smoke/manual coverage
+  that layer, image-view, container-private, total, and free-space values are
+  nonnegative and refresh after build, prune, rebuild, and container edit flows.
+- [done] Daemon storage summaries now separate shared layer-pool bytes,
+  per-image virtual/shared/unique bytes, container upper/private bytes, and
+  merged image/rootfs view bytes with explicit overlap notes so UI totals do
+  not double-count hardlinked lower data.
+
 ### Runtime / Compose-Up
 
 - [done] Remove upstream Docker CLI/Compose from APK payload. Product UI must
@@ -64,11 +89,14 @@ or closes.
   OpenCL ICD metadata, and binds the host OpenCL library when present. The
   library is visible but fails to load because Android/Bionic dependencies
   such as `liblog.so` are not available to the glibc container.
-- [next] Add a UI/device health card that checks the real 18080 listener and
-  links to the container logs rather than relying on placeholder state.
-- [next] Prevent duplicate container names after interrupted compose attempts.
+- [next] Add a UI/device health card that checks the real listener for the
+  service port, verifies the owning Engine container ID and health state, and
+  links to container logs rather than relying on placeholder/job state.
+- [next] Prevent duplicate container truth after interrupted compose attempts.
   The current device had an old exited `pdocker-llama-cpp` plus the new running
   one, which makes name-based `docker logs` and `docker ps` display ambiguous.
+  Compose reconciliation must prefer Engine container IDs plus pdocker
+  project/service labels and reserve names for display or legacy fallback.
 - [next] If default workspace regresses, capture the first failing syscall or
   package-manager operation and add a focused direct-runtime smoke before
   retrying the full template. Latest focused blocker: npm self-update
@@ -228,9 +256,21 @@ or closes.
 - [done] Keep llama.cpp and dev workspace templates standard Dockerfile/
   Compose definitions.
 - [done] Add first-pass CPU/GLES GPU benchmark artifacts.
-- [next] Add Vulkan benchmark backend and device/thermal metadata.
+- [next] After the Vulkan clamp, run the llama GPU performance workflow through
+  `scripts/android-llama-gpu-compare.sh`: keep CPU fallback hiding Vulkan
+  devices, force Vulkan only for measured attempts, capture device/thermal
+  metadata, and keep the latest artifact under `docs/test` and
+  `files/pdocker/bench`.
 - [next] Verify llama.cpp compose after runtime service start works, including
   model download/resume and docker logs.
+
+### Storage / Metrics
+
+- [next] Verify Android storage metrics on device: layer store, image-view,
+  container-private, total, and free-space numbers must be nonnegative, must
+  preserve the daemon's shared-layer/container-upper overlap distinction, and
+  must refresh after build, prune, rebuild, and container file-edit/copy-up
+  flows.
 
 ### Packaging / License
 
@@ -257,7 +297,9 @@ Temporary behavior:
 
 - `PDOCKER_RUNTIME_BACKEND=no-proot` is metadata/edit/browse mode only.
 - The APK stages a native `pdocker-direct` helper and sets
-  `PDOCKER_DIRECT_EXECUTOR`, but its probe advertises `process-exec=0`.
+  `PDOCKER_DIRECT_EXECUTOR`; runtime-backed build/run/compose paths must keep
+  advertising `process-exec=1` before pdockerd routes process execution to the
+  helper.
 - Experimental process execution probes must stay gated. The 2026-05-02
   `scripts/android-api29-direct-feasibility.sh --no-install` run on SOG15
   (Android 16 / SDK 36, app targetSdk 34, `untrusted_app`) still failed the real
@@ -436,13 +478,18 @@ Real implementation needed:
    - configured/published port metadata;
    - listener exists but not from container;
    - real container listener.
-3. `docker ps` should continue to show requested port mappings as metadata, but
+3. Health checks must bind listener evidence back to the Engine container ID,
+   health state, and logs so duplicate names or stale exited containers cannot
+   satisfy the service card.
+4. `docker ps` should continue to show requested port mappings as metadata, but
    UI must label them as inactive until runtime port rewrite/listen support is
    implemented.
 
 Acceptance:
 
 - `127.0.0.1:18080` is refused until code-server really runs.
+- Service health for `18080` and `18081` points to the current running
+  container ID and opens the matching logs.
 - `compose up` cannot succeed by launching an out-of-container placeholder.
 
 ## P1: Port Rewrite and Networking
@@ -466,11 +513,15 @@ Real implementation needed:
 4. Teach running containers to refresh peer aliases after network connect and
    disconnect without requiring a restart.
 5. Add UI state for active/inactive/blocked port mappings.
+6. Record the active host listener/proxy target for each published port and
+   surface conflicts explicitly when a requested host port is already owned by
+   another container.
 
 Acceptance:
 
 - A service listening on container port 80 can be mapped to host `18080`.
 - Two services can both listen on internal port 80 with different host ports.
+- Container cards distinguish requested mappings from active mappings.
 - Compose service names resolve consistently inside containers.
 
 ## P1: Filesystem and Overlay Semantics
@@ -599,24 +650,18 @@ Tasks:
    Vulkan model buffer through `pdocker-vulkan-icd.so`. The key fix was to
    advertise non-zero storage-buffer alignment from the ICD; llama.cpp remains
    unchanged.
-4. **[next] Lower the first real llama.cpp SPIR-V dispatches.**
-   Keep unknown shaders rejected, but add a trace classifier and implement the
+4. **[active] Lower the first real llama.cpp SPIR-V dispatches.**
+   Keep unknown shaders rejected. The bridge now records Android Vulkan
+   feature bits, SPIR-V capabilities/local size/hash, descriptor ranges, and
+   submit `VkResult` when a generic llama.cpp shader fails in the executor.
+   Use that trace to clamp unsupported advertised ICD features or implement the
    minimal operations needed for one offloaded Qwen3 output/repeating layer.
-5. **[active] Fix Vulkan buffer base/range accounting during scheduler warmup.**
+5. **[done] Fix Vulkan buffer base/range accounting during scheduler warmup.**
    Transfer-only submits now complete and llama.cpp reaches context
-   construction, compute-buffer allocation, and warmup. The current failure is
-   a `ggml_backend_buffer_get_alloc_size` range assertion, so the ICD must make
-   mapped buffer base/size accounting match what ggml's scheduler expects.
-   The 2026-05-04 trace confirmed that the two model copy-buffer regions are
-   in-bounds; the remaining failure occurs before the first descriptor-backed
-   compute dispatch. A `--no-warmup` diagnostic still reaches the same range
-   assertion during slot initialization, so this is a buffer-type/accounting
-   issue rather than only the warmup call path. The latest trace exposes
-   separate Vulkan memory types: device-local model/compute buffers and
-   host-visible staging/output buffers. It also shows allocation pNext records
-   (`sType=1000060000`) on llama.cpp buffer allocations, so the next slice is
-   exact dedicated-allocation/memory-requirements accounting instead of broad
-   device discovery.
+   construction, compute-buffer allocation, warmup, and server load without the
+   previous `ggml_backend_buffer_get_alloc_size` range assertion. The latest
+   front blocker is now the later Android `vkQueueSubmit`
+   `VK_ERROR_FEATURE_NOT_PRESENT` path during prompt processing.
 6. **[next] Add persistent GPU command-ring transport.**
    Replace per-dispatch socket commands with shared ring descriptors, reusable
    buffer handles, fences, and error records under `/run/pdocker-gpu`.
@@ -633,7 +678,10 @@ Tasks:
 10. **[done] Distinguish daemon operations from containers in the UI.**
     Long-running compare/build cards are pdockerd operations and intentionally
     do not appear in `docker ps`; container cards are reconciled only from
-    Engine API `/containers/json?all=1`.
+    Engine API `/containers/json?all=1`. The llama GPU compare operation must
+    surface CPU/GPU tokens/s, speedup, `target_met`, GPU layer count, current
+    blocker, and artifact paths while cleanup removes ADB forwarding, marks
+    failed operations on nonzero exit, and restores CPU mode by default.
 
 11. **[doing] Rework project/container identity.**
     Stop using project-name prefixes as the primary relationship key. Compose
@@ -641,6 +689,10 @@ Tasks:
     directory, project name, and compose service name; UI cards must prefer
     those labels and Engine container IDs over name guesses. Name matching is
     only a legacy fallback for containers created before labels existed.
+    Follow-up queue: logs, service health, lifecycle buttons, and duplicate
+    cleanup must all operate on the resolved Engine container ID; interrupted
+    compose runs with stale exited containers must not make a new running
+    container ambiguous.
 12. **[next] Add a local SQLite project index.**
     Add an app-owned database for `projects`, `compose_services`,
     `containers`, `images`, and `jobs`. The database is an index and
@@ -663,10 +715,12 @@ Tasks:
 Current 2026-05-04 blocker:
 
 - Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge, allocate
-  the first offloaded Vulkan model buffer, complete transfer-only queue submits,
-  and reach context warmup. It still cannot serve tokens because ggml currently
-  trips a `ggml_backend_buffer_get_alloc_size` range assertion during warmup.
-  CPU mode is restored as the usable path after GPU experiments.
+  the first offloaded Vulkan model buffer, complete transfer-only queue
+  submits, lower several generic SPIR-V dispatches through the Android Vulkan
+  executor, and load the HTTP server. It still cannot serve tokens reliably:
+  prompt processing reaches a later generic SPIR-V dispatch where Android
+  `vkQueueSubmit` returns `VK_ERROR_FEATURE_NOT_PRESENT`. CPU mode is restored
+  as the usable path after GPU experiments.
 
 Temporary behavior:
 
@@ -737,6 +791,12 @@ Next implementation slice:
 - Keep CPU fallback healthy while GPU work is incomplete. CPU mode must hide
   Vulkan devices with `GGML_VK_VISIBLE_DEVICES=""` so llama.cpp does not enter
   Vulkan buffer scheduling with `--n-gpu-layers 0`.
+- After each Vulkan clamp or bridge-accounting fix, run the full performance
+  workflow rather than a one-off manual probe: CPU fallback baseline, forced
+  Vulkan attempt, optional small-model green-path check, 8B retry, artifact
+  copy to `docs/test` and `files/pdocker/bench`, and UI-visible reporting of
+  speedup, `target_met`, GPU layer count, current blocker, and device/thermal
+  metadata.
 
 Acceptance:
 
@@ -836,7 +896,7 @@ Heavy tests, run before major runtime changes:
 - Storage metrics gate: keep static coverage in `scripts/verify-ui-actions.py`,
   and add Android smoke/manual verification that layer, image-view,
   container-private, total, and free-space metrics are nonnegative and refresh
-  after build/prune/rebuild.
+  after build/prune/rebuild and after container file edit/copy-up flows.
 - GPU bridge/executor scenarios after GPU/runtime changes:
   `bash scripts/bench-gpu-bridge.sh 3` for a quick local scaffold check,
   `bash scripts/bench-gpu-bridge.sh 50` for long overhead tracking, and

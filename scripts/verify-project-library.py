@@ -71,6 +71,7 @@ def main() -> int:
     host_bench_script = read(ROOT / "scripts" / "android-gpu-host-bench.sh")
     compare_doc = read(ROOT / "docs" / "test" / "LLAMA_BENCHMARKS.md")
     compare_todo = read(ROOT / "docs" / "plan" / "TODO.md")
+    compare_result = json.loads(read(ROOT / "docs" / "test" / "llama-gpu-compare-latest.json"))
     compare_expectations = {
         "compare script schema": "pdocker.llama.gpu.compare.v1" in compare_script,
         "compare script leaves llama.cpp unmodified": '"llama_cpp_modified": False' in compare_script,
@@ -80,30 +81,98 @@ def main() -> int:
         "compare script classifies dispatch blocker": "queue_submit_blocker" in compare_script and "vk::Queue::submit: ErrorFeatureNotPresent" in compare_script,
         "compare script classifies range assert": "buffer_range_assert_blocker" in compare_script and "ggml_backend_buffer_get_alloc_size" in compare_script,
         "compare script reports operation to ui": "operation_notify" in compare_script and "POST /system/operations" in compare_script and "llama-gpu-compare" in compare_script,
-        "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script,
+        "compare script operation summary includes gpu status": "GPU {d['gpu']['tokens_per_second']:.3f} tok/s" in compare_script and "target_met={str(d['comparison']['target_met']).lower()}" in compare_script and "gpu_layers={d['settings']['gpu_layers']}" in compare_script,
+        "compare script records operation cleanup behavior": '"operation": {' in compare_script and "mark failed operation on nonzero exit" in compare_script and "--no-restore" in compare_script and "CPU server left in last compare mode" in compare_script,
+        "compare script restores CPU server": "restore CPU server" in compare_script and "start_cpu" in compare_script and "CPU server restored" in compare_script,
         "compare docs record latest report": "llama-gpu-compare-latest.json" in compare_doc,
+        "compare docs record latest tps and blocker": "CPU baseline: 0.259 generated tokens/s" in compare_doc and "GPU 0.000 generated tokens/s" in compare_doc and "target_met=false" in compare_doc and "Next blocker: lower the failing llama.cpp SPIR-V dispatch" in compare_doc,
+        "compare docs record operation ui visibility": "daemon operation/progress card" in compare_doc and "only object expected in `docker ps`" in compare_doc and "Operation cleanup" in compare_doc,
         "host native gpu baseline script is recorded": "pdocker.gpu.host_native.v1" in host_bench_script and "--bench-vulkan-matmul256-resident" in host_bench_script and "gpu-host-native-latest.json" in compare_doc,
         "compare todo records 10x task list": "llama.cpp Container GPU 10x Task List" in compare_todo,
+        "compare todo records ui expectations": "UI-visible reporting of\n  speedup, `target_met`, GPU layer count, current blocker" in compare_todo and "Long-running compare/build cards are pdockerd operations" in compare_todo,
+        "compare todo records operation cleanup": "marks\n    failed operations on nonzero exit, and restores CPU mode by default" in compare_todo,
         "compare todo preserves no llama patch policy": "llama.cpp source must remain unmodified" in compare_todo,
     }
     for name, passed in compare_expectations.items():
+        if not passed:
+            fail(name)
+    compare_result_expectations = {
+        "latest compare records cpu tps": isinstance(compare_result.get("cpu", {}).get("tokens_per_second"), (int, float)),
+        "latest compare records gpu tps": isinstance(compare_result.get("gpu", {}).get("tokens_per_second"), (int, float)),
+        "latest compare records speedup and target": isinstance(compare_result.get("comparison", {}).get("speedup"), (int, float)) and compare_result.get("comparison", {}).get("target_met") is not None,
+        "latest compare records gpu layer count": isinstance(compare_result.get("settings", {}).get("gpu_layers"), int),
+        "latest compare records current blocker": bool(compare_result.get("next_blocker")),
+        "latest compare records operation ui surface": compare_result.get("operation", {}).get("kind") == "llama-gpu-compare" and "operation/progress card" in compare_result.get("operation", {}).get("ui_surface", ""),
+        "latest compare records operation cleanup": "restore CPU server unless --no-restore" in compare_result.get("operation", {}).get("cleanup", ""),
+    }
+    for name, passed in compare_result_expectations.items():
         if not passed:
             fail(name)
     check_llama_gpu_compare_contract(compare_script)
     ok("llama gpu 10x comparison scenario is recorded")
 
     data = json.loads(read(LIBRARY))
+    ids = [item["id"] for item in data.get("templates", [])]
+    duplicate_ids = sorted({tid for tid in ids if ids.count(tid) > 1})
+    if duplicate_ids:
+        fail(f"duplicate template ids in library.json: {', '.join(duplicate_ids)}")
     templates = {item["id"]: item for item in data.get("templates", [])}
-    for tid in ("dev-workspace", "llama-cpp-gpu"):
+    for tid in (
+        "dev-workspace",
+        "llama-cpp-gpu",
+        "ros2-humble-rviz-novnc",
+        "blender-xvnc-novnc",
+    ):
         if tid not in templates:
             fail(f"template {tid} absent from library.json")
     ok("required templates listed")
 
     dev = templates["dev-workspace"]
+    if dev.get("assetPath") != "default-project":
+        fail("dev-workspace must use the bundled default-project asset template")
+    if dev.get("projectDir") != "default":
+        fail("dev-workspace must install as the default project")
+    dev_metadata = " ".join(
+        [
+            dev.get("name", ""),
+            dev.get("category", ""),
+            dev.get("description", ""),
+            " ".join(dev.get("features", [])),
+        ]
+    ).lower()
+    for token in (
+        "pdocker-management",
+        "pdocker management",
+        "project-creation",
+        "project creation",
+        "project-maintenance",
+        "project maintenance",
+        "build-compose",
+        "compose",
+        "engine-socket-helpers",
+        "engine socket helpers",
+        "code-server",
+        "codex",
+    ):
+        if token not in dev_metadata:
+            fail(f"dev-workspace library metadata must mention {token}")
     dev_root = ASSETS / dev["assetPath"]
     dev_compose = read(dev_root / dev["compose"])
     dev_dockerfile = read(dev_root / dev["dockerfile"])
     dev_workspace_extensions = read(dev_root / "workspace" / ".vscode" / "extensions.json")
+    dev_tasks = read(dev_root / "workspace" / ".vscode" / "tasks.json")
+    dev_readme = read(dev_root / "README.md")
+    dev_helper_scripts = "\n".join(
+        read(dev_root / "scripts" / name)
+        for name in (
+            "pdocker-engine-env",
+            "pdocker-docker",
+            "pdocker-compose",
+            "pdocker-paths",
+            "pdocker-projects",
+            "pdocker-new-project",
+        )
+    )
     for token in (
         "code-server",
         "Continue.continue",
@@ -120,6 +189,60 @@ def main() -> int:
         if token not in dev_compose + dev_dockerfile + dev_workspace_extensions:
             fail(f"dev-workspace missing {token}")
     ok("dev-workspace includes code-server, Continue, Codex, Claude Code, and GPU request")
+
+    dev_management_contract = dev_compose + dev_dockerfile + dev_tasks + dev_readme + dev_helper_scripts
+    for token in (
+        "docker-ce-cli",
+        "docker-compose-plugin",
+        "COPY scripts/pdocker-* /usr/local/bin/",
+        "/pdocker/project",
+        "/pdocker/projects",
+        "/pdocker/host",
+        "/pdocker/host/pdockerd.sock",
+        "pdocker-paths",
+        "pdocker-projects",
+        "pdocker-new-project",
+        "pdocker-docker",
+        "pdocker-compose",
+        "DOCKER_HOST",
+        "filesDir/pdocker/projects",
+        "filesDir/pdocker/pdockerd.sock",
+    ):
+        if token not in dev_management_contract:
+            fail(f"dev-workspace management helper contract missing {token}")
+    if "eval \"$(pdocker-engine-env --export)\"" not in dev_helper_scripts:
+        fail("dev-workspace Docker helpers must source guarded Engine environment")
+    if "No mounted pdocker/Docker Engine socket found." not in dev_helper_scripts:
+        fail("dev-workspace Docker helpers must report missing mounted Engine socket")
+    if "The APK does not\n  bundle an upstream Docker CLI binary" not in dev_readme:
+        fail("dev-workspace README must keep Docker CLI scoped to development container")
+    for readme_token in (
+        "project library",
+        "library container template",
+        "release assets",
+        "available in release builds",
+        "pdocker management",
+        "project creation",
+        "project maintenance",
+        "Dockerfile builds",
+        "Compose\nruns",
+        "Engine socket helpers",
+        "code-server",
+        "OpenAI Codex/ChatGPT",
+    ):
+        if readme_token not in dev_readme:
+            fail(f"dev-workspace README must state {readme_token}")
+    for secret_token in (
+        "Authentication is required per user",
+        "do not bake API tokens",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GITHUB_TOKEN",
+        "CODE_SERVER_PASSWORD",
+    ):
+        if secret_token not in dev_readme:
+            fail(f"dev-workspace README must document per-user auth token {secret_token}")
+    ok("dev-workspace exposes pdocker management helpers, paths, guarded Engine wrappers, and tasks")
 
     llama = templates["llama-cpp-gpu"]
     llama_root = ASSETS / llama["assetPath"]
@@ -166,6 +289,191 @@ def main() -> int:
         if not passed:
             fail(name)
     ok("llama-cpp-gpu template has compose, Dockerfile, GPU profile, and server entrypoint")
+
+    ros = templates["ros2-humble-rviz-novnc"]
+    ros_root = ASSETS / ros["assetPath"]
+    ros_compose = read(ros_root / ros["compose"])
+    ros_dockerfile = read(ros_root / ros["dockerfile"])
+    ros_start = read(ros_root / "scripts" / "start-ros2-rviz-novnc.sh")
+    ros_readme = read(ros_root / "README.md")
+    ros_combined = ros_compose + ros_dockerfile + ros_start + ros_readme
+
+    ros_expectations = {
+        "ros template metadata": ros.get("category") == "robotics"
+        and ros.get("gpu") == "none"
+        and "rviz" in ros.get("features", [])
+        and "novnc" in ros.get("features", []),
+        "ros compose service shortcut comment": "# pdocker.service-url: 18082=noVNC RViz" in ros_compose,
+        "ros compose avoids existing browser ports": "18080:" not in ros_compose and "18081:" not in ros_compose,
+        "ros compose noVNC port": "18082:6080" in ros_compose,
+        "ros compose VNC port": "15900:5900" in ros_compose,
+        "ros compose workspace volume": "./workspace:/workspace" in ros_compose,
+        "ros compose explicit GL backend defaults": 'PDOCKER_GL_BACKEND: "${PDOCKER_GL_BACKEND:-llvmpipe}"' in ros_compose
+        and 'LIBGL_ALWAYS_SOFTWARE: "${LIBGL_ALWAYS_SOFTWARE:-1}"' in ros_compose
+        and 'GALLIUM_DRIVER: "${GALLIUM_DRIVER:-llvmpipe}"' in ros_compose
+        and "MESA_LOADER_DRIVER_OVERRIDE" in ros_compose,
+        "ros Dockerfile Ubuntu 22.04": "FROM ubuntu:22.04" in ros_dockerfile,
+        "ros Dockerfile apt-based ROS repository": "packages.ros.org/ros2/ubuntu" in ros_dockerfile
+        and "ros-archive-keyring.gpg" in ros_dockerfile,
+        "ros Dockerfile Humble desktop/RViz": "ros-humble-desktop" in ros_dockerfile
+        and "ros-humble-rviz2" in ros_dockerfile,
+        "ros Dockerfile Xvnc/noVNC packages": "tigervnc-standalone-server" in ros_dockerfile
+        and "novnc" in ros_dockerfile
+        and "websockify" in ros_dockerfile,
+        "ros Dockerfile software rendering env": "PDOCKER_GL_BACKEND=llvmpipe" in ros_dockerfile
+        and "LIBGL_ALWAYS_SOFTWARE=1" in ros_dockerfile
+        and "GALLIUM_DRIVER=llvmpipe" in ros_dockerfile
+        and "QT_X11_NO_MITSHM=1" in ros_dockerfile,
+        "ros Dockerfile exposed ports": "EXPOSE 6080 5900" in ros_dockerfile,
+        "ros Dockerfile healthcheck": "HEALTHCHECK" in ros_dockerfile
+        and "http://127.0.0.1:6080/vnc.html" in ros_dockerfile
+        and "pgrep -x Xvnc" in ros_dockerfile
+        and "pgrep -x rviz2" in ros_dockerfile,
+        "ros start sources ROS setup": "/opt/ros/${ROS_DISTRO:-humble}/setup.bash" in ros_start,
+        "ros start launches Xvnc": "Xvnc \"$display\"" in ros_start
+        and "-SecurityTypes None" in ros_start,
+        "ros start launches XFCE": "startxfce4" in ros_start,
+        "ros start launches RViz": "rviz2 \"${rviz_args[@]}\"" in ros_start
+        and "RVIZ_CONFIG" in ros_start,
+        "ros start launches noVNC via websockify": "websockify --web" in ros_start
+        and "0.0.0.0:${novnc_port}" in ros_start,
+        "ros start logs explicit GL backend": 'PDOCKER_GL_BACKEND="${PDOCKER_GL_BACKEND:-llvmpipe}"' in ros_start
+        and "pdocker GL backend: PDOCKER_GL_BACKEND=llvmpipe (Mesa llvmpipe software rendering)" in ros_start
+        and "pdocker GL backend: PDOCKER_GL_BACKEND=zink-experimental (future Mesa Zink path; acceleration is not validated by this template)" in ros_start
+        and "Unsupported PDOCKER_GL_BACKEND" in ros_start,
+        "ros start records OpenGL diagnostics": "glxinfo -B" in ros_start
+        and "OpenGL diagnostics" in ros_start
+        and "tee -a \"$glxinfo_log\"" in ros_start,
+        "ros logs stream to stdout": "tee -a \"$vnc_log\"" in ros_start
+        and "tee -a \"$xfce_log\"" in ros_start
+        and "tee -a \"$rviz_log\"" in ros_start
+        and "tee -a \"$glxinfo_log\"" in ros_start
+        and "tee -a \"$novnc_log\"" in ros_start,
+        "ros docs identify access ports": "18082" in ros_readme and "15900" in ros_readme,
+        "ros docs document explicit GL backend": "PDOCKER_GL_BACKEND=llvmpipe" in ros_readme
+        and "PDOCKER_GL_BACKEND=zink-experimental" in ros_readme
+        and "does not claim Vulkan/Zink acceleration works" in ros_readme,
+        "ros template avoids llama bridge tokens": "llama" not in ros_combined.lower()
+        and "PDOCKER_VULKAN" not in ros_combined
+        and "CUDA" not in ros_combined,
+    }
+    for name, passed in ros_expectations.items():
+        if not passed:
+            fail(name)
+    ok("ros2-humble-rviz-novnc template has Compose, Dockerfile, RViz, Xvnc/noVNC, logs, and healthcheck")
+
+    blender = templates["blender-xvnc-novnc"]
+    blender_root = ASSETS / blender["assetPath"]
+    blender_compose = read(blender_root / blender["compose"])
+    blender_dockerfile = read(blender_root / blender["dockerfile"])
+    blender_start = read(blender_root / "scripts" / "start-blender-xvnc-novnc.sh")
+    blender_readme = read(blender_root / "README.md")
+    blender_workspace_readme = read(blender_root / "workspace" / "README.md")
+    blender_combined = (
+        blender_compose
+        + blender_dockerfile
+        + blender_start
+        + blender_readme
+        + blender_workspace_readme
+    )
+
+    blender_metadata = " ".join(
+        [
+            blender.get("name", ""),
+            blender.get("category", ""),
+            blender.get("description", ""),
+            " ".join(blender.get("features", [])),
+        ]
+    ).lower()
+    blender_metadata_expectations = {
+        token: token in blender_metadata
+        for token in (
+            "blender",
+            "opengl",
+            "glsl",
+            "xvnc",
+            "novnc",
+            "llvmpipe",
+            "zink",
+            "vulkan",
+        )
+    }
+    for token, passed in blender_metadata_expectations.items():
+        if not passed:
+            fail(f"blender template metadata must mention {token}")
+
+    blender_expectations = {
+        "blender template metadata": blender.get("category") == "graphics"
+        and blender.get("gpu") == "future-vulkan-zink",
+        "blender compose service shortcut comment": "# pdocker.service-url: 18083=noVNC Blender" in blender_compose,
+        "blender compose avoids existing browser ports": "18080:" not in blender_compose
+        and "18081:" not in blender_compose
+        and "18082:" not in blender_compose,
+        "blender compose noVNC port": "18083:6080" in blender_compose,
+        "blender compose VNC port": "15901:5901" in blender_compose,
+        "blender compose workspace volume": "./workspace:/workspace" in blender_compose,
+        "blender compose software defaults": 'LIBGL_ALWAYS_SOFTWARE: "${LIBGL_ALWAYS_SOFTWARE:-1}"' in blender_compose
+        and 'GALLIUM_DRIVER: "${GALLIUM_DRIVER:-llvmpipe}"' in blender_compose
+        and 'PDOCKER_GL_BACKEND: "${PDOCKER_GL_BACKEND:-llvmpipe}"' in blender_compose
+        and 'PDOCKER_GRAPHICS_MODE: "${PDOCKER_GRAPHICS_MODE:-software}"' in blender_compose,
+        "blender compose future Vulkan/Zink switches": "PDOCKER_ZINK_EXPERIMENTAL" in blender_compose
+        and "PDOCKER_VULKAN_ICD_FILENAMES" in blender_compose
+        and "VK_ICD_FILENAMES" in blender_compose
+        and "MESA_LOADER_DRIVER_OVERRIDE" in blender_compose,
+        "blender Dockerfile Ubuntu 24.04": "FROM ubuntu:24.04" in blender_dockerfile,
+        "blender Dockerfile installs Blender": "blender" in blender_dockerfile,
+        "blender Dockerfile Xvnc/noVNC packages": "tigervnc-standalone-server" in blender_dockerfile
+        and "novnc" in blender_dockerfile
+        and "websockify" in blender_dockerfile,
+        "blender Dockerfile lightweight window manager": "openbox" in blender_dockerfile,
+        "blender Dockerfile Mesa diagnostics": "mesa-utils" in blender_dockerfile
+        and "mesa-vulkan-drivers" in blender_dockerfile
+        and "vulkan-tools" in blender_dockerfile,
+        "blender Dockerfile software rendering env": "LIBGL_ALWAYS_SOFTWARE=1" in blender_dockerfile
+        and "GALLIUM_DRIVER=llvmpipe" in blender_dockerfile
+        and "PDOCKER_GL_BACKEND=llvmpipe" in blender_dockerfile,
+        "blender Dockerfile exposed ports": "EXPOSE 6080 5901" in blender_dockerfile,
+        "blender Dockerfile healthcheck": "HEALTHCHECK" in blender_dockerfile
+        and "http://127.0.0.1:6080/vnc.html" in blender_dockerfile
+        and "pgrep -x Xvnc" in blender_dockerfile
+        and "pgrep -x blender" in blender_dockerfile,
+        "blender start launches Xvnc": "Xvnc \"$display\"" in blender_start
+        and "-SecurityTypes None" in blender_start,
+        "blender start launches Openbox": "openbox-session" in blender_start,
+        "blender start launches Blender": "blender \"${blender_args[@]}\"" in blender_start
+        and "BLENDER_STARTUP_FILE" in blender_start
+        and "BLENDER_EXTRA_ARGS" in blender_start,
+        "blender start launches noVNC via websockify": "websockify --web" in blender_start
+        and "0.0.0.0:${novnc_port}" in blender_start,
+        "blender start records OpenGL diagnostics": "glxinfo -B" in blender_start
+        and "OpenGL/GLSL diagnostics" in blender_start,
+        "blender start logs explicit GL backend": 'PDOCKER_GL_BACKEND="${PDOCKER_GL_BACKEND:-llvmpipe}"' in blender_start
+        and "pdocker GL backend: PDOCKER_GL_BACKEND=llvmpipe (Mesa llvmpipe software rendering)" in blender_start
+        and "pdocker GL backend: PDOCKER_GL_BACKEND=zink-experimental (future Mesa Zink path; acceleration is not validated by this template)" in blender_start
+        and "Unsupported PDOCKER_GL_BACKEND" in blender_start,
+        "blender start exposes future Zink/Vulkan switches without claim": "PDOCKER_ZINK_EXPERIMENTAL=1 exposes Mesa Zink/Vulkan env switches for future validation only" in blender_start
+        and "acceleration is not validated by this template" in blender_start,
+        "blender logs stream to stdout": "tee -a \"$vnc_log\"" in blender_start
+        and "tee -a \"$openbox_log\"" in blender_start
+        and "tee -a \"$glxinfo_log\"" in blender_start
+        and "tee -a \"$blender_log\"" in blender_start
+        and "tee -a \"$novnc_log\"" in blender_start,
+        "blender docs identify access ports": "18083" in blender_readme and "15901" in blender_readme,
+        "blender docs document software defaults": "LIBGL_ALWAYS_SOFTWARE=1" in blender_readme
+        and "GALLIUM_DRIVER=llvmpipe" in blender_readme
+        and "PDOCKER_GL_BACKEND=llvmpipe" in blender_readme
+        and "Mesa software rendering" in blender_readme,
+        "blender docs document future Zink/Vulkan caveat": "Future Zink/pdocker Vulkan validation" in blender_readme
+        and "PDOCKER_GL_BACKEND=zink-experimental" in blender_readme
+        and "does not claim Vulkan/Zink acceleration works" in blender_readme,
+        "blender workspace notes graphics assets": "GLSL/OpenGL" in blender_workspace_readme,
+        "blender template avoids llama bridge tokens": "llama" not in blender_combined.lower()
+        and "CUDA" not in blender_combined,
+    }
+    for name, passed in blender_expectations.items():
+        if not passed:
+            fail(name)
+    ok("blender-xvnc-novnc template has Compose, Dockerfile, Blender, Xvnc/noVNC, logs, healthcheck, llvmpipe defaults, and future Zink/Vulkan switches")
     return 0
 
 

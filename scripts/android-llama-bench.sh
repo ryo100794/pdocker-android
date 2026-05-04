@@ -57,7 +57,7 @@ trap 'rm -rf "$TMP"; "$ADB" forward --remove "tcp:'"$LOCAL_PORT"'" >/dev/null 2>
 "$ADB" forward "tcp:$LOCAL_PORT" "tcp:$REMOTE_PORT" >/dev/null
 
 BASE_URL="http://127.0.0.1:$LOCAL_PORT"
-if ! curl -fsS --max-time 5 "$BASE_URL/" >/dev/null; then
+if ! curl -fsS --max-time 15 "$BASE_URL/v1/models" >/dev/null; then
   echo "llama.cpp server is not reachable at $BASE_URL; start compose first" >&2
   exit 1
 fi

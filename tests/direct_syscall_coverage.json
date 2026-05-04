@@ -1,0 +1,266 @@
+{
+  "schema": 1,
+  "required_areas": [
+    "file_path_open_stat_access_getcwd",
+    "cwd_length",
+    "exec_argv_rootfs_resolution",
+    "socket_unix_path_rewrite",
+    "numa_policy_fallbacks",
+    "pid_identity_reconcile",
+    "tty_pty_exec",
+    "wait_exit_signal_raw_code",
+    "cow_path_operations"
+  ],
+  "coverage": [
+    {
+      "id": "direct.path.xattr-rootfs-rewrite",
+      "tier": "fast-static",
+      "areas": ["file_path_open_stat_access_getcwd", "cow_path_operations"],
+      "syscalls": [
+        "setxattr",
+        "lsetxattr",
+        "getxattr",
+        "lgetxattr",
+        "listxattr",
+        "llistxattr",
+        "removexattr",
+        "lremovexattr"
+      ],
+      "contract": "Path xattr calls stay inside the materialized rootfs or a declared bind path, and libcow copy-up preserves optional xattrs before metadata mutation.",
+      "fast_check": "Static verifier checks the direct rewrite switch and libcow xattr interceptors.",
+      "heavy_case": "android.direct.path-metadata"
+    },
+    {
+      "id": "direct.path.create-remove-rename",
+      "tier": "fast-static",
+      "areas": ["file_path_open_stat_access_getcwd", "cow_path_operations"],
+      "syscalls": ["mknodat", "mkdirat", "unlinkat", "renameat", "renameat2"],
+      "contract": "Create, remove, and rename path arguments are rewritten from guest absolute paths to rootfs or bind host paths before the kernel sees them.",
+      "fast_check": "Static verifier checks path-rewrite coverage entries.",
+      "heavy_case": "android.direct.path-mutation"
+    },
+    {
+      "id": "direct.path.link-symlink-readlink",
+      "tier": "fast-static",
+      "areas": ["file_path_open_stat_access_getcwd", "cow_path_operations", "exec_argv_rootfs_resolution"],
+      "syscalls": ["symlinkat", "linkat", "readlinkat"],
+      "contract": "Symlink/link paths are mediated; linkat can copy regular files across Android boundaries, apt runtime symlink creation is emulated, and /proc/self/exe readlink reports the guest exec path.",
+      "fast_check": "Static verifier checks linkat/symlinkat emulation and /proc/self/exe handling.",
+      "heavy_case": "android.direct.proc-exe-and-links"
+    },
+    {
+      "id": "direct.path.open-stat-access-cwd",
+      "tier": "fast-static",
+      "areas": ["file_path_open_stat_access_getcwd", "cwd_length", "cow_path_operations"],
+      "syscalls": [
+        "getcwd",
+        "statfs",
+        "faccessat",
+        "chdir",
+        "fchmodat",
+        "fchownat",
+        "fchown",
+        "openat",
+        "close",
+        "newfstatat",
+        "utimensat",
+        "name_to_handle_at",
+        "statx",
+        "openat2",
+        "faccessat2"
+      ],
+      "contract": "Open/stat/access/cwd syscalls resolve against guest rootfs state, report guest cwd, preserve ERANGE for short getcwd buffers, and protect the internal rootfs fd from tracee close.",
+      "fast_check": "Static verifier checks getcwd emulation, ERANGE path, faccess emulation, rootfd close emulation, and rewrite table coverage.",
+      "heavy_case": "android.direct.path-open-stat-access-cwd"
+    },
+    {
+      "id": "direct.exec.loader-argv-rootfs",
+      "tier": "fast-static",
+      "areas": ["exec_argv_rootfs_resolution"],
+      "syscalls": ["execve", "execveat"],
+      "contract": "Exec paths resolve under rootfs or PATH, scripts route through their interpreter, argv is rebuilt for the bundled loader, and state tracks the guest executable path.",
+      "fast_check": "Static verifier checks loader argv rebuild markers and rootfs exec path tracking.",
+      "heavy_case": "android.direct.exec-argv-rootfs"
+    },
+    {
+      "id": "direct.socket.unix-connect-rewrite",
+      "tier": "fast-static",
+      "areas": ["socket_unix_path_rewrite"],
+      "syscalls": ["connect"],
+      "contract": "AF_UNIX connect sockaddr paths that name guest absolute paths are rewritten to rootfs or bind host paths, with sockaddr length updated. AF_UNIX bind rewrite is currently a planned network hook rather than an active direct-exec hook.",
+      "fast_check": "Static verifier checks rewrite_unix_sockaddr_arg and records the bind gap explicitly.",
+      "heavy_case": "android.direct.unix-socket-connect"
+    },
+    {
+      "id": "direct.credentials.identity-emulation",
+      "tier": "fast-static",
+      "areas": ["pid_identity_reconcile"],
+      "syscalls": [
+        "setregid",
+        "setgid",
+        "setreuid",
+        "setuid",
+        "setresuid",
+        "getresuid",
+        "setresgid",
+        "getresgid",
+        "setfsuid",
+        "setfsgid",
+        "setgroups",
+        "getuid",
+        "geteuid",
+        "getgid",
+        "getegid"
+      ],
+      "contract": "Container-root credential calls are answered from tracee state without changing Android app credentials, and pid reconciliation rejects reused host pids before restart.",
+      "fast_check": "Static verifier checks credential emulation hooks and existing runtime-contract pid identity tests.",
+      "heavy_case": "android.direct.pid-and-credentials"
+    },
+    {
+      "id": "direct.blocked-startup-fallbacks",
+      "tier": "fast-static",
+      "areas": ["numa_policy_fallbacks"],
+      "syscalls": [
+        "set_robust_list",
+        "rseq",
+        "io_uring_setup",
+        "io_uring_enter",
+        "io_uring_register",
+        "clone3",
+        "close_range"
+      ],
+      "contract": "Android-blocked startup/probe syscalls return deterministic Linux-compatible fallback errno values so glibc, libuv, and runtime probes continue through portable paths.",
+      "fast_check": "Static verifier checks seccomp errno hooks and userland completion suppression.",
+      "heavy_case": "android.direct.startup-fallbacks"
+    },
+    {
+      "id": "direct.numa-policy-enosys",
+      "tier": "fast-static",
+      "areas": ["numa_policy_fallbacks"],
+      "syscalls": [
+        "mbind",
+        "get_mempolicy",
+        "set_mempolicy",
+        "migrate_pages",
+        "move_pages",
+        "set_mempolicy_home_node"
+      ],
+      "contract": "NUMA policy calls blocked by Android app seccomp return ENOSYS, matching kernels without NUMA support and allowing OpenBLAS/llama.cpp style callers to fall back.",
+      "fast_check": "Static verifier checks the NUMA range and explicit home-node fallback.",
+      "heavy_case": "android.direct.numa-fallback"
+    }
+  ],
+  "non_syscall_contracts": [
+    {
+      "id": "direct.pty.exec-wait-status",
+      "tier": "fast-static",
+      "areas": ["tty_pty_exec", "wait_exit_signal_raw_code"],
+      "sources": ["app/src/main/cpp/pty.c", "app/src/main/cpp/pdocker_direct_exec.c"],
+      "contract": "PTY sessions use forkpty plus execve, expose resize/read/write, and return either WEXITSTATUS or negative WTERMSIG; the direct tracer returns 128+signal for signaled root tracees.",
+      "heavy_case": "android.direct.tty-pty-exec"
+    },
+    {
+      "id": "direct.pid.reconcile-runtime-state",
+      "tier": "fast-static",
+      "areas": ["pid_identity_reconcile"],
+      "sources": ["docker-proot-setup/scripts/verify_runtime_contract.py"],
+      "contract": "Container start reconciles a verified live pid and rejects stale pid reuse using recorded process start time.",
+      "heavy_case": "android.direct.pid-and-credentials"
+    },
+    {
+      "id": "direct.cow.copy-up-path-ops",
+      "tier": "fast-local",
+      "areas": ["cow_path_operations"],
+      "sources": ["docker-proot-setup/src/overlay/libcow.c", "docker-proot-setup/src/overlay/test_cow.sh"],
+      "contract": "libcow covers open/openat/creat/truncate/fopen, chmod/chown/utime/xattr, fd metadata, close, and dup lifecycle copy-up behavior.",
+      "heavy_case": "host.local.libcow"
+    }
+  ],
+  "heavy_cases": [
+    {
+      "id": "android.direct.path-open-stat-access-cwd",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir /work -- /bin/sh -lc \\\"pwd; test -r /etc/passwd; stat /etc/passwd; python3 - <<PY\\nimport os\\ntry: os.getcwd()\\nexcept OSError as e: print(e.errno)\\nPY\\\"'\"",
+      "runnable": true,
+      "checks": "Guest paths in logs remain under rootfs/binds; getcwd returns guest cwd and ERANGE for too-small buffers; open/stat/access errno values match Linux."
+    },
+    {
+      "id": "android.direct.path-metadata",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"set -eu; p=/tmp/pdocker-direct-meta; rm -f \\\\\\$p; : > \\\\\\$p; chmod 600 \\\\\\$p; touch -m \\\\\\$p; chown 0:0 \\\\\\$p 2>/dev/null || true; python3 - <<PY\\nimport os\\np=\\\\\\\"/tmp/pdocker-direct-meta-py\\\\\\\"\\nopen(p,\\\\\\\"w\\\\\\\").close()\\nos.chmod(p,0o640)\\nos.utime(p,(123456789,123456790))\\ntry: os.setxattr(p,b\\\\\\\"user.pdocker\\\\\\\",b\\\\\\\"ok\\\\\\\")\\nexcept (AttributeError,OSError) as e: print(\\\\\\\"xattr_skip\\\\\\\", getattr(e,\\\\\\\"errno\\\\\\\",None))\\nelse: assert os.getxattr(p,b\\\\\\\"user.pdocker\\\\\\\") == b\\\\\\\"ok\\\\\\\"\\nassert oct(os.stat(p).st_mode & 0o777) == \\\\\\\"0o640\\\\\\\"\\nprint(\\\\\\\"metadata_ok\\\\\\\")\\nPY\\\"'\"",
+      "runnable": true,
+      "checks": "No Android host paths leak into trace logs; metadata changes are visible only through the guest path."
+    },
+    {
+      "id": "android.direct.path-mutation",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"set -eu; d=/tmp/pdocker-direct-mut; rm -rf \\\\\\$d; mkdir -p \\\\\\$d/a; : > \\\\\\$d/a/file; mv \\\\\\$d/a/file \\\\\\$d/renamed; test -f \\\\\\$d/renamed; rm \\\\\\$d/renamed; rmdir \\\\\\$d/a; python3 - <<PY\\nimport ctypes, errno, os\\nlibc=ctypes.CDLL(None, use_errno=True)\\nAT_FDCWD=-100; SYS_openat2=437; SYS_name_to_handle_at=264\\nclass OpenHow(ctypes.Structure):\\n    _fields_=[(\\\\\\\"flags\\\\\\\",ctypes.c_ulonglong),(\\\\\\\"mode\\\\\\\",ctypes.c_ulonglong),(\\\\\\\"resolve\\\\\\\",ctypes.c_ulonglong)]\\nhow=OpenHow(0,0,0)\\nrc=libc.syscall(SYS_openat2, AT_FDCWD, b\\\\\\\"/tmp/pdocker-direct-mut\\\\\\\", ctypes.byref(how), ctypes.sizeof(how))\\nif rc >= 0: os.close(rc)\\nelse: assert ctypes.get_errno() in (errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.EACCES, errno.ENOENT)\\nrc=libc.syscall(SYS_name_to_handle_at, AT_FDCWD, b\\\\\\\"/tmp/pdocker-direct-mut\\\\\\\", 0, 0, 0)\\nassert rc == -1\\nassert ctypes.get_errno() in (errno.EFAULT, errno.ENOSYS, errno.EOPNOTSUPP, errno.EPERM, errno.ENOENT)\\nprint(\\\\\\\"mutation_ok\\\\\\\")\\nPY\\\"'\"",
+      "runnable": true,
+      "checks": "Mutations land under the guest rootfs or declared bind target; unsupported probes return documented errno."
+    },
+    {
+      "id": "android.direct.proc-exe-and-links",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"set -eu; exe=\\\\\\$(readlink /proc/self/exe); test \\\\\\\"\\\\\\$exe\\\\\\\" = /bin/sh; d=/tmp/pdocker-direct-links; rm -rf \\\\\\$d; mkdir -p \\\\\\$d; echo ok > \\\\\\$d/src; ln \\\\\\$d/src \\\\\\$d/hard; ln -s src \\\\\\$d/sym; test \\\\\\\"\\\\\\$(cat \\\\\\$d/hard)\\\\\\\" = ok; test \\\\\\\"\\\\\\$(readlink \\\\\\$d/sym)\\\\\\\" = src; echo proc_links_ok\\\"'\"",
+      "runnable": true,
+      "checks": "/proc/self/exe reports the guest executable; link/symlink emulations preserve guest-visible behavior."
+    },
+    {
+      "id": "android.direct.exec-argv-rootfs",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_EXEC=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / --env PATH=/tmp:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin -- /bin/sh -lc \\\"set -eu; cat > /tmp/pdocker-argv-probe <<SH\\n#!/bin/sh\\necho script_ok\\nSH\\nchmod +x /tmp/pdocker-argv-probe; /bin/echo absolute_ok | grep absolute_ok; pdocker-argv-probe alpha beta | grep script_ok; /tmp/pdocker-argv-probe gamma delta | grep script_ok\\\"'\"",
+      "runnable": true,
+      "checks": "argv[0], interpreter arguments, and process output match guest expectations; no rootfs binary is execve'd directly from app data."
+    },
+    {
+      "id": "android.direct.unix-socket-connect",
+      "tier": "heavy-android",
+      "command": "Create a host-side AF_UNIX socket bind exposed as a guest bind path, then connect from a direct-runtime process to the guest socket path.",
+      "runnable": false,
+      "checks": "connect(AF_UNIX) succeeds through the rewritten host path; active bind rewrite remains documented as planned unless a bind hook is added."
+    },
+    {
+      "id": "android.direct.pid-and-credentials",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"python3 - <<PY\\nimport os, sys\\nassert os.getuid() == 0 and os.geteuid() == 0\\nos.setuid(123)\\nassert os.getuid() == 123 and os.geteuid() == 123\\nif hasattr(os, \\\\\\\"getresuid\\\\\\\"): assert os.getresuid() == (123,123,123)\\npid=os.fork()\\nif pid == 0:\\n    assert os.getuid() == 123\\n    os._exit(0)\\n_, status = os.waitpid(pid, 0)\\nassert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0\\nprint(\\\\\\\"pid_credentials_ok\\\\\\\")\\nPY\\\"'\"",
+      "runnable": true,
+      "checks": "Credential calls report container-root state and forked tracees inherit credential state; reused pid rejection remains covered by the fast runtime-contract verifier."
+    },
+    {
+      "id": "android.direct.startup-fallbacks",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"python3 - <<PY\\nimport ctypes, errno\\nlibc=ctypes.CDLL(None, use_errno=True)\\ndef call(n,*args):\\n    ctypes.set_errno(0); rc=libc.syscall(n,*args); return rc, ctypes.get_errno()\\nfor nr in (425,426,427,435,436):\\n    rc,err=call(nr,0,0,0,0,0,0)\\n    assert rc == -1 and err == errno.ENOSYS, (nr,rc,err)\\nfor nr in (99,293):\\n    rc,err=call(nr,0,0,0,0,0,0)\\n    assert rc in (0,-1), (nr,rc,err)\\nprint(\\\\\\\"startup_fallbacks_ok\\\\\\\")\\nPY\\\"'\"",
+      "runnable": true,
+      "checks": "Fallback syscalls return ENOSYS or the documented success emulation without SIGSYS leakage."
+    },
+    {
+      "id": "android.direct.numa-fallback",
+      "tier": "heavy-android",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"python3 - <<PY\\nimport ctypes, errno\\nlibc=ctypes.CDLL(None, use_errno=True)\\nfor nr in (235,236,237,238,239,450):\\n    ctypes.set_errno(0)\\n    rc=libc.syscall(nr,0,0,0,0,0,0)\\n    assert rc == -1 and ctypes.get_errno() == errno.ENOSYS, (nr,rc,ctypes.get_errno())\\nprint(\\\\\\\"numa_enosys_ok\\\\\\\")\\nPY\\\"'\"",
+      "runnable": true,
+      "checks": "Every NUMA policy syscall returns ENOSYS under direct runtime."
+    },
+    {
+      "id": "android.direct.tty-pty-exec",
+      "tier": "heavy-android",
+      "command": "Run docker exec -it or the APK terminal PTY path, resize, exit 7, then terminate by signal.",
+      "runnable": false,
+      "checks": "PTY read/write/resize works; normal exits return raw code; signaled processes report the documented signal-coded result."
+    },
+    {
+      "id": "host.local.libcow",
+      "tier": "fast-local",
+      "command": "make -C docker-proot-setup/src/overlay && bash docker-proot-setup/src/overlay/test_cow.sh",
+      "runnable": true,
+      "checks": "Hardlink copy-up protects lower files across writes, metadata, fd operations, and optional xattrs."
+    }
+  ],
+  "known_gaps": [
+    {
+      "id": "direct.socket.unix-bind-rewrite",
+      "area": "socket_unix_path_rewrite",
+      "status": "planned",
+      "reason": "pdocker_direct_exec.c currently hooks connect(AF_UNIX) path rewriting. Network docs still mark bind syscall rewrite as planned for port publishing."
+    }
+  ]
+}

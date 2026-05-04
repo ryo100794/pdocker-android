@@ -51,7 +51,17 @@ done
 
 mkdir -p "$(dirname "$OUT")"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"; "$ADB" forward --remove "tcp:'"$LOCAL_PORT"'" >/dev/null 2>&1 || true' EXIT
+CURRENT_STAGE="initializing"
+
+cleanup() {
+  local status="$?"
+  if [[ "$status" -ne 0 ]]; then
+    operation_notify "failed" "$CURRENT_STAGE failed with exit code $status" 1 >/dev/null 2>&1 || true
+  fi
+  rm -rf "$TMP"
+  "$ADB" forward --remove "tcp:$LOCAL_PORT" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 remote_quote() {
   printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
@@ -130,6 +140,7 @@ bench_http() {
 }
 
 echo "[pdocker llama compare] start CPU baseline"
+CURRENT_STAGE="CPU baseline"
 operation_notify "running" "CPU baseline: starting"
 start_cpu >/dev/null
 if ! wait_server 90; then
@@ -143,6 +154,7 @@ CPU_JSON="$TMP/cpu.json"
 bench_http "cpu-baseline" "$CPU_JSON" >/dev/null
 
 echo "[pdocker llama compare] start forced Vulkan run"
+CURRENT_STAGE="forced Vulkan"
 operation_notify "running" "CPU baseline complete; forced Vulkan model load starting"
 start_gpu >/dev/null
 GPU_LOG="$TMP/gpu.log"
@@ -189,6 +201,9 @@ evidence = {
     "buffer_range_assert_blocker": "ggml_backend_buffer_get_alloc_size" in log,
     "gpu_model_buffer_seen": "Vulkan0 model buffer size" in log,
     "generic_spirv_dispatch_seen": '"kernel":"generic_spirv"' in log and '"valid":true' in log,
+    "executor_spirv_trace_seen": "pdocker-gpu-executor: SPIR-V trace" in log,
+    "executor_feature_trace_seen": "pdocker-gpu-executor: Android Vulkan features" in log,
+    "android_vulkan_dispatch_blocker": '"backend_impl":"android_vulkan"' in log and '"error":"submit-generic-dispatch"' in log,
     "queue_submit_blocker": "vk::Queue::submit: ErrorFeatureNotPresent" in log,
     "spirv_dispatch_blocker": "real SPIR-V dispatch is not lowered yet" in log or "vk::Queue::submit: ErrorFeatureNotPresent" in log,
 }
@@ -235,12 +250,20 @@ result = {
         "target_tokens_per_second": target_tps,
         "target_met": bool(cpu_tps and gpu_tps >= target_tps),
     },
+    "operation": {
+        "kind": "llama-gpu-compare",
+        "ui_surface": "Overview daemon operation/progress card",
+        "container_surface": "pdocker-llama-cpp remains the container shown by docker ps",
+        "cleanup": "remove adb port forward, mark failed operation on nonzero exit, restore CPU server unless --no-restore is passed",
+    },
     "next_blocker": (
         "fix Vulkan buffer base/range accounting for scheduler warmup"
         if evidence["buffer_range_assert_blocker"]
         else
         "split 4GiB+ Vulkan buffers / pinned host-buffer path"
         if evidence["buffer_allocation_blocker"] or evidence["assert_blocker"]
+        else "inspect traced Android Vulkan feature/SPIR-V mismatch"
+        if evidence["android_vulkan_dispatch_blocker"] and evidence["executor_spirv_trace_seen"]
         else "lower llama.cpp SPIR-V dispatch into the Android GPU executor"
         if evidence["spirv_dispatch_blocker"] or evidence["queue_submit_blocker"]
         else "reduce bridge upload/copy overhead and benchmark with larger n_predict"
@@ -260,8 +283,11 @@ import sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 print(
     f"CPU {d['cpu']['tokens_per_second']:.3f} tok/s; "
+    f"GPU {d['gpu']['tokens_per_second']:.3f} tok/s; "
     f"GPU served={str(d['gpu']['served']).lower()}; "
     f"speedup {d['comparison']['speedup']:.2f}x; "
+    f"target_met={str(d['comparison']['target_met']).lower()}; "
+    f"gpu_layers={d['settings']['gpu_layers']}; "
     f"next: {d['next_blocker']}"
 )
 PY
@@ -274,11 +300,17 @@ run_as "mkdir -p files/pdocker/bench && cp /data/local/tmp/$DEVICE_NAME files/pd
 
 if [[ "$RESTORE_CPU" -eq 1 ]]; then
   echo "[pdocker llama compare] restore CPU server"
+  CURRENT_STAGE="restore CPU server"
   operation_notify "running" "Restoring CPU llama server"
   start_cpu >/dev/null
   wait_server 90 >/dev/null || true
 fi
 
-operation_notify "done" "$SUMMARY; CPU server restored" 1
+CURRENT_STAGE="complete"
+if [[ "$RESTORE_CPU" -eq 1 ]]; then
+  operation_notify "done" "$SUMMARY; CPU server restored" 1
+else
+  operation_notify "done" "$SUMMARY; CPU server left in last compare mode (--no-restore)" 1
+fi
 echo "[pdocker llama compare] local: $OUT"
 echo "[pdocker llama compare] device: files/pdocker/bench/$DEVICE_NAME"

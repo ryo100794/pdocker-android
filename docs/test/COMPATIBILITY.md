@@ -1,6 +1,6 @@
 # Docker compatibility audit
 
-Snapshot date: 2026-05-01.
+Snapshot date: 2026-05-04.
 
 This document is the repeatable compatibility record for pdocker-android and
 the `docker-proot-setup` backend. Compatibility here means three layers:
@@ -93,14 +93,13 @@ records the reusable offline/API/APK/license/UI/GPU design checks. APK payload
 checks require that upstream Docker CLI and Docker Compose plugin binaries are
 absent from the shipped app; those tools are test-only compatibility aids.
 
-Latest Android Wi-Fi ADB quick smoke on `10.10.246.77:45033` passes:
-`docker version` negotiates with pdockerd API 1.43 and the staged native
-`pdocker-direct` helper reports `pdocker-direct-executor:1` with
-`process-exec=0`. The full Android smoke is intentionally recorded as failing
-today: Dockerfile `RUN` stops after base layer materialization because the
-direct helper does not advertise `process-exec=1` yet. This keeps Compose and
-Dockerfile behavior honest instead of routing commands through the Android host
-shell or a fake listener.
+Latest Android device evidence supersedes the earlier helper-gate failure:
+the compat direct backend advertises `process-exec=1`, tiny direct
+build/compose smoke passes, and the default VS Code/Codex/Continue workspace
+has been built and started on SOG15 with the real code-server listener
+responding on `127.0.0.1:18080`. The next compatibility queue is to make that
+listener evidence repeatable in UI/device health checks, tied to the current
+Engine container ID and logs rather than name guesses or job metadata.
 
 Recent focused backend smoke checks also passed for a small Dockerfile build, a
 multi-step RUN/COPY/RUN Dockerfile build, and `docker compose up -d --build` /
@@ -114,11 +113,11 @@ suite and should be recorded separately when it is run to completion.
 | Engine API negotiation | Good | `/_ping`, `/version`, `/info`, API prefix stripping, and `Api-Version` response headers are implemented. |
 | Image pull/list/inspect/delete | Good | Pull uses `crane export`; public registries work, private registry auth is not complete. |
 | Image save/load | Partial | Docker-style tar exchange works for the implemented flattened image format. Multi-platform indexes, zstd layers, and all OCI edge cases are not complete. |
-| Container create/start/stop/kill/wait/rm | Good | Implemented through the Android direct userspace runner and state files. No cgroups or namespaces. |
+| Container create/start/stop/kill/wait/rm | Good | Implemented through the Android direct userspace runner and state files. No cgroups or namespaces. Project/UI reconciliation still needs to rely on Engine container IDs plus pdocker labels rather than container names. |
 | Logs/attach/exec | Partial | Raw stream and hijack paths exist. Non-TTY exec works, and Android smoke covers a basic Engine `exec` with `Tty=true`. Full Docker attach parity, `docker run -t`, detach-key behavior, resize propagation, and broad interactive terminal cases still need more coverage. |
 | `docker cp` archive API | Partial | HEAD/GET/PUT support Docker tar and `X-Docker-Container-Path-Stat`. cow_bind reads prefer upper then lower, writes target upper. Directory merge of lower+upper entries is still incomplete. |
-| Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. |
-| Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. |
+| Stats | Partial | CPU/memory are approximated from `/proc`; network, blkio, and cgroup-limit counters are absent. Android storage metrics for layer, image-view, container-private, total, and free-space values need device refresh verification after build/prune/rebuild/edit flows. |
+| Networks | Compose-compatible stub | List/create/connect/disconnect/inspect/delete satisfy common Compose flows. Synthetic IPs, Docker-visible ports, and explicit port-publishing warnings are recorded, but no bridge IPs, DNS server, iptables, or active port forwarding. Next coverage must distinguish requested mappings from active listener/proxy state. |
 | Volumes/binds | Partial | Named volumes map to host directories; bind mounts are represented in runtime metadata and direct-run argv. No kernel mount propagation or tmpfs semantics. |
 | Dockerfile build | Partial | Dockerfiles use Docker's standard instruction surface only; pdocker-specific Dockerfile instructions are rejected instead of treated as extensions. Legacy builder supports common instructions and a practical `.dockerignore` subset on the backend host. On Android direct mode, real `RUN` works for the current supported subset. BuildKit, buildx, multi-stage edge cases, cache mounts, and advanced frontend syntax are not implemented. |
 | Compose | Partial | Product APK uses pdockerd/native orchestration rather than bundled upstream Docker Compose. Test suites may stage upstream Docker CLI/Compose separately to verify Engine API compatibility. Basic up/down flows work when the build/runtime path stays inside the supported subset; the default VS Code/Codex workspace has been built and started on-device through the direct runtime. |
@@ -161,6 +160,14 @@ Known gaps:
   the current supported smoke paths, keep full ADB smoke as a release blocker,
   and add focused regressions for every syscall/runtime gap found by larger
   build and compose workloads.
+- Real listener health is not yet a compatibility gate: service health must
+  prove the listener belongs to the current Engine container ID, not merely that
+  a configured port or stale name exists.
+- Active port publishing remains unimplemented; requested mappings are visible
+  metadata until listener/proxy/rewrite state is recorded and verified.
+- Android storage metrics still need device verification for nonnegative values
+  and refresh behavior after build, prune, rebuild, and container edit/copy-up
+  flows.
 - Full overlayfs semantics for deletions, rename, metadata operations, and
   merged directory listings in cow_bind mode.
 - Strict libcow xattr preservation and fchmod/fchown on read-only file
@@ -196,6 +203,8 @@ Known gaps:
 
 5. Improve networking and Compose:
    - Make unsupported port publishing explicit instead of silent.
+   - Add active/inactive/blocked port-mapping checks that verify the host
+     listener/proxy target, not just Compose metadata.
    - Expand `/etc/hosts` alias tests for Compose service names.
    - Document and test the host-network-only model in Compose examples.
 
@@ -203,6 +212,15 @@ Known gaps:
    - Return explicit unsupported/zeroed fields for cgroup-only counters.
    - Add tests for `--memory`, `--cpus`, and unsupported resource flags so
      behavior stays predictable.
+   - Add Android storage metric refresh checks for layer, image-view,
+     container-private, total, and free-space counters.
+
+7. Improve project/container identity and service health:
+   - Use Engine container IDs and pdocker project/service labels as truth for
+     UI cards, logs, lifecycle actions, and health checks.
+   - Treat container names as display hints or legacy fallbacks only.
+   - Add real-listener checks for the default workspace and llama service
+     ports before marking a service healthy.
 
 ## Refactoring status
 

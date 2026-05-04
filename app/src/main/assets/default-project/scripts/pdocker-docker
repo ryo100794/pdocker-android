@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker CLI is not installed in this development container." >&2
+  echo "Rebuild the dev workspace image from the bundled Dockerfile, or install a CLI in the container for development only." >&2
+  exit 127
+fi
+
+eval "$(pdocker-engine-env --export)"
+exec docker "$@"

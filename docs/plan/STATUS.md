@@ -53,11 +53,16 @@ What's been confirmed working on the current Android 15 test device:
   stdout and `compose down` stops the service.
 - The default VS Code/Codex/Continue workspace has been built and started on
   SOG15 through the direct runtime. The real code-server endpoint responds on
-  `127.0.0.1:18080` with HTTP 302 to `./?folder=/workspace`.
+  `127.0.0.1:18080` with HTTP 302 to `./?folder=/workspace`. Next UI/device
+  work is to make the service health card prove that listener belongs to the
+  current Engine container ID and to open the matching logs.
 - The llama.cpp GPU workspace starts through the UI/Engine-compatible compose
   path in CPU fallback mode. The 8B Qwen3 GGUF server responds on
   `127.0.0.1:18081`, `/v1/models` reports the loaded model, and `docker logs`
-  streams real llama-server output.
+  streams real llama-server output. GPU attempts remain a measured workflow:
+  CPU fallback hides Vulkan devices, forced Vulkan is used only for benchmark
+  runs, and completion requires the compare artifact to report speedup,
+  `target_met`, GPU layer count, blocker, and device/thermal metadata.
 - xterm.js WebView terminal → spawns sh with `PATH=runtime/docker-bin:...` and `DOCKER_HOST=unix://...` so user can type `docker ps` directly
 - Terminal UTF-8 output is decoded through `TextDecoder`, uses an Android/CJK
   monospace font stack, disables IME autocorrect/capitalization, and reports
@@ -67,9 +72,11 @@ What's been confirmed working on the current Android 15 test device:
   log previews in the native UI instead of immediately dropping into a console.
 - Container widgets show `State.Status`, synthetic IP, Docker-visible ports,
   planned port-hook rewrite count, and pdocker networking warnings such as
-  metadata-only port publishing. They also expose direct start/stop/restart,
-  log, file-browser, known-service URL, and grouped interactive console
-  actions.
+  metadata-only port publishing. The next reconciliation pass must treat Engine
+  container IDs plus pdocker project/service labels as truth; names are display
+  hints or legacy fallbacks only, especially after interrupted compose runs.
+  Widgets also expose direct start/stop/restart, log, file-browser,
+  known-service URL, and grouped interactive console actions.
 - Main UI action wiring → product actions start pdockerd and use Engine
   API/native orchestration for image pull, Dockerfile build, Compose-style
   create/start, logs, and lifecycle state. Upstream Docker CLI/Compose binaries
@@ -129,6 +136,16 @@ What's been confirmed working on the current Android 15 test device:
 - Offline UI regression check → `python3 scripts/verify-ui-actions.py` records
   the expected native menu/action wiring for persistent Docker terminals,
   image deep-links, editor tab identity, terminal key palette, and editor tools.
+
+Near-term verification queue generated on 2026-05-04:
+
+- Real listener health for `18080` and `18081`, tied to current container IDs,
+  container health state, and logs.
+- Active port mapping state, moving from requested-port metadata to
+  inactive/blocked/active listener or proxy evidence.
+- Android storage metrics checks for layer, image-view, container-private,
+  total, and free-space values after build, prune, rebuild, and edit/copy-up
+  flows.
 
 ### 4. Android-specific workarounds (how we got here)
 

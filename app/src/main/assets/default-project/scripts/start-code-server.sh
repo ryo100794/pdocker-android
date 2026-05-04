@@ -18,6 +18,8 @@ echo "code-server: http://0.0.0.0:$port"
 echo "codex: $(command -v codex || true)"
 echo "claude: $(command -v claude || true)"
 echo "continue config: /workspace/.continue/config.yaml"
+echo "pdocker helpers: pdocker-paths, pdocker-projects, pdocker-new-project, pdocker-docker, pdocker-compose"
+pdocker-engine-env --check || true
 
 exec code-server \
   --bind-addr "0.0.0.0:$port" \

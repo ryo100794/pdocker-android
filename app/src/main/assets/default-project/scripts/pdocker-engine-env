@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: pdocker-engine-env [--export|--value|--check]
+
+Find a mounted pdocker/Docker Engine socket and print the matching DOCKER_HOST.
+USAGE
+}
+
+mode="export"
+case "${1:-}" in
+  --export|"")
+    mode="export"
+    ;;
+  --value)
+    mode="value"
+    ;;
+  --check)
+    mode="check"
+    ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+is_present_socket_path() {
+  local path="$1"
+  [[ -n "$path" && ( -S "$path" || ( -e "$path" && ! -d "$path" ) ) ]]
+}
+
+if [[ -n "${DOCKER_HOST:-}" ]]; then
+  if [[ "$DOCKER_HOST" == unix://* ]]; then
+    socket_path="${DOCKER_HOST#unix://}"
+    if ! is_present_socket_path "$socket_path"; then
+      echo "DOCKER_HOST points at a missing socket/path: $socket_path" >&2
+      exit 1
+    fi
+  fi
+  resolved="$DOCKER_HOST"
+else
+  candidates=(
+    "${PDOCKER_ENGINE_SOCKET:-}"
+    "${PDOCKER_DOCKER_SOCK:-}"
+    "/pdocker/host/pdockerd.sock"
+    "/pdocker/host/docker.sock"
+    "/var/run/pdocker.sock"
+    "/var/run/docker.sock"
+  )
+  resolved=""
+  for candidate in "${candidates[@]}"; do
+    if is_present_socket_path "$candidate"; then
+      resolved="unix://$candidate"
+      break
+    fi
+  done
+  if [[ -z "$resolved" ]]; then
+    echo "No mounted pdocker/Docker Engine socket found." >&2
+    echo "Checked PDOCKER_ENGINE_SOCKET, /pdocker/host/pdockerd.sock, /var/run/pdocker.sock, and /var/run/docker.sock." >&2
+    exit 1
+  fi
+fi
+
+case "$mode" in
+  export)
+    printf 'export DOCKER_HOST=%q\n' "$resolved"
+    ;;
+  value)
+    printf '%s\n' "$resolved"
+    ;;
+  check)
+    printf 'DOCKER_HOST=%s\n' "$resolved"
+    ;;
+esac

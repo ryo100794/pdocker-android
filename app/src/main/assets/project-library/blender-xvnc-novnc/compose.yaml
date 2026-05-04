@@ -1,0 +1,37 @@
+# pdocker.service-url: 18083=noVNC Blender
+services:
+  blender:
+    build:
+      context: .
+    image: pdocker/blender-xvnc-novnc:latest
+    container_name: pdocker-blender-xvnc
+    working_dir: /workspace
+    environment:
+      DISPLAY: ":1"
+      VNC_DISPLAY: ":1"
+      VNC_PORT: "5901"
+      NOVNC_PORT: "6080"
+      VNC_GEOMETRY: "${VNC_GEOMETRY:-1280x800}"
+      VNC_DEPTH: "${VNC_DEPTH:-24}"
+      BLENDER_STARTUP_FILE: "${BLENDER_STARTUP_FILE:-}"
+      BLENDER_EXTRA_ARGS: "${BLENDER_EXTRA_ARGS:-}"
+      BLENDER_LOG_FILE: "${BLENDER_LOG_FILE:-/workspace/logs/blender.log}"
+      GLXINFO_LOG_FILE: "${GLXINFO_LOG_FILE:-/workspace/logs/glxinfo.log}"
+      NOVNC_LOG_FILE: "${NOVNC_LOG_FILE:-/workspace/logs/novnc.log}"
+      VNC_LOG_FILE: "${VNC_LOG_FILE:-/workspace/logs/xvnc.log}"
+      OPENBOX_LOG_FILE: "${OPENBOX_LOG_FILE:-/workspace/logs/openbox.log}"
+      PDOCKER_GL_BACKEND: "${PDOCKER_GL_BACKEND:-llvmpipe}"
+      PDOCKER_GRAPHICS_MODE: "${PDOCKER_GRAPHICS_MODE:-software}"
+      PDOCKER_ZINK_EXPERIMENTAL: "${PDOCKER_ZINK_EXPERIMENTAL:-0}"
+      PDOCKER_VULKAN_ICD_FILENAMES: "${PDOCKER_VULKAN_ICD_FILENAMES:-}"
+      VK_ICD_FILENAMES: "${VK_ICD_FILENAMES:-}"
+      MESA_LOADER_DRIVER_OVERRIDE: "${MESA_LOADER_DRIVER_OVERRIDE:-}"
+      LIBGL_ALWAYS_SOFTWARE: "${LIBGL_ALWAYS_SOFTWARE:-1}"
+      GALLIUM_DRIVER: "${GALLIUM_DRIVER:-llvmpipe}"
+      QT_X11_NO_MITSHM: "1"
+    command: ["/usr/local/bin/start-blender-xvnc-novnc"]
+    ports:
+      - "18083:6080"
+      - "15901:5901"
+    volumes:
+      - ./workspace:/workspace

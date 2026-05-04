@@ -395,6 +395,92 @@ def _device_node_probe(paths):
     return [{"Path": path, "Exists": os.path.exists(path)} for path in paths]
 
 
+def _truth_flag(name):
+    return os.environ.get(name, "").lower() in ("1", "true", "yes", "on")
+
+
+def _read_json_file(path):
+    if not path:
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def collect_media_environment():
+    """Return the Phase-1 media bridge contract without claiming capture."""
+    container_dir = os.environ.get("PDOCKER_MEDIA_CONTAINER_DIR", "/run/pdocker-media")
+    queue_socket = os.environ.get(
+        "PDOCKER_MEDIA_QUEUE_SOCKET",
+        os.path.join(container_dir, "pdocker-media.sock"),
+    )
+    shared_dir = os.environ.get("PDOCKER_MEDIA_SHARED_DIR", container_dir)
+    descriptor_path = os.environ.get(
+        "PDOCKER_MEDIA_DESCRIPTOR_PATH",
+        os.path.join(container_dir, "pdocker-media-capabilities.json"),
+    )
+    descriptor = _read_json_file(os.environ.get("PDOCKER_MEDIA_DESCRIPTOR_HOST_PATH", ""))
+    executor = os.environ.get("PDOCKER_MEDIA_EXECUTOR", "")
+    executor_available = (
+        os.environ.get("PDOCKER_MEDIA_EXECUTOR_AVAILABLE", "0") == "1"
+        and bool(executor)
+        and os.path.exists(executor)
+    )
+    camera_ready = executor_available and _truth_flag("PDOCKER_MEDIA_CAMERA_READY")
+    audio_ready = executor_available and _truth_flag("PDOCKER_MEDIA_AUDIO_READY")
+    capture_ready = executor_available and _truth_flag("PDOCKER_MEDIA_CAPTURE_READY")
+    enabled = camera_ready or audio_ready or capture_ready
+    status = os.environ.get("PDOCKER_MEDIA_STATUS", "")
+    if not status:
+        status = "executor-present-capture-disabled" if executor_available else "phase1-control-plane-only"
+    capabilities = [
+        c for c in os.environ.get(
+            "PDOCKER_MEDIA_CAPABILITIES",
+            "video.camera2,camera.front,camera.rear,audio.capture,audio.playback,audio.usb.multichannel",
+        ).split(",")
+        if c
+    ]
+    return {
+        "Kind": "android-media-bridge-phase1",
+        "Phase": "phase-1",
+        "Status": status,
+        "Scaffold": True,
+        "Enabled": enabled,
+        "CaptureReady": capture_ready,
+        "CameraReady": camera_ready,
+        "AudioReady": audio_ready,
+        "ExecutorAvailable": executor_available,
+        "ExecutorRole": os.environ.get("PDOCKER_MEDIA_EXECUTOR_ROLE", ""),
+        "CommandApi": os.environ.get("PDOCKER_MEDIA_COMMAND_API", "pdocker-media-command-v1"),
+        "AbiVersion": os.environ.get("PDOCKER_MEDIA_ABI_VERSION", "0.1"),
+        "Contract": os.environ.get("PDOCKER_MEDIA_CONTRACT", "linux-like-socket-env-v1"),
+        "RawDevicePassthrough": os.environ.get("PDOCKER_MEDIA_DEVICE_PASSTHROUGH", "0") == "1",
+        "Capabilities": capabilities,
+        "ContainerDir": container_dir,
+        "QueueSocket": queue_socket,
+        "SharedDir": shared_dir,
+        "DescriptorPath": descriptor_path,
+        "Descriptor": descriptor,
+        "Video": {
+            "Api": os.environ.get("PDOCKER_MEDIA_VIDEO_API", "android-camera2"),
+            "Targets": ["camera.front", "camera.rear", "camera.external"],
+            "Ready": camera_ready,
+        },
+        "Audio": {
+            "Apis": [
+                os.environ.get("PDOCKER_MEDIA_AUDIO_API", "android-audiorecord-audiotrack"),
+                os.environ.get("PDOCKER_MEDIA_AUDIO_DEVICE_API", "android-audiomanager"),
+            ],
+            "Targets": ["audio.capture", "audio.playback", "audio.usb.multichannel"],
+            "Ready": audio_ready,
+        },
+        "Reason": "Phase-1 exposes socket/env negotiation and Android capability truth only; capture/playback commands are not implemented",
+    }
+
+
 def collect_host_environment(api_version):
     uname = os.uname()
     meminfo = _read_meminfo()
@@ -411,6 +497,23 @@ def collect_host_environment(api_version):
         "PDOCKER_OPENCL_ICD_HOST_PATH",
         "PDOCKER_OPENCL_ICD_KIND",
         "PDOCKER_OPENCL_ICD_READY",
+        "PDOCKER_MEDIA_EXECUTOR",
+        "PDOCKER_MEDIA_EXECUTOR_AVAILABLE",
+        "PDOCKER_MEDIA_COMMAND_API",
+        "PDOCKER_MEDIA_ABI_VERSION",
+        "PDOCKER_MEDIA_STATUS",
+        "PDOCKER_MEDIA_CONTRACT",
+        "PDOCKER_MEDIA_DEVICE_PASSTHROUGH",
+        "PDOCKER_MEDIA_CONTAINER_DIR",
+        "PDOCKER_MEDIA_QUEUE_SOCKET",
+        "PDOCKER_MEDIA_SHARED_DIR",
+        "PDOCKER_MEDIA_DESCRIPTOR_PATH",
+        "PDOCKER_MEDIA_VIDEO_API",
+        "PDOCKER_MEDIA_AUDIO_API",
+        "PDOCKER_MEDIA_AUDIO_DEVICE_API",
+        "PDOCKER_MEDIA_CAPTURE_READY",
+        "PDOCKER_MEDIA_CAMERA_READY",
+        "PDOCKER_MEDIA_AUDIO_READY",
         "PDOCKER_PLATFORM",
         "ANDROID_ROOT",
         "ANDROID_DATA",
@@ -423,6 +526,7 @@ def collect_host_environment(api_version):
         "GpuShim": os.environ.get("PDOCKER_GPU_SHIM_HOST_PATH", ""),
         "VulkanIcd": os.environ.get("PDOCKER_VULKAN_ICD_HOST_PATH", ""),
         "OpenClIcd": os.environ.get("PDOCKER_OPENCL_ICD_HOST_PATH", ""),
+        "MediaExecutor": os.environ.get("PDOCKER_MEDIA_EXECUTOR", ""),
         "Crane": CRANE,
         "Libcow": LIBCOW,
     }
@@ -465,6 +569,7 @@ def collect_host_environment(api_version):
             "VulkanApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.2.0"),
             "VulkanLoaderIcdJson": os.environ.get("VK_ICD_FILENAMES", ""),
         },
+        "Media": collect_media_environment(),
         "Frameworks": {
             "Vulkan": {
                 "ApiVersion": os.environ.get("PDOCKER_VULKAN_API_VERSION", "1.2.0"),
@@ -660,6 +765,7 @@ exec_sessions = {}  # exec_id -> dict
 # Android-UI-owned so adb/test-triggered builds are visible in the app too.
 active_operations = {}
 active_operations_lock = threading.Lock()
+OPERATION_IDLE_STALE_SECONDS = int(os.environ.get("PDOCKER_OPERATION_IDLE_STALE_SECONDS", "900"))
 
 # Docker event stream compatibility. Events are kept on disk so reconnecting
 # clients can replay recent state transitions, while active /events requests
@@ -738,8 +844,21 @@ def finish_operation(op_id, status="done", detail=None):
         active_operations.pop(op_id, None)
 
 
+def prune_stale_operations(now=None):
+    now = time.time() if now is None else now
+    stale = []
+    for op_id, op in list(active_operations.items()):
+        updated = float(op.get("UpdatedAt") or op.get("StartedAt") or now)
+        if OPERATION_IDLE_STALE_SECONDS > 0 and now - updated > OPERATION_IDLE_STALE_SECONDS:
+            stale.append(op_id)
+    for op_id in stale:
+        active_operations.pop(op_id, None)
+    return stale
+
+
 def list_active_operations():
     with active_operations_lock:
+        prune_stale_operations()
         return sorted(
             (dict(op) for op in active_operations.values()),
             key=lambda op: op.get("StartedAt", 0),
@@ -2071,6 +2190,115 @@ def _gpu_binds(state):
     return out
 
 
+def _add_media_mode(modes, mode):
+    mode = str(mode or "").strip().lower().replace("_", "-")
+    if mode in ("", "none", "0", "false"):
+        return
+    if mode in ("media", "all", "android-media"):
+        modes.update((
+            "video.camera2",
+            "camera.front",
+            "camera.rear",
+            "audio.capture",
+            "audio.playback",
+            "audio.usb.multichannel",
+        ))
+    elif mode in ("camera", "video", "android-camera", "camera2"):
+        modes.update(("video.camera2", "camera.front", "camera.rear"))
+    elif mode in ("front", "front-camera", "camera.front"):
+        modes.update(("video.camera2", "camera.front"))
+    elif mode in ("rear", "back", "back-camera", "rear-camera", "camera.rear"):
+        modes.update(("video.camera2", "camera.rear"))
+    elif mode in ("external-camera", "camera.external"):
+        modes.update(("video.camera2", "camera.external"))
+    elif mode in ("audio", "android-audio"):
+        modes.update(("audio.capture", "audio.playback", "audio.usb.multichannel"))
+    elif mode in ("microphone", "mic", "capture", "audio.capture"):
+        modes.add("audio.capture")
+    elif mode in ("speaker", "playback", "audio.playback"):
+        modes.add("audio.playback")
+    elif mode in ("usb-audio", "usb.multichannel", "audio.usb", "audio.usb.multichannel", "multichannel"):
+        modes.add("audio.usb.multichannel")
+
+
+def _media_request_modes(state):
+    """Return requested Phase-1 media modes from Docker HostConfig/labels."""
+    modes = set()
+    hc = state.get("HostConfig") or {}
+    if hc.get("Runtime") in ("pdocker-media", "android-media"):
+        _add_media_mode(modes, "all")
+    for req in hc.get("DeviceRequests") or []:
+        driver = (req.get("Driver") or "").lower()
+        caps = []
+        for group in req.get("Capabilities") or []:
+            caps.extend(str(c).lower() for c in group)
+        opts = {str(k).lower(): str(v).lower()
+                for k, v in (req.get("Options") or {}).items()}
+        if driver in ("pdocker-media", "android-media") or "media" in caps:
+            _add_media_mode(modes, "all")
+        for value in [driver] + caps:
+            _add_media_mode(modes, value)
+        for key, mode in (
+            ("pdocker.media", "all"),
+            ("pdocker.camera", "camera"),
+            ("pdocker.video", "video"),
+            ("pdocker.camera.front", "front"),
+            ("pdocker.camera.rear", "rear"),
+            ("pdocker.audio", "audio"),
+            ("pdocker.microphone", "microphone"),
+            ("pdocker.speaker", "speaker"),
+            ("pdocker.usb_audio", "usb-audio"),
+        ):
+            if opts.get(key) in ("1", "true", "auto", mode):
+                _add_media_mode(modes, mode)
+    labels = state.get("Labels") or {}
+    label_mode = labels.get("io.pdocker.media") or labels.get("pdocker.media")
+    if label_mode:
+        for part in str(label_mode).replace(",", " ").split():
+            _add_media_mode(modes, part)
+    return modes
+
+
+def _media_env(state):
+    modes = _media_request_modes(state)
+    if not modes:
+        return {}
+    media = collect_media_environment()
+    env = {
+        "PDOCKER_MEDIA": "phase1",
+        "PDOCKER_MEDIA_MODES": ",".join(sorted(modes)),
+        "PDOCKER_MEDIA_STATUS": media["Status"],
+        "PDOCKER_MEDIA_ENABLED": "1" if media["Enabled"] else "0",
+        "PDOCKER_MEDIA_CAPTURE_READY": "1" if media["CaptureReady"] else "0",
+        "PDOCKER_MEDIA_CAMERA_READY": "1" if media["CameraReady"] else "0",
+        "PDOCKER_MEDIA_AUDIO_READY": "1" if media["AudioReady"] else "0",
+        "PDOCKER_MEDIA_COMMAND_API": media["CommandApi"],
+        "PDOCKER_MEDIA_ABI_VERSION": media["AbiVersion"],
+        "PDOCKER_MEDIA_CONTRACT": media["Contract"],
+        "PDOCKER_MEDIA_DEVICE_PASSTHROUGH": "1" if media["RawDevicePassthrough"] else "0",
+        "PDOCKER_MEDIA_CONTAINER_DIR": media["ContainerDir"],
+        "PDOCKER_MEDIA_QUEUE_SOCKET": media["QueueSocket"],
+        "PDOCKER_MEDIA_SHARED_DIR": media["SharedDir"],
+        "PDOCKER_MEDIA_DESCRIPTOR_PATH": media["DescriptorPath"],
+        "PDOCKER_MEDIA_VIDEO_API": media["Video"]["Api"],
+        "PDOCKER_MEDIA_AUDIO_API": media["Audio"]["Apis"][0],
+        "PDOCKER_MEDIA_EXECUTOR_AVAILABLE": "1" if media["ExecutorAvailable"] else "0",
+    }
+    if os.environ.get("PDOCKER_MEDIA_EXECUTOR_ROLE"):
+        env["PDOCKER_MEDIA_EXECUTOR_ROLE"] = os.environ["PDOCKER_MEDIA_EXECUTOR_ROLE"]
+    return env
+
+
+def _media_binds(state):
+    modes = _media_request_modes(state)
+    if not modes:
+        return []
+    media_host_dir = os.environ.get("PDOCKER_MEDIA_HOST_DIR")
+    media_guest_dir = os.environ.get("PDOCKER_MEDIA_CONTAINER_DIR", "/run/pdocker-media")
+    bind = _existing_bind(media_host_dir, media_guest_dir, readonly=False)
+    return [bind] if bind else []
+
+
 def _split_port_proto(key):
     if "/" in str(key):
         port, proto = str(key).split("/", 1)
@@ -2924,6 +3152,8 @@ def load_images(in_stream):
 
 
 def list_images():
+    storage = collect_storage_summary()
+    by_ref = {img["Name"]: img for img in storage.get("Images", [])}
     imgs = []
     if not os.path.isdir(IMAGES_DIR):
         return imgs
@@ -2935,12 +3165,10 @@ def list_images():
         with open(ref_file) as f:
             ref = f.read().strip()
         cfg = image_config(ref) or {}
-        size = sum(
-            os.path.getsize(os.path.join(r, f))
-            for r, _, files in os.walk(os.path.join(fullp, "rootfs"))
-            for f in files
-            if os.path.isfile(os.path.join(r, f))
-        )
+        storage_row = by_ref.get(ref, {})
+        size = int(storage_row.get("VirtualSize", 0) or 0)
+        shared_size = int(storage_row.get("SharedSize", 0) or 0)
+        unique_size = int(storage_row.get("UniqueSize", 0) or 0)
         pulled_at_file = os.path.join(fullp, "pulled_at")
         created = 0
         if os.path.exists(pulled_at_file):
@@ -2959,9 +3187,17 @@ def list_images():
             "RepoDigests": [],
             "Created": created,
             "Size": size,
-            "SharedSize": 0,
+            "SharedSize": shared_size,
+            "UniqueSize": unique_size,
             "VirtualSize": size,
             "Labels": cfg.get("config", {}).get("Labels") or {},
+            "PdockerStorage": {
+                "UniqueBytes": unique_size,
+                "SharedLayerBytes": shared_size,
+                "VirtualBytes": size,
+                "ImageViewBytes": int(storage_row.get("ImageViewBytes", 0) or 0),
+                "Overlap": storage_row.get("Overlap", ""),
+            },
         })
     return imgs
 
@@ -3181,11 +3417,16 @@ def create_container(config, name=None):
     final_healthcheck = config.get("Healthcheck")
     if final_healthcheck is None:
         final_healthcheck = img_c.get("Healthcheck")
-    gpu_env = [f"{k}={v}" for k, v in _gpu_env({
+    bridge_request = {
         "HostConfig": config.get("HostConfig") or {},
         "Labels": config.get("Labels") or {},
-    }).items()]
-    final_env += [e for e in gpu_env if e.split("=", 1)[0] not in {
+    }
+    bridge_env = {
+        **_gpu_env(bridge_request),
+        **_media_env(bridge_request),
+    }
+    bridge_env_list = [f"{k}={v}" for k, v in bridge_env.items()]
+    final_env += [e for e in bridge_env_list if e.split("=", 1)[0] not in {
         item.split("=", 1)[0] for item in final_env if "=" in item
     }]
     ports, port_rewrite = _network_port_plan(cid, config, img_c)
@@ -3212,6 +3453,13 @@ def create_container(config, name=None):
                 "Labels": config.get("Labels") or {},
             })),
             "Kind": "android-vulkan-passthrough+cuda-compat",
+        },
+        "PdockerMedia": {
+            "Modes": sorted(_media_request_modes(bridge_request)),
+            "Kind": "android-media-bridge-phase1",
+            "Status": collect_media_environment()["Status"],
+            "QueueSocket": collect_media_environment()["QueueSocket"],
+            "CaptureReady": False,
         },
         "PdockerNetwork": {
             "IPAddress": virtual_ip,
@@ -3704,6 +3952,8 @@ def _container_matches_filters(summary, filters):
 
 
 def list_containers(all_=False, filters=None):
+    storage = collect_storage_summary()
+    by_id = {c["Id"]: c for c in storage.get("Containers", [])}
     containers = []
     if not os.path.isdir(CONTAINERS_DIR):
         return containers
@@ -3742,6 +3992,17 @@ def list_containers(all_=False, filters=None):
             "HostConfig": {"NetworkMode": "default"},
             "NetworkSettings": state.get("NetworkSettings", {}),
         }
+        storage_row = by_id.get(cid, {})
+        if storage_row:
+            upper_bytes = int(storage_row.get("UpperBytes", 0) or 0)
+            summary["SizeRw"] = upper_bytes
+            summary["SizeRootFs"] = int(storage_row.get("RootfsViewBytes", 0) or 0)
+            summary["PdockerStorage"] = {
+                "ContainerUpperBytes": upper_bytes,
+                "SharedLayerBytes": int(storage_row.get("SharedLayerBytes", 0) or 0),
+                "RootfsViewBytes": int(storage_row.get("RootfsViewBytes", 0) or 0),
+                "Overlap": storage_row.get("Overlap", ""),
+            }
         if not _container_matches_filters(summary, filters or {}):
             continue
         containers.append(summary)
@@ -3779,7 +4040,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     # Handles both legacy HostConfig.Binds (host|volume:ctr[:ro]) and newer
     # HostConfig.Mounts. Named volumes are auto-created and resolved to
     # $VOLUMES_DIR/<name>/_data so compose volumes: blocks work transparently.
-    binds = _effective_binds(state) + _gpu_binds(state)
+    binds = _effective_binds(state) + _gpu_binds(state) + _media_binds(state)
 
     # Inject /etc/hosts entries for connected named-network members.
     # Also handle docker-compose's `--network NAME` flow where the
@@ -4030,6 +4291,171 @@ def _dir_size(path):
     return total
 
 
+def _dir_usage(path, exclude_inodes=None):
+    """Return logical file bytes plus inode keys for overlap-aware summaries."""
+    seen = set()
+    if exclude_inodes:
+        seen.update(exclude_inodes)
+    owned = set()
+    total = 0
+    if not os.path.lexists(path):
+        return total, owned
+    stack = [path]
+    while stack:
+        cur = stack.pop()
+        try:
+            st = os.lstat(cur)
+        except OSError:
+            continue
+        key = (st.st_dev, st.st_ino)
+        if key in seen:
+            continue
+        mode = st.st_mode
+        if stat_mod.S_ISDIR(mode):
+            seen.add(key)
+            try:
+                for name in os.listdir(cur):
+                    stack.append(os.path.join(cur, name))
+            except OSError:
+                pass
+            continue
+        if stat_mod.S_ISREG(mode) or stat_mod.S_ISLNK(mode):
+            seen.add(key)
+            owned.add(key)
+            total += st.st_size
+    return total, owned
+
+
+def _image_storage_records():
+    records = []
+    layer_refs = {}
+    if not os.path.isdir(IMAGES_DIR):
+        return records, layer_refs
+    for name in os.listdir(IMAGES_DIR):
+        img_dir = os.path.join(IMAGES_DIR, name)
+        ref_file = os.path.join(img_dir, "image_ref")
+        if not os.path.isdir(img_dir) or not os.path.exists(ref_file):
+            continue
+        try:
+            with open(ref_file) as f:
+                ref = f.read().strip()
+        except OSError:
+            continue
+        diff_ids = _load_image_manifest(img_dir)
+        for did in set(diff_ids):
+            layer_refs[did] = layer_refs.get(did, 0) + 1
+        records.append({"Name": ref, "Dir": img_dir, "DiffIds": diff_ids})
+    return records, layer_refs
+
+
+def collect_storage_summary():
+    records, layer_refs = _image_storage_records()
+    layer_bytes = {}
+    layer_inodes = set()
+    shared_layer_bytes = 0
+    for did in sorted(layer_refs):
+        bare = did.split(":", 1)[-1]
+        meta_size = _layer_size(bare)
+        tree_bytes, tree_inodes = _dir_usage(_layer_tree(bare))
+        size = meta_size or tree_bytes
+        layer_bytes[bare] = size
+        layer_inodes.update(tree_inodes)
+        shared_layer_bytes += size
+
+    images = []
+    image_view_bytes = 0
+    image_view_inodes = set()
+    for rec in records:
+        seen_layers = set()
+        virtual_size = 0
+        shared_size = 0
+        for did in rec["DiffIds"]:
+            bare = did.split(":", 1)[-1]
+            if bare in seen_layers:
+                continue
+            seen_layers.add(bare)
+            size = layer_bytes.get(bare, _layer_size(bare))
+            virtual_size += size
+            if layer_refs.get(bare, 0) > 1:
+                shared_size += size
+        view_bytes, view_inodes = _dir_usage(os.path.join(rec["Dir"], "rootfs"))
+        image_view_bytes += view_bytes
+        image_view_inodes.update(view_inodes)
+        images.append({
+            "Name": rec["Name"],
+            "Id": image_id(rec["Name"]),
+            "LayerCount": len(rec["DiffIds"]),
+            "VirtualSize": virtual_size,
+            "SharedSize": shared_size,
+            "UniqueSize": max(virtual_size - shared_size, 0),
+            "ImageViewBytes": view_bytes,
+            "Overlap": "ImageViewBytes is a merged/hardlinked view of layer data; do not add it to UniqueSize or SharedSize.",
+        })
+
+    containers = []
+    container_upper_bytes = 0
+    exclude_from_private = layer_inodes | image_view_inodes
+    if os.path.isdir(CONTAINERS_DIR):
+        for cid in os.listdir(CONTAINERS_DIR):
+            state = load_container_state(cid)
+            if not state:
+                continue
+            storage = state.get("Storage") or {}
+            mode = storage.get("Mode") or "libcow"
+            upper_path = storage.get("UpperDir")
+            rootfs_path = upper_path or storage.get("Rootfs") or os.path.join(CONTAINERS_DIR, cid, "rootfs")
+            if mode == "cow_bind" and upper_path:
+                upper_bytes, _ = _dir_usage(upper_path)
+            else:
+                upper_bytes, _ = _dir_usage(rootfs_path, exclude_inodes=exclude_from_private)
+            rootfs_view_bytes, _ = _dir_usage(rootfs_path)
+            image_shared = sum(layer_bytes.get(did.split(":", 1)[-1], 0)
+                               for did in _load_image_manifest(image_dir(state.get("Image", ""))))
+            container_upper_bytes += upper_bytes
+            containers.append({
+                "Id": cid,
+                "Name": state.get("Name", f"/{cid[:12]}"),
+                "Image": state.get("Image", ""),
+                "Mode": mode,
+                "UpperBytes": upper_bytes,
+                "RootfsViewBytes": rootfs_view_bytes,
+                "SharedLayerBytes": image_shared,
+                "Overlap": "RootfsViewBytes includes lower/image data; only UpperBytes is container-private.",
+            })
+
+    total_unique = shared_layer_bytes + container_upper_bytes
+    total_bytes, _ = _dir_usage(PDOCKER_HOME)
+    try:
+        vfs = os.statvfs(PDOCKER_HOME)
+        fs_total = vfs.f_frsize * vfs.f_blocks
+        fs_free = vfs.f_frsize * vfs.f_bavail
+    except OSError:
+        fs_total = 0
+        fs_free = 0
+    return {
+        "LayersSize": shared_layer_bytes,
+        "UniqueBytes": total_unique,
+        "SharedLayerBytes": shared_layer_bytes,
+        "ContainerUpperBytes": container_upper_bytes,
+        "ImageViewBytes": image_view_bytes,
+        "TotalBytes": total_bytes,
+        "FilesystemTotalBytes": fs_total,
+        "FilesystemFreeBytes": fs_free,
+        "Images": images,
+        "Containers": containers,
+        "Volumes": [],
+        "BuildCache": [],
+        "PdockerStorage": {
+            "UniqueBytes": total_unique,
+            "SharedLayerBytes": shared_layer_bytes,
+            "ContainerUpperBytes": container_upper_bytes,
+            "ImageViewBytes": image_view_bytes,
+            "TotalBytes": total_bytes,
+            "Overlap": "UniqueBytes is SharedLayerBytes plus ContainerUpperBytes. ImageViewBytes and RootfsViewBytes are merged views and overlap layer data, so they are reported for explanation only and must not be added to totals.",
+        },
+    }
+
+
 def referenced_layer_ids():
     refs = set()
     if not os.path.isdir(IMAGES_DIR):
@@ -4089,7 +4515,7 @@ def spawn_in_container(cid, cmd, env=None, workdir=None, tty=False,
     cdir, cow, rootfs = _container_runtime(state)
     wd = workdir or state.get("WorkingDir", "/")
     e = _container_env(state, env)
-    binds = _effective_binds(state) + _gpu_binds(state)
+    binds = _effective_binds(state) + _gpu_binds(state) + _media_binds(state)
     fault = runtime_preflight(rootfs, e, workdir=wd, binds=binds, cow_bind=cow)
     if fault:
         raise RuntimeError(fault)
@@ -4132,7 +4558,7 @@ def exec_in_container(cid, cmd, env=None, workdir=None, tty=False):
     cdir, cow, rootfs = _container_runtime(state)
     wd = workdir or state.get("WorkingDir", "/")
     e = _container_env(state, env)
-    binds = _effective_binds(state) + _gpu_binds(state)
+    binds = _effective_binds(state) + _gpu_binds(state) + _media_binds(state)
     fault = runtime_preflight(rootfs, e, workdir=wd, binds=binds, cow_bind=cow)
     if fault:
         raise RuntimeError(fault)
@@ -4588,6 +5014,10 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             self._send_json(200, list_active_operations())
             return
 
+        if path == "/system/df" and method == "GET":
+            self._send_json(200, collect_storage_summary())
+            return
+
         if path == "/system/operations" and method == "POST":
             payload = self._read_json()
             op_id = payload.get("Id") or payload.get("id") or ""
@@ -4607,6 +5037,10 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
 
         if path == "/system/host" and method == "GET":
             self._send_json(200, collect_host_environment(self.API_VERSION))
+            return
+
+        if path == "/system/media" and method == "GET":
+            self._send_json(200, collect_media_environment())
             return
 
         # --- Images ---
@@ -4854,6 +5288,7 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                 "NetworkSettings": state.get("NetworkSettings", {}),
                 "PdockerNetwork": state.get("PdockerNetwork", {}),
                 "PdockerGpu": state.get("PdockerGpu", {}),
+                "PdockerMedia": state.get("PdockerMedia", {}),
                 "PdockerWarnings": state.get("Warnings", []),
             }
             self._send_json(200, resp)

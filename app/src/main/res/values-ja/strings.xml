@@ -96,6 +96,8 @@
     <string name="project_dashboard_urls_fmt">URL: %1$s</string>
     <string name="project_dashboard_service_health_fmt">サービス疎通: %1$s</string>
     <string name="service_health_checking">確認中</string>
+    <string name="service_health_inactive">非稼働</string>
+    <string name="service_health_external_client">外部クライアント</string>
     <string name="project_dashboard_models_fmt">モデル: %1$s</string>
     <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
     <string name="project_dashboard_gpu_invalid">診断JSONが不正</string>
@@ -175,6 +177,8 @@
     <string name="action_container_terminal_fmt">ターミナル (-it): %1$s</string>
     <string name="detail_container_terminal">ログを表示してから対話シェルに接続</string>
     <string name="action_open_service_fmt">%1$s を開く</string>
+    <string name="action_open_vnc_service_fmt">VNC を開く: %1$s</string>
+    <string name="detail_open_vnc_client_fmt">%1$s を外部 VNC クライアントで開く</string>
     <string name="action_open_gpu_diagnostics">GPU診断を開く</string>
     <string name="log_no_preview">ログプレビューなし</string>
     <string name="log_empty">ログは空です</string>

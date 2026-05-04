@@ -27,6 +27,111 @@
         "reveal": "always",
         "panel": "shared"
       }
+    },
+    {
+      "label": "pdocker: show paths",
+      "type": "shell",
+      "command": "pdocker-paths",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "pdocker: list projects",
+      "type": "shell",
+      "command": "pdocker-projects",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "pdocker: create project from template",
+      "type": "shell",
+      "command": "pdocker-new-project ${input:pdockerProjectName} ${input:pdockerTemplateName}",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "pdocker: docker version",
+      "type": "shell",
+      "command": "pdocker-docker version",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "pdocker: build current project",
+      "type": "shell",
+      "command": "pdocker-docker build -t local/pdocker-current:latest /pdocker/project",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "pdocker: compose up current project",
+      "type": "shell",
+      "command": "pdocker-compose -f /pdocker/project/compose.yaml up --detach --build && pdocker-compose -f /pdocker/project/compose.yaml ps",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "pdocker: compose logs current project",
+      "type": "shell",
+      "command": "pdocker-compose -f /pdocker/project/compose.yaml logs --tail=120",
+      "options": {
+        "cwd": "/workspace"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "pdockerProjectName",
+      "type": "promptString",
+      "description": "New project directory name",
+      "default": "my-project"
+    },
+    {
+      "id": "pdockerTemplateName",
+      "type": "promptString",
+      "description": "Template name, installed project name, or blank",
+      "default": "blank"
     }
   ]
 }

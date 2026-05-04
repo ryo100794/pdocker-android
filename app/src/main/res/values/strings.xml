@@ -96,6 +96,8 @@
     <string name="project_dashboard_urls_fmt">URLs: %1$s</string>
     <string name="project_dashboard_service_health_fmt">Service health: %1$s</string>
     <string name="service_health_checking">checking</string>
+    <string name="service_health_inactive">inactive</string>
+    <string name="service_health_external_client">external client</string>
     <string name="project_dashboard_models_fmt">Models: %1$s</string>
     <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
     <string name="project_dashboard_gpu_invalid">invalid diagnostics</string>
@@ -175,6 +177,8 @@
     <string name="action_container_terminal_fmt">Terminal (-it): %1$s</string>
     <string name="detail_container_terminal">Open logs then attach an interactive shell</string>
     <string name="action_open_service_fmt">Open %1$s</string>
+    <string name="action_open_vnc_service_fmt">Open VNC: %1$s</string>
+    <string name="detail_open_vnc_client_fmt">Open in external VNC client at %1$s</string>
     <string name="action_open_gpu_diagnostics">Open GPU diagnostics</string>
     <string name="log_no_preview">No log preview</string>
     <string name="log_empty">Log is empty</string>

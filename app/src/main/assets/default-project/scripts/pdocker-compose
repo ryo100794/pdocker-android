@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker CLI is not installed in this development container." >&2
+  exit 127
+fi
+
+eval "$(pdocker-engine-env --export)"
+if ! docker compose version >/dev/null 2>&1; then
+  echo "docker compose is unavailable in this development container." >&2
+  exit 1
+fi
+
+exec docker compose "$@"

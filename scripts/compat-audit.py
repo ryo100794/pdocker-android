@@ -62,6 +62,17 @@ def run(cmd: list[str], cwd: Path = ROOT, env: dict[str, str] | None = None,
     )
 
 
+def stop_process_and_collect_stderr(proc: subprocess.Popen, timeout: int = 5) -> str:
+    if proc.poll() is None:
+        proc.terminate()
+    try:
+        _, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        _, stderr = proc.communicate(timeout=timeout)
+    return stderr or ""
+
+
 def uds_request(sock_path: Path, method: str, path: str) -> tuple[int, dict[str, str], bytes]:
     req = f"{method} {path} HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n".encode()
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
@@ -137,7 +148,7 @@ def check_protocol_smoke() -> list[Check]:
                 break
             time.sleep(0.05)
         if not sock.exists():
-            stderr = proc.stderr.read() if proc.stderr else ""
+            stderr = stop_process_and_collect_stderr(proc)
             return [Check("protocol: daemon start", "FAIL", stderr[-1000:])]
         checks.append(Check("protocol: daemon start", "PASS", str(sock)))
 

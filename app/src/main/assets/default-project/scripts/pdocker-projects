@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+projects="${PDOCKER_PROJECTS_DIR:-/pdocker/projects}"
+if [[ ! -d "$projects" ]]; then
+  echo "Project root is not mounted: $projects" >&2
+  exit 1
+fi
+
+printf '%-28s %-9s %-11s %-20s %s\n' "PROJECT" "COMPOSE" "DOCKERFILE" "TEMPLATE" "PATH"
+found=0
+for dir in "$projects"/*; do
+  [[ -d "$dir" ]] || continue
+  found=1
+  name="$(basename "$dir")"
+  compose="no"
+  dockerfile="no"
+  template="-"
+  [[ -f "$dir/compose.yaml" || -f "$dir/compose.yml" || -f "$dir/docker-compose.yaml" || -f "$dir/docker-compose.yml" ]] && compose="yes"
+  [[ -f "$dir/Dockerfile" ]] && dockerfile="yes"
+  [[ -f "$dir/.pdocker-template-id" ]] && template="$(head -n 1 "$dir/.pdocker-template-id")"
+  printf '%-28s %-9s %-11s %-20s %s\n' "$name" "$compose" "$dockerfile" "$template" "$dir"
+done
+
+if [[ "$found" -eq 0 ]]; then
+  echo "No projects found under $projects"
+fi

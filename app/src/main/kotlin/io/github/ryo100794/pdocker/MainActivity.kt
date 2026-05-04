@@ -179,19 +179,35 @@ class MainActivity : AppCompatActivity() {
         val autoOpen: Boolean = false,
     )
 
+    private data class ComposePortBinding(
+        val hostPort: Int,
+        val containerPort: Int,
+    )
+
+    private data class ContainerSnapshotLookup(
+        val byEngineId: Map<String, JSONObject>,
+        val byUniqueName: Map<String, JSONObject>,
+    )
+
     private data class ProjectSummary(
         val dir: File,
         val compose: List<File>,
         val dockerfiles: List<File>,
         val editable: List<File>,
         val services: List<ComposeService>,
-        val serviceUrls: List<Pair<String, String>>,
+        val serviceUrls: List<ProjectServiceUrl>,
         val serviceHealth: String,
         val modelSummary: String,
         val gpuProfileSummary: String,
         val gpuDiagnostics: File?,
         val containerStatusSummary: String,
         val jobSummary: String,
+    )
+
+    private data class ProjectServiceUrl(
+        val serviceName: String,
+        val label: String,
+        val url: String,
     )
 
     companion object {
@@ -520,7 +536,8 @@ class MainActivity : AppCompatActivity() {
         renderHostEnvironment()
         renderDaemonOperations()
         renderProjectDashboard()
-        renderDockerJobs()
+        val daemonJobIds = daemonOperations.mapNotNull { daemonOperationJob(it)?.id }.toSet()
+        renderDockerJobs { it.id !in daemonJobIds }
     }
 
     private fun renderLibrary() {
@@ -665,11 +682,11 @@ class MainActivity : AppCompatActivity() {
             addMessage(getString(R.string.message_no_containers))
             return
         }
-        val snapshotByKey = containerSnapshotLookup()
+        val snapshotLookup = containerSnapshotLookup()
         containers.forEach { dir ->
             val state = readState(dir)
-            val snapshot = snapshotByKey[dir.name]
-                ?: snapshotByKey[state?.optString("Name").orEmpty().trim('/')]
+            val snapshot = containerSnapshotFor(dir, state, snapshotLookup)
+            val target = containerActionTarget(snapshot, state, dir)
             val name = containerDisplayName(snapshot, state, dir)
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
             val statusText = snapshot?.optString("Status")?.takeIf { it.isNotBlank() }
@@ -677,46 +694,47 @@ class MainActivity : AppCompatActivity() {
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
                 openDockerInteractiveTerminal(
                     getString(R.string.terminal_container_fmt, name),
-                    dir.name,
+                    target,
                     name,
                 )
             }
             addAction(getString(R.string.action_container_terminal_fmt, name), getString(R.string.detail_container_terminal)) {
                 openDockerInteractiveTerminal(
                     getString(R.string.terminal_container_fmt, name),
+                    target,
                     name,
                 )
             }
-            addAction(getString(R.string.action_container_start_fmt, name), dir.name) {
+            addAction(getString(R.string.action_container_start_fmt, name), target) {
                 runContainerAction(name, getString(R.string.terminal_container_start_fmt, name)) {
-                    post("/containers/${DockerEngineClient.encodePath(dir.name)}/start")
+                    post("/containers/${DockerEngineClient.encodePath(target)}/start")
                     formatContainers(getArray("/containers/json?all=1"))
                 }
             }
-            addAction(getString(R.string.action_container_stop_fmt, name), dir.name) {
+            addAction(getString(R.string.action_container_stop_fmt, name), target) {
                 runContainerAction(name, getString(R.string.terminal_container_stop_fmt, name)) {
-                    post("/containers/${DockerEngineClient.encodePath(dir.name)}/stop?t=10")
+                    post("/containers/${DockerEngineClient.encodePath(target)}/stop?t=10")
                     formatContainers(getArray("/containers/json?all=1"))
                 }
             }
-            addAction(getString(R.string.action_container_restart_fmt, name), dir.name) {
+            addAction(getString(R.string.action_container_restart_fmt, name), target) {
                 runContainerAction(name, getString(R.string.terminal_container_restart_fmt, name)) {
-                    runCatching { post("/containers/${DockerEngineClient.encodePath(dir.name)}/stop?t=10") }
-                    post("/containers/${DockerEngineClient.encodePath(dir.name)}/start")
+                    runCatching { post("/containers/${DockerEngineClient.encodePath(target)}/stop?t=10") }
+                    post("/containers/${DockerEngineClient.encodePath(target)}/start")
                     formatContainers(getArray("/containers/json?all=1"))
                 }
             }
-            addAction(getString(R.string.action_container_logs_fmt, name), dir.name) {
+            addAction(getString(R.string.action_container_logs_fmt, name), target) {
                 runContainerAction(name, getString(R.string.terminal_container_logs_fmt, name)) {
-                    logs(dir.name, 200).ifBlank { "(no logs)" }
+                    logs(target, 200).ifBlank { "(no logs)" }
                 }
             }
             addAction(getString(R.string.action_browse_container_files_fmt, name), dir.name) {
                 openContainerFiles(dir)
             }
             containerServiceUrls(state).forEach { (label, url) ->
-                addAction(getString(R.string.action_open_service_fmt, label), url) {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                addAction(serviceActionTitle(label, url), serviceActionDetail(url)) {
+                    openServiceUrl(url)
                 }
             }
         }
@@ -730,23 +748,49 @@ class MainActivity : AppCompatActivity() {
             ?: dir.name
     }
 
-    private fun containerSnapshotLookup(): Map<String, JSONObject> {
-        val out = mutableMapOf<String, JSONObject>()
+    private fun containerSnapshotFor(dir: File, state: JSONObject?, lookup: ContainerSnapshotLookup): JSONObject? {
+        containerEngineIdKeys(dir, state).forEach { key ->
+            lookup.byEngineId[key]?.let { return it }
+        }
+        val stateName = state?.optString("Name").orEmpty().trim('/')
+        return lookup.byUniqueName[stateName]
+    }
+
+    private fun containerActionTarget(snapshot: JSONObject?, state: JSONObject?, dir: File): String =
+        snapshot?.optString("Id")?.takeIf { it.isNotBlank() }
+            ?: state?.optString("Id")?.takeIf { it.isNotBlank() }
+            ?: dir.name
+
+    private fun containerEngineIdKeys(dir: File, state: JSONObject?): List<String> =
+        listOf(
+            state?.optString("Id").orEmpty(),
+            dir.name.takeIf { looksLikeContainerEngineId(it) }.orEmpty(),
+        ).filter { it.isNotBlank() }.distinct()
+
+    private fun looksLikeContainerEngineId(value: String): Boolean =
+        value.length >= 12 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+    private fun containerSnapshotLookup(): ContainerSnapshotLookup {
+        val byEngineId = mutableMapOf<String, JSONObject>()
+        val byName = mutableMapOf<String, MutableList<JSONObject>>()
         containerSnapshot.forEach { obj ->
             val id = obj.optString("Id")
             if (id.isNotBlank()) {
-                out[id] = obj
-                out[id.take(12)] = obj
+                byEngineId[id] = obj
+                byEngineId[id.take(12)] = obj
             }
             val names = obj.optJSONArray("Names")
             if (names != null) {
                 for (i in 0 until names.length()) {
                     val name = names.optString(i).trim('/')
-                    if (name.isNotBlank()) out[name] = obj
+                    if (name.isNotBlank()) byName.getOrPut(name) { mutableListOf() } += obj
                 }
             }
         }
-        return out
+        val byUniqueName = byName.mapNotNull { (name, matches) ->
+            matches.distinctBy { it.optString("Id") }.singleOrNull()?.let { name to it }
+        }.toMap()
+        return ContainerSnapshotLookup(byEngineId, byUniqueName)
     }
 
     private fun containerInventoryValue(): String {
@@ -1466,7 +1510,7 @@ class MainActivity : AppCompatActivity() {
             if (port !in 1..65535) return null
             ComposeServiceLink(port, right, null)
         } else {
-            if (!right.startsWith("http://") && !right.startsWith("https://")) return null
+            if (!isServiceUri(right)) return null
             ComposeServiceLink(null, left, right)
         }
     }
@@ -2151,9 +2195,9 @@ class MainActivity : AppCompatActivity() {
         live.services.removeAllViews()
         liveJobServiceLinks(job).forEach { (label, url) ->
             live.services.addView(Button(this).apply {
-                text = label
+                text = serviceActionTitle(label, url)
                 isAllCaps = false
-                setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                setOnClickListener { openServiceUrl(url) }
             })
         }
     }
@@ -2178,7 +2222,7 @@ class MainActivity : AppCompatActivity() {
             ?.takeIf { it.isNotBlank() }
             ?.let { File(it) }
             ?: return emptyList()
-        return projectServiceUrls(parseComposeServices(composeDir))
+        return projectServiceUrls(parseComposeServices(composeDir)).map { it.label to it.url }
     }
 
     private fun stopDockerJob(jobId: String) {
@@ -2395,6 +2439,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openServiceWhenReady(jobId: String, label: String, url: String) {
+        if (!isHttpServiceUrl(url)) {
+            appendEngineJobOutput(jobId, "$label ready: $url (external client)")
+            openServiceUrl(url)
+            return
+        }
         thread(isDaemon = true, name = "pdocker-service-open") {
             repeat(45) { attempt ->
                 val result = probeServiceUrl(url)
@@ -2403,7 +2452,7 @@ class MainActivity : AppCompatActivity() {
                         serviceHealth[url] = result
                         serviceHealthCheckedAt[url] = System.currentTimeMillis()
                         appendEngineJobOutput(jobId, "$label ready: $url ($result)")
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        openServiceUrl(url)
                     }
                     return@thread
                 }
@@ -2737,7 +2786,7 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.project_dashboard_services_fmt, serviceText),
                 getString(R.string.project_dashboard_dependencies_fmt, projectDependencySummary(project.services)),
                 getString(R.string.project_dashboard_health_fmt, projectHealthSummary(project.services)),
-                getString(R.string.project_dashboard_urls_fmt, project.serviceUrls.joinToString(", ") { it.first }.ifBlank { "-" }),
+                getString(R.string.project_dashboard_urls_fmt, project.serviceUrls.joinToString(", ") { it.label }.ifBlank { "-" }),
                 getString(R.string.project_dashboard_service_health_fmt, project.serviceHealth),
                 getString(R.string.project_dashboard_models_fmt, project.modelSummary),
                 getString(R.string.project_dashboard_gpu_fmt, project.gpuProfileSummary),
@@ -2768,9 +2817,9 @@ class MainActivity : AppCompatActivity() {
                     runImageBuild(project.dir, getString(R.string.terminal_docker_build_fmt, project.dir.name))
                 }
             }
-            project.serviceUrls.forEach { (label, url) ->
-                addAction(getString(R.string.action_open_service_fmt, label), url) {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            project.serviceUrls.forEach { serviceUrl ->
+                addAction(serviceActionTitle(serviceUrl.label, serviceUrl.url), serviceActionDetail(serviceUrl.url)) {
+                    openServiceUrl(serviceUrl.url)
                 }
             }
             project.gpuDiagnostics?.takeIf { it.isFile }?.let { file ->
@@ -2866,19 +2915,15 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.container_inventory_fmt, 0, 0)
             }
         }
-        val running = snapshots.count { obj ->
-            obj.optString("State").equals("running", ignoreCase = true) ||
-                obj.optString("Status").startsWith("Up", ignoreCase = true)
-        }
+        val running = snapshots.count { containerSnapshotIsRunning(it) }
         return getString(R.string.container_inventory_fmt, snapshots.size, running)
     }
 
     private fun projectContainerSnapshots(projectDir: File): List<JSONObject> {
         val projectId = projectIdFor(projectDir)
-        val projectName = projectDir.name
-        val composeNames = parseComposeServices(projectDir)
-            .map { it.containerName.ifBlank { "${projectDir.name}-${it.name}-1" } }
+        val composeNames = projectComposeContainerNames(projectDir).keys
             .toSet()
+        val uniqueNames = uniqueContainerSnapshotNames()
         return containerSnapshot.filter { obj ->
             val labels = obj.optJSONObject("Labels")
             val labelledProject = labels?.optString(PDOCKER_PROJECT_ID_LABEL).orEmpty()
@@ -2888,16 +2933,38 @@ class MainActivity : AppCompatActivity() {
                     val names = obj.optJSONArray("Names")
                     names != null && (0 until names.length()).any { index ->
                         val name = names.optString(index).trim('/')
-                        name in composeNames || name == projectName || name.startsWith("$projectName-")
+                        name in composeNames && uniqueNames[name] === obj
                     }
                 }
             }
         }
     }
 
+    private fun uniqueContainerSnapshotNames(): Map<String, JSONObject> {
+        val byName = mutableMapOf<String, MutableList<JSONObject>>()
+        containerSnapshot.forEach { obj ->
+            val names = obj.optJSONArray("Names") ?: return@forEach
+            for (i in 0 until names.length()) {
+                val name = names.optString(i).trim('/')
+                if (name.isNotBlank()) byName.getOrPut(name) { mutableListOf() } += obj
+            }
+        }
+        return byName.mapNotNull { (name, matches) ->
+            matches.distinctBy { it.optString("Id") }.singleOrNull()?.let { name to it }
+        }.toMap()
+    }
+
+    private fun projectComposeContainerNames(projectDir: File): Map<String, String> =
+        parseComposeServices(projectDir).associate { service ->
+            service.containerName.ifBlank { "${projectDir.name}-${service.name}-1" } to service.name
+        }
+
     private fun containerSnapshotIsRunning(obj: JSONObject): Boolean =
-        obj.optString("State").equals("running", ignoreCase = true) ||
-            obj.optString("Status").startsWith("Up", ignoreCase = true)
+        when {
+            obj.optString("Status").startsWith("Exited", ignoreCase = true) -> false
+            obj.optString("State").isNotBlank() -> obj.optString("State").equals("running", ignoreCase = true)
+            else -> obj.optString("Status").startsWith("Up", ignoreCase = true)
+        }
 
     private fun projectJobSummary(projectName: String): String {
         val jobs = dockerJobs.filter { it.group == projectName || projectName in it.command }
@@ -2919,18 +2986,27 @@ class MainActivity : AppCompatActivity() {
         return health.take(4).joinToString(", ").ifBlank { "-" }
     }
 
-    private fun projectServiceUrls(services: List<ComposeService>): List<Pair<String, String>> =
-        services.flatMap(::composeServiceUrls).distinctBy { it.second }
+    private fun projectServiceUrls(services: List<ComposeService>): List<ProjectServiceUrl> =
+        services.flatMap { service ->
+            composeServiceUrls(service).map { (label, url) -> ProjectServiceUrl(service.name, label, url) }
+        }.distinctBy { it.url }
 
     private fun composeServiceUrls(service: ComposeService): List<Pair<String, String>> {
         val urls = mutableListOf<Pair<String, String>>()
         service.ports
-            .mapNotNull { port -> composeHostPort(port) }
+            .mapNotNull { port -> composePortBinding(port) }
             .distinct()
-            .forEach { hostPort ->
+            .forEach { binding ->
+                val hostPort = binding.hostPort
                 val link = service.serviceLinks.firstOrNull { it.port == hostPort }
-                val label = link?.label?.takeIf { it.isNotBlank() } ?: "${service.name}:$hostPort"
-                val url = link?.url?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:$hostPort/"
+                val defaultLabel = if (isVncService(link?.label, hostPort, binding.containerPort)) {
+                    "VNC ${service.name}"
+                } else {
+                    "${service.name}:$hostPort"
+                }
+                val label = link?.label?.takeIf { it.isNotBlank() } ?: defaultLabel
+                val url = link?.url?.takeIf { it.isNotBlank() }
+                    ?: serviceUriFor(label, "127.0.0.1", hostPort, binding.containerPort)
                 urls += label to url
             }
         service.serviceLinks
@@ -2941,12 +3017,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun composeServiceAutoOpenUrl(service: ComposeService): Pair<String, String>? {
         service.ports
-            .mapNotNull { port -> composeHostPort(port) }
+            .mapNotNull { port -> composePortBinding(port) }
             .distinct()
-            .forEach { hostPort ->
+            .forEach { binding ->
+                val hostPort = binding.hostPort
                 val link = service.serviceLinks.firstOrNull { it.port == hostPort && it.autoOpen }
                 if (link != null) {
-                    val url = link.url?.takeIf { it.isNotBlank() } ?: "http://127.0.0.1:$hostPort/"
+                    val url = link.url?.takeIf { it.isNotBlank() }
+                        ?: serviceUriFor(link.label, "127.0.0.1", hostPort, binding.containerPort)
                     return link.label to url
                 }
             }
@@ -2955,16 +3033,41 @@ class MainActivity : AppCompatActivity() {
             ?.let { it.label to it.url.orEmpty() }
     }
 
-    private fun projectServiceHealthSummary(urls: List<Pair<String, String>>, projectDir: File): String {
+    private fun projectServiceHealthSummary(urls: List<ProjectServiceUrl>, projectDir: File): String {
         if (urls.isEmpty()) return "-"
         val snapshots = projectContainerSnapshots(projectDir)
-        if (lastContainerSnapshotAt > 0L && snapshots.none { containerSnapshotIsRunning(it) }) {
-            return projectContainerStatusSummary(projectDir)
+        val runningServices = projectRunningServiceNames(projectDir, snapshots)
+        urls.filter { it.serviceName in runningServices && isHttpServiceUrl(it.url) }
+            .forEach { scheduleServiceHealthProbe(it.url) }
+        val inactive = getString(R.string.service_health_inactive)
+        return urls.take(4).joinToString(", ") { serviceUrl ->
+            val running = serviceUrl.serviceName in runningServices
+            val state = when {
+                !running -> inactive
+                !isHttpServiceUrl(serviceUrl.url) -> getString(R.string.service_health_external_client)
+                else -> serviceHealth[serviceUrl.url] ?: getString(R.string.service_health_checking)
+            }
+            "${serviceUrl.label}:$state"
         }
-        urls.forEach { (_, url) -> scheduleServiceHealthProbe(url) }
-        return urls.take(4).joinToString(", ") { (label, url) ->
-            "$label:${serviceHealth[url] ?: getString(R.string.service_health_checking)}"
-        }
+    }
+
+    private fun projectRunningServiceNames(projectDir: File, snapshots: List<JSONObject>): Set<String> {
+        val serviceByContainerName = projectComposeContainerNames(projectDir)
+        return snapshots
+            .filter { containerSnapshotIsRunning(it) }
+            .mapNotNull { obj ->
+                val labels = obj.optJSONObject("Labels")
+                labels?.optString(PDOCKER_COMPOSE_SERVICE_LABEL)
+                    ?.takeIf { it.isNotBlank() }
+                    ?: labels?.optString("com.docker.compose.service")?.takeIf { it.isNotBlank() }
+                    ?: run {
+                        val names = obj.optJSONArray("Names") ?: return@run null
+                        (0 until names.length())
+                            .map { index -> names.optString(index).trim('/') }
+                            .firstNotNullOfOrNull { name -> serviceByContainerName[name] }
+                    }
+            }
+            .toSet()
     }
 
     private fun scheduleServiceHealthProbe(url: String) {
@@ -2985,6 +3088,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun probeServiceUrl(url: String): String =
         runCatching {
+            if (!isHttpServiceUrl(url)) return "external client"
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 900
                 readTimeout = 900
@@ -2992,7 +3096,7 @@ class MainActivity : AppCompatActivity() {
             }
             try {
                 val code = conn.responseCode
-                if (code in 200..399) "HTTP $code" else "HTTP $code"
+                if (code in 200..399) "HTTP $code" else "down HTTP $code"
             } finally {
                 conn.disconnect()
             }
@@ -3001,11 +3105,59 @@ class MainActivity : AppCompatActivity() {
             "down $reason"
         }
 
-    private fun composeHostPort(port: String): Int? {
+    private fun composePortBinding(port: String): ComposePortBinding? {
         val cleaned = port.trim().trim('"', '\'')
         val withoutProtocol = cleaned.substringBefore('/')
-        val parts = withoutProtocol.split(':').filter { it.isNotBlank() }
-        return parts.firstOrNull { it.toIntOrNull() in 1..65535 }?.toIntOrNull()
+        val numbers = withoutProtocol.split(':')
+            .mapNotNull { part -> part.toIntOrNull()?.takeIf { it in 1..65535 } }
+        val hostPort = numbers.firstOrNull() ?: return null
+        val containerPort = numbers.lastOrNull() ?: hostPort
+        return ComposePortBinding(hostPort, containerPort)
+    }
+
+    private fun composeHostPort(port: String): Int? {
+        return composePortBinding(port)?.hostPort
+    }
+
+    private fun isHttpServiceUrl(url: String): Boolean =
+        url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)
+
+    private fun isVncServiceUrl(url: String): Boolean =
+        url.startsWith("vnc://", ignoreCase = true)
+
+    private fun isServiceUri(url: String): Boolean =
+        isHttpServiceUrl(url) || isVncServiceUrl(url)
+
+    private fun serviceUriFor(label: String, host: String, hostPort: Int, containerPort: Int): String =
+        if (isVncService(label, hostPort, containerPort)) {
+            "vnc://$host:$hostPort"
+        } else {
+            "http://$host:$hostPort/"
+        }
+
+    private fun isVncService(label: String?, hostPort: Int?, containerPort: Int?): Boolean {
+        val lower = label.orEmpty().lowercase()
+        if ("novnc" in lower) return false
+        if ("vnc" in lower) return true
+        return containerPort in 5900..5999 || hostPort in 5900..5999
+    }
+
+    private fun serviceActionTitle(label: String, url: String): String =
+        if (isVncServiceUrl(url)) {
+            getString(R.string.action_open_vnc_service_fmt, label)
+        } else {
+            getString(R.string.action_open_service_fmt, label)
+        }
+
+    private fun serviceActionDetail(url: String): String =
+        if (isVncServiceUrl(url)) {
+            getString(R.string.detail_open_vnc_client_fmt, url)
+        } else {
+            getString(R.string.detail_open_at_fmt, url)
+        }
+
+    private fun openServiceUrl(url: String) {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
     private fun projectModelSummary(project: File): String {
@@ -3211,11 +3363,14 @@ class MainActivity : AppCompatActivity() {
                     val host = browserHost(binding.optString("HostIp"))
                     val hostPort = binding.optString("HostPort")
                     if (hostPort.isBlank()) continue
-                    urls += label to "http://$host:$hostPort/"
+                    val hostPortInt = hostPort.toIntOrNull()
+                    if (hostPortInt == null) continue
+                    val actionLabel = labels[hostPortInt] ?: label
+                    urls += actionLabel to serviceUriFor(actionLabel, host, hostPortInt, port ?: hostPortInt)
                 }
             } else {
                 _splitPortKey(key)?.let { exposedPort ->
-                    urls += label to "http://127.0.0.1:$exposedPort/"
+                    urls += label to serviceUriFor(label, "127.0.0.1", exposedPort, exposedPort)
                 }
             }
         }
@@ -3249,7 +3404,7 @@ class MainActivity : AppCompatActivity() {
             val raw = labels.optString(key)
             val label = raw.substringBefore('=', "").trim()
             val url = raw.substringAfter('=', "").trim()
-            if (label.isNotBlank() && (url.startsWith("http://") || url.startsWith("https://"))) {
+            if (label.isNotBlank() && isServiceUri(url)) {
                 urls += label to url
             }
         }

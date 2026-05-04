@@ -461,9 +461,10 @@ default.
 - Scenario: `scripts/android-llama-gpu-compare.sh --predict 4 --repeat 1 --gpu-layers 1 --gpu-ctx 512 --cpu-ctx 2048`.
 - Policy: llama.cpp source unchanged; GPU entry is the standard Vulkan loader
   through `pdocker-vulkan-icd.so`.
-- CPU baseline: 0.193 generated tokens/s for the short HTTP probe.
-- 10x target for this baseline: 1.934 generated tokens/s.
-- Forced Vulkan result: `served=false`, speedup `0.0x`.
+- CPU baseline: 0.259 generated tokens/s for the short HTTP probe.
+- 10x target for this baseline: 2.587 generated tokens/s.
+- Forced Vulkan result: `served=true`, GPU 0.000 generated tokens/s, speedup
+  `0.0x`, `target_met=false`, with `gpu_layers=1`.
 - GPU evidence: llama.cpp reached `Vulkan0 (pdocker Vulkan bridge (queue))`
   and allocated the offloaded output-layer Vulkan model buffer:
   `Vulkan0 model buffer size = 486.87 MiB`, `offloaded 1/37 layers to GPU`.
@@ -474,18 +475,22 @@ default.
   The Vulkan ICD now exposes separate device-local and host-visible memory
   types, so llama.cpp places the offloaded model/compute buffers in
   device-local memory and staging/output buffers in host-visible memory.
-- Diagnostic progress: allocation pNext tracing shows llama.cpp is passing
-  allocation pNext structures (`sType=1000060000`) for these buffers. This
-  narrows the remaining investigation to Vulkan memory/buffer accounting,
-  dedicated allocation metadata, and ggml backend allocation-size expectations.
-- Next blocker: fix Vulkan buffer base/range accounting for ggml scheduler
-  warmup. The current failure is a `ggml_backend_buffer_get_alloc_size` range
-  assertion.
+- Diagnostic progress: allocation pNext tracing and range accounting are past
+  the earlier warmup assertion. The server loads and accepts the HTTP probe, but
+  prompt processing reaches a later generic SPIR-V dispatch where the Android
+  Vulkan executor reports `submit-generic-dispatch` and llama.cpp exits through
+  `vk::Queue::submit: ErrorFeatureNotPresent`.
+- Next blocker: lower the failing llama.cpp SPIR-V dispatch into the Android
+  GPU executor, or clamp the advertised Vulkan feature/capability surface so
+  llama.cpp selects a supported path.
 - Recovery: the script restored CPU mode; `pdocker-llama-cpp` returned to
   `Up (healthy)` and `/v1/models` returned `model.gguf`.
 - UI note: the `llama.cpp GPU compare` card shown while this script runs is a
   daemon operation/progress card, not a container. The container itself is
   `pdocker-llama-cpp` and is the only object expected in `docker ps`.
+- Operation cleanup: the compare operation is marked failed on nonzero exit,
+  ADB port forwarding is removed, and CPU mode is restored by default unless
+  the diagnostic run explicitly passes `--no-restore`.
 - Diagnostic follow-up: adding `LLAMA_EXTRA_ARGS="--jinja --no-warmup"` moved
   the failure from the explicit warmup message to slot initialization, but it
   still hit the same `ggml_backend_buffer_get_alloc_size` range assertion.

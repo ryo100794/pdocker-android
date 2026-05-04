@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
@@ -127,6 +128,16 @@ typedef struct {
 
 static PdockerVkPhysicalDevice g_device;
 static PdockerVkQueue g_queue;
+
+static bool env_enabled(const char *name) {
+    const char *value = getenv(name);
+    return value && value[0] && strcmp(value, "0") != 0 &&
+           strcasecmp(value, "false") != 0 && strcasecmp(value, "no") != 0;
+}
+
+static bool env_disabled(const char *name) {
+    return env_enabled(name);
+}
 
 static VkDeviceSize pdocker_vulkan_heap_size(void) {
     const char *env = getenv("PDOCKER_VULKAN_HEAP_BYTES");
@@ -479,6 +490,17 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.timestampComputeAndGraphics = VK_FALSE;
 }
 
+static VkSubgroupFeatureFlags advertised_subgroup_operations(void) {
+    if (env_disabled("PDOCKER_VULKAN_DISABLE_SUBGROUP_ARITHMETIC")) {
+        return VK_SUBGROUP_FEATURE_BASIC_BIT;
+    }
+    return VK_SUBGROUP_FEATURE_BASIC_BIT |
+           VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
+           VK_SUBGROUP_FEATURE_BALLOT_BIT |
+           VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
+           VK_SUBGROUP_FEATURE_VOTE_BIT;
+}
+
 static void fill_pnext_properties(void *pNext) {
     for (VkBaseOutStructure *cur = (VkBaseOutStructure *)pNext; cur; cur = cur->pNext) {
         switch (cur->sType) {
@@ -499,12 +521,7 @@ static void fill_pnext_properties(void *pNext) {
                 VkPhysicalDeviceSubgroupProperties *p = (VkPhysicalDeviceSubgroupProperties *)cur;
                 p->subgroupSize = 32;
                 p->supportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
-                p->supportedOperations =
-                    VK_SUBGROUP_FEATURE_BASIC_BIT |
-                    VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
-                    VK_SUBGROUP_FEATURE_BALLOT_BIT |
-                    VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
-                    VK_SUBGROUP_FEATURE_VOTE_BIT;
+                p->supportedOperations = advertised_subgroup_operations();
                 p->quadOperationsInAllStages = VK_FALSE;
                 break;
             }
@@ -523,12 +540,7 @@ static void fill_pnext_properties(void *pNext) {
                 VkPhysicalDeviceVulkan11Properties *p = (VkPhysicalDeviceVulkan11Properties *)cur;
                 p->subgroupSize = 32;
                 p->subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
-                p->subgroupSupportedOperations =
-                    VK_SUBGROUP_FEATURE_BASIC_BIT |
-                    VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
-                    VK_SUBGROUP_FEATURE_BALLOT_BIT |
-                    VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
-                    VK_SUBGROUP_FEATURE_VOTE_BIT;
+                p->subgroupSupportedOperations = advertised_subgroup_operations();
                 p->subgroupQuadOperationsInAllStages = VK_FALSE;
                 p->maxMultiviewViewCount = 1;
                 p->maxMultiviewInstanceIndex = 1;
@@ -556,7 +568,7 @@ static void fill_pnext_properties(void *pNext) {
 static void fill_physical_device_features(VkPhysicalDeviceFeatures *pFeatures) {
     if (!pFeatures) return;
     memset(pFeatures, 0, sizeof(*pFeatures));
-    pFeatures->shaderInt64 = VK_TRUE;
+    pFeatures->shaderInt64 = env_disabled("PDOCKER_VULKAN_DISABLE_INT64") ? VK_FALSE : VK_TRUE;
 }
 
 static void fill_pnext_features(void *pNext) {
@@ -564,17 +576,19 @@ static void fill_pnext_features(void *pNext) {
         switch (cur->sType) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
                 VkPhysicalDeviceVulkan11Features *p = (VkPhysicalDeviceVulkan11Features *)cur;
-                p->storageBuffer16BitAccess = VK_TRUE;
-                p->uniformAndStorageBuffer16BitAccess = VK_TRUE;
-                p->storagePushConstant16 = VK_TRUE;
+                VkBool32 storage16 = env_disabled("PDOCKER_VULKAN_DISABLE_16BIT_STORAGE") ? VK_FALSE : VK_TRUE;
+                p->storageBuffer16BitAccess = storage16;
+                p->uniformAndStorageBuffer16BitAccess = storage16;
+                p->storagePushConstant16 = storage16;
                 p->storageInputOutput16 = VK_FALSE;
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
                 VkPhysicalDevice16BitStorageFeatures *p = (VkPhysicalDevice16BitStorageFeatures *)cur;
-                p->storageBuffer16BitAccess = VK_TRUE;
-                p->uniformAndStorageBuffer16BitAccess = VK_TRUE;
-                p->storagePushConstant16 = VK_TRUE;
+                VkBool32 storage16 = env_disabled("PDOCKER_VULKAN_DISABLE_16BIT_STORAGE") ? VK_FALSE : VK_TRUE;
+                p->storageBuffer16BitAccess = storage16;
+                p->uniformAndStorageBuffer16BitAccess = storage16;
+                p->storagePushConstant16 = storage16;
                 p->storageInputOutput16 = VK_FALSE;
                 break;
             }
@@ -600,6 +614,73 @@ static void fill_pnext_features(void *pNext) {
             }
 #endif
             default:
+                break;
+        }
+    }
+}
+
+static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) {
+    if (!pCreateInfo || !(trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG"))) return;
+    const VkPhysicalDeviceFeatures *features = pCreateInfo->pEnabledFeatures;
+    fprintf(stderr,
+            "pdocker-vulkan-icd: create-device extensions=%u base_features={shaderInt64:%u,shaderInt16:%u,shaderFloat64:%u}\n",
+            pCreateInfo->enabledExtensionCount,
+            features ? features->shaderInt64 : 0,
+            features ? features->shaderInt16 : 0,
+            features ? features->shaderFloat64 : 0);
+    for (const VkBaseInStructure *cur = (const VkBaseInStructure *)pCreateInfo->pNext;
+         cur;
+         cur = cur->pNext) {
+        switch (cur->sType) {
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: {
+                const VkPhysicalDeviceFeatures2 *p = (const VkPhysicalDeviceFeatures2 *)cur;
+                fprintf(stderr,
+                        "pdocker-vulkan-icd: create-device features2={shaderInt64:%u,shaderInt16:%u,shaderFloat64:%u}\n",
+                        p->features.shaderInt64,
+                        p->features.shaderInt16,
+                        p->features.shaderFloat64);
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
+                const VkPhysicalDeviceVulkan11Features *p = (const VkPhysicalDeviceVulkan11Features *)cur;
+                fprintf(stderr,
+                        "pdocker-vulkan-icd: create-device vk11_features={storage16:%u,ubo_ssbo16:%u,push16:%u,io16:%u}\n",
+                        p->storageBuffer16BitAccess,
+                        p->uniformAndStorageBuffer16BitAccess,
+                        p->storagePushConstant16,
+                        p->storageInputOutput16);
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
+                const VkPhysicalDevice16BitStorageFeatures *p = (const VkPhysicalDevice16BitStorageFeatures *)cur;
+                fprintf(stderr,
+                        "pdocker-vulkan-icd: create-device storage16_features={storage16:%u,ubo_ssbo16:%u,push16:%u,io16:%u}\n",
+                        p->storageBuffer16BitAccess,
+                        p->uniformAndStorageBuffer16BitAccess,
+                        p->storagePushConstant16,
+                        p->storageInputOutput16);
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: {
+                const VkPhysicalDeviceVulkan12Features *p = (const VkPhysicalDeviceVulkan12Features *)cur;
+                fprintf(stderr,
+                        "pdocker-vulkan-icd: create-device vk12_features={float16:%u,int8:%u,bufferDeviceAddress:%u,vulkanMemoryModel:%u}\n",
+                        p->shaderFloat16,
+                        p->shaderInt8,
+                        p->bufferDeviceAddress,
+                        p->vulkanMemoryModel);
+                break;
+            }
+            case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: {
+                const VkPhysicalDeviceShaderFloat16Int8Features *p = (const VkPhysicalDeviceShaderFloat16Int8Features *)cur;
+                fprintf(stderr,
+                        "pdocker-vulkan-icd: create-device float16_int8_features={float16:%u,int8:%u}\n",
+                        p->shaderFloat16,
+                        p->shaderInt8);
+                break;
+            }
+            default:
+                fprintf(stderr, "pdocker-vulkan-icd: create-device pnext sType=%d\n", (int)cur->sType);
                 break;
         }
     }
@@ -1141,9 +1222,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(
         const VkAllocationCallbacks *pAllocator,
         VkDevice *pDevice) {
     (void)physicalDevice;
-    (void)pCreateInfo;
     (void)pAllocator;
     if (!pDevice) return VK_ERROR_INITIALIZATION_FAILED;
+    trace_device_create_features(pCreateInfo);
     PdockerVkDevice *device = calloc(1, sizeof(*device));
     if (!device) return VK_ERROR_OUT_OF_HOST_MEMORY;
     set_loader_magic_value(device);

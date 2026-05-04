@@ -19,6 +19,11 @@ services:
       CODE_SERVER_PASSWORD: "${CODE_SERVER_PASSWORD:-}"
       CODE_SERVER_PORT: "${CODE_SERVER_PORT:-18080}"
       PDOCKER_GPU: "1"
+      PDOCKER_WORKSPACE_DIR: "/workspace"
+      PDOCKER_PROJECT_DIR: "/pdocker/project"
+      PDOCKER_PROJECTS_DIR: "/pdocker/projects"
+      PDOCKER_HOME: "/pdocker/host"
+      PDOCKER_ENGINE_SOCKET: "/pdocker/host/pdockerd.sock"
     command: ["/usr/local/bin/start-code-server"]
     ports:
       - "18080:18080"
@@ -26,3 +31,6 @@ services:
       - ./workspace:/workspace
       - ./continue:/workspace/.continue
       - ./vscode:/workspace/.vscode-server/data/User
+      - .:/pdocker/project
+      - ..:/pdocker/projects
+      - ../..:/pdocker/host
