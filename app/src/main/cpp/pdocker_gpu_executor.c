@@ -310,6 +310,23 @@ typedef struct {
     void *map;
 } VulkanVectorBuffer;
 
+typedef struct {
+    int ready;
+    VkInstance instance;
+    VkPhysicalDevice physical_device;
+    VkDevice device;
+    VkQueue queue;
+    uint32_t queue_family;
+    VkShaderModule shader;
+    VkDescriptorSetLayout set_layout;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline pipeline;
+    VkCommandPool command_pool;
+    double init_ms;
+} VulkanRuntime;
+
+static VulkanRuntime g_vulkan_runtime;
+
 static int create_vulkan_vector_buffer(VkPhysicalDevice physical_device, VkDevice device, size_t bytes, const void *initial, VulkanVectorBuffer *out) {
     memset(out, 0, sizeof(*out));
     VkBufferCreateInfo bci = {
@@ -350,25 +367,11 @@ static void destroy_vulkan_vector_buffer(VkDevice device, VulkanVectorBuffer *bu
     memset(buf, 0, sizeof(*buf));
 }
 
-static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *out, size_t n, const char *transport) {
-    double init_start = now_ms();
-    const char *fail_stage = "start";
-    VkResult fail_result = VK_SUCCESS;
-    VkInstance instance = VK_NULL_HANDLE;
-    VkPhysicalDevice physical_device = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    VkShaderModule shader = VK_NULL_HANDLE;
-    VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
-    VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
-    VkCommandPool command_pool = VK_NULL_HANDLE;
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-    VkFence fence = VK_NULL_HANDLE;
-    VulkanVectorBuffer buffers[3];
-    memset(buffers, 0, sizeof(buffers));
-
+static int init_vulkan_runtime(VulkanRuntime *rt) {
+    if (rt->ready) return 0;
+    double start = now_ms();
+    const char *stage = "start";
+    VkResult rc = VK_SUCCESS;
     VkApplicationInfo app = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pApplicationName = "pdocker-gpu-executor",
@@ -378,42 +381,37 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pApplicationInfo = &app,
     };
-    VkResult rc = vkCreateInstance(&ici, NULL, &instance);
-    if (rc != VK_SUCCESS) {
-        fprintf(stderr, "pdocker-gpu-executor: Vulkan stage=create-instance rc=%d\n", rc);
-        return -20;
-    }
-
+    stage = "create-instance";
+    rc = vkCreateInstance(&ici, NULL, &rt->instance);
+    if (rc != VK_SUCCESS) goto fail;
     uint32_t physical_count = 0;
-    fail_stage = "enumerate-physical-count";
-    rc = vkEnumeratePhysicalDevices(instance, &physical_count, NULL);
-    if (rc != VK_SUCCESS || physical_count == 0) { fail_result = rc; goto fail; }
+    stage = "enumerate-physical-count";
+    rc = vkEnumeratePhysicalDevices(rt->instance, &physical_count, NULL);
+    if (rc != VK_SUCCESS || physical_count == 0) goto fail;
     VkPhysicalDevice physical_devices[8];
     if (physical_count > 8) physical_count = 8;
-    fail_stage = "enumerate-physical";
-    rc = vkEnumeratePhysicalDevices(instance, &physical_count, physical_devices);
-    if (rc != VK_SUCCESS || physical_count == 0) { fail_result = rc; goto fail; }
-    physical_device = physical_devices[0];
-
+    stage = "enumerate-physical";
+    rc = vkEnumeratePhysicalDevices(rt->instance, &physical_count, physical_devices);
+    if (rc != VK_SUCCESS || physical_count == 0) goto fail;
+    rt->physical_device = physical_devices[0];
     uint32_t family_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &family_count, NULL);
-    if (family_count == 0) { fail_stage = "queue-family-count"; goto fail; }
+    vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, NULL);
+    if (family_count == 0) { stage = "queue-family-count"; goto fail; }
     VkQueueFamilyProperties families[16];
     if (family_count > 16) family_count = 16;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &family_count, families);
-    uint32_t queue_family = UINT32_MAX;
+    vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, families);
+    rt->queue_family = UINT32_MAX;
     for (uint32_t i = 0; i < family_count; ++i) {
         if (families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-            queue_family = i;
+            rt->queue_family = i;
             break;
         }
     }
-    if (queue_family == UINT32_MAX) { fail_stage = "queue-family-compute"; goto fail; }
-
+    if (rt->queue_family == UINT32_MAX) { stage = "queue-family-compute"; goto fail; }
     float priority = 1.0f;
     VkDeviceQueueCreateInfo qci = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .queueFamilyIndex = queue_family,
+        .queueFamilyIndex = rt->queue_family,
         .queueCount = 1,
         .pQueuePriorities = &priority,
     };
@@ -422,31 +420,18 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &qci,
     };
-    fail_stage = "create-device";
-    rc = vkCreateDevice(physical_device, &dci, NULL, &device);
-    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
-    vkGetDeviceQueue(device, queue_family, 0, &queue);
-    double init_ms = now_ms() - init_start;
-
-    const size_t bytes = n * sizeof(float);
-    double upload_start = now_ms();
-    fail_stage = "create-buffer-a";
-    if (create_vulkan_vector_buffer(physical_device, device, bytes, a, &buffers[0]) != 0) goto fail;
-    fail_stage = "create-buffer-b";
-    if (create_vulkan_vector_buffer(physical_device, device, bytes, b, &buffers[1]) != 0) goto fail;
-    fail_stage = "create-buffer-out";
-    if (create_vulkan_vector_buffer(physical_device, device, bytes, NULL, &buffers[2]) != 0) goto fail;
-    double upload_ms = now_ms() - upload_start;
-
-    double compile_start = now_ms();
+    stage = "create-device";
+    rc = vkCreateDevice(rt->physical_device, &dci, NULL, &rt->device);
+    if (rc != VK_SUCCESS) goto fail;
+    vkGetDeviceQueue(rt->device, rt->queue_family, 0, &rt->queue);
     VkShaderModuleCreateInfo smci = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = sizeof(kVectorAddSpv),
         .pCode = kVectorAddSpv,
     };
-    fail_stage = "create-shader-module";
-    rc = vkCreateShaderModule(device, &smci, NULL, &shader);
-    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    stage = "create-shader-module";
+    rc = vkCreateShaderModule(rt->device, &smci, NULL, &rt->shader);
+    if (rc != VK_SUCCESS) goto fail;
     VkDescriptorSetLayoutBinding bindings[3];
     memset(bindings, 0, sizeof(bindings));
     for (uint32_t i = 0; i < 3; ++i) {
@@ -460,31 +445,76 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
         .bindingCount = 3,
         .pBindings = bindings,
     };
-    fail_stage = "create-descriptor-set-layout";
-    rc = vkCreateDescriptorSetLayout(device, &dslci, NULL, &set_layout);
-    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    stage = "create-descriptor-set-layout";
+    rc = vkCreateDescriptorSetLayout(rt->device, &dslci, NULL, &rt->set_layout);
+    if (rc != VK_SUCCESS) goto fail;
     VkPipelineLayoutCreateInfo plci = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
-        .pSetLayouts = &set_layout,
+        .pSetLayouts = &rt->set_layout,
     };
-    fail_stage = "create-pipeline-layout";
-    rc = vkCreatePipelineLayout(device, &plci, NULL, &pipeline_layout);
-    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
+    stage = "create-pipeline-layout";
+    rc = vkCreatePipelineLayout(rt->device, &plci, NULL, &rt->pipeline_layout);
+    if (rc != VK_SUCCESS) goto fail;
     VkComputePipelineCreateInfo cpci = {
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .stage = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-            .module = shader,
+            .module = rt->shader,
             .pName = "main",
         },
-        .layout = pipeline_layout,
+        .layout = rt->pipeline_layout,
     };
-    fail_stage = "create-compute-pipeline";
-    rc = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpci, NULL, &pipeline);
-    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
-    double compile_ms = now_ms() - compile_start;
+    stage = "create-compute-pipeline";
+    rc = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1, &cpci, NULL, &rt->pipeline);
+    if (rc != VK_SUCCESS) goto fail;
+    VkCommandPoolCreateInfo cpoci = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .queueFamilyIndex = rt->queue_family,
+    };
+    stage = "create-command-pool";
+    rc = vkCreateCommandPool(rt->device, &cpoci, NULL, &rt->command_pool);
+    if (rc != VK_SUCCESS) goto fail;
+    rt->init_ms = now_ms() - start;
+    rt->ready = 1;
+    return 0;
+fail:
+    fprintf(stderr, "pdocker-gpu-executor: Vulkan runtime init failed stage=%s rc=%d\n", stage, rc);
+    if (rt->command_pool) vkDestroyCommandPool(rt->device, rt->command_pool, NULL);
+    if (rt->pipeline) vkDestroyPipeline(rt->device, rt->pipeline, NULL);
+    if (rt->pipeline_layout) vkDestroyPipelineLayout(rt->device, rt->pipeline_layout, NULL);
+    if (rt->set_layout) vkDestroyDescriptorSetLayout(rt->device, rt->set_layout, NULL);
+    if (rt->shader) vkDestroyShaderModule(rt->device, rt->shader, NULL);
+    if (rt->device) vkDestroyDevice(rt->device, NULL);
+    if (rt->instance) vkDestroyInstance(rt->instance, NULL);
+    memset(rt, 0, sizeof(*rt));
+    return -1;
+}
+
+static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *out, size_t n, const char *transport) {
+    const int was_ready = g_vulkan_runtime.ready;
+    if (init_vulkan_runtime(&g_vulkan_runtime) != 0) return -21;
+    VulkanRuntime *rt = &g_vulkan_runtime;
+    const size_t bytes = n * sizeof(float);
+    const double init_ms = was_ready ? 0.0 : rt->init_ms;
+    const double compile_ms = 0.0;
+    const char *fail_stage = "start";
+    VkResult fail_result = VK_SUCCESS;
+    VulkanVectorBuffer buffers[3];
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+    VkFence fence = VK_NULL_HANDLE;
+    memset(buffers, 0, sizeof(buffers));
+
+    double upload_start = now_ms();
+    fail_stage = "create-buffer-a";
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, a, &buffers[0]) != 0) goto fail;
+    fail_stage = "create-buffer-b";
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, b, &buffers[1]) != 0) goto fail;
+    fail_stage = "create-buffer-out";
+    if (create_vulkan_vector_buffer(rt->physical_device, rt->device, bytes, NULL, &buffers[2]) != 0) goto fail;
+    double upload_ms = now_ms() - upload_start;
 
     VkDescriptorPoolSize pool_size = {
         .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -497,17 +527,17 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
         .pPoolSizes = &pool_size,
     };
     fail_stage = "create-descriptor-pool";
-    rc = vkCreateDescriptorPool(device, &dpci, NULL, &descriptor_pool);
+    VkResult rc = vkCreateDescriptorPool(rt->device, &dpci, NULL, &descriptor_pool);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
     VkDescriptorSetAllocateInfo dsai = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = descriptor_pool,
         .descriptorSetCount = 1,
-        .pSetLayouts = &set_layout,
+        .pSetLayouts = &rt->set_layout,
     };
     fail_stage = "allocate-descriptor-set";
-    rc = vkAllocateDescriptorSets(device, &dsai, &descriptor_set);
+    rc = vkAllocateDescriptorSets(rt->device, &dsai, &descriptor_set);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     VkDescriptorBufferInfo infos[3];
     VkWriteDescriptorSet writes[3];
@@ -523,23 +553,16 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
         writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writes[i].pBufferInfo = &infos[i];
     }
-    vkUpdateDescriptorSets(device, 3, writes, 0, NULL);
+    vkUpdateDescriptorSets(rt->device, 3, writes, 0, NULL);
 
-    VkCommandPoolCreateInfo cpoci = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .queueFamilyIndex = queue_family,
-    };
-    fail_stage = "create-command-pool";
-    rc = vkCreateCommandPool(device, &cpoci, NULL, &command_pool);
-    if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     VkCommandBufferAllocateInfo cbai = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = command_pool,
+        .commandPool = rt->command_pool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandBufferCount = 1,
     };
     fail_stage = "allocate-command-buffer";
-    rc = vkAllocateCommandBuffers(device, &cbai, &command_buffer);
+    rc = vkAllocateCommandBuffers(rt->device, &cbai, &command_buffer);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
 
     double dispatch_start = now_ms();
@@ -547,15 +570,15 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
     fail_stage = "begin-command-buffer";
     rc = vkBeginCommandBuffer(command_buffer, &cbi);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
-    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline);
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
     vkCmdDispatch(command_buffer, (uint32_t)((n + 127) / 128), 1, 1);
     fail_stage = "end-command-buffer";
     rc = vkEndCommandBuffer(command_buffer);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     fail_stage = "create-fence";
-    rc = vkCreateFence(device, &fci, NULL, &fence);
+    rc = vkCreateFence(rt->device, &fci, NULL, &fence);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     VkSubmitInfo submit = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -563,10 +586,10 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
         .pCommandBuffers = &command_buffer,
     };
     fail_stage = "queue-submit";
-    rc = vkQueueSubmit(queue, 1, &submit, fence);
+    rc = vkQueueSubmit(rt->queue, 1, &submit, fence);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     fail_stage = "wait-fence";
-    rc = vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    rc = vkWaitForFences(rt->device, 1, &fence, VK_TRUE, UINT64_MAX);
     if (rc != VK_SUCCESS) { fail_result = rc; goto fail; }
     double dispatch_ms = now_ms() - dispatch_start;
 
@@ -583,49 +606,37 @@ static int run_vector_add_arrays_vulkan(const float *a, const float *b, float *o
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
-            "\"backend_impl\":\"android_vulkan\",\"backend_affinity\":\"same-api\",\"transport\":\"%s\","
+            "\"backend_impl\":\"android_vulkan\",\"backend_affinity\":\"same-api\","
+            "\"backend_cached\":%s,\"transport\":\"%s\","
             "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
             "\"init_ms\":%.4f,\"compile_ms\":%.4f,\"upload_ms\":%.4f,"
             "\"dispatch_ms\":%.4f,\"download_ms\":%.4f,\"total_ms\":%.4f,"
             "\"max_abs_error\":%.8f,\"valid\":%s}\n",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
             PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            was_ready ? "true" : "false",
             transport ? transport : "vulkan-local-process-buffer",
             n, init_ms, compile_ms, upload_ms, dispatch_ms, download_ms,
             init_ms + compile_ms + upload_ms + dispatch_ms + download_ms, max_err,
             valid ? "true" : "false");
     fflush(json_out());
 
-    if (fence) vkDestroyFence(device, fence, NULL);
-    if (command_pool) vkDestroyCommandPool(device, command_pool, NULL);
-    if (descriptor_pool) vkDestroyDescriptorPool(device, descriptor_pool, NULL);
-    if (pipeline) vkDestroyPipeline(device, pipeline, NULL);
-    if (pipeline_layout) vkDestroyPipelineLayout(device, pipeline_layout, NULL);
-    if (set_layout) vkDestroyDescriptorSetLayout(device, set_layout, NULL);
-    if (shader) vkDestroyShaderModule(device, shader, NULL);
-    destroy_vulkan_vector_buffer(device, &buffers[0]);
-    destroy_vulkan_vector_buffer(device, &buffers[1]);
-    destroy_vulkan_vector_buffer(device, &buffers[2]);
-    if (device) vkDestroyDevice(device, NULL);
-    if (instance) vkDestroyInstance(instance, NULL);
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[0]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[1]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[2]);
     return valid ? 0 : 6;
 
 fail:
-    fprintf(stderr, "pdocker-gpu-executor: Vulkan vector_add failed stage=%s rc=%d\n", fail_stage, fail_result);
-    if (fence) vkDestroyFence(device, fence, NULL);
-    if (command_pool) vkDestroyCommandPool(device, command_pool, NULL);
-    if (descriptor_pool) vkDestroyDescriptorPool(device, descriptor_pool, NULL);
-    if (pipeline) vkDestroyPipeline(device, pipeline, NULL);
-    if (pipeline_layout) vkDestroyPipelineLayout(device, pipeline_layout, NULL);
-    if (set_layout) vkDestroyDescriptorSetLayout(device, set_layout, NULL);
-    if (shader) vkDestroyShaderModule(device, shader, NULL);
-    if (device) {
-        destroy_vulkan_vector_buffer(device, &buffers[0]);
-        destroy_vulkan_vector_buffer(device, &buffers[1]);
-        destroy_vulkan_vector_buffer(device, &buffers[2]);
-        vkDestroyDevice(device, NULL);
-    }
-    if (instance) vkDestroyInstance(instance, NULL);
+    fprintf(stderr, "pdocker-gpu-executor: Vulkan vector_add cached failed stage=%s rc=%d\n", fail_stage, fail_result);
+    if (fence) vkDestroyFence(rt->device, fence, NULL);
+    if (command_buffer) vkFreeCommandBuffers(rt->device, rt->command_pool, 1, &command_buffer);
+    if (descriptor_pool) vkDestroyDescriptorPool(rt->device, descriptor_pool, NULL);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[0]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[1]);
+    destroy_vulkan_vector_buffer(rt->device, &buffers[2]);
     return -21;
 }
 
@@ -1055,8 +1066,8 @@ static void print_capabilities(const char *transport) {
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
             "\"transport\":\"%s\","
-            "\"backend_impls\":[\"android_opencl\",\"gles31_compute\"],"
-            "\"preferred_backend\":\"android_opencl\","
+            "\"backend_impls\":[\"android_vulkan\",\"android_opencl\",\"gles31_compute\"],"
+            "\"preferred_backend\":\"android_vulkan\","
             "\"fallback_backend\":\"gles31_compute\","
             "\"backend_affinity_policy\":\"same-api-first\","
             "\"container_contract\":\"glibc-shim-command-queue\","
@@ -1097,6 +1108,60 @@ static int bench_vector_add(int count) {
         last = run_vector_add();
     }
     destroy_gpu_context(&ctx);
+    return last;
+}
+
+static int run_vector_add_arrays_cpu(const float *a, const float *b, float *out, size_t n, const char *transport) {
+    double dispatch_start = now_ms();
+    for (size_t i = 0; i < n; ++i) {
+        out[i] = a[i] + b[i];
+    }
+    double dispatch_ms = now_ms() - dispatch_start;
+    double max_err = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        double e = fabs((double)out[i] - (double)(a[i] + b[i]));
+        if (e > max_err) max_err = e;
+    }
+    const int valid = max_err <= 0.0001;
+    fprintf(json_out(),
+            "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
+            "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
+            "\"backend_impl\":\"cpu_scalar\",\"backend_affinity\":\"cpu\","
+            "\"transport\":\"%s\",\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
+            "\"init_ms\":0.0000,\"compile_ms\":0.0000,\"upload_ms\":0.0000,"
+            "\"dispatch_ms\":%.4f,\"download_ms\":0.0000,\"total_ms\":%.4f,"
+            "\"max_abs_error\":%.8f,\"valid\":%s}\n",
+            PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+            PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
+            transport ? transport : "host-local-process-buffer",
+            n, dispatch_ms, dispatch_ms, max_err, valid ? "true" : "false");
+    fflush(json_out());
+    return valid ? 0 : 6;
+}
+
+static int bench_cpu_vector_add(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(n, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        json_fail("alloc", "host allocation failed");
+        return 2;
+    }
+    fill_inputs(a, b, n);
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        memset(out, 0, bytes);
+        last = run_vector_add_arrays_cpu(a, b, out, n, "host-cpu-local-process-buffer");
+    }
+    free(a);
+    free(b);
+    free(out);
     return last;
 }
 
@@ -1346,6 +1411,9 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "--bench-vector-add") == 0) {
         return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
+    if (argc > 1 && strcmp(argv[1], "--bench-cpu-vector-add") == 0) {
+        return bench_cpu_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
     }
     if (argc > 1 && strcmp(argv[1], "--bench-vulkan-vector-add") == 0) {
         return bench_vulkan_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));

@@ -95,10 +95,13 @@ There are two different ideas that can both sound like "Vulkan passthrough":
   `pdocker-gpu-command-v1` ABI.
 
 The current Vulkan ICD bridge already validates a compute-style vector-add
-smoke through `vkQueueSubmit`. It is not a general Vulkan backend yet because
-only a small descriptor/buffer/dispatch subset is lowered. This is still more
-promising than raw passthrough on Android because the APK can use public NDK
-Vulkan APIs without asking a glibc process to load Bionic vendor libraries.
+smoke through `vkQueueSubmit`. The APK executor now has a same-API Android
+Vulkan path with reusable instance/device/shader/pipeline/command-pool state,
+so one-time runtime setup is separated from warm dispatch cost. It is not a
+general Vulkan backend yet because only a small descriptor/buffer/dispatch
+subset is lowered. This is still more promising than raw passthrough on Android
+because the APK can use public NDK Vulkan APIs without asking a glibc process to
+load Bionic vendor libraries.
 
 ## Backend Affinity Policy
 
@@ -132,7 +135,10 @@ The first scaffold now has two binaries:
 - `pdocker-gpu-shim`: Linux/glibc container-facing probe, injected as
   `/usr/local/bin/pdocker-gpu-shim` for GPU-requesting containers.
 - `pdocker-gpu-executor`: Android/Bionic APK-side executor probe. It owns
-  Android GPU APIs and advertises the same neutral command ABI.
+  Android GPU APIs and advertises the same neutral command ABI. Its Vulkan
+  vector-add path caches the Vulkan runtime state within the executor process,
+  and reports `backend_cached` plus separated init/upload/dispatch/download
+  timings for host-vs-container overhead comparisons.
 - `pdocker-vulkan-icd.so`: Linux/glibc Vulkan ICD surface, injected as
   `/usr/local/lib/pdocker-vulkan-icd.so`. This is the standard Vulkan-loader
   entry point for unmodified container applications. It currently exposes a
@@ -161,6 +167,27 @@ temporary socket transport is allowed only as a measurement scaffold.
 Benchmarks must separate NOOP/control overhead from upload/dispatch/download
 work, and real LLM integration must use persistent transport plus buffer reuse
 so bridge overhead is not paid per tiny ggml operation.
+
+Large model buffers must not cross the bridge as one eager copied memory block.
+For multi-GB model loads, a naive API that asks the container to allocate the
+model, copy it into an API payload, and then allocate/import it again on the APK
+side can require more than twice the model size transiently and will trigger
+OOM on common phones. The bridge contract for real models is:
+
+- Prefer registered shared buffers or imported file descriptors over payload
+  copies.
+- Register large buffers once, then reference them by handle in later commands.
+- Support chunked upload and page-range dirty tracking for cases where a
+  backend cannot import the full buffer at once.
+- Keep fallback chunk sizes tunable; slower chunked execution is preferable to
+  an unrecoverable OOM.
+- Report memory mode in diagnostics, such as `registered-fd`, `chunked-fd`, or
+  `copy-fallback`, and include peak allocation estimates when available.
+
+The vector-add probes intentionally use small buffers and are not
+representative of model loading. Future llama/ggml work must benchmark bridge
+overhead by buffer size and transfer mode before enabling GPU mode by default.
+
 GPU runtime paths are exposed to containers under `/run/pdocker-gpu`. pdockerd
 binds the APK runtime GPU directory there and direct execution rewrites
 `connect(AF_UNIX)` socket paths, so container code never needs Android app-data

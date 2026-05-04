@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/syscall.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifndef MFD_CLOEXEC
@@ -27,6 +28,12 @@
 #endif
 
 static int connect_queue(void);
+
+static double now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+}
 
 static const char *env_or(const char *name, const char *fallback) {
     const char *v = getenv(name);
@@ -113,6 +120,29 @@ static int send_fd_command(int socket_fd, const char *command, int passed_fd) {
     return sendmsg(socket_fd, &msg, 0) < 0 ? -errno : 0;
 }
 
+static int send_fds_command(int socket_fd, const char *command, const int *passed_fds, size_t fd_count) {
+    if (!passed_fds || fd_count == 0 || fd_count > 4) return -EINVAL;
+    char control[CMSG_SPACE(sizeof(int) * 4)];
+    struct iovec iov;
+    struct msghdr msg;
+    memset(control, 0, sizeof(control));
+    memset(&iov, 0, sizeof(iov));
+    memset(&msg, 0, sizeof(msg));
+    iov.iov_base = (void *)command;
+    iov.iov_len = strlen(command);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+    struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(int) * fd_count);
+    memcpy(CMSG_DATA(cmsg), passed_fds, sizeof(int) * fd_count);
+    msg.msg_controllen = cmsg->cmsg_len;
+    return sendmsg(socket_fd, &msg, 0) < 0 ? -errno : 0;
+}
+
 static int read_response_line(int fd, char *line, size_t line_size) {
     if (!line || line_size == 0) return -EINVAL;
     size_t off = 0;
@@ -126,6 +156,68 @@ static int read_response_line(int fd, char *line, size_t line_size) {
     }
     line[off] = '\0';
     return off > 0 ? 0 : -EIO;
+}
+
+static int vector_add_3fd_on_socket(int fd, size_t n, const char *command_prefix) {
+    if (n == 0 || n > PDOCKER_GPU_VECTOR_ADD_MAX_N) {
+        fprintf(stderr, "pdocker-gpu-shim: invalid vector size: %zu\n", n);
+        return 64;
+    }
+    const size_t bytes = n * sizeof(float);
+    int shared_fds[3] = {-1, -1, -1};
+    void *maps[3] = {MAP_FAILED, MAP_FAILED, MAP_FAILED};
+    int rc = 70;
+    for (int i = 0; i < 3; ++i) {
+        shared_fds[i] = create_shared_fd(bytes);
+        if (shared_fds[i] < 0) {
+            fprintf(stderr, "pdocker-gpu-shim: shared fd allocation failed: %s\n", strerror(errno));
+            goto cleanup;
+        }
+        maps[i] = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_SHARED, shared_fds[i], 0);
+        if (maps[i] == MAP_FAILED) {
+            fprintf(stderr, "pdocker-gpu-shim: mmap shared fd failed: %s\n", strerror(errno));
+            goto cleanup;
+        }
+    }
+    float *a = (float *)maps[0];
+    float *b = (float *)maps[1];
+    float *out = (float *)maps[2];
+    fill_inputs(a, b, n);
+    memset(out, 0, bytes);
+
+    char cmd[80];
+    snprintf(cmd, sizeof(cmd), "%s %zu\n", command_prefix, n);
+    rc = send_fds_command(fd, cmd, shared_fds, 3);
+    for (int i = 0; i < 3; ++i) {
+        close(shared_fds[i]);
+        shared_fds[i] = -1;
+    }
+    if (rc != 0) {
+        fprintf(stderr, "pdocker-gpu-shim: send 3fd command failed: %s\n", strerror(-rc));
+        rc = 70;
+        goto cleanup;
+    }
+    char line[4096];
+    rc = read_response_line(fd, line, sizeof(line));
+    double max_err = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        double err = fabs((double)out[i] - (double)(a[i] + b[i]));
+        if (err > max_err) max_err = err;
+    }
+    if (rc != 0) {
+        fprintf(stderr, "pdocker-gpu-shim: response read failed: %s\n", strerror(-rc));
+        rc = 70;
+        goto cleanup;
+    }
+    fputs(line, stdout);
+    rc = max_err <= 0.0001 ? 0 : 6;
+
+cleanup:
+    for (int i = 0; i < 3; ++i) {
+        if (maps[i] != MAP_FAILED) munmap(maps[i], bytes);
+        if (shared_fds[i] >= 0) close(shared_fds[i]);
+    }
+    return rc;
 }
 
 static int vector_add_fd_on_socket(int fd, size_t n) {
@@ -186,6 +278,55 @@ static int vector_add_fd_once(size_t n) {
     int rc = vector_add_fd_on_socket(fd, n);
     close(fd);
     return rc;
+}
+
+static int bench_cpu_vector_add(int count) {
+    if (count <= 0) count = 1;
+    const size_t n = PDOCKER_GPU_VECTOR_ADD_DEFAULT_N;
+    const size_t bytes = n * sizeof(float);
+    float *a = (float *)malloc(bytes);
+    float *b = (float *)malloc(bytes);
+    float *out = (float *)calloc(n, sizeof(float));
+    if (!a || !b || !out) {
+        free(a);
+        free(b);
+        free(out);
+        fprintf(stderr, "pdocker-gpu-shim: host allocation failed\n");
+        return 70;
+    }
+    fill_inputs(a, b, n);
+    int last = 0;
+    for (int r = 0; r < count; ++r) {
+        memset(out, 0, bytes);
+        double start = now_ms();
+        for (size_t i = 0; i < n; ++i) {
+            out[i] = a[i] + b[i];
+        }
+        double total_ms = now_ms() - start;
+        double max_err = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            double err = fabs((double)out[i] - (double)(a[i] + b[i]));
+            if (err > max_err) max_err = err;
+        }
+        const int valid = max_err <= 0.0001;
+        printf("{\"shim\":\"pdocker-gpu-shim\",\"api\":\"%s\",\"abi_version\":\"%s\","
+               "\"llm_engine\":\"%s\",\"device_independent\":true,"
+               "\"backend_impl\":\"cpu_scalar\",\"backend_affinity\":\"cpu\","
+               "\"execution_scope\":\"container\",\"transport\":\"container-local-process-buffer\","
+               "\"kernel\":\"vector_add\",\"problem_size\":\"n=%zu\","
+               "\"init_ms\":0.0000,\"compile_ms\":0.0000,\"upload_ms\":0.0000,"
+               "\"dispatch_ms\":%.4f,\"download_ms\":0.0000,\"total_ms\":%.4f,"
+               "\"max_abs_error\":%.8f,\"valid\":%s}\n",
+               PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+               PDOCKER_GPU_LLM_ENGINE_LOCATION,
+               n, total_ms, total_ms, max_err, valid ? "true" : "false");
+        last = valid ? 0 : 6;
+        if (last != 0) break;
+    }
+    free(a);
+    free(b);
+    free(out);
+    return last;
 }
 
 static void print_env(void) {
@@ -310,19 +451,48 @@ static int bench_noop(int count, int persistent) {
         setvbuf(io, NULL, _IONBF, 0);
         char line[4096];
         for (int i = 0; i < count; ++i) {
+            double start = now_ms();
             fprintf(io, "NOOP\n");
             if (!fgets(line, sizeof(line), io)) {
                 fclose(io);
                 return 70;
             }
-            fputs(line, stdout);
+            double total_ms = now_ms() - start;
+            printf("{\"shim\":\"pdocker-gpu-shim\",\"api\":\"%s\",\"abi_version\":\"%s\","
+                   "\"llm_engine\":\"%s\",\"device_independent\":true,"
+                   "\"backend_impl\":\"bridge_roundtrip\",\"backend_affinity\":\"transport\","
+                   "\"execution_scope\":\"container-to-host-bridge\","
+                   "\"transport\":\"unix-socket-command-queue-persistent\","
+                   "\"kernel\":\"noop\",\"total_ms\":%.4f,\"valid\":true}\n",
+                   PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+                   PDOCKER_GPU_LLM_ENGINE_LOCATION, total_ms);
         }
         fclose(io);
         return 0;
     }
     int last = 0;
     for (int i = 0; i < count; ++i) {
-        last = send_command("NOOP");
+        double start = now_ms();
+        int fd = connect_queue();
+        if (fd < 0) {
+            fprintf(stderr, "pdocker-gpu-shim: connect failed: %s\n", strerror(-fd));
+            return 69;
+        }
+        dprintf(fd, "NOOP\n");
+        shutdown(fd, SHUT_WR);
+        char line[4096];
+        last = read_response_line(fd, line, sizeof(line));
+        close(fd);
+        if (last != 0) return 70;
+        double total_ms = now_ms() - start;
+        printf("{\"shim\":\"pdocker-gpu-shim\",\"api\":\"%s\",\"abi_version\":\"%s\","
+               "\"llm_engine\":\"%s\",\"device_independent\":true,"
+               "\"backend_impl\":\"bridge_roundtrip\",\"backend_affinity\":\"transport\","
+               "\"execution_scope\":\"container-to-host-bridge\","
+               "\"transport\":\"unix-socket-command-queue\","
+               "\"kernel\":\"noop\",\"total_ms\":%.4f,\"valid\":true}\n",
+               PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
+               PDOCKER_GPU_LLM_ENGINE_LOCATION, total_ms);
     }
     return last;
 }
@@ -346,6 +516,36 @@ static int bench_vector_add_fd(int count, int persistent) {
     int last = 0;
     for (int i = 0; i < count; ++i) {
         last = vector_add_fd_once(PDOCKER_GPU_VECTOR_ADD_DEFAULT_N);
+    }
+    return last;
+}
+
+static int bench_vector_add_3fd(int count, int persistent, const char *command_prefix) {
+    if (count <= 0) count = 1;
+    if (persistent) {
+        int fd = connect_queue();
+        if (fd < 0) {
+            fprintf(stderr, "pdocker-gpu-shim: persistent connect failed: %s\n", strerror(-fd));
+            return 69;
+        }
+        int last = 0;
+        for (int i = 0; i < count; ++i) {
+            last = vector_add_3fd_on_socket(fd, PDOCKER_GPU_VECTOR_ADD_DEFAULT_N, command_prefix);
+            if (last != 0) break;
+        }
+        close(fd);
+        return last;
+    }
+    int last = 0;
+    for (int i = 0; i < count; ++i) {
+        int fd = connect_queue();
+        if (fd < 0) {
+            fprintf(stderr, "pdocker-gpu-shim: connect failed: %s\n", strerror(-fd));
+            return 69;
+        }
+        last = vector_add_3fd_on_socket(fd, PDOCKER_GPU_VECTOR_ADD_DEFAULT_N, command_prefix);
+        close(fd);
+        if (last != 0) break;
     }
     return last;
 }
@@ -454,6 +654,9 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "--bench-vector-add") == 0) {
         return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5), 0);
     }
+    if (strcmp(argv[1], "--bench-cpu-vector-add") == 0) {
+        return bench_cpu_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5));
+    }
     if (strcmp(argv[1], "--bench-vector-add-persistent") == 0) {
         return bench_vector_add(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
     }
@@ -462,6 +665,12 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "--bench-vector-add-fd-persistent") == 0) {
         return bench_vector_add_fd(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
+    }
+    if (strcmp(argv[1], "--bench-vulkan-vector-add-3fd") == 0) {
+        return bench_vector_add_3fd(parse_count(argc > 2 ? argv[2] : NULL, 5), 0, "VULKAN_VECTOR_ADD_3FD");
+    }
+    if (strcmp(argv[1], "--bench-vulkan-vector-add-3fd-persistent") == 0) {
+        return bench_vector_add_3fd(parse_count(argc > 2 ? argv[2] : NULL, 5), 1, "VULKAN_VECTOR_ADD_3FD");
     }
     if (strcmp(argv[1], "--bench-vector-add-registered") == 0) {
         return bench_vector_add_registered(parse_count(argc > 2 ? argv[2] : NULL, 5));
@@ -472,6 +681,6 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "--bench-noop-persistent") == 0) {
         return bench_noop(parse_count(argc > 2 ? argv[2] : NULL, 5), 1);
     }
-    fprintf(stderr, "usage: %s [--capabilities|--env|--queue-probe|--vector-add|--vector-add-fd|--bench-vector-add N|--bench-vector-add-persistent N|--bench-vector-add-fd N|--bench-vector-add-fd-persistent N|--bench-vector-add-registered N|--bench-noop N|--bench-noop-persistent N]\n", argv[0]);
+    fprintf(stderr, "usage: %s [--capabilities|--env|--queue-probe|--vector-add|--vector-add-fd|--bench-cpu-vector-add N|--bench-vector-add N|--bench-vector-add-persistent N|--bench-vector-add-fd N|--bench-vector-add-fd-persistent N|--bench-vulkan-vector-add-3fd N|--bench-vulkan-vector-add-3fd-persistent N|--bench-vector-add-registered N|--bench-noop N|--bench-noop-persistent N]\n", argv[0]);
     return 64;
 }

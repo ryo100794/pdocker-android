@@ -361,6 +361,45 @@ Follow-up Android device smoke result:
 - GLES benchmark remains healthy: stream vector-add total `1.3796 ms`, SAXPY
   `3.0361 ms`, 64x64 matmul `1.6183 ms`.
 
+Follow-up cached Vulkan executor result on 2026-05-04:
+
+- Command: `pdocker-gpu-executor --bench-vulkan-vector-add 3`.
+- Device: `10.62.90.13:37669`.
+- Backend: `android_vulkan`.
+- Backend affinity: `same-api`.
+- Kernel: `vector_add`.
+- First run: `backend_cached=false`, init `106.1700 ms`, compile `0.0000 ms`,
+  upload `3.3972 ms`, dispatch `0.7480 ms`, download `0.2947 ms`, total
+  `110.6100 ms`.
+- Warm runs: `backend_cached=true`, init `0.0000 ms`, compile `0.0000 ms`,
+  total `4.0728 ms` and `3.8251 ms`.
+- Android smoke after reinstall passed with Vulkan same-api executor valid and
+  OpenCL still blocked by the Android untrusted-app linker namespace.
+
+This confirms that the Vulkan bridge can now separate one-time runtime setup
+from per-dispatch work. The cached result is the baseline for future
+container-vs-host overhead comparisons.
+
+Follow-up host/container comparison on 2026-05-04:
+
+- Repeatable script: `scripts/android-gpu-compare-bench.sh 5`.
+- Latest JSON: `docs/test/gpu-host-container-comparison-latest.json`.
+- Latest table: `docs/test/gpu-host-container-comparison-latest.md`.
+- Device: `10.62.90.13:37669`.
+- Container: `pdocker-llama-cpp`.
+- Host CPU vector-add warm mean: `0.0965 ms`.
+- Host Vulkan vector-add warm mean: `5.9220 ms`.
+- Container CPU vector-add warm mean: `0.1702 ms`.
+- Container Vulkan bridge vector-add warm mean: `7.5369 ms`.
+- Container GPU / host GPU warm total ratio: `1.2727x`.
+- Bridge NOOP command-queue round trip from inside the container process:
+  `0.1747 ms/call`.
+
+The script also records wall time for the direct-executor benchmark process.
+That wall time includes process startup and ptrace/seccomp tracing, so it is
+useful for end-to-end runtime overhead but not the pure GPU command-queue
+crossing cost. Use the Bridge NOOP row for command-queue overhead.
+
 ## Latest HTTP API Result
 
 - Date: 2026-05-03 UTC.
