@@ -51,6 +51,11 @@
     <string name="detail_host_shell">診断用アプリホストシェル、コンテナではありません</string>
     <string name="action_default_dev_workspace">標準開発ワークスペース</string>
     <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex + Claude Code</string>
+    <string name="action_set_documents_volume">Documents ボリュームを設定</string>
+    <string name="detail_documents_volume_fmt">%1$s -> %3$s\nホストパス: %2$s</string>
+    <string name="documents_volume_default_name">Android Documents</string>
+    <string name="documents_volume_saf_only">SAF 許可は保存済み、パスメディエータは未実装</string>
+    <string name="status_documents_volume_set_fmt">Documents ボリュームを設定しました: %1$s</string>
     <string name="section_inventory">インベントリ</string>
     <string name="section_jobs">ジョブ</string>
     <string name="widget_images">イメージ</string>

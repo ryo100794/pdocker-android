@@ -94,7 +94,7 @@ rviz2 "${rviz_args[@]}" 2>&1 | tee -a "$rviz_log" &
 rviz_pid=$!
 
 novnc_web="/usr/share/novnc"
-if [ ! -d "$novnc_web" ]; then
+if [ ! -f "${novnc_web}/vnc.html" ]; then
   novnc_web="/usr/share/novnc/www"
 fi
 echo "Starting noVNC on ${novnc_port}, forwarding to 127.0.0.1:${vnc_port}"

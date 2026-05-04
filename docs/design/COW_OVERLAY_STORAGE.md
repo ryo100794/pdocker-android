@@ -166,6 +166,10 @@ SAF plan:
 - Treat Android Storage Access Framework locations as user-granted external
   storage endpoints, not native Linux bind mounts.
 - Keep persistable URI grants and display names in metadata.
+- Project-library templates mount a common Documents volume at `/documents`
+  through `PDOCKER_DOCUMENTS_HOST` and `PDOCKER_DOCUMENTS_MOUNT`. The Android
+  app owns this setting, writes it into each project `.env`, and stores the SAF
+  URI grant for later mediated access.
 - Prefer import/export, sync, or mirrored app-owned working copies for runtime
   paths that need POSIX-style open/stat/rename semantics.
 - Only expose SAF-backed paths directly to container operations once a mediator

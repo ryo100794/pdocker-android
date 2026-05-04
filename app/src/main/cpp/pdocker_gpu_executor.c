@@ -32,6 +32,9 @@
 #define PDOCKER_GPU_MAX_COMMAND_BYTES 4096
 #define PDOCKER_GPU_MAX_VULKAN_BINDINGS 16
 #define PDOCKER_GPU_MAX_PUSH_BYTES 256
+#define PDOCKER_GPU_MAX_VULKAN_ENTRY_NAME 128
+#define PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_ENTRIES 16
+#define PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_BYTES 256
 
 #ifndef GL_COMPUTE_SHADER
 #define GL_COMPUTE_SHADER 0x91B9
@@ -393,6 +396,12 @@ typedef struct {
     off_t offset;
     size_t size;
 } VulkanDispatchBinding;
+
+typedef struct {
+    uint32_t constant_id;
+    uint32_t offset;
+    size_t size;
+} VulkanDispatchSpecialization;
 
 typedef struct {
     int ready;
@@ -1354,6 +1363,11 @@ static int run_vulkan_dispatch_fd(
         const VulkanDispatchBinding *bindings,
         size_t binding_count,
         size_t shader_size,
+        const char *entry_name,
+        const VulkanDispatchSpecialization *specializations,
+        size_t specialization_count,
+        const uint8_t *specialization_data,
+        size_t specialization_data_size,
         const uint8_t *push,
         size_t push_size,
         uint32_t gx,
@@ -1361,10 +1375,13 @@ static int run_vulkan_dispatch_fd(
         uint32_t gz) {
     if (shader_fd < 0 || !buffer_fds || !bindings || binding_count == 0 ||
         binding_count > PDOCKER_GPU_MAX_VULKAN_BINDINGS || shader_size == 0 ||
-        shader_size > 8 * 1024 * 1024 || push_size > PDOCKER_GPU_MAX_PUSH_BYTES) {
+        shader_size > 8 * 1024 * 1024 || push_size > PDOCKER_GPU_MAX_PUSH_BYTES ||
+        specialization_count > PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_ENTRIES ||
+        specialization_data_size > PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_BYTES) {
         json_fail("vulkan-dispatch", "invalid dispatch metadata");
         return 64;
     }
+    if (!entry_name || !entry_name[0]) entry_name = "main";
     const int was_ready = g_vulkan_runtime.ready;
     if (init_vulkan_runtime(&g_vulkan_runtime) != 0) return -21;
     VulkanRuntime *rt = &g_vulkan_runtime;
@@ -1394,9 +1411,14 @@ static int run_vulkan_dispatch_fd(
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
     VkCommandBuffer command_buffer = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
+    VkSpecializationMapEntry vk_spec_entries[PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_ENTRIES];
+    VkSpecializationInfo vk_spec_info;
+    const VkSpecializationInfo *vk_spec_ptr = NULL;
     SpirvTraceSummary spirv_summary;
     int have_spirv_summary = 0;
     memset(vk_buffers, 0, sizeof(vk_buffers));
+    memset(vk_spec_entries, 0, sizeof(vk_spec_entries));
+    memset(&vk_spec_info, 0, sizeof(vk_spec_info));
     memset(&spirv_summary, 0, sizeof(spirv_summary));
     if (!shader_code) return -21;
     if (read_fd_exact(shader_fd, shader_code, shader_size, 0) != 0) goto cleanup;
@@ -1450,13 +1472,31 @@ static int run_vulkan_dispatch_fd(
     fail_stage = "create-generic-shader-module";
     rc = vkCreateShaderModule(rt->device, &smci, NULL, &shader);
     if (rc != VK_SUCCESS) goto cleanup;
+    if (specialization_count > 0) {
+        for (size_t i = 0; i < specialization_count; ++i) {
+            if (specializations[i].offset + specializations[i].size > specialization_data_size) {
+                json_fail("vulkan-dispatch", "invalid specialization range");
+                ret = 64;
+                goto cleanup;
+            }
+            vk_spec_entries[i].constantID = specializations[i].constant_id;
+            vk_spec_entries[i].offset = specializations[i].offset;
+            vk_spec_entries[i].size = specializations[i].size;
+        }
+        vk_spec_info.mapEntryCount = (uint32_t)specialization_count;
+        vk_spec_info.pMapEntries = vk_spec_entries;
+        vk_spec_info.dataSize = specialization_data_size;
+        vk_spec_info.pData = specialization_data;
+        vk_spec_ptr = &vk_spec_info;
+    }
     VkComputePipelineCreateInfo cpci = {
         .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
         .stage = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
             .stage = VK_SHADER_STAGE_COMPUTE_BIT,
             .module = shader,
-            .pName = "main",
+            .pName = entry_name,
+            .pSpecializationInfo = vk_spec_ptr,
         },
         .layout = pipeline_layout,
     };
@@ -1521,11 +1561,12 @@ static int run_vulkan_dispatch_fd(
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"backend_impl\":\"android_vulkan\",\"kernel\":\"generic_spirv\","
-            "\"shader_bytes\":%zu,\"bindings\":%zu,\"dispatch\":[%u,%u,%u],"
+            "\"shader_bytes\":%zu,\"entry\":\"%s\",\"specializations\":%zu,"
+            "\"bindings\":%zu,\"dispatch\":[%u,%u,%u],"
             "\"backend_cached\":%s,\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
             "\"download_ms\":%.4f,\"valid\":true}\n",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
-            shader_size, binding_count, gx, gy, gz, was_ready ? "true" : "false",
+            shader_size, entry_name, specialization_count, binding_count, gx, gy, gz, was_ready ? "true" : "false",
             upload_ms, dispatch_ms, download_ms);
     fflush(json_out());
     ret = 0;
@@ -1542,12 +1583,14 @@ cleanup:
                 "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
                 "\"backend_impl\":\"android_vulkan\",\"kernel\":\"generic_spirv\","
                 "\"valid\":false,\"stage\":\"vulkan-dispatch\",\"error\":\"%s\","
-                "\"vk_result\":%d,\"shader_bytes\":%zu,\"bindings\":%zu,"
+                "\"vk_result\":%d,\"shader_bytes\":%zu,\"entry\":\"%s\","
+                "\"specializations\":%zu,\"bindings\":%zu,"
                 "\"dispatch\":[%u,%u,%u],\"push_bytes\":%zu,"
                 "\"spirv_hash\":\"0x%016llx\"}\n",
                 PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
                 PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
-                fail_stage, rc, shader_size, binding_count, gx, gy, gz, push_size,
+                fail_stage, rc, shader_size, entry_name, specialization_count,
+                binding_count, gx, gy, gz, push_size,
                 (unsigned long long)spirv_summary.hash);
         fflush(json_out());
     }
@@ -1623,6 +1666,8 @@ static int run_registered_vector_add(RegisteredVectorBuffer *buffer) {
 }
 
 static void print_capabilities(const char *transport) {
+    int vulkan_ready = init_vulkan_runtime(&g_vulkan_runtime) == 0;
+    VulkanRuntime *rt = vulkan_ready ? &g_vulkan_runtime : NULL;
     fprintf(json_out(),
             "{\"executor\":\"pdocker-gpu-executor\",\"api\":\"%s\",\"abi_version\":\"%s\","
             "\"role\":\"%s\",\"llm_engine\":\"%s\",\"device_independent\":true,"
@@ -1633,10 +1678,33 @@ static void print_capabilities(const char *transport) {
             "\"backend_affinity_policy\":\"same-api-first\","
             "\"container_contract\":\"glibc-shim-command-queue\","
             "\"fd_shared_buffer\":true,"
+            "\"android_vulkan_ready\":%s,"
+            "\"android_vulkan_features\":{"
+            "\"api_major\":%u,\"api_minor\":%u,"
+            "\"shaderInt64\":%u,"
+            "\"storageBuffer16BitAccess\":%u,"
+            "\"uniformAndStorageBuffer16BitAccess\":%u,"
+            "\"storagePushConstant16\":%u,"
+            "\"shaderFloat16\":%u,\"shaderInt8\":%u,"
+            "\"subgroupSize\":%u,"
+            "\"subgroupStages\":%u,"
+            "\"subgroupOperations\":%u},"
             "\"process_exec\":true}\n",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
             PDOCKER_GPU_EXECUTOR_ROLE, PDOCKER_GPU_LLM_ENGINE_LOCATION,
-            transport);
+            transport,
+            vulkan_ready ? "true" : "false",
+            rt ? VK_API_VERSION_MAJOR(rt->api_version) : 0,
+            rt ? VK_API_VERSION_MINOR(rt->api_version) : 0,
+            rt ? rt->physical_features.shaderInt64 : 0,
+            rt ? rt->physical_storage16.storageBuffer16BitAccess : 0,
+            rt ? rt->physical_storage16.uniformAndStorageBuffer16BitAccess : 0,
+            rt ? rt->physical_storage16.storagePushConstant16 : 0,
+            rt ? rt->physical_float16_int8.shaderFloat16 : 0,
+            rt ? rt->physical_float16_int8.shaderInt8 : 0,
+            rt ? rt->subgroup_properties.subgroupSize : 0,
+            rt ? rt->subgroup_properties.supportedStages : 0,
+            rt ? rt->subgroup_properties.supportedOperations : 0);
     fflush(json_out());
 }
 
@@ -2381,6 +2449,99 @@ static int serve_socket(const char *path) {
                     (void)run_vector_add_3fd(passed_fds[0], passed_fds[1], passed_fds[2], n, GPU_API_AUTO);
                     passed_fds[0] = passed_fds[1] = passed_fds[2] = -1;
                 }
+            } else if (strncmp(cmd, "VULKAN_DISPATCH_V2 ", 19) == 0) {
+                char *save = NULL;
+                char *cursor = cmd + 19;
+                char *tok = strtok_r(cursor, " ", &save);
+                size_t shader_size = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                size_t binding_count = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                size_t push_size = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                uint32_t gx = tok ? (uint32_t)strtoul(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                uint32_t gy = tok ? (uint32_t)strtoul(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                uint32_t gz = tok ? (uint32_t)strtoul(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                const char *push_hex = tok ? tok : "-";
+                tok = strtok_r(NULL, " ", &save);
+                const char *entry_hex = tok ? tok : "-";
+                tok = strtok_r(NULL, " ", &save);
+                size_t specialization_count = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                size_t specialization_data_size = tok ? (size_t)strtoull(tok, NULL, 10) : 0;
+                tok = strtok_r(NULL, " ", &save);
+                const char *specialization_hex = tok ? tok : "-";
+                uint8_t push[PDOCKER_GPU_MAX_PUSH_BYTES];
+                char entry_name[PDOCKER_GPU_MAX_VULKAN_ENTRY_NAME];
+                uint8_t specialization_data[PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_BYTES];
+                VulkanDispatchSpecialization specializations[PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_ENTRIES];
+                VulkanDispatchBinding bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+                memset(push, 0, sizeof(push));
+                memset(entry_name, 0, sizeof(entry_name));
+                memset(specialization_data, 0, sizeof(specialization_data));
+                memset(specializations, 0, sizeof(specializations));
+                memset(bindings, 0, sizeof(bindings));
+                int parse_ok = 1;
+                if (binding_count == 0 || binding_count > PDOCKER_GPU_MAX_VULKAN_BINDINGS ||
+                    push_size > PDOCKER_GPU_MAX_PUSH_BYTES ||
+                    specialization_count > PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_ENTRIES ||
+                    specialization_data_size > PDOCKER_GPU_MAX_VULKAN_SPECIALIZATION_BYTES ||
+                    passed_fd_count < 1 + binding_count) {
+                    parse_ok = 0;
+                }
+                if (parse_ok && push_size > 0) {
+                    int decoded = hex_decode(push_hex, push, sizeof(push));
+                    if (decoded < 0 || (size_t)decoded != push_size) parse_ok = 0;
+                } else if (parse_ok && strcmp(push_hex, "-") != 0) {
+                    parse_ok = 0;
+                }
+                if (parse_ok && strcmp(entry_hex, "-") != 0) {
+                    int decoded = hex_decode(entry_hex, (uint8_t *)entry_name, sizeof(entry_name) - 1);
+                    if (decoded <= 0 || (size_t)decoded >= sizeof(entry_name)) parse_ok = 0;
+                    else entry_name[decoded] = '\0';
+                } else if (parse_ok) {
+                    snprintf(entry_name, sizeof(entry_name), "main");
+                }
+                if (parse_ok && specialization_data_size > 0) {
+                    int decoded = hex_decode(specialization_hex, specialization_data, sizeof(specialization_data));
+                    if (decoded < 0 || (size_t)decoded != specialization_data_size) parse_ok = 0;
+                } else if (parse_ok && strcmp(specialization_hex, "-") != 0) {
+                    parse_ok = 0;
+                }
+                for (size_t i = 0; parse_ok && i < specialization_count; ++i) {
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    specializations[i].constant_id = (uint32_t)strtoul(tok, NULL, 10);
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    specializations[i].offset = (uint32_t)strtoul(tok, NULL, 10);
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    specializations[i].size = (size_t)strtoull(tok, NULL, 10);
+                }
+                for (size_t i = 0; parse_ok && i < binding_count; ++i) {
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    bindings[i].binding = (uint32_t)strtoul(tok, NULL, 10);
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    bindings[i].offset = (off_t)strtoll(tok, NULL, 10);
+                    tok = strtok_r(NULL, " ", &save);
+                    if (!tok) { parse_ok = 0; break; }
+                    bindings[i].size = (size_t)strtoull(tok, NULL, 10);
+                }
+                if (!parse_ok) {
+                    json_fail("vulkan-dispatch", "invalid command");
+                } else {
+                    (void)run_vulkan_dispatch_fd(passed_fds[0], &passed_fds[1], bindings, binding_count,
+                                                 shader_size, entry_name,
+                                                 specializations, specialization_count,
+                                                 specialization_data, specialization_data_size,
+                                                 push, push_size, gx, gy, gz);
+                }
             } else if (strncmp(cmd, "VULKAN_DISPATCH_V1 ", 19) == 0) {
                 char *save = NULL;
                 char *cursor = cmd + 19;
@@ -2429,7 +2590,9 @@ static int serve_socket(const char *path) {
                     json_fail("vulkan-dispatch", "invalid command");
                 } else {
                     (void)run_vulkan_dispatch_fd(passed_fds[0], &passed_fds[1], bindings, binding_count,
-                                                 shader_size, push, push_size, gx, gy, gz);
+                                                 shader_size, "main",
+                                                 NULL, 0, NULL, 0,
+                                                 push, push_size, gx, gy, gz);
                 }
             } else {
                 json_fail("command", "unknown command");

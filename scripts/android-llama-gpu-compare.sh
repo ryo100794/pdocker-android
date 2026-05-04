@@ -348,6 +348,83 @@ def json_bool_field_seen(name, value):
 executor_backends = sorted(set(re.findall(r'"backend_impl"\s*:\s*"([^"]+)"', log)))
 executor_errors = sorted(set(re.findall(r'"error"\s*:\s*"([^"]+)"', log)))
 spirv_hashes = sorted(set(re.findall(r'"spirv_hash"\s*:\s*"([^"]+)"', log)))
+
+def extract_executor_json_events(text):
+    events = []
+    for line in text.splitlines():
+        raw = line.strip()
+        marker = "generic dispatch response:"
+        if marker in raw:
+            raw = raw.split(marker, 1)[1].strip()
+        if not raw.startswith("{"):
+            continue
+        try:
+            event = json.loads(raw)
+        except Exception:
+            continue
+        if event.get("executor") == "pdocker-gpu-executor":
+            events.append(event)
+    return events
+
+def parse_android_feature_trace(text):
+    m = re.search(
+        r"pdocker-gpu-executor: Android Vulkan features api=([0-9]+)\.([0-9]+) "
+        r"shaderInt64=([0-9]+) "
+        r"storage16=\{ssbo:([0-9]+),ubo_ssbo:([0-9]+),push:([0-9]+),io:([0-9]+)\} "
+        r"float16=([0-9]+) int8=([0-9]+) "
+        r"subgroup=\{size:([0-9]+),stages:0x([0-9a-fA-F]+),ops:0x([0-9a-fA-F]+)\}",
+        text,
+    )
+    if not m:
+        return {}
+    return {
+        "api_version": f"{m.group(1)}.{m.group(2)}",
+        "shader_int64": bool(int(m.group(3))),
+        "storage16": {
+            "ssbo": bool(int(m.group(4))),
+            "ubo_ssbo": bool(int(m.group(5))),
+            "push": bool(int(m.group(6))),
+            "io": bool(int(m.group(7))),
+        },
+        "shader_float16": bool(int(m.group(8))),
+        "shader_int8": bool(int(m.group(9))),
+        "subgroup": {
+            "size": int(m.group(10)),
+            "stages": f"0x{int(m.group(11), 16):x}",
+            "ops": f"0x{int(m.group(12), 16):x}",
+        },
+    }
+
+def parse_spirv_traces(text):
+    traces = []
+    pattern = re.compile(
+        r"pdocker-gpu-executor: SPIR-V trace valid=([0-9]+) truncated=([0-9]+) "
+        r"hash=(0x[0-9a-fA-F]+) magic=(0x[0-9a-fA-F]+) version=(0x[0-9a-fA-F]+) "
+        r"bound=([0-9]+) local_size=([0-9]+),([0-9]+),([0-9]+) "
+        r"dispatch=([0-9]+),([0-9]+),([0-9]+) push=([0-9]+) bindings=([0-9]+) caps=([^\n]+)"
+    )
+    for m in pattern.finditer(text):
+        traces.append({
+            "valid": bool(int(m.group(1))),
+            "truncated": bool(int(m.group(2))),
+            "hash": m.group(3),
+            "magic": m.group(4),
+            "version": m.group(5),
+            "bound": int(m.group(6)),
+            "local_size": [int(m.group(7)), int(m.group(8)), int(m.group(9))],
+            "dispatch": [int(m.group(10)), int(m.group(11)), int(m.group(12))],
+            "push_bytes": int(m.group(13)),
+            "bindings": int(m.group(14)),
+            "capabilities": [cap.strip() for cap in m.group(15).split(",") if cap.strip() and cap.strip() != "none"],
+        })
+    return traces
+
+executor_events = extract_executor_json_events(log)
+executor_backends = sorted(set(executor_backends) | {e.get("backend_impl") for e in executor_events if e.get("backend_impl")})
+executor_errors = sorted(set(executor_errors) | {e.get("error") for e in executor_events if e.get("error")})
+spirv_hashes = sorted(set(spirv_hashes) | {e.get("spirv_hash") for e in executor_events if e.get("spirv_hash")})
+android_feature_trace = parse_android_feature_trace(log)
+spirv_traces = parse_spirv_traces(log)
 generic_spirv_attempted = (
     json_string_field_seen("kernel", "generic_spirv")
     or "generic dispatch response:" in log
@@ -415,6 +492,92 @@ allocations = [
     int(m.group(1))
     for m in re.finditer(r"pdocker-vulkan-icd: allocate ([0-9]+) bytes", log)
 ]
+created_buffers = [
+    int(m.group(1))
+    for m in re.finditer(r"pdocker-vulkan-icd: create-buffer size=([0-9]+)", log)
+]
+descriptor_ranges = [
+    int(m.group(1))
+    for m in re.finditer(r"descriptor storage binding=[0-9]+ buffer_size=[0-9]+ offset=[0-9]+ range=([0-9]+)", log)
+]
+cpu_mapped_model_mib = [
+    float(m.group(1))
+    for m in re.finditer(r"CPU_Mapped model buffer size =\s+([0-9.]+) MiB", log)
+]
+vulkan_model_mib = [
+    float(m.group(1))
+    for m in re.finditer(r"Vulkan0 model buffer size =\s+([0-9.]+) MiB", log)
+]
+bridge_max_buffer_bytes = 536870912
+largest_allocation = max(allocations) if allocations else 0
+largest_created_buffer = max(created_buffers) if created_buffers else 0
+model_cpu_mapped_bytes = int(cpu_mapped_model_mib[-1] * 1024 * 1024) if cpu_mapped_model_mib else 0
+chunking_pressure = {
+    "configured_bridge_max_buffer_bytes": bridge_max_buffer_bytes,
+    "largest_allocation_bytes": largest_allocation,
+    "largest_created_buffer_bytes": largest_created_buffer,
+    "allocation_near_clamp": bool(largest_allocation and largest_allocation >= int(bridge_max_buffer_bytes * 0.90)),
+    "model_cpu_mapped_bytes": model_cpu_mapped_bytes,
+    "model_cpu_mapped_exceeds_bridge_clamp": bool(model_cpu_mapped_bytes and model_cpu_mapped_bytes > bridge_max_buffer_bytes),
+    "vulkan_model_buffer_mib": vulkan_model_mib[-1] if vulkan_model_mib else 0.0,
+    "descriptor_range_max_bytes": max(descriptor_ranges) if descriptor_ranges else 0,
+}
+advertised_limits = {
+    "configured_clamps": {
+        "PDOCKER_VULKAN_MAX_BUFFER_BYTES": bridge_max_buffer_bytes,
+        "GGML_VK_FORCE_MAX_BUFFER_SIZE": bridge_max_buffer_bytes,
+        "GGML_VK_FORCE_MAX_ALLOCATION_SIZE": bridge_max_buffer_bytes,
+        "GGML_VK_SUBALLOCATION_BLOCK_SIZE": bridge_max_buffer_bytes,
+    },
+    "icd_advertises_subgroup_arithmetic_by_default": "PDOCKER_VULKAN_DISABLE_SUBGROUP_ARITHMETIC" not in log,
+    "executor_android_features": android_feature_trace,
+    "spirv_trace_count": len(spirv_traces),
+    "last_spirv_trace": spirv_traces[-1] if spirv_traces else {},
+}
+generic_spirv_dispatch = {
+    "attempted": generic_spirv_attempted,
+    "valid_android_vulkan_events": [e for e in executor_events if e.get("kernel") == "generic_spirv" and e.get("backend_impl") == "android_vulkan" and e.get("valid") is True][-4:],
+    "failed_events": [
+        e for e in executor_events
+        if e.get("valid") is False and (e.get("kernel") == "generic_spirv" or e.get("error") == "submit-generic-dispatch")
+    ][-4:],
+    "fallback_events": [e for e in executor_events if e.get("backend_affinity") == "fallback"][-4:],
+    "llama_throw": "vk::Queue::submit: ErrorFeatureNotPresent" if queue_submit_blocker else "",
+}
+failure_axes = {
+    "advertised_limits": {
+        "state": (
+            "suspect"
+            if queue_submit_blocker and (android_feature_trace or spirv_traces)
+            else "untraced"
+            if queue_submit_blocker
+            else "not_front_blocker"
+        ),
+        "reason": (
+            "Android vkQueueSubmit rejected the generic SPIR-V dispatch after ICD-advertised Vulkan features/limits were accepted"
+            if queue_submit_blocker and (android_feature_trace or spirv_traces)
+            else "queue submit failed before Android feature/SPIR-V trace was captured"
+            if queue_submit_blocker
+            else "no feature-limit submit failure in this run"
+        ),
+    },
+    "chunking": {
+        "state": (
+            "pressure"
+            if chunking_pressure["allocation_near_clamp"] or chunking_pressure["model_cpu_mapped_exceeds_bridge_clamp"]
+            else "not_observed"
+        ),
+        "reason": (
+            "large model/buffer allocations are at or above the 512MiB bridge clamp; future failures should distinguish splitting/chunk transport from shader lowering"
+            if chunking_pressure["allocation_near_clamp"] or chunking_pressure["model_cpu_mapped_exceeds_bridge_clamp"]
+            else "no allocation/chunking pressure found in the captured log"
+        ),
+    },
+    "generic_spirv_dispatch": {
+        "state": "front_blocker" if generic_spirv_dispatch_blocker else "passed" if generic_spirv_dispatch["valid_android_vulkan_events"] else "not_reached",
+        "reason": blocker_detail if generic_spirv_dispatch_blocker else "generic SPIR-V dispatch was not the failing axis in this run",
+    },
+}
 dispatch_upload_ms = [float(m.group(1)) for m in re.finditer(r'"upload_ms":([0-9.]+)', log)]
 dispatch_ms = [float(m.group(1)) for m in re.finditer(r'"dispatch_ms":([0-9.]+)', log)]
 dispatch_download_ms = [float(m.group(1)) for m in re.finditer(r'"download_ms":([0-9.]+)', log)]
@@ -451,6 +614,10 @@ result = {
         "diagnostics": {
             "blocker_class": blocker_class,
             "blocker_detail": blocker_detail,
+            "failure_axes": failure_axes,
+            "advertised_limits": advertised_limits,
+            "chunking_pressure": chunking_pressure,
+            "generic_spirv_dispatch": generic_spirv_dispatch,
             "executor_backends": executor_backends,
             "executor_errors": executor_errors,
             "spirv_hashes": spirv_hashes[-4:],

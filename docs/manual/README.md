@@ -1,6 +1,6 @@
 # Manual Documents
 
-Snapshot date: 2026-05-03.
+Snapshot date: 2026-05-04.
 
 ## Purpose
 
@@ -14,7 +14,21 @@ app, not why the architecture is shaped a certain way.
 |---|---|
 | [`DEFAULT_DEV_WORKSPACE.md`](DEFAULT_DEV_WORKSPACE.md) | Default VS Code Server, Continue, Codex, Claude Code, and llama.cpp workspace flow |
 | [`GIT_COLLABORATION.md`](GIT_COLLABORATION.md) | Multi-machine Git identity, preflight, branch, and integration workflow |
+| [`NEWSFLOW.md`](NEWSFLOW.md) | GitHub-facing release, issue, demo, Wiki, and tester-call update workflow |
 | [`PROMOTION.md`](PROMOTION.md) | GitHub tagline, repository description, topics, release template, demo checklist, and public messaging |
+
+## Canonical Sources
+
+- Use [`../plan/STATUS.md`](../plan/STATUS.md) for current product state before
+  writing user-facing claims.
+- Use [`../test/COMPATIBILITY.md`](../test/COMPATIBILITY.md) and
+  [`../test/compat-audit-latest.md`](../test/compat-audit-latest.md) for
+  compatibility statements.
+- Use [`../design/DOCKER_COMPAT_SCOPE.md`](../design/DOCKER_COMPAT_SCOPE.md)
+  for Android and Docker boundary language.
+- Keep public-message wording in [`PROMOTION.md`](PROMOTION.md) and publishing
+  workflow in [`NEWSFLOW.md`](NEWSFLOW.md); do not copy those sections into
+  other manual pages.
 
 ## Maintenance
 

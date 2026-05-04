@@ -51,6 +51,11 @@
     <string name="detail_host_shell">Diagnostic app host shell, not a container</string>
     <string name="action_default_dev_workspace">Default dev workspace</string>
     <string name="detail_default_dev_workspace">VS Code Server + Continue + Codex + Claude Code</string>
+    <string name="action_set_documents_volume">Set Documents volume</string>
+    <string name="detail_documents_volume_fmt">%1$s -> %3$s\nHost path: %2$s</string>
+    <string name="documents_volume_default_name">Android Documents</string>
+    <string name="documents_volume_saf_only">SAF grant saved; path mediator pending</string>
+    <string name="status_documents_volume_set_fmt">Documents volume set: %1$s</string>
     <string name="section_inventory">Inventory</string>
     <string name="section_jobs">Jobs</string>
     <string name="widget_images">Images</string>

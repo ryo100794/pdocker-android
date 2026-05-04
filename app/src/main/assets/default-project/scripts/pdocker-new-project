@@ -71,7 +71,16 @@ services:
     command: ["/bin/bash", "-lc", "echo hello from compose && sleep infinity"]
     volumes:
       - ./workspace:/workspace
+      - ${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}
 COMPOSE
+  mkdir -p "$dest/documents"
+  cat > "$dest/documents/README.md" <<'README'
+# Shared Documents Volume
+
+This placeholder is used when the pdocker Android app has not configured a
+host Documents folder. Containers see the shared folder at `/documents` by
+default.
+README
 elif [[ "$template" = /* && -d "$template" ]]; then
   copy_template "$template"
 elif [[ -d "$projects/$template" ]]; then

@@ -13,7 +13,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Environment
 import android.os.PowerManager
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.system.Os
 import android.text.TextUtils
@@ -212,6 +214,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val REQUEST_POST_NOTIFICATIONS = 100
+        private const val REQUEST_DOCUMENTS_TREE = 101
+        private const val REQUEST_EXTERNAL_STORAGE = 102
         private const val MAX_INLINE_EDIT_BYTES = 512 * 1024
         private const val MAX_JOB_HISTORY = 20
         private const val MAX_JOB_LINES = 200
@@ -224,6 +228,11 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_SMOKE_START = "io.github.ryo100794.pdocker.action.SMOKE_START"
         private const val ACTION_SMOKE_GPU_BENCH = "io.github.ryo100794.pdocker.action.SMOKE_GPU_BENCH"
         private const val ACTION_SMOKE_COMPOSE_UP = "io.github.ryo100794.pdocker.action.SMOKE_COMPOSE_UP"
+        private const val PREFS_NAME = "pdocker-settings"
+        private const val PREF_DOCUMENTS_TREE_URI = "documents.treeUri"
+        private const val PREF_DOCUMENTS_HOST_PATH = "documents.hostPath"
+        private const val PREF_DOCUMENTS_DISPLAY_NAME = "documents.displayName"
+        private const val PDOCKER_DOCUMENTS_MOUNT = "/documents"
     }
 
     private val ui = Handler(Looper.getMainLooper())
@@ -399,6 +408,36 @@ class MainActivity : AppCompatActivity() {
         handleAutomationIntent(intent)
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_DOCUMENTS_TREE || resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        val flags = data.flags and (
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+        val hostPath = documentTreeHostPath(uri).orEmpty()
+        val displayName = documentTreeDisplayName(uri, hostPath)
+        prefs().edit()
+            .putString(PREF_DOCUMENTS_TREE_URI, uri.toString())
+            .putString(PREF_DOCUMENTS_HOST_PATH, hostPath)
+            .putString(PREF_DOCUMENTS_DISPLAY_NAME, displayName)
+            .apply()
+        syncDocumentsVolumeEnv()
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                ),
+                REQUEST_EXTERNAL_STORAGE,
+            )
+        }
+        status.text = getString(R.string.status_documents_volume_set_fmt, displayName)
+        renderContent()
+    }
+
     override fun onResume() {
         super.onResume()
         ensureDaemonStarted()
@@ -525,6 +564,9 @@ class MainActivity : AppCompatActivity() {
         addSection(getString(R.string.section_workspace))
         addAction(getString(R.string.action_default_dev_workspace), getString(R.string.detail_default_dev_workspace)) {
             openEditor(File(projectRoot, "default/Dockerfile"))
+        }
+        addAction(getString(R.string.action_set_documents_volume), documentsVolumeDetail()) {
+            requestDocumentsVolumeFolder()
         }
 
         addSection(getString(R.string.section_inventory))
@@ -873,6 +915,9 @@ class MainActivity : AppCompatActivity() {
         }
         addAction(getString(R.string.action_enable_notifications), getString(R.string.detail_enable_notifications)) {
             requestNotificationPermission()
+        }
+        addAction(getString(R.string.action_set_documents_volume), documentsVolumeDetail()) {
+            requestDocumentsVolumeFolder()
         }
         addAction(getString(R.string.action_prune_build_cache), getString(R.string.detail_prune_build_cache)) {
             runEngineAction(getString(R.string.action_prune_build_cache), getString(R.string.section_diagnostics)) {
@@ -1414,6 +1459,7 @@ class MainActivity : AppCompatActivity() {
             .firstOrNull { it.isFile }
             ?: return emptyList()
         val lines = file.readLines()
+        val composeEnv = composeEnvironment(dir)
         val serviceLinks = parseComposeHeaderServiceLinks(lines)
         val services = mutableListOf<ComposeService>()
         var inServices = false
@@ -1445,13 +1491,13 @@ class MainActivity : AppCompatActivity() {
                 val value = trimmed.substringAfter(':', "").trim()
                 blockKey = if (value.isBlank()) key else null
                 when (key) {
-                    "image" -> svc.image = composeValue(value)
-                    "container_name" -> svc.containerName = composeValue(value)
-                    "working_dir" -> svc.workingDir = composeValue(value)
-                    "command" -> svc.command = composeCommand(value)
-                    "gpus" -> svc.gpus = composeValue(value)
-                    "build" -> if (value.isNotBlank()) svc.buildContext = composeValue(value)
-                    "depends_on" -> if (value.isNotBlank()) svc.dependsOn += composeStringList(value)
+                    "image" -> svc.image = composeValue(value, composeEnv)
+                    "container_name" -> svc.containerName = composeValue(value, composeEnv)
+                    "working_dir" -> svc.workingDir = composeValue(value, composeEnv)
+                    "command" -> svc.command = composeCommand(value, composeEnv)
+                    "gpus" -> svc.gpus = composeValue(value, composeEnv)
+                    "build" -> if (value.isNotBlank()) svc.buildContext = composeValue(value, composeEnv)
+                    "depends_on" -> if (value.isNotBlank()) svc.dependsOn += composeStringList(value, composeEnv)
                     "healthcheck" -> svc.hasHealthcheck = true
                 }
                 return@forEach
@@ -1461,14 +1507,14 @@ class MainActivity : AppCompatActivity() {
                     "build" -> {
                         val key = trimmed.substringBefore(':')
                         val value = trimmed.substringAfter(':', "").trim()
-                        if (key == "context") svc.buildContext = composeValue(value)
+                        if (key == "context") svc.buildContext = composeValue(value, composeEnv)
                     }
-                    "environment" -> parseComposeMapOrList(trimmed)?.let { (k, v) -> svc.environment[k] = v }
-                    "ports" -> parseComposeListValue(trimmed)?.let { svc.ports += it }
-                    "volumes" -> parseComposeListValue(trimmed)?.let { svc.volumes += it }
+                    "environment" -> parseComposeMapOrList(trimmed, composeEnv)?.let { (k, v) -> svc.environment[k] = v }
+                    "ports" -> parseComposeListValue(trimmed, composeEnv)?.let { svc.ports += it }
+                    "volumes" -> parseComposeListValue(trimmed, composeEnv)?.let { svc.volumes += it }
                     "depends_on" -> {
-                        parseComposeListValue(trimmed)?.let { svc.dependsOn += it }
-                        parseComposeMapOrList(trimmed)?.first?.let { svc.dependsOn += it }
+                        parseComposeListValue(trimmed, composeEnv)?.let { svc.dependsOn += it }
+                        parseComposeMapOrList(trimmed, composeEnv)?.first?.let { svc.dependsOn += it }
                     }
                 }
             }
@@ -1537,7 +1583,8 @@ class MainActivity : AppCompatActivity() {
         volumes.forEach { spec ->
             val parts = spec.split(":")
             if (parts.size >= 2) {
-                val host = File(projectDir, parts[0]).absolutePath
+                val hostPath = parts[0]
+                val host = if (hostPath.startsWith("/")) File(hostPath).absolutePath else File(projectDir, hostPath).absolutePath
                 val guest = parts[1]
                 val mode = parts.getOrNull(2)?.let { ":$it" }.orEmpty()
                 binds.put("$host:$guest$mode")
@@ -1589,37 +1636,37 @@ class MainActivity : AppCompatActivity() {
             .put("HostConfig", hostConfig)
     }
 
-    private fun parseComposeMapOrList(line: String): Pair<String, String>? {
+    private fun parseComposeMapOrList(line: String, env: Map<String, String>): Pair<String, String>? {
         val item = line.removePrefix("-").trim()
         if ("=" in item) {
             val k = item.substringBefore('=')
-            return k to composeValue(item.substringAfter('='))
+            return k to composeValue(item.substringAfter('='), env)
         }
         if (":" in item) {
             val k = item.substringBefore(':').trim()
-            return k to composeValue(item.substringAfter(':').trim())
+            return k to composeValue(item.substringAfter(':').trim(), env)
         }
         return null
     }
 
-    private fun parseComposeListValue(line: String): String? =
-        line.takeIf { it.trimStart().startsWith("-") }?.trim()?.removePrefix("-")?.trim()?.let(::composeValue)
+    private fun parseComposeListValue(line: String, env: Map<String, String>): String? =
+        line.takeIf { it.trimStart().startsWith("-") }?.trim()?.removePrefix("-")?.trim()?.let { composeValue(it, env) }
 
-    private fun composeStringList(value: String): List<String> {
-        val cleaned = composeValue(value)
+    private fun composeStringList(value: String, env: Map<String, String>): List<String> {
+        val cleaned = composeValue(value, env)
         if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
             return runCatching {
                 val arr = JSONArray(cleaned)
                 (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { item -> item.isNotBlank() } }
             }.getOrElse {
-                cleaned.trim('[', ']').split(',').map { composeValue(it) }.filter { it.isNotBlank() }
+                cleaned.trim('[', ']').split(',').map { composeValue(it, env) }.filter { it.isNotBlank() }
             }
         }
-        return cleaned.split(',').map { composeValue(it) }.filter { it.isNotBlank() }
+        return cleaned.split(',').map { composeValue(it, env) }.filter { it.isNotBlank() }
     }
 
-    private fun composeCommand(value: String): List<String> {
-        val cleaned = composeValue(value)
+    private fun composeCommand(value: String, env: Map<String, String>): List<String> {
+        val cleaned = composeValue(value, env)
         if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
             return runCatching {
                 val arr = JSONArray(cleaned)
@@ -1629,11 +1676,50 @@ class MainActivity : AppCompatActivity() {
         return if (cleaned.isBlank()) emptyList() else listOf("/bin/sh", "-lc", cleaned)
     }
 
-    private fun composeValue(value: String): String {
+    private fun composeEnvironment(projectDir: File): Map<String, String> {
+        val env = linkedMapOf<String, String>()
+        listOf(File(projectRoot, ".pdocker-common.env"), File(projectDir, ".env")).forEach fileLoop@ { file ->
+            if (!file.isFile) return@fileLoop
+            file.readLines().forEach lineLoop@ { raw ->
+                val line = raw.trim()
+                if (line.isBlank() || line.startsWith("#") || "=" !in line) return@lineLoop
+                val key = line.substringBefore('=').trim()
+                if (!key.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) return@lineLoop
+                env[key] = envFileValue(line.substringAfter('='))
+            }
+        }
+        if ("PDOCKER_DOCUMENTS_HOST" !in env) env["PDOCKER_DOCUMENTS_HOST"] = documentsHostPath()
+        if ("PDOCKER_DOCUMENTS_MOUNT" !in env) env["PDOCKER_DOCUMENTS_MOUNT"] = PDOCKER_DOCUMENTS_MOUNT
+        return env
+    }
+
+    private fun envFileValue(raw: String): String {
+        val value = raw.trim()
+        if (value.length >= 2 && value.first() == '"' && value.last() == '"') {
+            return value.substring(1, value.lastIndex)
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\")
+        }
+        if (value.length >= 2 && value.first() == '\'' && value.last() == '\'') {
+            return value.substring(1, value.lastIndex)
+        }
+        return value.substringBefore(" #").trim()
+    }
+
+    private fun composeValue(value: String, env: Map<String, String>): String {
         var out = value.trim().trim('"', '\'')
-        out = Regex("""\$\{[A-Za-z_][A-Za-z0-9_]*:-([^}]*)\}""").replace(out) { it.groupValues[1] }
-        out = Regex("""\$\{[A-Za-z_][A-Za-z0-9_]*-([^}]*)\}""").replace(out) { it.groupValues[1] }
-        out = Regex("""\$\{[A-Za-z_][A-Za-z0-9_]*\}""").replace(out, "")
+        out = Regex("""\$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\}""").replace(out) {
+            env[it.groupValues[1]]?.takeIf { value -> value.isNotEmpty() } ?: it.groupValues[2]
+        }
+        out = Regex("""\$\{([A-Za-z_][A-Za-z0-9_]*)-([^}]*)\}""").replace(out) {
+            env[it.groupValues[1]] ?: it.groupValues[2]
+        }
+        out = Regex("""\$\{([A-Za-z_][A-Za-z0-9_]*)\}""").replace(out) {
+            env[it.groupValues[1]].orEmpty()
+        }
+        out = Regex("""\$([A-Za-z_][A-Za-z0-9_]*)""").replace(out) {
+            env[it.groupValues[1]].orEmpty()
+        }
         return out
     }
 
@@ -1716,6 +1802,101 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun prefs() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+
+    private fun requestDocumentsVolumeFolder() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+            )
+        }
+        startActivityForResult(intent, REQUEST_DOCUMENTS_TREE)
+    }
+
+    private fun documentsVolumeDetail(): String =
+        getString(
+            R.string.detail_documents_volume_fmt,
+            documentsDisplayName(),
+            documentsHostPath().ifBlank { getString(R.string.documents_volume_saf_only) },
+            PDOCKER_DOCUMENTS_MOUNT,
+        )
+
+    private fun documentsDisplayName(): String =
+        prefs().getString(PREF_DOCUMENTS_DISPLAY_NAME, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: getString(R.string.documents_volume_default_name)
+
+    private fun documentsHostPath(): String =
+        prefs().getString(PREF_DOCUMENTS_HOST_PATH, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: defaultDocumentsHostPath()
+
+    private fun defaultDocumentsHostPath(): String {
+        val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        return docs.absolutePath.ifBlank { "/storage/emulated/0/Documents" }
+    }
+
+    private fun documentTreeDisplayName(uri: Uri, hostPath: String): String {
+        if (hostPath.isNotBlank()) return hostPath
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull().orEmpty()
+        return treeId.ifBlank { uri.toString() }
+    }
+
+    private fun documentTreeHostPath(uri: Uri): String? {
+        if (uri.authority != "com.android.externalstorage.documents") return null
+        val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull().orEmpty()
+        val volume = treeId.substringBefore(':', "")
+        val rel = treeId.substringAfter(':', "").trim('/')
+        val base = when (volume) {
+            "primary" -> Environment.getExternalStorageDirectory().absolutePath
+            "home" -> defaultDocumentsHostPath()
+            else -> "/storage/$volume"
+        }
+        if (base.isBlank()) return null
+        val path = if (rel.isBlank() || volume == "home") base else "$base/$rel"
+        return path.takeIf { it.isNotBlank() }
+    }
+
+    private fun syncDocumentsVolumeEnv() {
+        projectRoot.mkdirs()
+        writeDocumentsEnv(File(projectRoot, ".pdocker-common.env"))
+        projectDirs().forEach { writeDocumentsEnv(File(it, ".env")) }
+    }
+
+    private fun ensureProjectDocumentsEnv(project: File) {
+        project.mkdirs()
+        writeDocumentsEnv(File(project, ".env"))
+        writeDocumentsEnv(File(projectRoot, ".pdocker-common.env"))
+    }
+
+    private fun writeDocumentsEnv(file: File) {
+        val uri = prefs().getString(PREF_DOCUMENTS_TREE_URI, "").orEmpty()
+        val updates = linkedMapOf(
+            "PDOCKER_DOCUMENTS_HOST" to documentsHostPath(),
+            "PDOCKER_DOCUMENTS_MOUNT" to PDOCKER_DOCUMENTS_MOUNT,
+            "PDOCKER_DOCUMENTS_MODE" to "rw",
+            "PDOCKER_DOCUMENTS_TREE_URI" to uri,
+        )
+        val existing = if (file.isFile) file.readLines().toMutableList() else mutableListOf()
+        updates.forEach { (key, value) ->
+            val line = "$key=${envFileQuote(value)}"
+            val index = existing.indexOfFirst { it.trimStart().startsWith("$key=") }
+            if (index >= 0) existing[index] = line else existing += line
+        }
+        file.parentFile?.mkdirs()
+        file.writeText(existing.joinToString("\n").trimEnd() + "\n")
+    }
+
+    private fun envFileQuote(value: String): String =
+        if (value.any { it.isWhitespace() || it == '\'' || it == '"' || it == '#' }) {
+            "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        } else {
+            value
+        }
 
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
@@ -3255,6 +3436,7 @@ class MainActivity : AppCompatActivity() {
         File(target, ".pdocker-template-id").writeText(template.id + "\n")
         File(target, ".pdocker-template-version").writeText(template.version.toString() + "\n")
         migrateProjectPorts(target)
+        ensureProjectDocumentsEnv(target)
         if (template.id == "dev-workspace") migrateDefaultDevWorkspace(target)
         status.text = getString(
             R.string.status_library_install_report_fmt,
@@ -3471,8 +3653,9 @@ class MainActivity : AppCompatActivity() {
         }
         migrateProjectPorts(target)
         migrateDefaultDevWorkspace(target)
+        ensureProjectDocumentsEnv(target)
         stamp.parentFile?.mkdirs()
-        stamp.writeText("3\n")
+        stamp.writeText("5\n")
     }
 
     private fun migrateDefaultDevWorkspace(project: File) {

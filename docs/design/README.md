@@ -1,6 +1,6 @@
 # Design Documents
 
-Snapshot date: 2026-05-03.
+Snapshot date: 2026-05-04.
 
 ## Purpose
 
@@ -20,6 +20,20 @@ tradeoffs, accepted behavior, and non-goals.
 | [`MEDIA_BRIDGE.md`](MEDIA_BRIDGE.md) | Android Camera2/AudioRecord/AudioTrack media bridge contract |
 | [`../../docker-proot-setup/docs/GPU_COMPAT.md`](../../docker-proot-setup/docs/GPU_COMPAT.md) | Backend GPU request/env contract |
 | [`../../docker-proot-setup/docs/NETWORK_COMPAT.md`](../../docker-proot-setup/docs/NETWORK_COMPAT.md) | Backend network metadata and port rewrite plan |
+
+## Canonical Sources
+
+- Treat [`DOCKER_COMPAT_SCOPE.md`](DOCKER_COMPAT_SCOPE.md) as the canonical
+  product-boundary document for Docker compatibility, Android limits, and
+  unsupported Docker features.
+- Treat [`COW_OVERLAY_STORAGE.md`](COW_OVERLAY_STORAGE.md) as the canonical
+  storage contract; status summaries should link here instead of restating the
+  lower/upper model.
+- Treat [`GPU_COMPAT.md`](GPU_COMPAT.md) as the Android GPU design entry point,
+  with backend request/env details delegated to
+  [`../../docker-proot-setup/docs/GPU_COMPAT.md`](../../docker-proot-setup/docs/GPU_COMPAT.md).
+- Treat [`MEDIA_BRIDGE.md`](MEDIA_BRIDGE.md) as the media contract; test files
+  should record probes and link back here for readiness rules.
 
 ## Maintenance
 

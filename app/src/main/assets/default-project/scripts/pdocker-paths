@@ -20,12 +20,14 @@ project="${PDOCKER_PROJECT_DIR:-/pdocker/project}"
 projects="${PDOCKER_PROJECTS_DIR:-/pdocker/projects}"
 home="${PDOCKER_HOME:-/pdocker/host}"
 engine="${PDOCKER_ENGINE_SOCKET:-$home/pdockerd.sock}"
+documents="${PDOCKER_DOCUMENTS_MOUNT:-/documents}"
 
 show_path "workspace" "$workspace"
 show_path "current project" "$project"
 show_path "project library" "$projects"
 show_path "pdocker home" "$home"
 show_path "engine socket" "$engine"
+show_path "documents" "$documents"
 show_path "docker socket" "/var/run/docker.sock"
 
 echo

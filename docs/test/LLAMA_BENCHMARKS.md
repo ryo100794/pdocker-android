@@ -1,9 +1,20 @@
 # llama.cpp Runtime Benchmarks
 
+Snapshot date: 2026-05-04.
+
+## Purpose
+
 This document records repeatable llama.cpp measurements from pdocker Android
 runtime runs. Keep the latest machine-readable result in
 `docs/test/llama-bench-latest.json` and copy it to the device bench directory
 with `scripts/android-llama-bench.sh`.
+
+## Canonical Sources
+
+- GPU bridge design lives in [`../design/GPU_COMPAT.md`](../design/GPU_COMPAT.md).
+- Current runtime status lives in [`../plan/STATUS.md`](../plan/STATUS.md).
+- Active llama/GPU tasks live in [`../plan/TODO.md`](../plan/TODO.md).
+- Machine-readable benchmark artifacts stay in adjacent `*.json` files.
 
 ## How To Run
 
@@ -475,6 +486,11 @@ default.
   The Vulkan ICD now exposes separate device-local and host-visible memory
   types, so llama.cpp places the offloaded model/compute buffers in
   device-local memory and staging/output buffers in host-visible memory.
+- Bridge ABI progress: `VULKAN_DISPATCH_V2` preserves the compute shader entry
+  point and bounded specialization constants across the glibc ICD to Android
+  executor boundary. `scripts/smoke-vulkan-icd-bridge.sh` now verifies a
+  minimal storage-buffer compute dispatch through the same socket path, and
+  `scripts/verify-fast.sh` runs both Vulkan init and bridge smokes.
 - Diagnostic progress: allocation pNext tracing and range accounting are past
   the earlier warmup assertion. The server loads and accepts the HTTP probe, but
   prompt processing reaches a later generic SPIR-V dispatch where the Android
@@ -599,3 +615,12 @@ Vulkan passthrough, no CUDA-compatible signal, no `VK_ICD_FILENAMES`, and no
 usable GPU device inside the container. Future GPU-enabled runs should preserve
 this same benchmark shape and record the GPU diagnostic evidence next to the
 tokens/s result.
+
+## Maintenance
+
+- Keep newest human-readable results near the top and preserve older results as
+  history.
+- Do not restate GPU architecture decisions here; link to
+  [`../design/GPU_COMPAT.md`](../design/GPU_COMPAT.md).
+- Keep JSON artifacts machine-readable and summarize them here only enough for
+  comparison.

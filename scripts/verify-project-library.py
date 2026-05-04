@@ -19,6 +19,7 @@ LLAMA_GPU_COMPARE_BRIDGE_LIMITS = (
     "GGML_VK_FORCE_MAX_ALLOCATION_SIZE",
     "GGML_VK_SUBALLOCATION_BLOCK_SIZE",
 )
+DOCUMENTS_VOLUME = "${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}"
 
 
 def fail(msg: str) -> None:
@@ -107,6 +108,9 @@ def main() -> int:
         "compare script uses standard Vulkan entry": "standard Vulkan loader through pdocker-vulkan-icd.so" in compare_script,
         "compare script classifies dispatch blocker": "queue_submit_blocker" in compare_script and "vk::Queue::submit: ErrorFeatureNotPresent" in compare_script,
         "compare script classifies generic spirv blocker": "generic_spirv_dispatch_attempted" in compare_script and "vulkan_generic_spirv_dispatch" in compare_script and "executor_submit_generic_dispatch_error" in compare_script,
+        "compare script separates gpu failure axes": '"failure_axes": failure_axes' in compare_script and '"advertised_limits": advertised_limits' in compare_script and '"chunking_pressure": chunking_pressure' in compare_script and '"generic_spirv_dispatch": generic_spirv_dispatch' in compare_script,
+        "compare script parses advertised limit traces": "parse_android_feature_trace" in compare_script and "parse_spirv_traces" in compare_script and "icd_advertises_subgroup_arithmetic_by_default" in compare_script,
+        "compare script records chunking pressure": "model_cpu_mapped_exceeds_bridge_clamp" in compare_script and "allocation_near_clamp" in compare_script and "descriptor_range_max_bytes" in compare_script,
         "compare script classifies range assert": "buffer_range_assert_blocker" in compare_script and "ggml_backend_buffer_get_alloc_size" in compare_script,
         "compare script reports operation to ui": "operation_notify" in compare_script and "POST /system/operations" in compare_script and "llama-gpu-compare" in compare_script,
         "compare script operation summary includes gpu status": "GPU {d['gpu']['tokens_per_second']:.3f} tok/s" in compare_script and "target_met={str(d['comparison']['target_met']).lower()}" in compare_script and "gpu_layers={d['settings']['gpu_layers']}" in compare_script,
@@ -133,6 +137,12 @@ def main() -> int:
         "latest compare records current blocker": bool(compare_result.get("next_blocker")),
         "latest compare records blocker classification": compare_result.get("gpu", {}).get("diagnostics", {}).get("blocker_class") == "vulkan_generic_spirv_dispatch",
         "latest compare records generic spirv attempt": compare_result.get("gpu", {}).get("evidence", {}).get("generic_spirv_dispatch_attempted") is True,
+        "latest compare records failure axes": all(
+            axis in compare_result.get("gpu", {}).get("diagnostics", {}).get("failure_axes", {})
+            for axis in ("advertised_limits", "chunking", "generic_spirv_dispatch")
+        ),
+        "latest compare records chunking pressure": "configured_bridge_max_buffer_bytes" in compare_result.get("gpu", {}).get("diagnostics", {}).get("chunking_pressure", {}),
+        "latest compare records advertised limits": "configured_clamps" in compare_result.get("gpu", {}).get("diagnostics", {}).get("advertised_limits", {}),
         "latest compare records operation ui surface": compare_result.get("operation", {}).get("kind") == "llama-gpu-compare" and "operation/progress card" in compare_result.get("operation", {}).get("ui_surface", ""),
         "latest compare records operation cleanup": "restore CPU server unless --no-restore" in compare_result.get("operation", {}).get("cleanup", ""),
     }
@@ -157,6 +167,22 @@ def main() -> int:
         if tid not in templates:
             fail(f"template {tid} absent from library.json")
     ok("required templates listed")
+
+    for tid, template in templates.items():
+        compose_name = template.get("compose")
+        if not compose_name:
+            continue
+        template_root = ASSETS / template["assetPath"]
+        compose = read(template_root / compose_name)
+        readme = read(template_root / "README.md")
+        documents_readme = read(template_root / "documents" / "README.md")
+        if DOCUMENTS_VOLUME not in compose:
+            fail(f"{tid} compose missing shared Documents volume")
+        if "PDOCKER_DOCUMENTS_HOST" not in readme or "PDOCKER_DOCUMENTS_MOUNT" not in readme:
+            fail(f"{tid} README missing shared Documents override docs")
+        if "/documents" not in documents_readme:
+            fail(f"{tid} documents README missing container mount path")
+    ok("all compose templates include shared Documents volume")
 
     dev = templates["dev-workspace"]
     if dev.get("assetPath") != "default-project":
@@ -236,11 +262,16 @@ def main() -> int:
         "pdocker-docker",
         "pdocker-compose",
         "DOCKER_HOST",
+        "PDOCKER_DOCUMENTS_MOUNT",
         "filesDir/pdocker/projects",
         "filesDir/pdocker/pdockerd.sock",
     ):
         if token not in dev_management_contract:
             fail(f"dev-workspace management helper contract missing {token}")
+    if DOCUMENTS_VOLUME not in dev_helper_scripts:
+        fail("pdocker-new-project blank template must include shared Documents volume")
+    if 'show_path "documents"' not in dev_helper_scripts:
+        fail("pdocker-paths must show the shared Documents mount")
     if "eval \"$(pdocker-engine-env --export)\"" not in dev_helper_scripts:
         fail("dev-workspace Docker helpers must source guarded Engine environment")
     if "No mounted pdocker/Docker Engine socket found." not in dev_helper_scripts:
@@ -351,6 +382,9 @@ def main() -> int:
         "ros Dockerfile Xvnc/noVNC packages": "tigervnc-standalone-server" in ros_dockerfile
         and "novnc" in ros_dockerfile
         and "websockify" in ros_dockerfile,
+        "ros Dockerfile extracts noVNC static assets without postinst": "apt-get download novnc" in ros_dockerfile
+        and "dpkg-deb -x novnc_*.deb /" in ros_dockerfile
+        and " novnc \\" not in ros_dockerfile,
         "ros Dockerfile software rendering env": "PDOCKER_GL_BACKEND=llvmpipe" in ros_dockerfile
         and "LIBGL_ALWAYS_SOFTWARE=1" in ros_dockerfile
         and "GALLIUM_DRIVER=llvmpipe" in ros_dockerfile
@@ -367,7 +401,10 @@ def main() -> int:
         "ros start launches RViz": "rviz2 \"${rviz_args[@]}\"" in ros_start
         and "RVIZ_CONFIG" in ros_start,
         "ros start launches noVNC via websockify": "websockify --web" in ros_start
-        and "0.0.0.0:${novnc_port}" in ros_start,
+        and "0.0.0.0:${novnc_port}" in ros_start
+        and "127.0.0.1:${vnc_port}" in ros_start
+        and 'if [ ! -f "${novnc_web}/vnc.html" ]; then' in ros_start
+        and 'novnc_web="/usr/share/novnc/www"' in ros_start,
         "ros start logs explicit GL backend": 'PDOCKER_GL_BACKEND="${PDOCKER_GL_BACKEND:-llvmpipe}"' in ros_start
         and "pdocker GL backend: PDOCKER_GL_BACKEND=llvmpipe (Mesa llvmpipe software rendering)" in ros_start
         and "pdocker GL backend: PDOCKER_GL_BACKEND=zink-experimental (future Mesa Zink path; acceleration is not validated by this template)" in ros_start
@@ -381,6 +418,8 @@ def main() -> int:
         and "tee -a \"$glxinfo_log\"" in ros_start
         and "tee -a \"$novnc_log\"" in ros_start,
         "ros docs identify access ports": "18082" in ros_readme and "15900" in ros_readme,
+        "ros docs document noVNC package extraction": "apt repository" in ros_readme
+        and "extracts its static files without running" in ros_readme,
         "ros docs document explicit GL backend": "PDOCKER_GL_BACKEND=llvmpipe" in ros_readme
         and "PDOCKER_GL_BACKEND=zink-experimental" in ros_readme
         and "does not claim Vulkan/Zink acceleration works" in ros_readme,
@@ -456,7 +495,10 @@ def main() -> int:
         "blender Dockerfile Xvnc/noVNC packages": "tigervnc-standalone-server" in blender_dockerfile
         and "novnc" in blender_dockerfile
         and "websockify" in blender_dockerfile,
-        "blender Dockerfile lightweight window manager": "openbox" in blender_dockerfile,
+        "blender Dockerfile extracts noVNC static assets without postinst": "apt-get download novnc" in blender_dockerfile
+        and "dpkg-deb -x novnc_*.deb /" in blender_dockerfile
+        and " novnc \\" not in blender_dockerfile,
+        "blender Dockerfile lightweight window manager": "matchbox-window-manager" in blender_dockerfile,
         "blender Dockerfile Mesa diagnostics": "mesa-utils" in blender_dockerfile
         and "mesa-vulkan-drivers" in blender_dockerfile
         and "vulkan-tools" in blender_dockerfile,
@@ -470,12 +512,15 @@ def main() -> int:
         and "pgrep -x blender" in blender_dockerfile,
         "blender start launches Xvnc": "Xvnc \"$display\"" in blender_start
         and "-SecurityTypes None" in blender_start,
-        "blender start launches Openbox": "openbox-session" in blender_start,
+        "blender start launches lightweight window manager": "matchbox-window-manager" in blender_start,
         "blender start launches Blender": "blender \"${blender_args[@]}\"" in blender_start
         and "BLENDER_STARTUP_FILE" in blender_start
         and "BLENDER_EXTRA_ARGS" in blender_start,
         "blender start launches noVNC via websockify": "websockify --web" in blender_start
-        and "0.0.0.0:${novnc_port}" in blender_start,
+        and "0.0.0.0:${novnc_port}" in blender_start
+        and "127.0.0.1:${vnc_port}" in blender_start
+        and 'if [ ! -f "${novnc_web}/vnc.html" ]; then' in blender_start
+        and 'novnc_web="/usr/share/novnc/www"' in blender_start,
         "blender start records OpenGL diagnostics": "glxinfo -B" in blender_start
         and "OpenGL/GLSL diagnostics" in blender_start,
         "blender start logs explicit GL backend": 'PDOCKER_GL_BACKEND="${PDOCKER_GL_BACKEND:-llvmpipe}"' in blender_start
@@ -485,11 +530,13 @@ def main() -> int:
         "blender start exposes future Zink/Vulkan switches without claim": "PDOCKER_ZINK_EXPERIMENTAL=1 exposes Mesa Zink/Vulkan env switches for future validation only" in blender_start
         and "acceleration is not validated by this template" in blender_start,
         "blender logs stream to stdout": "tee -a \"$vnc_log\"" in blender_start
-        and "tee -a \"$openbox_log\"" in blender_start
+        and "tee -a \"$wm_log\"" in blender_start
         and "tee -a \"$glxinfo_log\"" in blender_start
         and "tee -a \"$blender_log\"" in blender_start
         and "tee -a \"$novnc_log\"" in blender_start,
         "blender docs identify access ports": "18083" in blender_readme and "15901" in blender_readme,
+        "blender docs document noVNC package extraction": "apt repository" in blender_readme
+        and "extracts its static files without running" in blender_readme,
         "blender docs document software defaults": "LIBGL_ALWAYS_SOFTWARE=1" in blender_readme
         and "GALLIUM_DRIVER=llvmpipe" in blender_readme
         and "PDOCKER_GL_BACKEND=llvmpipe" in blender_readme

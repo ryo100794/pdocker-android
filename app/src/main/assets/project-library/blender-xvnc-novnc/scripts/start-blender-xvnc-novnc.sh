@@ -9,7 +9,7 @@ depth="${VNC_DEPTH:-24}"
 workspace="${WORKSPACE:-/workspace}"
 log_dir="${workspace}/logs"
 vnc_log="${VNC_LOG_FILE:-${log_dir}/xvnc.log}"
-openbox_log="${OPENBOX_LOG_FILE:-${log_dir}/openbox.log}"
+wm_log="${WM_LOG_FILE:-${OPENBOX_LOG_FILE:-${log_dir}/wm.log}}"
 blender_log="${BLENDER_LOG_FILE:-${log_dir}/blender.log}"
 glxinfo_log="${GLXINFO_LOG_FILE:-${log_dir}/glxinfo.log}"
 novnc_log="${NOVNC_LOG_FILE:-${log_dir}/novnc.log}"
@@ -72,7 +72,7 @@ xvnc_pid=$!
 
 cleanup() {
   trap - EXIT INT TERM
-  for pid in "${novnc_pid:-}" "${blender_pid:-}" "${openbox_pid:-}" "$xvnc_pid"; do
+  for pid in "${novnc_pid:-}" "${blender_pid:-}" "${wm_pid:-}" "$xvnc_pid"; do
     if [ -n "$pid" ] && kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
     fi
@@ -82,9 +82,18 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 sleep 2
-echo "Starting Openbox window manager"
-openbox-session 2>&1 | tee -a "$openbox_log" &
-openbox_pid=$!
+wm_pid=""
+if command -v matchbox-window-manager >/dev/null 2>&1; then
+  echo "Starting Matchbox window manager"
+  matchbox-window-manager 2>&1 | tee -a "$wm_log" &
+  wm_pid=$!
+elif command -v openbox-session >/dev/null 2>&1; then
+  echo "Starting Openbox window manager"
+  openbox-session 2>&1 | tee -a "$wm_log" &
+  wm_pid=$!
+else
+  echo "No window manager installed; continuing with unmanaged X11 session" | tee -a "$wm_log"
+fi
 
 sleep 2
 {
@@ -113,7 +122,7 @@ stdbuf -oL -eL blender "${blender_args[@]}" 2>&1 | tee -a "$blender_log" &
 blender_pid=$!
 
 novnc_web="/usr/share/novnc"
-if [ ! -d "$novnc_web" ]; then
+if [ ! -f "${novnc_web}/vnc.html" ]; then
   novnc_web="/usr/share/novnc/www"
 fi
 echo "Starting noVNC on ${novnc_port}, forwarding to 127.0.0.1:${vnc_port}"
@@ -121,4 +130,8 @@ websockify --web="$novnc_web" "0.0.0.0:${novnc_port}" "127.0.0.1:${vnc_port}" \
   2>&1 | tee -a "$novnc_log" &
 novnc_pid=$!
 
-wait -n "$xvnc_pid" "$openbox_pid" "$blender_pid" "$novnc_pid"
+wait_pids=("$xvnc_pid" "$blender_pid" "$novnc_pid")
+if [ -n "$wm_pid" ]; then
+  wait_pids+=("$wm_pid")
+fi
+wait -n "${wait_pids[@]}"

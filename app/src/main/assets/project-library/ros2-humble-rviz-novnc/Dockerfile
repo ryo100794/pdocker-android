@@ -27,7 +27,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       locales \
       lsb-release \
       mesa-utils \
-      novnc \
       procps \
       software-properties-common \
       tigervnc-standalone-server \
@@ -46,6 +45,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
       ros-humble-desktop \
       ros-humble-rviz2 \
+    && tmp="$(mktemp -d)" \
+    && (cd "$tmp" && apt-get download novnc && dpkg-deb -x novnc_*.deb /) \
+    && rm -rf "$tmp" \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scripts/start-ros2-rviz-novnc.sh /usr/local/bin/start-ros2-rviz-novnc

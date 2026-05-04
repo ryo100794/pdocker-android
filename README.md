@@ -69,6 +69,11 @@ See [`docs/plan/STATUS.md`](docs/plan/STATUS.md) for the detailed
 implementation snapshot and [`docs/plan/TODO.md`](docs/plan/TODO.md) for the
 live task board.
 
+For a GitHub-friendly view of the current demo surface, template library,
+compatibility counters, and TODO-linked timeline, see the generated
+[`Showcase Dashboard`](docs/showcase/PROJECT_DASHBOARD.md) and
+[`Roadmap Timeline`](docs/showcase/ROADMAP_TIMELINE.md).
+
 ## What To Expect Today
 
 The most useful current workflows are:

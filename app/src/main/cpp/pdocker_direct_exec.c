@@ -926,6 +926,16 @@ static int resolve_guest_host_path(const char *rootfs, const char *guest,
     return 1;
 }
 
+static int should_skip_unix_socket_rewrite(const char *guest) {
+    if (!guest) return 0;
+    /* glibc probes nscd aggressively during apt/dpkg. pdocker does not run
+     * nscd inside the rootfs, and prefixing the long Android app-data rootfs
+     * path often exceeds sockaddr_un.sun_path. Let the original short guest
+     * path fail naturally with ENOENT instead of flooding build logs. */
+    return strcmp(guest, "/var/run/nscd/socket") == 0 ||
+           strcmp(guest, "/run/nscd/socket") == 0;
+}
+
 static int path_has_parent_segment(const char *path) {
     if (!path) return 0;
     const char *p = path;
@@ -1053,6 +1063,7 @@ static int rewrite_unix_sockaddr_arg(pid_t pid, struct user_pt_regs *regs,
     }
     guest[sizeof(guest) - 1] = '\0';
     if (guest[0] != '/') return 0;
+    if (should_skip_unix_socket_rewrite(guest)) return 0;
 
     char rewritten[PATH_MAX];
     int bind_path = 0;
@@ -1458,6 +1469,16 @@ static int basename_is(const char *path, const char *name) {
     return strcmp(base, name) == 0;
 }
 
+static void guest_exec_path(const char *rootfs, const char *path, char *out, size_t out_len) {
+    const char *guest = path;
+    size_t root_len = strlen(rootfs);
+    if (strncmp(path, rootfs, root_len) == 0 && (path[root_len] == '\0' || path[root_len] == '/')) {
+        guest = path + root_len;
+        if (!guest[0]) guest = "/";
+    }
+    snprintf(out, out_len, "%s", guest);
+}
+
 static int group_exists_in_rootfs(const char *rootfs, const char *group_name) {
     char path[PATH_MAX];
     if (snprintf(path, sizeof(path), "%s/etc/group", rootfs) >= (int)sizeof(path)) return 0;
@@ -1639,15 +1660,18 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
     }
     int is_script = file_starts_with(target, "#!");
     char program[PATH_MAX];
+    char program_argv0[PATH_MAX];
     char script_interp_arg[PATH_MAX];
     int has_script_interp_arg = 0;
     program[0] = '\0';
+    program_argv0[0] = '\0';
     script_interp_arg[0] = '\0';
     if (is_script) {
         char interp[PATH_MAX];
         char interp_arg[PATH_MAX];
         if (parse_shebang(target, interp, sizeof(interp), interp_arg, sizeof(interp_arg)) == 0 &&
             resolve_guest_program(rootfs, interp, program, sizeof(program)) == 0) {
+            snprintf(program_argv0, sizeof(program_argv0), "%s", interp);
             if (interp_arg[0]) {
                 snprintf(script_interp_arg, sizeof(script_interp_arg), "%s", interp_arg);
                 has_script_interp_arg = 1;
@@ -1657,6 +1681,9 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
             if (snprintf(program, sizeof(program), "%s/bin/sh", rootfs) >= (int)sizeof(program)) {
                 return 0;
             }
+            snprintf(program_argv0, sizeof(program_argv0), "/bin/sh");
+        } else {
+            snprintf(program_argv0, sizeof(program_argv0), "/bin/bash");
         }
     }
 
@@ -1683,6 +1710,16 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
         }
     }
 
+    char old_argv0[PATH_MAX];
+    old_argv0[0] = '\0';
+    if (old_argc > 0) {
+        read_tracee_string(pid, old_arg_ptrs[0], old_argv0, sizeof(old_argv0));
+    }
+    char original_guest[PATH_MAX];
+    guest_exec_path(rootfs, original, original_guest, sizeof(original_guest));
+    const char *argv0_value = old_argv0[0] ? old_argv0 : original_guest;
+    if (is_script && program_argv0[0]) argv0_value = program_argv0;
+
     unsigned long long scratch = (regs->sp - 32768u) & ~15ULL;
     unsigned long long cursor = scratch;
     unsigned long long loader_addr = cursor;
@@ -1698,22 +1735,32 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
     if (write_tracee_string(pid, argv0_flag_addr, "--argv0") != 0) return 0;
     cursor += strlen("--argv0") + 1;
     unsigned long long argv0_addr = cursor;
-    if (write_tracee_string(pid, argv0_addr, is_script ? program : original) != 0) return 0;
-    cursor += strlen(is_script ? program : original) + 1;
+    if (write_tracee_string(pid, argv0_addr, argv0_value) != 0) return 0;
+    cursor += strlen(argv0_value) + 1;
     unsigned long long target_addr = cursor;
     if (write_tracee_string(pid, target_addr, is_script ? program : target) != 0) return 0;
     cursor += strlen(is_script ? program : target) + 1;
     unsigned long long script_addr = 0;
     if (is_script) {
         script_addr = cursor;
-        if (write_tracee_string(pid, script_addr, original) != 0) return 0;
-        cursor += strlen(original) + 1;
+        if (write_tracee_string(pid, script_addr, original_guest) != 0) return 0;
+        cursor += strlen(original_guest) + 1;
     }
     unsigned long long script_interp_arg_addr = 0;
     if (has_script_interp_arg) {
         script_interp_arg_addr = cursor;
         if (write_tracee_string(pid, script_interp_arg_addr, script_interp_arg) != 0) return 0;
         cursor += strlen(script_interp_arg) + 1;
+    }
+    unsigned long long copied_arg_ptrs[512];
+    int copied_argc = 0;
+    for (int i = 1; i < old_argc && copied_argc < 511; ++i) {
+        char arg[PATH_MAX];
+        if (read_tracee_string(pid, old_arg_ptrs[i], arg, sizeof(arg)) < 0) return 0;
+        copied_arg_ptrs[copied_argc] = cursor;
+        if (write_tracee_string(pid, cursor, arg) != 0) return 0;
+        cursor += strlen(arg) + 1;
+        copied_argc++;
     }
     cursor = (cursor + 15u) & ~15ULL;
 
@@ -1727,8 +1774,8 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
     new_argv[n++] = target_addr;
     if (has_script_interp_arg) new_argv[n++] = script_interp_arg_addr;
     if (is_script) new_argv[n++] = script_addr;
-    for (int i = 1; i < old_argc && n < 519; ++i) {
-        new_argv[n++] = old_arg_ptrs[i];
+    for (int i = 0; i < copied_argc && n < 519; ++i) {
+        new_argv[n++] = copied_arg_ptrs[i];
     }
     new_argv[n++] = 0;
     if (write_tracee_data(pid, cursor, new_argv, (size_t)n * sizeof(unsigned long long)) != 0) {
@@ -1738,12 +1785,7 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
     regs->regs[0] = loader_addr;
     regs->regs[1] = cursor;
     if (state) {
-        const char *guest_exec = original;
-        if (strncmp(guest_exec, rootfs, strlen(rootfs)) == 0) {
-            guest_exec += strlen(rootfs);
-            if (!guest_exec[0]) guest_exec = "/";
-        }
-        snprintf(state->exec_guest_path, sizeof(state->exec_guest_path), "%s", guest_exec);
+        snprintf(state->exec_guest_path, sizeof(state->exec_guest_path), "%s", original_guest);
     }
     if (g_trace_exec) {
         fprintf(stderr, "pdocker-direct-exec: pid=%d rewrite %s -> %s\n",
@@ -2598,22 +2640,30 @@ loader_found:
 
     int is_script = file_starts_with(target, "#!");
     char shell[PATH_MAX];
+    char shell_argv0[PATH_MAX];
     char shell_arg[PATH_MAX];
     const char *program = target;
     int has_shell_arg = 0;
+    shell_argv0[0] = '\0';
     shell_arg[0] = '\0';
     if (is_script) {
         char interp[PATH_MAX];
         char interp_arg[PATH_MAX];
         if (parse_shebang(target, interp, sizeof(interp), interp_arg, sizeof(interp_arg)) == 0 &&
             resolve_guest_program(rootfs, interp, shell, sizeof(shell)) == 0) {
+            snprintf(shell_argv0, sizeof(shell_argv0), "%s", interp);
             if (interp_arg[0]) {
                 snprintf(shell_arg, sizeof(shell_arg), "%s", interp_arg);
                 has_shell_arg = 1;
             }
         } else {
             snprintf(shell, sizeof(shell), "%s/bin/bash", rootfs);
-            if (access(shell, X_OK) != 0) snprintf(shell, sizeof(shell), "%s/bin/sh", rootfs);
+            if (access(shell, X_OK) != 0) {
+                snprintf(shell, sizeof(shell), "%s/bin/sh", rootfs);
+                snprintf(shell_argv0, sizeof(shell_argv0), "/bin/sh");
+            } else {
+                snprintf(shell_argv0, sizeof(shell_argv0), "/bin/bash");
+            }
         }
         program = shell;
     }
@@ -2629,7 +2679,7 @@ loader_found:
     nargv[n++] = "--library-path";
     nargv[n++] = libpath;
     nargv[n++] = "--argv0";
-    nargv[n++] = (char *)cmd0;
+    nargv[n++] = is_script && shell_argv0[0] ? shell_argv0 : (char *)cmd0;
     if (preload[0]) {
         nargv[n++] = "--preload";
         nargv[n++] = preload;

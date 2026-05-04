@@ -16,6 +16,15 @@ cat >"$TMP/pdocker-vk-smoke.c" <<'C'
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x, msg) do { VkResult _r = (x); if (_r != VK_SUCCESS) { fprintf(stderr, "%s: %d\n", msg, _r); return 2; } } while (0)
+static uint32_t memory_type(VkPhysicalDevice phys, uint32_t type_bits, VkMemoryPropertyFlags required) {
+    VkPhysicalDeviceMemoryProperties props;
+    vkGetPhysicalDeviceMemoryProperties(phys, &props);
+    for (uint32_t i = 0; i < props.memoryTypeCount; ++i) {
+        if ((type_bits & (1u << i)) && (props.memoryTypes[i].propertyFlags & required) == required) return i;
+    }
+    fprintf(stderr, "no memory type for bits=0x%x flags=0x%x\n", type_bits, required);
+    return UINT32_MAX;
+}
 int main(void) {
     VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "pdocker-vulkan-smoke", .apiVersion = VK_API_VERSION_1_1};
     VkInstanceCreateInfo ici = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app};
@@ -33,7 +42,9 @@ int main(void) {
         VkBufferCreateInfo bci = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = n * sizeof(float), .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
         CHECK(vkCreateBuffer(dev, &bci, NULL, &bufs[i]), "vkCreateBuffer");
         VkMemoryRequirements req; vkGetBufferMemoryRequirements(dev, bufs[i], &req);
-        VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = req.size, .memoryTypeIndex = 0};
+        uint32_t type = memory_type(phys, req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (type == UINT32_MAX) return 3;
+        VkMemoryAllocateInfo mai = {.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, .allocationSize = req.size, .memoryTypeIndex = type};
         CHECK(vkAllocateMemory(dev, &mai, NULL, &mems[i]), "vkAllocateMemory");
         CHECK(vkBindBufferMemory(dev, bufs[i], mems[i], 0), "vkBindBufferMemory");
         CHECK(vkMapMemory(dev, mems[i], 0, n * sizeof(float), 0, &maps[i]), "vkMapMemory");
@@ -51,9 +62,9 @@ int main(void) {
     VkDescriptorPool pool; CHECK(vkCreateDescriptorPool(dev, &dpci, NULL, &pool), "vkCreateDescriptorPool");
     VkDescriptorSetAllocateInfo dsai = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, .descriptorPool = pool, .descriptorSetCount = 1, .pSetLayouts = &set_layout};
     VkDescriptorSet set; CHECK(vkAllocateDescriptorSets(dev, &dsai, &set), "vkAllocateDescriptorSets");
-    VkDescriptorBufferInfo infos[3]; VkWriteDescriptorSet writes[3]; memset(writes, 0, sizeof(writes));
+    VkDescriptorBufferInfo infos[3]; VkWriteDescriptorSet writes[3]; memset(infos, 0, sizeof(infos)); memset(writes, 0, sizeof(writes));
     for (int i = 0; i < 3; ++i) {
-        infos[i].buffer = bufs[i]; infos[i].range = n * sizeof(float);
+        infos[i].buffer = bufs[i]; infos[i].offset = 0; infos[i].range = n * sizeof(float);
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = set; writes[i].dstBinding = i; writes[i].descriptorCount = 1; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].pBufferInfo = &infos[i];
     }
     vkUpdateDescriptorSets(dev, 3, writes, 0, NULL);

@@ -26,6 +26,11 @@ PLACEHOLDER_PREFIXES = (
 )
 STATUS_RUNNABLE = "runnable"
 STATUS_PLANNED = "planned"
+LANE_LOCAL = "local"
+
+
+def repo_command(*args: str) -> list[str]:
+    return [sys.executable if args[0] == "python3" else args[0], *args[1:]]
 
 
 def fail(message: str) -> None:
@@ -126,6 +131,71 @@ def print_json(cases: list[dict[str, Any]]) -> None:
     print(json.dumps({"schema": 1, "cases": [json_case(case) for case in cases]}, indent=2))
 
 
+def lane_commands(lane: str) -> list[tuple[str, list[str]]]:
+    if lane != LANE_LOCAL:
+        fail(f"unknown direct syscall scenario lane: {lane}")
+    return [
+        (
+            "static direct-executor syscall inventory",
+            repo_command("python3", "scripts/verify_direct_syscall_contracts.py"),
+        ),
+        (
+            "isolated scenario manifest contracts",
+            repo_command(
+                "python3",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests/direct_syscall",
+                "-p",
+                "test_*.py",
+            ),
+        ),
+        (
+            "fast-local scenario list",
+            repo_command(
+                "python3",
+                "scripts/run_direct_syscall_scenarios.py",
+                "--tier",
+                "fast-local",
+                "--list",
+                "--verbose",
+            ),
+        ),
+        (
+            "Android scenario dry-run",
+            repo_command(
+                "python3",
+                "scripts/run_direct_syscall_scenarios.py",
+                "--tier",
+                "heavy-android",
+                "--execute",
+                "--dry-run",
+            ),
+        ),
+    ]
+
+
+def run_lane(lane: str, dry_run: bool) -> int:
+    rc = 0
+    for label, command in lane_commands(lane):
+        printable = " ".join(command)
+        print(f"lane {lane}: {label}")
+        print(f"      exec: {printable}")
+        if dry_run:
+            print("      dry-run: command not executed")
+            continue
+        sys.stdout.flush()
+        env = os.environ.copy()
+        env.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+        result = subprocess.run(command, cwd=ROOT, env=env, text=True)
+        if result.returncode != 0:
+            print(f"      FAIL: lane step exited {result.returncode}", file=sys.stderr)
+        rc = max(rc, result.returncode)
+    return rc
+
+
 def run_case(case: dict[str, Any], dry_run: bool) -> int:
     command = str(case["command"])
     print_case(case, verbose=False)
@@ -156,7 +226,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--execute", action="store_true", help="execute runnable selected scenarios")
     parser.add_argument("--dry-run", action="store_true", help="print selected executable commands without running them")
     parser.add_argument("--verbose", action="store_true", help="include commands and checks when listing")
+    parser.add_argument(
+        "--lane",
+        choices=[LANE_LOCAL],
+        help="run an isolated syscall-coverage acceptance lane; local never requires adb",
+    )
     args = parser.parse_args(argv)
+
+    if args.lane:
+        return run_lane(args.lane, dry_run=args.dry_run)
 
     manifest = load_manifest(args.manifest)
     selected = filter_cases(scenario_cases(manifest), args.tier, args.case_id, args.status)

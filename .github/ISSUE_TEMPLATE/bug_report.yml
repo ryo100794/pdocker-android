@@ -23,7 +23,7 @@ body:
       label: APK flavor
       options:
         - compat
-        - modern
+        - modern metadata-only
         - unknown
     validations:
       required: true

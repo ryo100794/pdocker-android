@@ -2,6 +2,8 @@
 
 Snapshot date: 2026-05-04.
 
+## Purpose
+
 This document is the repeatable compatibility record for pdocker-android and
 the `docker-proot-setup` backend. Compatibility here means three layers:
 
@@ -16,6 +18,15 @@ networking, volumes, cgroups, overlayfs, signals, TTY, and archive APIs, see
 [`../design/DOCKER_COMPAT_SCOPE.md`](../design/DOCKER_COMPAT_SCOPE.md). This file records what works
 and what is tested; the scope file records what pdocker is choosing to be.
 
+## Canonical Sources
+
+- Product boundaries live in
+  [`../design/DOCKER_COMPAT_SCOPE.md`](../design/DOCKER_COMPAT_SCOPE.md).
+- Active gaps and acceptance checks live in [`../plan/TODO.md`](../plan/TODO.md).
+- Current implementation summary lives in [`../plan/STATUS.md`](../plan/STATUS.md).
+- Latest generated audit output lives in
+  [`compat-audit-latest.md`](compat-audit-latest.md).
+
 ## How to run the audit
 
 Fast offline audit:
@@ -23,6 +34,12 @@ Fast offline audit:
 ```sh
 python3 scripts/compat-audit.py --output docs/test/compat-audit-latest.md
 ```
+
+The default audit flavor is `compat`, matching the product's current
+process-exec validation route. Set `PDOCKER_ANDROID_FLAVOR=modern` only when
+intentionally auditing the API 29+ metadata-only APK. Stale modern build
+artifacts are ignored by the default compat fast gate; rebuild the compat APK
+or set `PDOCKER_ANDROID_FLAVOR=modern` explicitly for a modern metadata audit.
 
 Build-time fast gate:
 
@@ -239,3 +256,10 @@ Next cleanup candidates:
 - Factor archive tar creation/extraction away from the HTTP handler.
 - Split Dockerfile build execution from the daemon request handler.
 - Centralize Docker API error response shapes and headers.
+
+## Maintenance
+
+- Keep this page as procedure and evidence, not product-positioning copy.
+- Link to design docs for scope decisions instead of repeating boundary tables.
+- Update [`compat-audit-latest.md`](compat-audit-latest.md) with the audit
+  script, not by hand.

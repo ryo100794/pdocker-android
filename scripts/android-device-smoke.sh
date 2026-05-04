@@ -3,13 +3,20 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FLAVOR="${PDOCKER_ANDROID_FLAVOR:-compat}"
-if [[ "$FLAVOR" == "compat" ]]; then
-  DEFAULT_PKG="io.github.ryo100794.pdocker.compat"
-  DEFAULT_APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"
-else
-  DEFAULT_PKG="io.github.ryo100794.pdocker"
-  DEFAULT_APK="$ROOT/app/build/outputs/apk/modern/debug/app-modern-debug.apk"
-fi
+case "$FLAVOR" in
+  compat)
+    DEFAULT_PKG="io.github.ryo100794.pdocker.compat"
+    DEFAULT_APK="$ROOT/app/build/outputs/apk/compat/debug/app-compat-debug.apk"
+    ;;
+  modern)
+    DEFAULT_PKG="io.github.ryo100794.pdocker"
+    DEFAULT_APK="$ROOT/app/build/outputs/apk/modern/debug/app-modern-debug.apk"
+    ;;
+  *)
+    echo "PDOCKER_ANDROID_FLAVOR must be 'compat' or 'modern' (got '$FLAVOR')" >&2
+    exit 2
+    ;;
+esac
 PKG="${PDOCKER_PACKAGE:-$DEFAULT_PKG}"
 APK="${PDOCKER_APK:-$DEFAULT_APK}"
 CLASS_PREFIX="io.github.ryo100794.pdocker"
@@ -225,7 +232,7 @@ echo "[pdocker smoke] docker build"
 docker_cmd "cd pdocker/projects/$PROJECT && docker build -t local/pdocker-device-smoke:latest ."
 
 echo "[pdocker smoke] compose up/down"
-docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build && CID=\$(docker compose ps -q app) && test -n \"\$CID\" && printf '%s' \"\$CID\" > .smoke-cid && for i in \$(seq 1 10); do docker compose logs --tail=80 | grep -q pdocker-smoke-build && break; sleep 1; done && docker compose logs --tail=80 | grep -q pdocker-smoke-build && EXEC_OUT=\$(docker exec \"\$CID\" sh -lc 'echo pdocker-exec-ok' 2>&1) && echo \"\$EXEC_OUT\" && echo \"\$EXEC_OUT\" | grep -q pdocker-exec-ok && ! echo \"\$EXEC_OUT\" | grep -q '/vendor/xbin' && docker compose ps -a"
+docker_cmd "cd pdocker/projects/$PROJECT && docker compose up --detach --build && CID=\$(docker compose ps -q app) && test -n \"\$CID\" && printf '%s' \"\$CID\" > .smoke-cid && for i in \$(seq 1 10); do docker compose logs --tail=80 | grep -q pdocker-smoke-build && break; sleep 1; done && docker compose logs --tail=80 | grep -q pdocker-smoke-build && EXEC_OUT=\$(docker exec \"\$CID\" sh -lc 'echo pdocker-exec-ok' 2>&1) && echo \"\$EXEC_OUT\" && echo \"\$EXEC_OUT\" | grep -q pdocker-exec-ok && ! echo \"\$EXEC_OUT\" | grep -q '/vendor/xbin' && BRACKET_OUT=\$(docker exec \"\$CID\" sh -lc '[ \"x\" = \"x\" ]; /usr/bin/[ \"x\" = \"x\" ]; echo pdocker-bracket-ok' 2>&1) && echo \"\$BRACKET_OUT\" && echo \"\$BRACKET_OUT\" | grep -q pdocker-bracket-ok && docker compose ps -a"
 CID="$(run_as "cat files/pdocker/projects/$PROJECT/.smoke-cid" | tr -d '\r')"
 echo "[pdocker smoke] docker ps filters"
 docker_cmd "FILTERED=\$(docker ps -a --filter name=device-smoke-app-1 -q) && test \"\$FILTERED\" = \"$CID\" && test -z \"\$(docker ps -a --filter name=pdocker-smoke-filter-miss -q)\""

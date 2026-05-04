@@ -1,0 +1,34 @@
+name: Release readiness
+
+on:
+  pull_request:
+    paths:
+      - docs/build/**
+      - metadata/fdroid/**
+      - scripts/verify-release-readiness.py
+      - .github/workflows/release-readiness.yml
+  push:
+    branches:
+      - main
+    paths:
+      - docs/build/**
+      - metadata/fdroid/**
+      - scripts/verify-release-readiness.py
+      - .github/workflows/release-readiness.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-only-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check source, secret, and payload readiness inventory
+        run: python3 scripts/verify-release-readiness.py

@@ -85,6 +85,10 @@ int main(void) {
     vkGetPhysicalDeviceProperties2(phys, &props2);
     if (props2.properties.apiVersion < VK_API_VERSION_1_2) return 6;
     if (subgroup.subgroupSize == 0 || !(subgroup.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT)) return 7;
+    if (subgroup.supportedOperations != VK_SUBGROUP_FEATURE_BASIC_BIT) {
+        fprintf(stderr, "subgroup ops must default to BASIC only, got 0x%x\n", subgroup.supportedOperations);
+        return 11;
+    }
     if (maint3.maxMemoryAllocationSize == 0) return 8;
 
     VkPhysicalDeviceVulkan11Features vk11_features = {
@@ -99,6 +103,10 @@ int main(void) {
         .pNext = &vk12_features,
     };
     vkGetPhysicalDeviceFeatures2(phys, &features2);
+    if (features2.features.shaderInt64) {
+        fprintf(stderr, "shaderInt64 must be opt-in for the pdocker bridge\n");
+        return 12;
+    }
     if (!vk11_features.storageBuffer16BitAccess) {
         fprintf(stderr, "storageBuffer16BitAccess missing\n");
         return 9;

@@ -1,6 +1,6 @@
 # Test Documents
 
-Snapshot date: 2026-05-03.
+Snapshot date: 2026-05-04.
 
 ## Purpose
 
@@ -21,6 +21,19 @@ run it, and where the latest result is stored.
 | [`gpu-host-container-comparison-latest.md`](gpu-host-container-comparison-latest.md) | Latest host/container bridge overhead comparison |
 | [`LLAMA_BENCHMARKS.md`](LLAMA_BENCHMARKS.md) | llama.cpp CPU/GPU benchmark history and current blockers |
 | `scripts/smoke-vulkan-llama-init.sh` | Lightweight llama.cpp-oriented Vulkan ICD initialization smoke |
+| `scripts/smoke-vulkan-icd-bridge.sh` | Lightweight Vulkan ICD dispatch smoke through the pdocker GPU executor socket |
+
+## Canonical Sources
+
+- Use [`COMPATIBILITY.md`](COMPATIBILITY.md) as the canonical repeatable
+  compatibility procedure and matrix.
+- Use [`compat-audit-latest.md`](compat-audit-latest.md) as the latest generated
+  compatibility snapshot.
+- Use [`LLAMA_BENCHMARKS.md`](LLAMA_BENCHMARKS.md) as the human-readable
+  benchmark history, with JSON files kept as machine-readable artifacts.
+- Link to [`../design/DOCKER_COMPAT_SCOPE.md`](../design/DOCKER_COMPAT_SCOPE.md)
+  for product boundaries and to [`../design/GPU_COMPAT.md`](../design/GPU_COMPAT.md)
+  for GPU design rules.
 
 ## Maintenance
 

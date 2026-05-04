@@ -31,13 +31,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "docker-proot-setup"
 PDOCKERD = BACKEND / "bin" / "pdockerd"
-FLAVOR = os.environ.get("PDOCKER_ANDROID_FLAVOR", "modern")
-if FLAVOR == "compat":
-    APK = ROOT / "app" / "build" / "outputs" / "apk" / "compat" / "debug" / "app-compat-debug.apk"
-elif FLAVOR == "modern":
-    APK = ROOT / "app" / "build" / "outputs" / "apk" / "modern" / "debug" / "app-modern-debug.apk"
-else:
-    APK = ROOT / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+FLAVOR_ENV = "PDOCKER_ANDROID_FLAVOR"
+FLAVOR_WAS_EXPLICIT = FLAVOR_ENV in os.environ
+FLAVOR = os.environ.get(FLAVOR_ENV, "compat")
+APK_BY_FLAVOR = {
+    "compat": ROOT / "app" / "build" / "outputs" / "apk" / "compat" / "debug" / "app-compat-debug.apk",
+    "modern": ROOT / "app" / "build" / "outputs" / "apk" / "modern" / "debug" / "app-modern-debug.apk",
+}
+APK = APK_BY_FLAVOR.get(FLAVOR)
 LICENSE_DOC = ROOT / "THIRD_PARTY_NOTICES.md"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -189,10 +190,30 @@ def check_protocol_smoke() -> list[Check]:
     return checks
 
 
+def check_flavor_guard() -> list[Check]:
+    if FLAVOR not in APK_BY_FLAVOR:
+        return [Check("apk flavor guard", "FAIL",
+                      f"{FLAVOR_ENV} must be 'compat' or 'modern' (got {FLAVOR!r})")]
+    if FLAVOR == "compat":
+        detail = "default process-exec validation flavor"
+        if not FLAVOR_WAS_EXPLICIT:
+            detail += "; modern APK artifacts are ignored unless PDOCKER_ANDROID_FLAVOR=modern"
+        return [Check("apk flavor: compat process-exec validation", "PASS", detail)]
+    return [Check("apk flavor: modern metadata-only opt-in",
+                  "PASS" if FLAVOR_WAS_EXPLICIT else "FAIL",
+                  f"{FLAVOR_ENV}=modern")]
+
+
 def check_apk_payload() -> list[Check]:
     checks: list[Check] = []
+    if APK is None:
+        return [Check("apk: debug artifact", "FAIL",
+                      f"{FLAVOR_ENV} must be 'compat' or 'modern' (got {FLAVOR!r})")]
     if not APK.exists():
-        return [Check("apk: debug artifact", "SKIP", "run scripts/build-apk.sh first")]
+        detail = f"run scripts/build-apk.sh first for {FLAVOR}: {APK}"
+        if FLAVOR == "compat" and APK_BY_FLAVOR["modern"].exists():
+            detail += "; existing modern APK ignored by compat fast gate"
+        return [Check("apk: debug artifact", "SKIP", detail)]
     checks.append(Check("apk: debug artifact", "PASS", str(APK)))
     with zipfile.ZipFile(APK) as zf:
         names = set(zf.namelist())
@@ -207,7 +228,14 @@ def check_apk_payload() -> list[Check]:
             "assets/pdockerd/pdockerd",
             "assets/project-library/library.json",
             "assets/project-library/llama-cpp-gpu/compose.yaml",
+            "assets/project-library/llama-cpp-gpu/documents/README.md",
             "assets/project-library/llama-cpp-gpu/scripts/pdocker-gpu-profile.sh",
+            "assets/project-library/ros2-humble-rviz-novnc/compose.yaml",
+            "assets/project-library/ros2-humble-rviz-novnc/documents/README.md",
+            "assets/project-library/blender-xvnc-novnc/compose.yaml",
+            "assets/project-library/blender-xvnc-novnc/documents/README.md",
+            "assets/default-project/compose.yaml",
+            "assets/default-project/documents/README.md",
             "assets/xterm/xterm.js",
             "assets/oss-licenses/THIRD_PARTY_NOTICES.md",
         ]
@@ -361,6 +389,7 @@ def main() -> int:
     checks: list[Check] = []
     checks += check_static_api()
     checks += check_protocol_smoke()
+    checks += check_flavor_guard()
     checks += check_apk_payload()
     checks += check_license_inventory()
     checks += check_project_library()

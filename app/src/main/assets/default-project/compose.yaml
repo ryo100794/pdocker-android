@@ -31,6 +31,7 @@ services:
       - ./workspace:/workspace
       - ./continue:/workspace/.continue
       - ./vscode:/workspace/.vscode-server/data/User
+      - ${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}
       - .:/pdocker/project
       - ..:/pdocker/projects
       - ../..:/pdocker/host

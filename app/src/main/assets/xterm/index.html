@@ -369,6 +369,12 @@
       ta.remove();
     }
   };
+  const runSelectionAction = (action) => {
+    if (action === 'all') selectAllTerminal();
+    if (action === 'copy') copySelection();
+    if (action === 'clear') stopSelection();
+    if (readOnly || selectionSuppressesIme()) suppressImeForSelection();
+  };
   const ctrlMap = (ch) => {
     if (ch.length !== 1) return ch;
     const code = ch.codePointAt(0);
@@ -430,12 +436,12 @@
     if (!btn) return;
     event.preventDefault();
     if (btn.dataset.copy) {
-      copySelection();
+      runSelectionAction('copy');
       focusTerm();
       return;
     }
     if (btn.dataset.selectAll) {
-      selectAllTerminal();
+      runSelectionAction('all');
       focusTerm();
       return;
     }
@@ -465,9 +471,7 @@
     event.stopPropagation();
     event.preventDefault();
     const action = btn.dataset.selectionAction;
-    if (action === 'all') selectAllTerminal();
-    if (action === 'copy') copySelection();
-    if (action === 'clear') stopSelection();
+    runSelectionAction(action);
     focusTerm();
   });
   ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach((name) => {
@@ -531,6 +535,7 @@
     }
     if (event.touches.length !== 1) return;
     if (selectionMenu.contains(event.target)) return;
+    if (readOnly) suppressImeForSelection();
     const touch = event.touches[0];
     const cell = cellFromTouch(touch);
     touchScroll = { x: touch.clientX, y: touch.clientY };

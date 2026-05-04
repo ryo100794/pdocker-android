@@ -1,22 +1,40 @@
 # GitHub Promotion Kit
 
-Snapshot date: 2026-05-03.
+Snapshot date: 2026-05-04.
+
+## Purpose
 
 This document keeps the public-facing message consistent across the GitHub
-repository, releases, demos, and social posts.
+repository, releases, demos, and social posts. For the operating workflow that
+keeps issues, releases, README highlights, and Wiki mirrors current, see
+[`NEWSFLOW.md`](NEWSFLOW.md).
 
-## Repository tagline
+## Scope
+
+Use this page for reusable public wording, release-note phrasing, demo
+checklists, and issue/release intake labels.
+
+## Canonical Sources
+
+- Use [`NEWSFLOW.md`](NEWSFLOW.md) for when and where to publish.
+- Use [`../plan/STATUS.md`](../plan/STATUS.md) for current facts.
+- Use [`../test/COMPATIBILITY.md`](../test/COMPATIBILITY.md) for measured
+  compatibility.
+- Use [`../design/DOCKER_COMPAT_SCOPE.md`](../design/DOCKER_COMPAT_SCOPE.md)
+  for Android platform limits and unsupported Docker features.
+
+## Repository Tagline
 
 Docker-compatible containers for Android, packaged as a native APK.
 
-## Short description
+## Short Description
 
 pdocker-android is an experimental Android app that embeds a Docker
 Engine-compatible daemon, Compose/Dockerfile workspace UI, image/container file
 browser, persistent build logs, and interactive terminal/editor tools inside a
 normal APK.
 
-## One-minute pitch
+## One-Minute Pitch
 
 Docker was built for Linux hosts with namespaces, cgroups, overlayfs, and
 bridge networking. Android apps do not get those primitives. pdocker-android
@@ -30,7 +48,29 @@ runtime experiment, and compatibility testbed. It is intentionally clear about
 the unsupported parts so users can see what is real, what is emulated, and what
 is a pdocker-specific extension.
 
-## README hero bullets
+## Honest Current-State Message
+
+Use this framing whenever writing a release note, issue update, README
+highlight, or demo caption:
+
+- pdocker-android is a Docker-compatible Android APK experiment, not upstream
+  Docker for Android.
+- The app provides a native Compose/Dockerfile workspace UI, pdockerd Engine
+  API compatibility for the supported subset, image/container browsing,
+  persistent jobs/logs, editor tabs, and PTY-backed terminal sessions.
+- Project templates target practical developer workflows such as VS Code
+  Server, Continue, Codex, Claude Code, and llama.cpp workspaces.
+- The direct Android executor and syscall/path mediation are active in-tree
+  work. Treat compatibility claims as device-tested snapshots, not universal
+  Android guarantees.
+- GPU work is a pdocker bridge effort. Current public wording should say
+  "GPU bridge experiments" or "Vulkan/OpenCL bridge work", not general Docker
+  GPU parity.
+- Android app-sandbox limits remain real: no normal unrooted app can promise
+  Linux namespace, cgroup, overlayfs, bridge networking, privileged device, or
+  BuildKit parity.
+
+## README Hero Bullets
 
 - Native APK, no root, no Termux-first shell.
 - Docker Engine API-compatible daemon over a Unix socket.
@@ -42,8 +82,11 @@ is a pdocker-specific extension.
   them separately for compatibility checks.
 - Direct Android executor and syscall mediation are developed in-tree, with
   repeatable performance benchmarks.
+- Known Android limits are documented instead of hidden: cgroups, namespaces,
+  bridge networking, mount propagation, privileged devices, and full BuildKit
+  parity are outside the default unrooted APK scope.
 
-## GitHub topics
+## GitHub Topics
 
 Use these repository topics:
 
@@ -62,13 +105,13 @@ ptrace
 mobile-development
 ```
 
-## Suggested repository description
+## Suggested Repository Description
 
 Docker-compatible Android APK with pdockerd, Compose/Dockerfile UI,
 container files, persistent logs, VS Code Server templates, and direct Android
 executor experiments.
 
-## Pinned issue ideas
+## Pinned Issue Ideas
 
 1. **Roadmap: Compose up parity on Android**
    https://github.com/ryo100794/pdocker-android/issues/3
@@ -88,7 +131,26 @@ executor experiments.
    Ask users to report model, Android version, ABI, SDK route, image pull,
    build, compose up, VS Code port, and runtime benchmark output.
 
-## Release note template
+## Release Note Categories
+
+Keep release notes scannable by grouping changes into these categories:
+
+- **User workflow**: UI, Compose controls, Dockerfile editing, file browser,
+  terminals, service URLs, storage controls.
+- **Docker compatibility**: Engine endpoints, Docker CLI behavior, Compose
+  behavior, archive/copy behavior, inspect metadata, warnings.
+- **Runtime/executor**: direct execution, TTY attach, signals, process cleanup,
+  path mediation, Android SDK route.
+- **Templates**: VS Code Server, Continue, Codex, Claude Code, llama.cpp, and
+  project-library changes.
+- **GPU bridge**: request parsing, ICD/shim/executor changes, benchmark
+  artifacts, known blockers, CPU fallback status.
+- **Device testing**: Android version, device model, ABI, APK flavor, smoke
+  result, benchmark link.
+- **Known limits**: Android platform restrictions and unsupported Docker
+  features.
+
+## Release Note Template
 
 ```markdown
 ## pdocker-android vX.Y.Z
@@ -104,6 +166,8 @@ executor experiments.
 - Direct executor:
 - TTY/logs:
 - Storage:
+- GPU bridge:
+- Templates:
 
 ### Device testing
 
@@ -118,7 +182,7 @@ executor experiments.
 - ...
 ```
 
-## Social post drafts
+## Social Post Drafts
 
 ### Technical post
 
@@ -142,18 +206,39 @@ Looking for Android testers for pdocker-android. The useful reports are:
 device model, Android version, APK flavor, image pull result, Compose up log,
 VS Code port check, `docker ps` view, and runtime benchmark output.
 
-## Demo checklist
+## Demo Checklist
 
 - Record the upper/lower split UI.
 - Show Compose up from the UI, not from adb.
 - Show live log updates with elapsed time and progress.
 - Show container card ports and service URL.
 - Open VS Code Server at `127.0.0.1:18080` when available.
+- Show the llama.cpp template only with the current honest mode: CPU fallback
+  for normal demos, forced Vulkan/OpenCL only when presenting benchmark data.
 - Open image/container file browser.
 - Open an interactive container terminal tab.
 - Show storage metrics and prune action.
+- End with a known-limits slide or caption so the demo does not imply upstream
+  Docker parity on Android.
 
-## GitHub intake
+## Tester Call Flow
+
+1. Open or refresh the device-test issue with the current APK version, target
+   smoke path, and links to `docs/plan/STATUS.md` and
+   `docs/test/COMPATIBILITY.md`.
+2. Ask testers for device model, Android version, ABI, install source, APK
+   flavor, free storage, and whether battery restrictions were disabled.
+3. Ask for one short workflow at a time: start pdockerd, pull an image, build
+   the default workspace, run Compose up, open VS Code Server, check `docker
+   ps`, and capture logs.
+4. For llama/GPU reports, ask for the benchmark artifact and whether the run
+   used CPU fallback, forced Vulkan, forced OpenCL, or auto mode.
+5. Triage every report into one of four labels: works, blocked by Android
+   platform limit, pdocker bug, or needs reproduction.
+6. Move durable findings into docs before updating README highlights, releases,
+   or Wiki mirrors.
+
+## GitHub Intake
 
 - `.github/ISSUE_TEMPLATE/bug_report.yml` collects device, flavor, route,
   reproduction steps, expected/actual behavior, and redaction confirmation.
@@ -166,7 +251,7 @@ VS Code port check, `docker ps` view, and runtime benchmark output.
 - `.github/RELEASE_TEMPLATE.md` keeps release notes aligned with compatibility,
   device testing, known limits, signing, and security audit results.
 
-## Boundaries to state publicly
+## Boundaries To State Publicly
 
 - This is Docker-compatible work, not upstream Docker.
 - Android kernel restrictions mean cgroup, namespace, overlayfs, and bridge
@@ -174,3 +259,10 @@ VS Code port check, `docker ps` view, and runtime benchmark output.
 - Some GPU behavior is pdocker-specific extension design, not NVIDIA Docker.
 - Upstream Docker CLI/Compose are test tools only, not APK payload.
 - Signing keys, certificates, and local debug secrets must never be committed.
+
+## Maintenance
+
+- Keep this page as wording guidance, not a status ledger.
+- Refresh public claims only after the matching status, compatibility, or
+  design document is current.
+- Keep release templates here and publishing workflow in [`NEWSFLOW.md`](NEWSFLOW.md).

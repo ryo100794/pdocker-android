@@ -1,5 +1,9 @@
 # Android Self-Debug Workflow
 
+Snapshot date: 2026-05-04.
+
+## Purpose
+
 This workflow builds, installs, starts, and inspects pdocker on one Android
 device by running the build and ADB client from Termux + PRoot Ubuntu on that
 same device.
@@ -16,6 +20,12 @@ same device.
 +---------------------------------------------+
          loop on 127.0.0.1:<wireless-port>
 ```
+
+## Canonical Sources
+
+- Build commands live in [`../build/README.md`](../build/README.md).
+- Compatibility audit commands live in [`COMPATIBILITY.md`](COMPATIBILITY.md).
+- Active Android runtime blockers live in [`../plan/TODO.md`](../plan/TODO.md).
 
 ## One-Time Setup
 
@@ -166,3 +176,9 @@ bump `versionCode`.
 | `tar: can't link ...: Permission denied` | SELinux denied `link()` | Use `PDOCKER_LINK_MODE=symlink`; the bridge probes this automatically |
 | App crashes immediately with `Theme.AppCompat` | Manifest is missing `android:theme=` | Set an AppCompat theme such as `Theme.AppCompat.DayNight.NoActionBar` on the application tag |
 | `adb connect` returns connection refused | The Wireless debugging port changed | Recheck the current port on the device and connect again |
+
+## Maintenance
+
+- Keep this page focused on one-device debug workflow.
+- Move general APK build guidance to [`../build/README.md`](../build/README.md).
+- Move repeatable compatibility matrices to [`COMPATIBILITY.md`](COMPATIBILITY.md).

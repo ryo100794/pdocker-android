@@ -57,6 +57,9 @@ typedef struct PdockerVkFence PdockerVkFence;
 
 #define PDOCKER_VK_MAX_STORAGE_BUFFERS 16
 #define PDOCKER_VK_MAX_PUSH_BYTES 256
+#define PDOCKER_VK_MAX_ENTRY_NAME 128
+#define PDOCKER_VK_MAX_SPECIALIZATION_ENTRIES 16
+#define PDOCKER_VK_MAX_SPECIALIZATION_BYTES 256
 #define PDOCKER_VK_REQUIREMENT_ALIGNMENT 16ull
 
 struct PdockerVkMemory {
@@ -104,6 +107,12 @@ struct PdockerVkPipeline {
     PdockerVkShaderModule *shader;
     PdockerVkPipelineLayout *layout;
     uint32_t local_size_x;
+    char entry_name[PDOCKER_VK_MAX_ENTRY_NAME];
+    VkSpecializationMapEntry specialization_entries[PDOCKER_VK_MAX_SPECIALIZATION_ENTRIES];
+    uint32_t specialization_entry_count;
+    uint8_t specialization_data[PDOCKER_VK_MAX_SPECIALIZATION_BYTES];
+    size_t specialization_data_size;
+    bool specialization_too_large;
 };
 
 struct PdockerVkFence {
@@ -137,6 +146,29 @@ static bool env_enabled(const char *name) {
 
 static bool env_disabled(const char *name) {
     return env_enabled(name);
+}
+
+static bool env_truthy_default(const char *name, bool default_value) {
+    const char *value = getenv(name);
+    if (!value || !value[0]) return default_value;
+    if (strcmp(value, "0") == 0 || strcasecmp(value, "false") == 0 ||
+        strcasecmp(value, "no") == 0) {
+        return false;
+    }
+    return true;
+}
+
+static VkBool32 advertised_shader_int64(void) {
+    /*
+     * llama.cpp/ggml can select different shader variants from advertised
+     * features. Until the executor proves the Android device supports the same
+     * SPIR-V path, keep expensive/fragile features opt-in instead of optimistic.
+     */
+    return env_truthy_default("PDOCKER_VULKAN_ENABLE_INT64", false) ? VK_TRUE : VK_FALSE;
+}
+
+static VkBool32 advertised_storage16(void) {
+    return env_disabled("PDOCKER_VULKAN_DISABLE_16BIT_STORAGE") ? VK_FALSE : VK_TRUE;
 }
 
 static VkDeviceSize pdocker_vulkan_heap_size(void) {
@@ -312,6 +344,7 @@ static void hex_encode(const uint8_t *src, size_t src_size, char *dst, size_t ds
 }
 
 static size_t descriptor_binding_size(const PdockerVkDescriptorBinding *binding);
+static VkSubgroupFeatureFlags advertised_subgroup_operations(void);
 
 static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
     if (!cmd || !cmd->pipeline || !cmd->pipeline->shader || !cmd->set) return -EINVAL;
@@ -340,19 +373,43 @@ static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
     char push_hex[PDOCKER_VK_MAX_PUSH_BYTES * 2 + 1];
     hex_encode(cmd->push_constants, cmd->push_constant_size, push_hex, sizeof(push_hex));
     const char *push_token = cmd->push_constant_size ? push_hex : "-";
+    char entry_hex[PDOCKER_VK_MAX_ENTRY_NAME * 2 + 1];
+    const char *entry_name = cmd->pipeline->entry_name[0] ? cmd->pipeline->entry_name : "main";
+    hex_encode((const uint8_t *)entry_name, strlen(entry_name), entry_hex, sizeof(entry_hex));
+    char spec_hex[PDOCKER_VK_MAX_SPECIALIZATION_BYTES * 2 + 1];
+    hex_encode(cmd->pipeline->specialization_data,
+               cmd->pipeline->specialization_data_size,
+               spec_hex,
+               sizeof(spec_hex));
+    const char *spec_token = cmd->pipeline->specialization_data_size ? spec_hex : "-";
+    if (cmd->pipeline->specialization_too_large) return -E2BIG;
 
     char command[4096];
     int n = snprintf(command, sizeof(command),
-                     "VULKAN_DISPATCH_V1 %zu %zu %u %u %u %u %s",
+                     "VULKAN_DISPATCH_V2 %zu %zu %u %u %u %u %s %s %u %zu %s",
                      shader->code_size,
                      binding_count,
                      cmd->push_constant_size,
                      cmd->dispatch_x,
                      cmd->dispatch_y ? cmd->dispatch_y : 1,
                      cmd->dispatch_z ? cmd->dispatch_z : 1,
-                     push_token);
+                     push_token,
+                     entry_hex[0] ? entry_hex : "-",
+                     cmd->pipeline->specialization_entry_count,
+                     cmd->pipeline->specialization_data_size,
+                     spec_token);
     if (n < 0 || (size_t)n >= sizeof(command)) return -ENAMETOOLONG;
     size_t off = (size_t)n;
+    for (uint32_t i = 0; i < cmd->pipeline->specialization_entry_count; ++i) {
+        const VkSpecializationMapEntry *entry = &cmd->pipeline->specialization_entries[i];
+        n = snprintf(command + off, sizeof(command) - off,
+                     " %u %u %zu",
+                     entry->constantID,
+                     entry->offset,
+                     entry->size);
+        if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+        off += (size_t)n;
+    }
     for (size_t i = 0; i < binding_count; ++i) {
         n = snprintf(command + off, sizeof(command) - off,
                      " %u %llu %zu",
@@ -488,10 +545,22 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.minMemoryMapAlignment = 64;
     pProperties->limits.nonCoherentAtomSize = 64;
     pProperties->limits.timestampComputeAndGraphics = VK_FALSE;
+    if (trace_allocations()) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: advertised limits maxBuffer=%llu maxStorageRange=%u subgroupOps=0x%x shaderInt64=%u storage16=%u\n",
+                (unsigned long long)max_buffer,
+                (unsigned)pProperties->limits.maxStorageBufferRange,
+                (unsigned)advertised_subgroup_operations(),
+                (unsigned)advertised_shader_int64(),
+                (unsigned)advertised_storage16());
+    }
 }
 
 static VkSubgroupFeatureFlags advertised_subgroup_operations(void) {
     if (env_disabled("PDOCKER_VULKAN_DISABLE_SUBGROUP_ARITHMETIC")) {
+        return VK_SUBGROUP_FEATURE_BASIC_BIT;
+    }
+    if (!env_truthy_default("PDOCKER_VULKAN_ENABLE_SUBGROUP_ARITHMETIC", false)) {
         return VK_SUBGROUP_FEATURE_BASIC_BIT;
     }
     return VK_SUBGROUP_FEATURE_BASIC_BIT |
@@ -568,7 +637,7 @@ static void fill_pnext_properties(void *pNext) {
 static void fill_physical_device_features(VkPhysicalDeviceFeatures *pFeatures) {
     if (!pFeatures) return;
     memset(pFeatures, 0, sizeof(*pFeatures));
-    pFeatures->shaderInt64 = env_disabled("PDOCKER_VULKAN_DISABLE_INT64") ? VK_FALSE : VK_TRUE;
+    pFeatures->shaderInt64 = advertised_shader_int64();
 }
 
 static void fill_pnext_features(void *pNext) {
@@ -576,7 +645,7 @@ static void fill_pnext_features(void *pNext) {
         switch (cur->sType) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
                 VkPhysicalDeviceVulkan11Features *p = (VkPhysicalDeviceVulkan11Features *)cur;
-                VkBool32 storage16 = env_disabled("PDOCKER_VULKAN_DISABLE_16BIT_STORAGE") ? VK_FALSE : VK_TRUE;
+                VkBool32 storage16 = advertised_storage16();
                 p->storageBuffer16BitAccess = storage16;
                 p->uniformAndStorageBuffer16BitAccess = storage16;
                 p->storagePushConstant16 = storage16;
@@ -585,7 +654,7 @@ static void fill_pnext_features(void *pNext) {
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
                 VkPhysicalDevice16BitStorageFeatures *p = (VkPhysicalDevice16BitStorageFeatures *)cur;
-                VkBool32 storage16 = env_disabled("PDOCKER_VULKAN_DISABLE_16BIT_STORAGE") ? VK_FALSE : VK_TRUE;
+                VkBool32 storage16 = advertised_storage16();
                 p->storageBuffer16BitAccess = storage16;
                 p->uniformAndStorageBuffer16BitAccess = storage16;
                 p->storagePushConstant16 = storage16;
@@ -1476,6 +1545,24 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateComputePipelines(
         pipeline->shader = (PdockerVkShaderModule *)pCreateInfos[i].stage.module;
         pipeline->layout = (PdockerVkPipelineLayout *)pCreateInfos[i].layout;
         pipeline->local_size_x = 128;
+        const char *entry_name = pCreateInfos[i].stage.pName ? pCreateInfos[i].stage.pName : "main";
+        snprintf(pipeline->entry_name, sizeof(pipeline->entry_name), "%s", entry_name);
+        const VkSpecializationInfo *spec = pCreateInfos[i].stage.pSpecializationInfo;
+        if (spec) {
+            if (spec->mapEntryCount > PDOCKER_VK_MAX_SPECIALIZATION_ENTRIES ||
+                spec->dataSize > PDOCKER_VK_MAX_SPECIALIZATION_BYTES) {
+                pipeline->specialization_too_large = true;
+            } else {
+                pipeline->specialization_entry_count = spec->mapEntryCount;
+                for (uint32_t j = 0; j < spec->mapEntryCount; ++j) {
+                    pipeline->specialization_entries[j] = spec->pMapEntries[j];
+                }
+                pipeline->specialization_data_size = spec->dataSize;
+                if (spec->dataSize && spec->pData) {
+                    memcpy(pipeline->specialization_data, spec->pData, spec->dataSize);
+                }
+            }
+        }
         pPipelines[i] = (VkPipeline)pipeline;
     }
     return VK_SUCCESS;

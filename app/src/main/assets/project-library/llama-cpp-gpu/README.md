@@ -19,6 +19,9 @@ It includes:
 - `scripts/pdocker-gpu-profile.sh`, which writes a local GPU profile and
   JSON diagnostics based on the runtime environment.
 - `models/` and `workspace/` bind directories for GGUF models and experiments.
+- A shared Documents bind mount at `/documents` by default. Override the host
+  path or container path with `PDOCKER_DOCUMENTS_HOST` and
+  `PDOCKER_DOCUMENTS_MOUNT`.
 
 Usage from pdocker:
 

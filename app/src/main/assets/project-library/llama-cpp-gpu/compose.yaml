@@ -30,3 +30,4 @@ services:
       - ./models:/models
       - ./workspace:/workspace
       - ./profiles:/profiles
+      - ${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}

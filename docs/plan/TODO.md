@@ -14,24 +14,66 @@ or closes.
 
 ### Next Queue Generated 2026-05-04
 
-- [next] Real listener service health: probe the actual device listener for
+- [doing] [#4](https://github.com/ryo100794/pdocker-android/issues/4)
+  llama GPU bridge ABI: keep llama.cpp unmodified while expanding the
+  pdocker Vulkan/OpenCL bridge from device discovery and model-buffer
+  allocation toward generic ggml SPIR-V dispatch, persistent command transport,
+  and measured CPU-vs-GPU comparison artifacts. Current slice: `VULKAN_DISPATCH_V2`
+  carries the compute entry point and specialization constants across the
+  container/APK bridge, and the fast lane now runs both llama-oriented Vulkan
+  init smoke and ICD bridge dispatch smoke.
+- [next] [#5](https://github.com/ryo100794/pdocker-android/issues/5)
+  Terminal `-it` argv safety: fix direct executor `execve` argv rewrite
+  so `/bin/sh`, scripts, and `/usr/bin/[` preserve arguments inside the
+  container rootfs; add a focused smoke before relying on UI interactive exec.
+- [next] [#6](https://github.com/ryo100794/pdocker-android/issues/6)
+  Real listener service health: probe the actual device listener for
   default workspace `18080` and llama `18081`, correlate it with Engine
   container ID, health status, and logs, and never mark a service healthy from
   compose/job metadata alone.
-- [next] ID/label-based container truth: reconcile project cards, logs,
+- [next] [#6](https://github.com/ryo100794/pdocker-android/issues/6)
+  ID/label-based container truth: reconcile project cards, logs,
   lifecycle actions, and duplicate-name cleanup from Engine container IDs plus
   pdocker project/service labels. Container names are display hints and legacy
   fallbacks only.
-- [next] llama GPU performance workflow after Vulkan clamp: keep CPU fallback
+- [next] [#4](https://github.com/ryo100794/pdocker-android/issues/4)
+  llama GPU performance workflow after Vulkan clamp: keep CPU fallback
   hiding Vulkan devices, force Vulkan only for measured GPU attempts, run the
   compare flow after every bridge fix, and report `target_met`, speedup, GPU
   layer count, current blocker, thermal/device metadata, and artifact paths.
 - [next] Active port mapping: move published ports from metadata-only warnings
   to active listener/proxy/rewrite state with clear inactive/blocked/active UI
   labels and conflict handling for repeated internal ports.
-- [next] Android storage metrics verification: add device smoke/manual coverage
+- [next] [#7](https://github.com/ryo100794/pdocker-android/issues/7)
+  Android storage metrics verification: add device smoke/manual coverage
   that layer, image-view, container-private, total, and free-space values are
   nonnegative and refresh after build, prune, rebuild, and container edit flows.
+- [next] [#8](https://github.com/ryo100794/pdocker-android/issues/8)
+  Reproducible release/F-Droid readiness: turn the local build wrapper
+  into a broader pinned CI/release process with source-built native payloads,
+  no silent APK self-extension, signing outside Git, license/source audit, and
+  explicit user-directed runtime container download policy.
+- [next] [#9](https://github.com/ryo100794/pdocker-android/issues/9)
+  First public release candidate gate: define and satisfy the minimum GitHub
+  Release criteria for a build that is honest, repeatable, recoverable, and
+  safe to test.
+- [done] Agent recovery process is recorded in
+  `docs/plan/AGENT_COORDINATION.md`: recovered agent results must be moved into
+  implementation, focused docs, or TODO before they are considered durable, and
+  TODO drives the generated public timeline.
+- [done] Local build orchestration now has `scripts/build-all.sh` for compat
+  native/GPU/APK builds, `PDOCKER_SKIP_NATIVE_BUILD` for avoiding duplicate
+  native rebuilds, and documented dry-run/selective build behavior.
+- [done] Direct syscall coverage has an ADB-free local lane:
+  `python3 scripts/run_direct_syscall_scenarios.py --lane local`, covering
+  static hook inventory, scenario manifest tests, fast-local listing, and
+  Android-heavy dry-runs.
+- [done] Storage metrics validation has an ADB-free fixture checker:
+  `python3 scripts/verify-storage-metrics.py`, documenting shared layer-pool
+  accounting and guarding against image-view double counting.
+- [done] F-Droid/reproducible-build readiness is captured in
+  `docs/build/FDROID_RELEASE_PROCESS.md`, including the distinction between
+  user-directed container/image/package downloads and hidden APK self-extension.
 - [done] Daemon storage summaries now separate shared layer-pool bytes,
   per-image virtual/shared/unique bytes, container upper/private bytes, and
   merged image/rootfs view bytes with explicit overlap notes so UI totals do
@@ -716,8 +758,12 @@ Current 2026-05-04 blocker:
 
 - Qwen3 8B Q4_K_M forced Vulkan can discover the pdocker GPU bridge, allocate
   the first offloaded Vulkan model buffer, complete transfer-only queue
-  submits, lower several generic SPIR-V dispatches through the Android Vulkan
-  executor, and load the HTTP server. It still cannot serve tokens reliably:
+  submits, lower generic SPIR-V dispatch metadata through the Android Vulkan
+  executor contract, and load the HTTP server. `VULKAN_DISPATCH_V2` now
+  preserves `VkPipelineShaderStageCreateInfo::pName` and bounded
+  `VkSpecializationInfo` data without modifying llama.cpp, and
+  `scripts/smoke-vulkan-icd-bridge.sh` verifies a minimal ICD dispatch through
+  the executor command socket. It still cannot serve tokens reliably:
   prompt processing reaches a later generic SPIR-V dispatch where Android
   `vkQueueSubmit` returns `VK_ERROR_FEATURE_NOT_PRESENT`. CPU mode is restored
   as the usable path after GPU experiments.

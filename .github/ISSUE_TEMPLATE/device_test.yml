@@ -24,7 +24,7 @@ body:
       label: APK flavor
       options:
         - compat
-        - modern
+        - modern metadata-only
     validations:
       required: true
   - type: textarea

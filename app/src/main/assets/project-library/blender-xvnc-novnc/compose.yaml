@@ -19,7 +19,7 @@ services:
       GLXINFO_LOG_FILE: "${GLXINFO_LOG_FILE:-/workspace/logs/glxinfo.log}"
       NOVNC_LOG_FILE: "${NOVNC_LOG_FILE:-/workspace/logs/novnc.log}"
       VNC_LOG_FILE: "${VNC_LOG_FILE:-/workspace/logs/xvnc.log}"
-      OPENBOX_LOG_FILE: "${OPENBOX_LOG_FILE:-/workspace/logs/openbox.log}"
+      WM_LOG_FILE: "${WM_LOG_FILE:-/workspace/logs/wm.log}"
       PDOCKER_GL_BACKEND: "${PDOCKER_GL_BACKEND:-llvmpipe}"
       PDOCKER_GRAPHICS_MODE: "${PDOCKER_GRAPHICS_MODE:-software}"
       PDOCKER_ZINK_EXPERIMENTAL: "${PDOCKER_ZINK_EXPERIMENTAL:-0}"
@@ -35,3 +35,4 @@ services:
       - "15901:5901"
     volumes:
       - ./workspace:/workspace
+      - ${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}

@@ -1,0 +1,85 @@
+name: Showcase docs
+
+on:
+  pull_request:
+    paths:
+      - README.md
+      - docs/**
+      - app/src/main/assets/project-library/**
+      - app/src/main/assets/default-project/**
+      - scripts/update-showcase.py
+      - .github/workflows/showcase.yml
+  push:
+    branches:
+      - main
+    paths:
+      - README.md
+      - docs/**
+      - app/src/main/assets/project-library/**
+      - app/src/main/assets/default-project/**
+      - scripts/update-showcase.py
+      - .github/workflows/showcase.yml
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  showcase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check generated showcase docs on PRs
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/update-showcase.py --check
+
+      - name: Refresh generated showcase docs
+        if: github.event_name != 'pull_request'
+        run: python3 scripts/update-showcase.py
+
+      - name: Commit refreshed showcase docs
+        if: github.event_name != 'pull_request'
+        run: |
+          if git diff --quiet -- docs/showcase; then
+            echo "showcase docs already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/showcase
+          git commit -m "docs: refresh showcase dashboard"
+          git push
+
+      - name: Sync GitHub Wiki mirror
+        if: github.event_name != 'pull_request' && vars.PDOCKER_SYNC_WIKI == '1'
+        env:
+          WIKI_URL: https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git
+        run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          if ! git clone "$WIKI_URL" "$tmp/wiki"; then
+            echo "Wiki repository is unavailable; enable the GitHub Wiki before setting PDOCKER_SYNC_WIKI=1"
+            exit 0
+          fi
+          cp docs/showcase/WIKI_HOME.md "$tmp/wiki/Home.md"
+          cp docs/showcase/PROJECT_DASHBOARD.md "$tmp/wiki/Project-Dashboard.md"
+          cp docs/showcase/ROADMAP_TIMELINE.md "$tmp/wiki/Roadmap-Timeline.md"
+          cd "$tmp/wiki"
+          if git diff --quiet; then
+            echo "wiki mirror already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Home.md Project-Dashboard.md Roadmap-Timeline.md
+          git commit -m "docs: refresh pdocker wiki mirror"
+          git push "$WIKI_URL" HEAD:master

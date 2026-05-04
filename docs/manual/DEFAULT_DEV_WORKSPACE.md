@@ -1,6 +1,8 @@
 # Default development workspace
 
-Snapshot date: 2026-05-01.
+Snapshot date: 2026-05-04.
+
+## Purpose
 
 pdocker ships a default project template under
 `app/src/main/assets/default-project/`. On first app launch it is copied to:
@@ -13,7 +15,15 @@ Existing user-edited files are not overwritten.
 Existing generated templates are migrated from the old `8080`/`8081` service
 ports to `18080`/`18081` when the app starts or a template is installed.
 
-## Included container stack
+## Scope
+
+This page owns the default workspace operator flow and template contents. For
+current device proof, use [`../plan/STATUS.md`](../plan/STATUS.md). For
+repeatable compatibility checks, use
+[`../test/COMPATIBILITY.md`](../test/COMPATIBILITY.md). For public wording about
+the workspace, use [`PROMOTION.md`](PROMOTION.md).
+
+## Included Container Stack
 
 The default Dockerfile builds `pdocker/dev-workspace:latest` from Ubuntu 22.04
 and installs:
@@ -39,13 +49,14 @@ default-project/
 ├── compose.yaml
 ├── README.md
 ├── continue/config.yaml
+├── documents/README.md
 ├── scripts/start-code-server.sh
 ├── workspace/.vscode/extensions.json
 ├── workspace/.vscode/tasks.json
 └── vscode/settings.json
 ```
 
-## Runtime notes
+## Runtime Notes
 
 - `compose.yaml` starts code-server on `0.0.0.0:18080`, offset from common
   Android/Termux development ports.
@@ -56,6 +67,10 @@ default-project/
   open that declared service after compose up reports a healthy listener.
 - `compose.yaml` requests `gpus: all`, which maps to pdocker's experimental
   Vulkan passthrough / CUDA-compatible API negotiation.
+- The template mounts the APK-configured shared Documents folder at
+  `/documents`. The app writes `PDOCKER_DOCUMENTS_HOST` and
+  `PDOCKER_DOCUMENTS_MOUNT` into project `.env` files; if no folder has been
+  selected yet, Compose falls back to `./documents`.
 - `OPENAI_API_KEY`, `GITHUB_TOKEN`, and `CODE_SERVER_PASSWORD` are passed
   through from the environment when provided.
 - If `CODE_SERVER_PASSWORD` is empty, code-server starts with `--auth none` for
@@ -65,10 +80,17 @@ default-project/
   local browser URLs from Compose ports and `pdocker.service-url` header
   comments.
 
-## Source references
+## Canonical Sources
 
 - Codex CLI install path: `npm install -g @openai/codex`.
 - Codex VS Code extension ID: `OpenAI.chatgpt`.
 - code-server supports command-line extension installation with
   `code-server --install-extension <extension id>`.
 - Continue extension marketplace ID: `Continue.continue`.
+
+## Maintenance
+
+- Keep paths and ports aligned with `app/src/main/assets/default-project/`.
+- Link to status and compatibility docs for proof instead of adding new status
+  tables here.
+- Keep security caveats near the relevant runtime setting.

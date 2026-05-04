@@ -29,6 +29,19 @@ The fast gate also lists runnable local scenarios:
 python3 scripts/run_direct_syscall_scenarios.py --tier fast-local --list
 ```
 
+For an isolated syscall-coverage lane that does not require ADB, an installed
+APK, or a local native rebuild, run:
+
+```bash
+python3 scripts/run_direct_syscall_scenarios.py --lane local
+```
+
+That lane checks the static direct-executor hook inventory, runs the focused
+`tests/direct_syscall/` manifest-contract tests, lists fast-local scenarios,
+and dry-runs the Android-heavy plan. It is the default acceptance command for
+coverage-only changes because device-only scenarios remain explicit without
+being launched.
+
 Filter by execution status when you want only concrete commands or only
 remaining plans:
 
@@ -94,3 +107,18 @@ socket case still needs host-side socket setup, and the PTY case still needs
 the APK/JNI terminal path, so they remain plans rather than self-contained
 device commands. Use `--list --tier heavy-android --verbose` or
 `--tier heavy-android --json` to inspect the current Android execution plan.
+
+## Acceptance
+
+Coverage changes are accepted when the local lane passes:
+
+```bash
+python3 scripts/run_direct_syscall_scenarios.py --lane local
+```
+
+Before promoting a device scenario from planned to runnable, make sure its
+manifest entry has a concrete `adb shell run-as ...` command, names `ROOTFS`,
+sets the expected direct-runtime trace flag where useful, and documents the
+observable checks. Keep AF_UNIX bind rewrite listed as a known gap until the
+direct executor adds an active `bind` hook; the current socket scenario covers
+`connect(AF_UNIX)` path rewrite only.

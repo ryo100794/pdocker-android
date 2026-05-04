@@ -1,10 +1,18 @@
 # Blender Xvnc noVNC
 
-Ubuntu 24.04 workspace with Blender, Xvnc, noVNC, Openbox, and Mesa graphics diagnostics for OpenGL/GLSL workloads.
+Ubuntu 24.04 workspace with Blender, Xvnc, noVNC, Matchbox, and Mesa graphics diagnostics for OpenGL/GLSL workloads.
 
 The compose header comment `# pdocker.service-url: 18083=noVNC Blender` labels
 the local browser shortcut. Open noVNC at port `18083`; direct VNC clients can
 connect to host port `15901`.
+
+The compose template mounts a shared Documents directory at `/documents` by
+default. Override the host path or container path with
+`PDOCKER_DOCUMENTS_HOST` and `PDOCKER_DOCUMENTS_MOUNT`.
+
+Build note: the Dockerfile downloads the `novnc` Debian package from the
+configured Ubuntu apt repository and extracts its static files without running
+the package maintainer scripts.
 
 The default graphics path is Mesa software rendering:
 
@@ -26,7 +34,7 @@ Runtime logs stream to stdout/stderr and are also mirrored under
 `workspace/logs/`:
 
 - `xvnc.log`
-- `openbox.log`
+- `wm.log`
 - `glxinfo.log`
 - `blender.log`
 - `novnc.log`

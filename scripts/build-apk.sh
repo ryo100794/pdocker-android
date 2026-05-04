@@ -10,6 +10,7 @@ cd "$ROOT"
 : "${ANDROID_NDK_HOME:=$HOME/android-ndk-r26d}"
 : "${PDOCKER_ANDROID_FLAVOR:=compat}"
 : "${PDOCKER_ANDROID_BUILD_TYPE:=debug}"
+: "${PDOCKER_SKIP_NATIVE_BUILD:=0}"
 export ANDROID_HOME ANDROID_NDK_HOME
 export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
@@ -38,10 +39,14 @@ case "$PDOCKER_ANDROID_FLAVOR" in
         ;;
 esac
 
-# Build libcow.so + libpdockerpty.so natively with Termux aarch64 clang.
-# Bypasses the x86_64-only NDK toolchain (which would need box64 emulation
-# on aarch64 hosts). Output goes directly to app/src/main/jniLibs/arm64-v8a/.
-bash scripts/build-native-termux.sh
+if [[ "$PDOCKER_SKIP_NATIVE_BUILD" == "0" ]]; then
+    # Build Android/Bionic helper libs natively with Termux aarch64 clang.
+    # Bypasses the x86_64-only NDK toolchain (which would need box64 emulation
+    # on aarch64 hosts). Output goes directly to app/src/main/jniLibs/arm64-v8a/.
+    bash scripts/build-native-termux.sh
+else
+    echo "==> skipping Android native build (PDOCKER_SKIP_NATIVE_BUILD=$PDOCKER_SKIP_NATIVE_BUILD)"
+fi
 
 # External PRoot is not part of the default or compat runtime. The SDK28
 # compatibility APK uses the scratch pdocker-direct executor path so the

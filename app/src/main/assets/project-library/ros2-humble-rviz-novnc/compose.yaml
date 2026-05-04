@@ -31,3 +31,4 @@ services:
       - "15900:5900"
     volumes:
       - ./workspace:/workspace
+      - ${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}

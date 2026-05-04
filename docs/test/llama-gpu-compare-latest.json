@@ -34,20 +34,19 @@
       "assert_blocker": false,
       "buffer_range_assert_blocker": false,
       "gpu_model_buffer_seen": true,
+      "generic_dispatch_response_seen": true,
+      "generic_spirv_dispatch_attempted": true,
       "generic_spirv_dispatch_seen": false,
+      "generic_spirv_dispatch_failed": true,
       "executor_spirv_trace_seen": false,
       "executor_feature_trace_seen": false,
       "android_vulkan_dispatch_blocker": false,
-      "queue_submit_blocker": true,
-      "spirv_dispatch_blocker": true,
-      "generic_dispatch_response_seen": true,
-      "generic_spirv_dispatch_attempted": true,
-      "generic_spirv_dispatch_failed": true,
       "executor_submit_generic_dispatch_error": true,
-      "executor_fallback_dispatch_blocker": true
+      "executor_fallback_dispatch_blocker": true,
+      "queue_submit_blocker": true,
+      "spirv_dispatch_blocker": true
     },
     "allocation_trace_bytes": [
-      2431008,
       510521344,
       16384,
       510504960,
@@ -65,6 +64,77 @@
     "diagnostics": {
       "blocker_class": "vulkan_generic_spirv_dispatch",
       "blocker_detail": "generic SPIR-V dispatch reached submit-generic-dispatch / queue submit failure",
+      "failure_axes": {
+        "advertised_limits": {
+          "state": "untraced",
+          "reason": "queue submit failed before Android feature/SPIR-V trace was captured"
+        },
+        "chunking": {
+          "state": "pressure",
+          "reason": "large model/buffer allocations are at or above the 512MiB bridge clamp; future failures should distinguish splitting/chunk transport from shader lowering"
+        },
+        "generic_spirv_dispatch": {
+          "state": "front_blocker",
+          "reason": "generic SPIR-V dispatch reached submit-generic-dispatch / queue submit failure"
+        }
+      },
+      "advertised_limits": {
+        "configured_clamps": {
+          "PDOCKER_VULKAN_MAX_BUFFER_BYTES": 536870912,
+          "GGML_VK_FORCE_MAX_BUFFER_SIZE": 536870912,
+          "GGML_VK_FORCE_MAX_ALLOCATION_SIZE": 536870912,
+          "GGML_VK_SUBALLOCATION_BLOCK_SIZE": 536870912
+        },
+        "icd_advertises_subgroup_arithmetic_by_default": true,
+        "executor_android_features": {},
+        "spirv_trace_count": 0,
+        "last_spirv_trace": {}
+      },
+      "chunking_pressure": {
+        "configured_bridge_max_buffer_bytes": 536870912,
+        "largest_allocation_bytes": 510521344,
+        "largest_created_buffer_bytes": 510521344,
+        "allocation_near_clamp": true,
+        "model_cpu_mapped_bytes": 4511309496,
+        "model_cpu_mapped_exceeds_bridge_clamp": true,
+        "vulkan_model_buffer_mib": 486.87,
+        "descriptor_range_max_bytes": 32768
+      },
+      "generic_spirv_dispatch": {
+        "attempted": true,
+        "valid_android_vulkan_events": [],
+        "failed_events": [
+          {
+            "executor": "pdocker-gpu-executor",
+            "api": "pdocker-gpu-command-v1",
+            "abi_version": "0.1",
+            "role": "gpu-command-executor",
+            "llm_engine": "container",
+            "device_independent": true,
+            "backend_impl": "gles31_compute",
+            "backend_affinity": "fallback",
+            "valid": false,
+            "stage": "vulkan-dispatch",
+            "error": "submit-generic-dispatch"
+          }
+        ],
+        "fallback_events": [
+          {
+            "executor": "pdocker-gpu-executor",
+            "api": "pdocker-gpu-command-v1",
+            "abi_version": "0.1",
+            "role": "gpu-command-executor",
+            "llm_engine": "container",
+            "device_independent": true,
+            "backend_impl": "gles31_compute",
+            "backend_affinity": "fallback",
+            "valid": false,
+            "stage": "vulkan-dispatch",
+            "error": "submit-generic-dispatch"
+          }
+        ],
+        "llama_throw": "vk::Queue::submit: ErrorFeatureNotPresent"
+      },
       "executor_backends": [
         "gles31_compute"
       ],
@@ -82,7 +152,7 @@
   "operation": {
     "kind": "llama-gpu-compare",
     "ui_surface": "Overview daemon operation/progress card",
-    "container_surface": "pdocker-llama-cpp remains the container shown by docker ps",
+    "container_surface": "pdocker-llama-cpp remains the container shown by Engine container listing",
     "cleanup": "remove adb port forward, mark failed operation on nonzero exit, restore CPU server unless --no-restore is passed"
   },
   "next_blocker": "lower generic SPIR-V dispatch into the Android Vulkan executor or clamp advertised capabilities"

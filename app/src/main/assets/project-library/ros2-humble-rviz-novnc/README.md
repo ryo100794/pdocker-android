@@ -6,6 +6,14 @@ The compose header comment `# pdocker.service-url: 18082=noVNC RViz` labels
 the local browser shortcut. Open noVNC at port `18082`; direct VNC clients can
 connect to host port `15900`.
 
+The compose template mounts a shared Documents directory at `/documents` by
+default. Override the host path or container path with
+`PDOCKER_DOCUMENTS_HOST` and `PDOCKER_DOCUMENTS_MOUNT`.
+
+Build note: the Dockerfile downloads the `novnc` Debian package from the
+configured Ubuntu apt repository and extracts its static files without running
+the package maintainer scripts.
+
 The default graphics path is Mesa software rendering:
 
 - `PDOCKER_GL_BACKEND=llvmpipe`

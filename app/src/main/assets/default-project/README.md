@@ -41,6 +41,8 @@ The default Compose project mounts app-owned pdocker paths into the container:
 - `/pdocker/host`: the app pdocker home, matching `filesDir/pdocker` on
   Android.
 - `/pdocker/host/pdockerd.sock`: pdocker Engine socket when pdockerd is running.
+- `/documents`: shared Documents volume, mounted from `./documents` by default.
+  Override with `PDOCKER_DOCUMENTS_HOST` or `PDOCKER_DOCUMENTS_MOUNT`.
 
 Run `pdocker-paths` in the code-server terminal to see which paths are mounted
 and whether an Engine socket is available.

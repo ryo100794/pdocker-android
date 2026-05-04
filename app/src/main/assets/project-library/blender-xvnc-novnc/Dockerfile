@@ -27,10 +27,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       dbus-x11 \
       libgl1 \
       libglu1-mesa \
+      matchbox-window-manager \
       mesa-utils \
       mesa-vulkan-drivers \
-      novnc \
-      openbox \
       procps \
       tigervnc-common \
       tigervnc-standalone-server \
@@ -38,7 +37,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       websockify \
       x11-xserver-utils \
       xterm \
-    && rm -rf /var/lib/apt/lists/*
+    && tmp="$(mktemp -d)" \
+    && (cd "$tmp" && apt-get download novnc && dpkg-deb -x novnc_*.deb /) \
+    && rm -rf "$tmp" /var/lib/apt/lists/*
 
 COPY scripts/start-blender-xvnc-novnc.sh /usr/local/bin/start-blender-xvnc-novnc
 RUN chmod +x /usr/local/bin/start-blender-xvnc-novnc \
