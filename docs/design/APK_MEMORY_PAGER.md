@@ -1,6 +1,6 @@
 # APK-Scoped Memory Pager
 
-Snapshot date: 2026-05-04.
+Snapshot date: 2026-05-05.
 
 ## Purpose
 
@@ -25,6 +25,14 @@ On the SOG15 test device:
 Therefore the product cannot rely on adding system swap, changing zram size, or
 changing VM policy. Any swap-like behavior must be scoped to processes launched
 and mediated by pdocker.
+
+The SDK28 compat APK now carries a repeatable native probe:
+`pdocker-direct --pdocker-memory-pager-probe`. On 2026-05-05 it confirmed that
+the ptrace fallback primitives are visible from the APK process:
+`mmap(PROT_NONE)`, `mprotect`, `madvise`, child ptrace stop,
+`process_vm_writev`, intentional `SIGSEGV` stop, and `PTRACE_GETSIGINFO`.
+`userfaultfd` remains blocked (`EPERM` from the syscall and `EACCES` for
+`/dev/userfaultfd`), so it is a future optional path rather than the default.
 
 ## Important Boundary
 

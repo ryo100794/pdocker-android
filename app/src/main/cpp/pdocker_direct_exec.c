@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/mman.h>
 #include <dirent.h>
 #include <linux/elf.h>
 #include <linux/audit.h>
@@ -42,6 +43,12 @@ static unsigned long long g_stop_count = 0;
 static struct timespec g_stats_start;
 static int write_tracee_data(pid_t pid, unsigned long long addr, const void *value, size_t len);
 static const char *syscall_name(long nr);
+static ssize_t pdocker_process_vm_writev(pid_t pid,
+                                         const struct iovec *local_iov,
+                                         unsigned long liovcnt,
+                                         const struct iovec *remote_iov,
+                                         unsigned long riovcnt,
+                                         unsigned long flags);
 
 #define MAX_BIND_MAPS 96
 
@@ -79,6 +86,115 @@ static void install_tracer_signal_handlers(void) {
 static int env_flag_enabled(const char *name) {
     const char *v = getenv(name);
     return v && v[0] && strcmp(v, "0") != 0 && strcasecmp(v, "false") != 0;
+}
+
+static int pager_probe_ok(const char *name, int ok, int err) {
+    if (ok) {
+        printf("pager-probe:%s=ok\n", name);
+        return 0;
+    }
+    printf("pager-probe:%s=fail errno=%d\n", name, err);
+    return 1;
+}
+
+static int run_memory_pager_probe(void) {
+    int failures = 0;
+    int optional_failures = 0;
+    long page_size = sysconf(_SC_PAGESIZE);
+    if (page_size <= 0) page_size = 4096;
+
+    void *page = mmap(NULL, (size_t)page_size, PROT_NONE,
+                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    failures += pager_probe_ok("mmap_prot_none", page != MAP_FAILED, errno);
+    if (page != MAP_FAILED) {
+        int rc = mprotect(page, (size_t)page_size, PROT_READ | PROT_WRITE);
+        failures += pager_probe_ok("mprotect_rw", rc == 0, errno);
+        if (rc == 0) {
+            ((volatile char *)page)[0] = 0x5a;
+            failures += pager_probe_ok("write_after_mprotect",
+                                       ((volatile char *)page)[0] == 0x5a,
+                                       errno);
+        }
+        rc = madvise(page, (size_t)page_size, MADV_DONTNEED);
+        failures += pager_probe_ok("madvise_dontneed", rc == 0, errno);
+        munmap(page, (size_t)page_size);
+    }
+
+#ifdef __NR_userfaultfd
+    errno = 0;
+    long ufd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+    optional_failures += pager_probe_ok("userfaultfd_syscall", ufd >= 0, errno);
+    if (ufd >= 0) close((int)ufd);
+#else
+    optional_failures += pager_probe_ok("userfaultfd_syscall", 0, ENOSYS);
+#endif
+
+    int fd = open("/dev/userfaultfd", O_RDONLY | O_CLOEXEC);
+    optional_failures += pager_probe_ok("open_dev_userfaultfd", fd >= 0, errno);
+    if (fd >= 0) close(fd);
+
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        failures += pager_probe_ok("pipe", 0, errno);
+        return failures ? 1 : 0;
+    }
+    pid_t child = fork();
+    if (child == 0) {
+        close(pipefd[0]);
+        char *child_page = mmap(NULL, (size_t)page_size, PROT_READ | PROT_WRITE,
+                                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (child_page == MAP_FAILED) _exit(80);
+        snprintf(child_page, (size_t)page_size, "before");
+        dprintf(pipefd[1], "%p\n", child_page);
+        close(pipefd[1]);
+        if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) != 0) _exit(81);
+        raise(SIGSTOP);
+        if (strcmp(child_page, "parent-write") != 0) _exit(82);
+        void *fault_page = mmap(NULL, (size_t)page_size, PROT_NONE,
+                                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (fault_page == MAP_FAILED) _exit(83);
+        *((volatile char *)fault_page) = 1;
+        _exit(84);
+    }
+    close(pipefd[1]);
+    unsigned long long child_addr = 0;
+    FILE *pipe_read = fdopen(pipefd[0], "r");
+    if (pipe_read) {
+        if (fscanf(pipe_read, "%llx", &child_addr) != 1) child_addr = 0;
+        fclose(pipe_read);
+    } else {
+        close(pipefd[0]);
+    }
+    int status = 0;
+    int waited = waitpid(child, &status, 0);
+    failures += pager_probe_ok("ptrace_traceme_stop",
+                               waited == child && WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP,
+                               waited < 0 ? errno : EINVAL);
+    if (waited == child && WIFSTOPPED(status)) {
+        const char value[] = "parent-write";
+        struct iovec local = {(void *)value, sizeof(value)};
+        struct iovec remote = {(void *)(uintptr_t)child_addr, sizeof(value)};
+        ssize_t written = pdocker_process_vm_writev(child, &local, 1, &remote, 1, 0);
+        failures += pager_probe_ok("process_vm_writev_child",
+                                   written == (ssize_t)sizeof(value), errno);
+        ptrace(PTRACE_CONT, child, NULL, NULL);
+        waited = waitpid(child, &status, 0);
+        failures += pager_probe_ok("ptrace_sigsegv_stop",
+                                   waited == child && WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV,
+                                   waited < 0 ? errno : EINVAL);
+        if (waited == child && WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV) {
+            siginfo_t info;
+            memset(&info, 0, sizeof(info));
+            int rc = ptrace(PTRACE_GETSIGINFO, child, NULL, &info);
+            failures += pager_probe_ok("ptrace_getsiginfo", rc == 0 && info.si_addr != NULL, errno);
+        }
+    }
+    kill(child, SIGKILL);
+    waitpid(child, NULL, 0);
+    printf("pager-probe:userfaultfd=%s\n", optional_failures ? "blocked" : "ok");
+    printf("pager-probe:ptrace_path=%s\n", failures ? "fail" : "ok");
+    printf("pager-probe:result=%s\n", failures ? "fail" : "ok");
+    return failures ? 1 : 0;
 }
 
 static double monotonic_seconds_since(const struct timespec *start) {
@@ -140,6 +256,7 @@ static ssize_t pdocker_process_vm_writev(pid_t pid,
 static void usage(FILE *stream) {
     fprintf(stream,
             "usage: pdocker-direct --pdocker-direct-probe\n"
+            "       pdocker-direct --pdocker-memory-pager-probe\n"
             "       pdocker-direct run --mode MODE --rootfs PATH --workdir PATH [--env KEY=VAL] [--bind SPEC] -- ARGV...\n");
 }
 
@@ -2717,6 +2834,10 @@ int main(int argc, char **argv) {
             puts("process-exec=0");
         }
         return 0;
+    }
+
+    if (argc == 2 && strcmp(argv[1], "--pdocker-memory-pager-probe") == 0) {
+        return run_memory_pager_probe();
     }
 
     if (argc >= 2 && strcmp(argv[1], "run") == 0) {

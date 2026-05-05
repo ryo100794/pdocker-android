@@ -194,6 +194,8 @@ run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe |
 if [[ "$FLAVOR" == "compat" ]]; then
   echo "[pdocker smoke] compat direct process probe"
   run_as 'PDOCKER_DIRECT_EXPERIMENTAL_PROCESS_EXEC=1 files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "process-exec=1"'
+  echo "[pdocker smoke] compat memory pager syscall probe"
+  run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-memory-pager-probe | grep -q "pager-probe:ptrace_path=ok"'
   run_as '! test -e files/pdocker-runtime/docker-bin/proot'
 else
   run_as 'files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-direct-probe | grep -q "process-exec=0"'
