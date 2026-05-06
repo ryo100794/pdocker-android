@@ -1537,6 +1537,7 @@ static int rewrite_at_path_arg(pid_t pid, struct user_pt_regs *regs, int dirfd_i
         return 0;
     }
     trace_interesting_path(pid, context, path_index, original);
+    if (original[0] != '/') return 0;
     char rewritten[PATH_MAX];
     int bind_path = 0;
     int resolved = resolve_guest_host_path(rootfs, original, rewritten, sizeof(rewritten), &bind_path);

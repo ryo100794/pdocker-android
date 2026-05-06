@@ -2,74 +2,80 @@
   "comparisons": [
     {
       "container_bytes": 262144,
-      "container_ms": 0.267656,
+      "container_ms": 0.302291,
       "container_ops": 64,
       "label": "seq_write",
       "native_bytes": 262144,
-      "native_ms": 0.437969,
+      "native_ms": 1.119375,
       "native_ops": 64,
-      "overhead_ms": -0.170313,
-      "ratio": 0.6111300114848311,
+      "overhead_ms": -0.817084,
+      "overhead_ms_per_op": -0.0127669375,
+      "ratio": 0.2700533780011167,
       "target_met": true
     },
     {
       "container_bytes": 262144,
-      "container_ms": 0.148281,
+      "container_ms": 0.080677,
       "container_ops": 64,
       "label": "seq_read",
       "native_bytes": 262144,
-      "native_ms": 0.096094,
+      "native_ms": 0.135,
       "native_ops": 64,
-      "overhead_ms": 0.052187,
-      "ratio": 1.5430828147438966,
+      "overhead_ms": -0.05432300000000001,
+      "overhead_ms_per_op": -0.0008487968750000002,
+      "ratio": 0.5976074074074074,
       "target_met": true
     },
     {
       "container_bytes": 2048,
-      "container_ms": 5.820521,
+      "container_ms": 4.284792,
       "container_ops": 64,
       "label": "small_create",
       "native_bytes": 2048,
-      "native_ms": 2.78526,
+      "native_ms": 4.02776,
       "native_ops": 64,
-      "overhead_ms": 3.035261,
-      "ratio": 2.089758586272018,
+      "overhead_ms": 0.2570320000000006,
+      "overhead_ms_per_op": 0.004016125000000009,
+      "ratio": 1.0638151230460604,
       "target_met": true
     },
     {
       "container_bytes": 0,
-      "container_ms": 5.668438,
+      "container_ms": 1.481407,
       "container_ops": 64,
       "label": "small_stat",
       "native_bytes": 0,
-      "native_ms": 0.250781,
+      "native_ms": 0.191927,
       "native_ops": 64,
-      "overhead_ms": 5.417657,
-      "ratio": 22.603139791292005,
+      "overhead_ms": 1.28948,
+      "overhead_ms_per_op": 0.020148125,
+      "ratio": 7.718596132904699,
       "target_met": true
     },
     {
       "container_bytes": 2048,
-      "container_ms": 1.338281,
+      "container_ms": 1.746875,
       "container_ops": 64,
       "label": "small_read",
       "native_bytes": 2048,
-      "native_ms": 0.404375,
+      "native_ms": 0.599531,
       "native_ops": 64,
-      "overhead_ms": 0.9339060000000001,
-      "ratio": 3.309504791344668,
+      "overhead_ms": 1.147344,
+      "overhead_ms_per_op": 0.01792725,
+      "ratio": 2.9137359035646195,
       "target_met": true
     },
     {
       "container_bytes": 0,
-      "container_ms": 5.855781,
+      "container_ms": 6.395417,
       "container_ops": 65,
       "label": "unlink",
       "native_bytes": 0,
-      "native_ms": 1.767813,
+      "native_ms": 2.48375,
       "native_ops": 65,
-      "overhead_ms": 4.087968,
-      "ratio": 3.312443680411899,
+      "overhead_ms": 3.911667,
+      "overhead_ms_per_op": 0.06017949230769231,
+      "ratio": 2.5749036738802213,
       "target_met": true
     }
   ],
@@ -85,37 +91,37 @@
       "results": [
         {
           "bytes": 262144,
-          "elapsed_ms": 0.437969,
+          "elapsed_ms": 1.119375,
           "label": "seq_write",
           "ops": 64
         },
         {
           "bytes": 262144,
-          "elapsed_ms": 0.096094,
+          "elapsed_ms": 0.135,
           "label": "seq_read",
           "ops": 64
         },
         {
           "bytes": 2048,
-          "elapsed_ms": 2.78526,
+          "elapsed_ms": 4.02776,
           "label": "small_create",
           "ops": 64
         },
         {
           "bytes": 0,
-          "elapsed_ms": 0.250781,
+          "elapsed_ms": 0.191927,
           "label": "small_stat",
           "ops": 64
         },
         {
           "bytes": 2048,
-          "elapsed_ms": 0.404375,
+          "elapsed_ms": 0.599531,
           "label": "small_read",
           "ops": 64
         },
         {
           "bytes": 0,
-          "elapsed_ms": 1.767813,
+          "elapsed_ms": 2.48375,
           "label": "unlink",
           "ops": 65
         }
@@ -125,7 +131,7 @@
     {
       "direct_stops": 264,
       "raw_tail": [
-        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.022s stops=264",
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.020s stops=264",
         "pdocker-direct-stats: #1 nr=56(openat) count=130",
         "pdocker-direct-stats: #2 nr=35(unlinkat) count=65",
         "pdocker-direct-stats: #3 nr=79(newfstatat) count=64",
@@ -137,37 +143,37 @@
       "results": [
         {
           "bytes": 262144,
-          "elapsed_ms": 0.267656,
+          "elapsed_ms": 0.302291,
           "label": "seq_write",
           "ops": 64
         },
         {
           "bytes": 262144,
-          "elapsed_ms": 0.148281,
+          "elapsed_ms": 0.080677,
           "label": "seq_read",
           "ops": 64
         },
         {
           "bytes": 2048,
-          "elapsed_ms": 5.820521,
+          "elapsed_ms": 4.284792,
           "label": "small_create",
           "ops": 64
         },
         {
           "bytes": 0,
-          "elapsed_ms": 5.668438,
+          "elapsed_ms": 1.481407,
           "label": "small_stat",
           "ops": 64
         },
         {
           "bytes": 2048,
-          "elapsed_ms": 1.338281,
+          "elapsed_ms": 1.746875,
           "label": "small_read",
           "ops": 64
         },
         {
           "bytes": 0,
-          "elapsed_ms": 5.855781,
+          "elapsed_ms": 6.395417,
           "label": "unlink",
           "ops": 65
         }
@@ -213,7 +219,7 @@
       ]
     }
   ],
-  "git_commit": "89173db",
+  "git_commit": "731919b",
   "kind": "pdocker.file-io-microbench",
   "parameters": {
     "block_size": 4096,
@@ -226,9 +232,10 @@
   "schema": 1,
   "summary": {
     "all_rc_zero": true,
-    "max_overhead_ms": 5.417657,
+    "max_overhead_ms": 3.911667,
+    "max_overhead_ms_per_op": 0.06017949230769231,
     "target_met": true,
-    "target_overhead_ms": 10.0
+    "target_overhead_ms_per_op": 1.0
   },
-  "timestamp_utc": "2026-05-06T05:06:43.413519+00:00"
+  "timestamp_utc": "2026-05-06T05:17:20.450641+00:00"
 }

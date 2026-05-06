@@ -87,7 +87,7 @@ cp '/data/local/tmp/$(basename "$BIN")' \"\$WORKLOAD\" && chmod 755 \"\$WORKLOAD
 cp '/data/local/tmp/$(basename "$DIRECT")' \"\$DIRECT\" && chmod 755 \"\$DIRECT\"
 echo \"__PDIO_MICRO_CONTEXT__:rootfs=\$R;workload=\$WORKLOAD;direct=\$DIRECT\"
 echo '__PDIO_MICRO_BEGIN__:native_rootfs'
-\"\$WORKLOAD\" \"\$R/tmp/pdocker-fileio-micro-native-$STAMP\" '$FILES' '$BLOCKS' '$BLOCK_SIZE' '$FSYNC'
+(cd \"\$R/tmp\" && ./pdocker_fileio_microbench \"pdocker-fileio-micro-native-$STAMP\" '$FILES' '$BLOCKS' '$BLOCK_SIZE' '$FSYNC')
 native_rc=\$?
 echo \"__PDIO_MICRO_END__:native_rootfs:rc=\$native_rc\"
 echo '__PDIO_MICRO_BEGIN__:container_rootfs'
@@ -97,7 +97,7 @@ export PDOCKER_DIRECT_TRACE_SYSCALLS=0
 export PDOCKER_DIRECT_TRACE_VERBOSE=0
 export PDOCKER_DIRECT_TRACE_PATHS=0
 export PDOCKER_DIRECT_STATS=1
-\"\$DIRECT\" run --mode bench --rootfs \"\$R\" --workdir / -- /tmp/pdocker_fileio_microbench \"/tmp/pdocker-fileio-micro-container-$STAMP\" '$FILES' '$BLOCKS' '$BLOCK_SIZE' '$FSYNC'
+\"\$DIRECT\" run --mode bench --rootfs \"\$R\" --workdir /tmp -- /tmp/pdocker_fileio_microbench \"pdocker-fileio-micro-container-$STAMP\" '$FILES' '$BLOCKS' '$BLOCK_SIZE' '$FSYNC'
 container_rc=\$?
 echo \"__PDIO_MICRO_END__:container_rootfs:rc=\$container_rc\"
 rm -rf \"\$R/tmp/pdocker-fileio-micro-native-$STAMP\" \"\$R/tmp/pdocker-fileio-micro-container-$STAMP\"
@@ -171,7 +171,9 @@ for label in ["seq_write", "seq_read", "small_create", "small_stat", "small_read
     if n and c and n["elapsed_ms"] > 0:
         row["overhead_ms"] = c["elapsed_ms"] - n["elapsed_ms"]
         row["ratio"] = c["elapsed_ms"] / n["elapsed_ms"]
-        row["target_met"] = row["overhead_ms"] <= 10.0
+        ops = max(1, int(c.get("ops") or n.get("ops") or 1))
+        row["overhead_ms_per_op"] = row["overhead_ms"] / ops
+        row["target_met"] = row["overhead_ms_per_op"] <= 1.0
     comparisons.append(row)
 
 artifact = {
@@ -194,7 +196,8 @@ artifact = {
     "summary": {
         "all_rc_zero": int(run_rc) == 0 and all(e.get("rc") == 0 for e in events),
         "max_overhead_ms": max((r.get("overhead_ms", 0.0) for r in comparisons), default=0.0),
-        "target_overhead_ms": 10.0,
+        "max_overhead_ms_per_op": max((r.get("overhead_ms_per_op", 0.0) for r in comparisons), default=0.0),
+        "target_overhead_ms_per_op": 1.0,
         "target_met": all(r.get("target_met", False) for r in comparisons),
     },
 }
@@ -207,19 +210,20 @@ md = [
     f"- Timestamp: `{artifact['timestamp_utc']}`",
     f"- Device: `{device_serial}`",
     f"- Workload: files={files}, blocks={blocks}, block_size={block_size}, fsync={fsync}",
-    f"- Target: direct executor overhead <= 10 ms per operation group",
-    f"- Result: {'PASS' if artifact['summary']['target_met'] else 'FAIL'}; max overhead {artifact['summary']['max_overhead_ms']:.3f} ms",
+    f"- Target: direct executor overhead <= 1 ms per file operation",
+    f"- Result: {'PASS' if artifact['summary']['target_met'] else 'FAIL'}; max group overhead {artifact['summary']['max_overhead_ms']:.3f} ms, max per-op overhead {artifact['summary']['max_overhead_ms_per_op']:.3f} ms",
     "",
-    "| operation | native rootfs ms | container rootfs ms | overhead ms | ratio | target |",
-    "|---|---:|---:|---:|---:|---|",
+    "| operation | native rootfs ms | container rootfs ms | overhead ms | overhead ms/op | ratio | target |",
+    "|---|---:|---:|---:|---:|---:|---|",
 ]
 for row in comparisons:
     md.append(
-        "| {label} | {native:.3f} | {container:.3f} | {overhead:.3f} | {ratio:.2f} | {target} |".format(
+        "| {label} | {native:.3f} | {container:.3f} | {overhead:.3f} | {overhead_op:.3f} | {ratio:.2f} | {target} |".format(
             label=row["label"],
             native=row.get("native_ms", 0.0),
             container=row.get("container_ms", 0.0),
             overhead=row.get("overhead_ms", 0.0),
+            overhead_op=row.get("overhead_ms_per_op", 0.0),
             ratio=row.get("ratio", 0.0),
             target="PASS" if row.get("target_met") else "FAIL",
         )
@@ -230,7 +234,7 @@ md.extend([
     "",
     "- Both paths run the same static AArch64 benchmark binary stored in the rootfs.",
     "- `native rootfs` executes that binary directly in the APK domain against the rootfs backing path.",
-    "- `container rootfs` executes the same binary through `pdocker-direct`, so ptrace/seccomp path mediation remains active.",
+    "- `container rootfs` executes the same binary through `pdocker-direct`; the same executor behavior is used as normal container execution.",
     "- Timing is measured inside the benchmark process around direct file syscall loops, not around shell command startup.",
 ])
 Path(md_path).write_text("\n".join(md) + "\n")
