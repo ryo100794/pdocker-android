@@ -22,6 +22,7 @@ ABNORMAL = ROOT / "tests" / "abnormal_event_cases.json"
 REFACTOR = ROOT / "tests" / "refactor_resilience_cases.json"
 STRESS = ROOT / "tests" / "stress_regression_cases.json"
 SYSCALL = ROOT / "tests" / "direct_syscall_coverage.json"
+PYTHON_COVERAGE = ROOT / "docs" / "test" / "python-coverage-latest.json"
 STANDARD_DOC = ROOT / "docs" / "test" / "TEST_DESIGN_STANDARD.md"
 DESIGN_AXIS_ALIASES = {
     "feature-ledger": ("feature scenario", "scenario ledger", "feature design"),
@@ -152,6 +153,38 @@ def token_count(paths: list[Path]) -> int:
 
 def structural_coverage_items(paths: list[Path]) -> dict[str, int]:
     return structural_coverage_evidence(paths)["totals"]
+
+
+def load_python_coverage_evidence() -> dict[str, Any]:
+    if not PYTHON_COVERAGE.is_file():
+        return {
+            "schema": "pdocker.python.coverage.missing",
+            "path": str(PYTHON_COVERAGE.relative_to(ROOT)),
+            "coverage_items": 0,
+            "present": False,
+            "note": "Run scripts/run-python-coverage.sh to generate instrumented Python coverage evidence.",
+        }
+    try:
+        data = json.loads(PYTHON_COVERAGE.read_text())
+    except json.JSONDecodeError as exc:
+        fail(f"python coverage artifact is not valid JSON: {exc}")
+    pdocker = data.get("pdocker") or {}
+    totals = data.get("totals") or {}
+    covered_lines = int(pdocker.get("covered_lines") or totals.get("covered_lines") or 0)
+    covered_branches = int(pdocker.get("covered_branches") or totals.get("covered_branches") or 0)
+    coverage_items = int(pdocker.get("coverage_items") or (covered_lines + covered_branches))
+    return {
+        "schema": pdocker.get("schema", "coverage.py.json"),
+        "path": str(PYTHON_COVERAGE.relative_to(ROOT)),
+        "present": True,
+        "coverage_items": coverage_items,
+        "covered_lines": covered_lines,
+        "num_statements": int(pdocker.get("num_statements") or totals.get("num_statements") or 0),
+        "covered_branches": covered_branches,
+        "num_branches": int(pdocker.get("num_branches") or totals.get("num_branches") or 0),
+        "percent_covered": float(pdocker.get("percent_covered") or totals.get("percent_covered") or 0.0),
+        "source": pdocker.get("source", "coverage.py"),
+    }
 
 
 def structural_coverage_evidence(paths: list[Path]) -> dict[str, Any]:
@@ -466,21 +499,37 @@ def parsed_runner_commands(text: str) -> set[str]:
     return commands
 
 
-def validate_fast_wiring_text(criteria: dict[str, Any], verify_fast: str, verify_scenarios: str) -> None:
-    fast_commands = parsed_runner_commands(verify_fast)
-    scenario_commands = parsed_runner_commands(verify_scenarios)
+def driver_command_labels(driver_manifest: dict[str, Any]) -> set[str]:
+    labels = set()
+    for lane in (driver_manifest.get("lanes") or {}).values():
+        for command in lane.get("commands", []):
+            if "argv" in command:
+                labels.add(" ".join(str(part) for part in command["argv"]))
+            elif "shell" in command:
+                labels.add(str(command["shell"]))
+    return labels
+
+
+def validate_fast_wiring_text(criteria: dict[str, Any], driver_manifest_text: str, _unused: str = "") -> None:
+    try:
+        driver_manifest = json.loads(driver_manifest_text)
+    except json.JSONDecodeError as exc:
+        fail(f"test driver manifest is invalid JSON: {exc}")
+    labels = driver_command_labels(driver_manifest)
     for command in criteria.get("required_fast_commands", []):
-        if command not in fast_commands:
-            fail(f"verify-fast.sh must include {command}")
-        if command not in scenario_commands:
-            fail(f"verify-scenarios.sh must include {command}")
+        if command not in labels and not any(label.startswith(command + " ") for label in labels):
+            fail(f"test driver manifest must include {command}")
 
 
 def validate_fast_wiring(criteria: dict[str, Any]) -> None:
-    verify_fast = (ROOT / "scripts" / "verify-fast.sh").read_text()
-    verify_scenarios = (ROOT / "scripts" / "verify-scenarios.sh").read_text()
-    validate_fast_wiring_text(criteria, verify_fast, verify_scenarios)
-    ok("fast and scenario runners enforce the test design gates")
+    driver_manifest = (ROOT / "tests" / "test_driver_manifest.json").read_text()
+    driver_source = (ROOT / "scripts" / "pdocker-test-driver.py").read_text()
+    if "docs/test/test-run-latest.json" not in driver_manifest:
+        fail("test driver manifest must declare the canonical artifact manifest")
+    if "manifest.json" not in driver_source or "sha256" not in driver_source:
+        fail("test driver must write hashed run manifests")
+    validate_fast_wiring_text(criteria, driver_manifest)
+    ok("canonical test driver enforces the test design gates")
 
 
 def expect_failure(label: str, func, *args) -> None:
@@ -523,9 +572,9 @@ def run_negative_self_tests(
     missing_fast_command["required_fast_commands"] = ["python3 scripts/definitely-missing-test-gate.py"]
     expect_failure("missing fast runner wiring", validate_fast_wiring, missing_fast_command)
 
-    commented_runner = "# run python3 scripts/verify-test-design-criteria.py\n"
+    commented_runner = json.dumps({"lanes": {"host-smoke": {"commands": []}}})
     expect_failure(
-        "commented-out runner command",
+        "missing driver manifest command",
         validate_fast_wiring_text,
         criteria,
         commented_runner,
@@ -633,6 +682,8 @@ def main() -> int:
     implementation_tokens = token_count(implementation_files)
     structural_evidence = structural_coverage_evidence(implementation_files)
     structural_items = structural_evidence["totals"]
+    python_coverage_evidence = load_python_coverage_evidence()
+    runtime_coverage_items = int(python_coverage_evidence.get("coverage_items") or 0)
 
     implementation_steps = feature_count
     semantic_checks = (
@@ -660,6 +711,7 @@ def main() -> int:
         + structural_items["c0_statement_items"]
         + structural_items["c1_branch_outcome_items"]
         + structural_items["c2_condition_outcome_items"]
+        + runtime_coverage_items
     )
     ratio = selected_checks / implementation_steps
     literal_token_multiplier = selected_checks / implementation_tokens
@@ -670,6 +722,7 @@ def main() -> int:
         "implementation_code_tokens": implementation_tokens,
         "selected_check_count": selected_checks,
         "semantic_check_count": semantic_checks,
+        "runtime_coverage_items": runtime_coverage_items,
         **structural_items,
         "check_to_step_ratio": round(ratio, 2),
         "literal_check_count_to_token_multiplier": round(literal_token_multiplier, 6),
@@ -696,6 +749,7 @@ def main() -> int:
         "advanced_method_scenarios": advanced_method_count,
         "static_assertion_checks": static_assertions,
         "structural_coverage_evidence": structural_evidence,
+        "python_coverage_evidence": python_coverage_evidence,
     }
 
     minimums = criteria.get("minimums", {})
@@ -729,8 +783,18 @@ def main() -> int:
     ok(
         "test design literal token ratio is "
         f"{selected_checks}/{implementation_tokens} = {literal_token_multiplier:.3f}x "
-        "(semantic + C0 + C1 + C2 check items)"
+        "(semantic + C0 + C1 + C2 + instrumented coverage items)"
     )
+    if python_coverage_evidence.get("present"):
+        ok(
+            "python instrumented coverage evidence is "
+            f"{python_coverage_evidence.get('covered_lines', 0)}/"
+            f"{python_coverage_evidence.get('num_statements', 0)} lines and "
+            f"{python_coverage_evidence.get('covered_branches', 0)}/"
+            f"{python_coverage_evidence.get('num_branches', 0)} branches"
+        )
+    else:
+        failures.append("python coverage evidence missing: run scripts/run-python-coverage.sh")
     if args.write_artifact:
         args.write_artifact.parent.mkdir(parents=True, exist_ok=True)
         args.write_artifact.write_text(json.dumps(build_report(metrics), indent=2, sort_keys=True) + "\n")

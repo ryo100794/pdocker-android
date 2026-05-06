@@ -1,6 +1,6 @@
 # pdocker TODO ledger
 
-Snapshot date: 2026-05-04.
+Snapshot date: 2026-05-06.
 
 This is the working TODO list for unfinished items and deliberate temporary
 accommodations. Keep this file current whenever a workaround is added so it
@@ -80,6 +80,68 @@ or closes.
   per-image virtual/shared/unique bytes, container upper/private bytes, and
   merged image/rootfs view bytes with explicit overlap notes so UI totals do
   not double-count hardlinked lower data.
+
+### Post-Build Conversation Intake 2026-05-06
+
+These items were raised after the last fixed build record and must be closed
+with implementation plus verification before the next build is treated as a
+stable checkpoint.
+
+- [doing] Image pull UI must not hard-code `ubuntu:22.04`. It now needs a
+  searchable selection dialog that combines local image refs, Compose
+  `image:` refs, Dockerfile `FROM` refs, common defaults, and Docker Hub public
+  search results. The selected architecture/platform must come from pdockerd
+  host environment (`/system/host` / `PDOCKER_PLATFORM`) with ABI fallback only
+  when the daemon is unreachable. Acceptance: static UI wiring check, APK
+  build, and device smoke that pulls a user-selected ref without opening a
+  Docker shell.
+- [doing] Image pull crash safety. `pull_image` and layer extraction must stage
+  into temporary directories and atomically publish completed layers/tags so an
+  app or daemon kill cannot leave a partial layer/image that is later treated
+  as valid. Acceptance: local py_compile/static checks, daemon startup recovery
+  of `.pull-*`, `.old-*`, and `.tmp-*` residue, and an interrupted-pull device
+  scenario.
+- [doing] Compose/build log progress rendering. The readonly log pane must
+  preserve terminal carriage-return progress updates instead of deleting or
+  fragmenting text-mode progress bars. Acceptance: xterm readonly log path keeps
+  CR progress in one live line, summary timer remains live, no soft keyboard,
+  and VS Code workspace build progress is visually checked on device. Static
+  checks pass; keep open until a device visual pass confirms the progress line
+  does not fragment during a real VS Code build.
+- [done] Builder compatibility regression gate. Recent VS Code workspace
+  failure was caused by pdockerd builder logic not expanding a valid Dockerfile
+  `COPY scripts/pdocker-*` source pattern. This is a backend compatibility
+  gap, not a Dockerfile/template change. Closed with unittest coverage for
+  Dockerfile COPY wildcard expansion, context-escape rejection, and the bundled
+  default workspace's real COPY pattern; red/green evidence for the old failure
+  is recorded in `docs/test/COPY_WILDCARD_REGRESSION.md`; the default VS Code
+  build log on device showed each expanded `scripts/pdocker-*` source copied
+  without `COPY failed`.
+- [doing] Default workspace compose-up truth after successful build. Latest
+  device evidence shows the default workspace build completed and
+  `pdocker-dev` has a persisted running Engine state with the current container
+  ID/PID, but project cards, `docker ps`, and service health have regressed in
+  this area before. Acceptance: UI card, `/containers/json?all=1`, persisted
+  `state.json`, process table, listener probe for `18080`, and job log all
+  agree on the same Engine container ID after compose up.
+- [next] RUN changed-path/snapshot performance. `RUN chmod +x
+  /usr/local/bin/pdocker-*` is functionally correct but still triggers an
+  expensive broad snapshot in the default workspace build. Acceptance: profile
+  the changed-path detection, add regression coverage for wildcard RUN paths,
+  and reduce the final no-op-style metadata snapshot without changing Dockerfile
+  semantics.
+- [next] Image reference graph visual polish. The tree must render continuous
+  connector lines, include image detail/version/storage information on the tree
+  nodes, and expose image operations from the tree itself. Acceptance: static
+  check plus device screenshot/manual visual pass.
+- [next] Pull/update operation semantics. "Pull image" is an Engine API
+  operation, not "open docker pull shell"; if the ref already exists, treat it
+  as update/re-pull with old tag preserved until success. Acceptance: wording,
+  logs, and crash-safety behavior are consistent.
+- [next] Device verification after rebuild. Install the next compat APK and run:
+  image pull dialog, Docker Hub search fallback, selected platform display,
+  image browse/back behavior, image tree actions, VS Code compose up build log
+  progress, and post-kill image-store consistency.
 
 ### Current Open Risk Ledger 2026-05-05
 

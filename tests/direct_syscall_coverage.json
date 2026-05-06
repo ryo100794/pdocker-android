@@ -26,7 +26,13 @@
       "id": "path.relative-dirfd-preserve",
       "applies_to": ["rewrite_at_path_arg", "rewrite_at_path_args"],
       "cases": ["android.direct.path-open-stat-access-cwd", "android.direct.path-mutation"],
-      "contract": "Relative dirfd paths remain relative to the tracee context and are not blindly prefixed with the rootfs."
+      "contract": "Relative dirfd paths remain relative to the tracee context after the traced dirfd/cwd is validated as an allowed rootfs or bind host path."
+    },
+    {
+      "id": "path.relative-dirfd-escape-deny",
+      "applies_to": ["rewrite_at_path_arg", "validate_relative_tracee_path", "deny_path_syscall"],
+      "cases": ["android.direct.path-boundary-matrix", "container.direct.runtime-probe"],
+      "contract": "Relative paths whose dirfd/cwd, parent traversal, or symlink resolution would escape the rootfs or declared bind hosts are completed with a deterministic errno instead of being silently passed through."
     },
     {
       "id": "path.rootfs-already-host-path",
@@ -158,14 +164,17 @@
       "function": "rewrite_at_path_arg",
       "branches": [
         "tracee-string-read-fails -> no rewrite",
+        "relative-safe -> validate and no rewrite",
+        "relative-unsafe -> EXDEV syscall completion",
         "resolved-zero -> no rewrite",
-        "resolved-negative -> diagnostic no rewrite",
+        "resolved-negative -> errno syscall completion",
+        "host-path-validation-fails -> EXDEV syscall completion",
         "rootfs-fd-fast-path -> dirfd rewrite",
         "parent-segment-or-bind -> scratch rewrite",
         "scratch-write-fails -> no rewrite"
       ],
       "cases": ["android.direct.path-open-stat-access-cwd", "android.direct.path-boundary-matrix"],
-      "contract": "The fd-relative fast path and its fallback paths are split so parent segments, binds, and overflow cannot hide behind the same success case."
+      "contract": "The fd-relative fast path, validated relative pass-through, scratch fallback, and explicit unsafe-path errno completion are split so parent segments, binds, symlinks, and overflow cannot hide behind the same success case."
     },
     {
       "id": "branch.rewrite-unix-sockaddr",
@@ -501,7 +510,7 @@
     {
       "id": "android.direct.path-boundary-matrix",
       "tier": "heavy-android",
-      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 PDOCKER_DIRECT_TRACE_PATHS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"set -eu; mkdir -p /tmp/pdocker-boundary/a /tmp/pdocker-boundary/b; : > /tmp/pdocker-boundary/a/file; stat /tmp/pdocker-boundary/./a/../a/file >/dev/null; stat /proc/self/exe >/dev/null; python3 - <<PY\\nimport ctypes, errno, os, socket\\nlibc=ctypes.CDLL(None, use_errno=True)\\nAT_FDCWD=-100\\nSYS_getcwd=17\\nbuf=ctypes.create_string_buffer(1)\\nctypes.set_errno(0)\\nrc=libc.syscall(SYS_getcwd, ctypes.addressof(buf), 1)\\nassert rc == -1 and ctypes.get_errno() == errno.ERANGE, (rc, ctypes.get_errno())\\n# Exercise short AF_UNIX paths and nscd skip path without requiring nscd to exist.\\ns=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\\ntry:\\n    s.connect('/var/run/nscd/socket')\\nexcept OSError as e:\\n    assert e.errno in (errno.ENOENT, errno.ECONNREFUSED, errno.ENAMETOOLONG)\\nfinally:\\n    s.close()\\nprint('boundary_matrix_ok')\\nPY\\\"'\"",
+      "command": "PDOCKER_PACKAGE=\"${PDOCKER_PACKAGE:-io.github.ryo100794.pdocker}\"; ROOTFS=\"${ROOTFS:?set ROOTFS to the app-visible rootfs path}\"; adb shell \"run-as $PDOCKER_PACKAGE sh -lc 'cd files && PDOCKER_DIRECT_TRACE_SYSCALLS=1 PDOCKER_DIRECT_TRACE_PATHS=1 pdocker-runtime/docker-bin/pdocker-direct run --mode exec --rootfs $ROOTFS --workdir / -- /bin/sh -lc \\\"set -eu; mkdir -p /tmp/pdocker-boundary/a /tmp/pdocker-boundary/b; : > /tmp/pdocker-boundary/a/file; stat /tmp/pdocker-boundary/./a/../a/file >/dev/null; stat /proc/self/exe >/dev/null; python3 - <<PY\\nimport ctypes, errno, os, socket\\nlibc=ctypes.CDLL(None, use_errno=True)\\nAT_FDCWD=-100\\nSYS_getcwd=17\\nbuf=ctypes.create_string_buffer(1)\\nctypes.set_errno(0)\\nrc=libc.syscall(SYS_getcwd, ctypes.addressof(buf), 1)\\nassert rc == -1 and ctypes.get_errno() == errno.ERANGE, (rc, ctypes.get_errno())\\n# Exercise short AF_UNIX paths and nscd skip path without requiring nscd to exist.\\ns=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\\ntry:\\n    s.connect('/var/run/nscd/socket')\\nexcept OSError as e:\\n    assert e.errno in (errno.ENOENT, errno.ECONNREFUSED, errno.ENAMETOOLONG)\\nfinally:\\n    s.close()\\ntry:\\n    os.unlink('/tmp/pdocker-boundary/a/escape')\\nexcept FileNotFoundError:\\n    pass\\nos.symlink('/data', '/tmp/pdocker-boundary/a/escape')\\nfd=os.open('/tmp/pdocker-boundary/a', os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))\\ntry:\\n    try:\\n        os.stat('escape', dir_fd=fd)\\n    except OSError as e:\\n        assert e.errno == errno.EXDEV, e\\n    else:\\n        raise AssertionError('relative escape unexpectedly succeeded')\\nfinally:\\n    os.close(fd)\\nprint('boundary_matrix_ok')\\nPY\\\"'\"",
       "runnable": true,
       "checks": "Exercises parent-segment path handling, /proc/self/exe special handling, getcwd ERANGE, and AF_UNIX nscd skip behavior under the direct runtime."
     },

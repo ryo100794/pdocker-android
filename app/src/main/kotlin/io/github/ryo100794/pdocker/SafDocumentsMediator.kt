@@ -382,6 +382,56 @@ class SafDocumentsMediator(
     fun writeText(relativePath: String, text: String, mimeType: String = "text/plain"): Boolean =
         writeBytes(relativePath, text.toByteArray(Charsets.UTF_8), mimeType)
 
+    fun writeFile(relativePath: String, source: File, mimeType: String = "application/octet-stream"): JSONObject {
+        val normalized = normalizeRelativePath(relativePath)
+        val result = copyFileToTree(normalized, source, mimeType, evictMirrorPayload = false)
+        return JSONObject()
+            .put("Success", result.success)
+            .put("Mode", "saf-unixfs-provider")
+            .put("RelativePath", normalized)
+            .put("Bytes", result.bytes)
+            .put("Error", result.error)
+    }
+
+    fun writeMirrorFallbackFile(
+        relativePath: String,
+        source: File,
+        mimeType: String = "application/octet-stream",
+        reason: String = "",
+    ): JSONObject {
+        val normalized = normalizeRelativePath(relativePath)
+        val target = File(mirrorRoot, normalized)
+        return runCatching {
+            target.parentFile?.mkdirs()
+            val bytes = source.inputStream().use { input ->
+                target.outputStream().use { output -> input.copyCountingTo(output) }
+            }
+            recordPayloadSidecar(
+                relativePath = normalized,
+                size = bytes,
+                mimeType = mimeType,
+                source = target,
+                payloadState = "mirror-fallback-after-saf-error",
+            )
+            JSONObject()
+                .put("Success", true)
+                .put("Mode", "saf-unixfs-mirror-fallback")
+                .put("RelativePath", normalized)
+                .put("MirrorPath", target.absolutePath)
+                .put("Bytes", bytes)
+                .put("Reason", reason)
+        }.getOrElse {
+            JSONObject()
+                .put("Success", false)
+                .put("Mode", "saf-unixfs-mirror-fallback")
+                .put("RelativePath", normalized)
+                .put("MirrorPath", target.absolutePath)
+                .put("Bytes", 0L)
+                .put("Reason", reason)
+                .put("Error", it.message ?: it.toString())
+        }
+    }
+
     private fun resolveDocumentUri(
         relativePath: String,
         createDirs: Boolean,

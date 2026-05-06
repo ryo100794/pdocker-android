@@ -27,6 +27,7 @@ Android-specific GPU/media bridge work.
 
 - `dev-workspace`: pdocker Management Workspace + code-server + Codex
 - `direct-runtime-probe`: pdocker Direct Runtime Probe
+- `pdocker-test-suite`: pdocker Test Suite
 - `llama-cpp-gpu`: llama.cpp GPU workspace
 - `ros2-humble-rviz-novnc`: ROS 2 Humble RViz noVNC
 - `blender-xvnc-novnc`: Blender Xvnc noVNC

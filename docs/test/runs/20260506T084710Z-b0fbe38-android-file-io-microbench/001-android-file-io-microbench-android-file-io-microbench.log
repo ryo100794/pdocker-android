@@ -1,0 +1,151 @@
+$ bash scripts/android-file-io-microbench.sh
+[pdocker file-io microbench] building static workload
+[pdocker file-io microbench] building direct executor
+__PDIO_MICRO_CONTEXT__:rootfs=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs;workload=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs/tmp/pdocker_fileio_microbench;app_workload=pdocker/bench/pdocker_fileio_microbench;direct=pdocker/bench/pdocker-direct-microbench;documents_host=/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/documents-saf-mediated/mirror
+__PDIO_MICRO_BEGIN__:native_app
+{"label":"open_close","elapsed_ms":2.726719,"ops":1000,"bytes":0}
+{"label":"openat_only","elapsed_ms":3.857656,"ops":1000,"bytes":0}
+{"label":"close_only","elapsed_ms":0.839479,"ops":1000,"bytes":0}
+{"label":"stat_same","elapsed_ms":1.770885,"ops":1000,"bytes":0}
+{"label":"fstat_only","elapsed_ms":0.436094,"ops":1000,"bytes":0}
+{"label":"lseek_only","elapsed_ms":0.311094,"ops":1000,"bytes":0}
+{"label":"write_only","elapsed_ms":0.104687,"ops":16,"bytes":65536}
+{"label":"read_only","elapsed_ms":0.025312,"ops":16,"bytes":65536}
+{"label":"chmod_same","elapsed_ms":0.069219,"ops":32,"bytes":0}
+{"label":"rename_pair","elapsed_ms":0.869322,"ops":64,"bytes":0}
+{"label":"mkdir_rmdir_pair","elapsed_ms":1.147812,"ops":64,"bytes":0}
+{"label":"symlink_unlink_pair","elapsed_ms":1.328697,"ops":64,"bytes":0}
+{"label":"readlink_only","elapsed_ms":0.055156,"ops":32,"bytes":0}
+{"label":"small_create","elapsed_ms":1.147656,"ops":32,"bytes":1024}
+{"label":"small_stat","elapsed_ms":0.062968,"ops":32,"bytes":0}
+{"label":"small_read","elapsed_ms":0.154844,"ops":32,"bytes":1024}
+{"label":"unlink","elapsed_ms":0.728646,"ops":37,"bytes":0}
+__PDIO_MICRO_END__:native_app:rc=0
+__PDIO_MICRO_BEGIN__:native_rootfs
+{"label":"open_close","elapsed_ms":3.993803,"ops":1000,"bytes":0}
+{"label":"openat_only","elapsed_ms":3.481719,"ops":1000,"bytes":0}
+{"label":"close_only","elapsed_ms":0.562604,"ops":1000,"bytes":0}
+{"label":"stat_same","elapsed_ms":0.843854,"ops":1000,"bytes":0}
+{"label":"fstat_only","elapsed_ms":0.244166,"ops":1000,"bytes":0}
+{"label":"lseek_only","elapsed_ms":0.167240,"ops":1000,"bytes":0}
+{"label":"write_only","elapsed_ms":0.068907,"ops":16,"bytes":65536}
+{"label":"read_only","elapsed_ms":0.013854,"ops":16,"bytes":65536}
+{"label":"chmod_same","elapsed_ms":0.034375,"ops":32,"bytes":0}
+{"label":"rename_pair","elapsed_ms":0.399948,"ops":64,"bytes":0}
+{"label":"mkdir_rmdir_pair","elapsed_ms":0.596719,"ops":64,"bytes":0}
+{"label":"symlink_unlink_pair","elapsed_ms":0.728802,"ops":64,"bytes":0}
+{"label":"readlink_only","elapsed_ms":0.027031,"ops":32,"bytes":0}
+{"label":"small_create","elapsed_ms":0.874219,"ops":32,"bytes":1024}
+{"label":"small_stat","elapsed_ms":0.060313,"ops":32,"bytes":0}
+{"label":"small_read","elapsed_ms":0.142292,"ops":32,"bytes":1024}
+{"label":"unlink","elapsed_ms":0.716875,"ops":37,"bytes":0}
+__PDIO_MICRO_END__:native_rootfs:rc=0
+__PDIO_MICRO_BEGIN__:container_rootfs
+{"label":"open_close","elapsed_ms":32.945416,"ops":1000,"bytes":0}
+{"label":"openat_only","elapsed_ms":25.038489,"ops":1000,"bytes":0}
+{"label":"close_only","elapsed_ms":0.674375,"ops":1000,"bytes":0}
+{"label":"stat_same","elapsed_ms":27.378959,"ops":1000,"bytes":0}
+{"label":"fstat_only","elapsed_ms":0.267448,"ops":1000,"bytes":0}
+{"label":"lseek_only","elapsed_ms":0.211823,"ops":1000,"bytes":0}
+{"label":"write_only","elapsed_ms":0.062968,"ops":16,"bytes":65536}
+{"label":"read_only","elapsed_ms":0.015157,"ops":16,"bytes":65536}
+{"label":"chmod_same","elapsed_ms":0.709948,"ops":32,"bytes":0}
+{"label":"rename_pair","elapsed_ms":8.553906,"ops":64,"bytes":0}
+{"label":"mkdir_rmdir_pair","elapsed_ms":4.881094,"ops":64,"bytes":0}
+{"label":"symlink_unlink_pair","elapsed_ms":11.890260,"ops":64,"bytes":0}
+{"label":"readlink_only","elapsed_ms":0.469687,"ops":32,"bytes":0}
+{"label":"small_create","elapsed_ms":2.943698,"ops":32,"bytes":1024}
+{"label":"small_stat","elapsed_ms":0.626770,"ops":32,"bytes":0}
+{"label":"small_read","elapsed_ms":1.124427,"ops":32,"bytes":1024}
+{"label":"unlink","elapsed_ms":2.422344,"ops":37,"bytes":0}
+pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.150s stops=4603
+pdocker-direct-stats: #1 nr=56(openat) count=3072
+pdocker-direct-stats: #2 nr=79(newfstatat) count=1032
+pdocker-direct-stats: #3 nr=35(unlinkat) count=102
+pdocker-direct-stats: #4 nr=38(renameat) count=64
+pdocker-direct-stats: #5 nr=34(mkdirat) count=33
+pdocker-direct-stats: #6 nr=36(symlinkat) count=33
+pdocker-direct-stats: #7 nr=78(readlinkat) count=33
+pdocker-direct-stats: #8 nr=53(fchmodat) count=32
+pdocker-direct-stats: #9 nr=221(execve) count=1
+__PDIO_MICRO_END__:container_rootfs:rc=0
+__PDIO_MICRO_BEGIN__:container_app_bind
+{"label":"open_close","elapsed_ms":25.070156,"ops":1000,"bytes":0}
+{"label":"openat_only","elapsed_ms":27.687188,"ops":1000,"bytes":0}
+{"label":"close_only","elapsed_ms":0.689896,"ops":1000,"bytes":0}
+{"label":"stat_same","elapsed_ms":20.908645,"ops":1000,"bytes":0}
+{"label":"fstat_only","elapsed_ms":0.296458,"ops":1000,"bytes":0}
+{"label":"lseek_only","elapsed_ms":0.220781,"ops":1000,"bytes":0}
+{"label":"write_only","elapsed_ms":0.068906,"ops":16,"bytes":65536}
+{"label":"read_only","elapsed_ms":0.017657,"ops":16,"bytes":65536}
+{"label":"chmod_same","elapsed_ms":0.742344,"ops":32,"bytes":0}
+{"label":"rename_pair","elapsed_ms":5.942344,"ops":64,"bytes":0}
+{"label":"mkdir_rmdir_pair","elapsed_ms":3.159062,"ops":64,"bytes":0}
+{"label":"symlink_unlink_pair","elapsed_ms":3.576719,"ops":64,"bytes":0}
+{"label":"readlink_only","elapsed_ms":0.555573,"ops":32,"bytes":0}
+{"label":"small_create","elapsed_ms":1.700052,"ops":32,"bytes":1024}
+{"label":"small_stat","elapsed_ms":0.741302,"ops":32,"bytes":0}
+{"label":"small_read","elapsed_ms":0.829896,"ops":32,"bytes":1024}
+{"label":"unlink","elapsed_ms":2.479948,"ops":37,"bytes":0}
+pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.130s stops=4603
+pdocker-direct-stats: #1 nr=56(openat) count=3072
+pdocker-direct-stats: #2 nr=79(newfstatat) count=1032
+pdocker-direct-stats: #3 nr=35(unlinkat) count=102
+pdocker-direct-stats: #4 nr=38(renameat) count=64
+pdocker-direct-stats: #5 nr=34(mkdirat) count=33
+pdocker-direct-stats: #6 nr=36(symlinkat) count=33
+pdocker-direct-stats: #7 nr=78(readlinkat) count=33
+pdocker-direct-stats: #8 nr=53(fchmodat) count=32
+pdocker-direct-stats: #9 nr=221(execve) count=1
+__PDIO_MICRO_END__:container_app_bind:rc=0
+__PDIO_MICRO_BEGIN__:native_documents
+{"label":"open_close","elapsed_ms":3.425468,"ops":1000,"bytes":0}
+{"label":"openat_only","elapsed_ms":2.837396,"ops":1000,"bytes":0}
+{"label":"close_only","elapsed_ms":0.565625,"ops":1000,"bytes":0}
+{"label":"stat_same","elapsed_ms":1.830156,"ops":1000,"bytes":0}
+{"label":"fstat_only","elapsed_ms":0.245156,"ops":1000,"bytes":0}
+{"label":"lseek_only","elapsed_ms":0.202500,"ops":1000,"bytes":0}
+{"label":"write_only","elapsed_ms":0.060156,"ops":16,"bytes":65536}
+{"label":"read_only","elapsed_ms":0.013802,"ops":16,"bytes":65536}
+{"label":"chmod_same","elapsed_ms":0.217500,"ops":32,"bytes":0}
+{"label":"rename_pair","elapsed_ms":0.515468,"ops":64,"bytes":0}
+{"label":"mkdir_rmdir_pair","elapsed_ms":0.659739,"ops":64,"bytes":0}
+{"label":"symlink_unlink_pair","elapsed_ms":1.023594,"ops":64,"bytes":0}
+{"label":"readlink_only","elapsed_ms":0.053125,"ops":32,"bytes":0}
+{"label":"small_create","elapsed_ms":0.806875,"ops":32,"bytes":1024}
+{"label":"small_stat","elapsed_ms":0.211980,"ops":32,"bytes":0}
+{"label":"small_read","elapsed_ms":0.245053,"ops":32,"bytes":1024}
+{"label":"unlink","elapsed_ms":0.873958,"ops":37,"bytes":0}
+__PDIO_MICRO_END__:native_documents:rc=0
+__PDIO_MICRO_BEGIN__:container_documents_bind
+{"label":"open_close","elapsed_ms":42.410468,"ops":1000,"bytes":0}
+{"label":"openat_only","elapsed_ms":28.353802,"ops":1000,"bytes":0}
+{"label":"close_only","elapsed_ms":0.659063,"ops":1000,"bytes":0}
+{"label":"stat_same","elapsed_ms":20.713646,"ops":1000,"bytes":0}
+{"label":"fstat_only","elapsed_ms":0.251406,"ops":1000,"bytes":0}
+{"label":"lseek_only","elapsed_ms":0.191250,"ops":1000,"bytes":0}
+{"label":"write_only","elapsed_ms":0.067969,"ops":16,"bytes":65536}
+{"label":"read_only","elapsed_ms":0.016198,"ops":16,"bytes":65536}
+{"label":"chmod_same","elapsed_ms":0.568906,"ops":32,"bytes":0}
+{"label":"rename_pair","elapsed_ms":4.048958,"ops":64,"bytes":0}
+{"label":"mkdir_rmdir_pair","elapsed_ms":3.083281,"ops":64,"bytes":0}
+{"label":"symlink_unlink_pair","elapsed_ms":4.281615,"ops":64,"bytes":0}
+{"label":"readlink_only","elapsed_ms":0.588594,"ops":32,"bytes":0}
+{"label":"small_create","elapsed_ms":2.939947,"ops":32,"bytes":1024}
+{"label":"small_stat","elapsed_ms":0.569896,"ops":32,"bytes":0}
+{"label":"small_read","elapsed_ms":0.643750,"ops":32,"bytes":1024}
+{"label":"unlink","elapsed_ms":2.011927,"ops":37,"bytes":0}
+pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.135s stops=4603
+pdocker-direct-stats: #1 nr=56(openat) count=3072
+pdocker-direct-stats: #2 nr=79(newfstatat) count=1032
+pdocker-direct-stats: #3 nr=35(unlinkat) count=102
+pdocker-direct-stats: #4 nr=38(renameat) count=64
+pdocker-direct-stats: #5 nr=34(mkdirat) count=33
+pdocker-direct-stats: #6 nr=36(symlinkat) count=33
+pdocker-direct-stats: #7 nr=78(readlinkat) count=33
+pdocker-direct-stats: #8 nr=53(fchmodat) count=32
+pdocker-direct-stats: #9 nr=221(execve) count=1
+__PDIO_MICRO_END__:container_documents_bind:rc=0
+[pdocker file-io microbench] wrote /root/tl/pdocker-android/docs/test/file-io-microbench-latest.json
+[pdocker file-io microbench] wrote /root/tl/pdocker-android/docs/test/file-io-microbench-latest.md
+[pdocker file-io microbench] documents export: /data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/documents-saf-mediated/mirror/pdocker/test-runs/latest-benchmark

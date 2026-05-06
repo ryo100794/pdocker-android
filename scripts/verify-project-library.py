@@ -168,6 +168,7 @@ def main() -> int:
     for tid in (
         "dev-workspace",
         "direct-runtime-probe",
+        "pdocker-test-suite",
         "llama-cpp-gpu",
         "ros2-humble-rviz-novnc",
         "blender-xvnc-novnc",
@@ -201,6 +202,51 @@ def main() -> int:
         if "pdocker/projects" not in documents_readme or "selected Android Documents folder" not in documents_readme:
             fail(f"{tid} documents README missing Documents workspace-root layout")
     ok("all compose templates include shared Documents volume")
+
+    suite = templates["pdocker-test-suite"]
+    suite_root = ASSETS / suite["assetPath"]
+    suite_compose = read(suite_root / suite["compose"])
+    suite_dockerfile = read(suite_root / suite["dockerfile"])
+    suite_runner = read(suite_root / "scripts" / "run-pdocker-test-suite.sh")
+    suite_start = read(suite_root / "scripts" / "start-pdocker-test-suite.sh")
+    suite_probe = read(suite_root / "scripts" / "pdocker-container-probe.sh")
+    suite_readme = read(suite_root / "README.md")
+    suite_expectations = {
+        "test suite metadata": suite.get("category") == "runtime-test"
+        and suite.get("gpu") == "none"
+        and "test-suite" in suite.get("features", [])
+        and "docker-exec" in suite.get("features", []),
+        "test suite compose idle command": 'command: ["/usr/local/bin/start-pdocker-test-suite"]' in suite_compose
+        and "container_name: pdocker-test-suite" in suite_compose,
+        "test suite mounts reports and Documents": "./reports:/reports" in suite_compose
+        and DOCUMENTS_VOLUME in suite_compose
+        and SHARED_DOCUMENTS_VOLUME in suite_compose,
+        "test suite Dockerfile installs runner and probe": "COPY scripts/run-pdocker-test-suite.sh" in suite_dockerfile
+        and "COPY scripts/pdocker-container-probe.sh" in suite_dockerfile
+        and "HEALTHCHECK" in suite_dockerfile,
+        "test suite start instructs exec route": "docker exec pdocker-test-suite run-pdocker-test-suite" in suite_start,
+        "test suite runner supports scenario selectors": "--scenario all|smoke|direct|io|archive|documents" in suite_runner
+        and "run_selected_case" in suite_runner,
+        "test suite runner mirrors Documents evidence": "/documents/pdocker-exports" in suite_runner
+        and "export_latest_json" in suite_runner
+        and '"schema": "pdocker.test-suite.v1"' in suite_runner,
+        "test suite runner includes direct/runtime scenarios": "direct_runtime_probe" in suite_runner
+        and "path_semantics" in suite_runner
+        and "argv_preservation" in suite_runner
+        and "proc_exe" in suite_runner,
+        "test suite runner includes io/archive/input scenarios": "file_io_smoke" in suite_runner
+        and "archive_roundtrip" in suite_runner
+        and "invalid_inputs" in suite_runner,
+        "test suite embeds existing direct probe payload": "test_argv_preservation" in suite_probe
+        and "flash_attn_mask_opt.comp.cpp.o" in suite_probe
+        and "test_large_allocation_guard" in suite_probe,
+        "test suite docs require exec and Documents reports": "docker exec pdocker-test-suite run-pdocker-test-suite --scenario all" in suite_readme
+        and "/documents/pdocker-exports/pdocker-test-suite/latest.json" in suite_readme,
+    }
+    for name, passed in suite_expectations.items():
+        if not passed:
+            fail(name)
+    ok("pdocker-test-suite template centralizes exec-run scenarios and Documents evidence")
 
     dev = templates["dev-workspace"]
     if dev.get("assetPath") != "default-project":

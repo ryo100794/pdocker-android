@@ -1,0 +1,1934 @@
+{
+  "aggregate_top_syscalls": [
+    {
+      "count": 2484,
+      "name": "newfstatat",
+      "nr": 79
+    },
+    {
+      "count": 1619,
+      "name": "mmap",
+      "nr": 222
+    },
+    {
+      "count": 1614,
+      "name": "openat",
+      "nr": 56
+    },
+    {
+      "count": 1396,
+      "name": "read",
+      "nr": 63
+    },
+    {
+      "count": 1313,
+      "name": "close",
+      "nr": 57
+    },
+    {
+      "count": 872,
+      "name": "mprotect",
+      "nr": 226
+    },
+    {
+      "count": 769,
+      "name": "munmap",
+      "nr": 215
+    },
+    {
+      "count": 419,
+      "name": "brk",
+      "nr": 214
+    },
+    {
+      "count": 391,
+      "name": "fcntl",
+      "nr": 25
+    },
+    {
+      "count": 279,
+      "name": "rt_sigprocmask",
+      "nr": 135
+    },
+    {
+      "count": 251,
+      "name": "wait4",
+      "nr": 260
+    },
+    {
+      "count": 221,
+      "name": "dup3",
+      "nr": 24
+    },
+    {
+      "count": 167,
+      "name": "set_robust_list",
+      "nr": 99
+    },
+    {
+      "count": 162,
+      "name": "faccessat",
+      "nr": 48
+    },
+    {
+      "count": 143,
+      "name": "write",
+      "nr": 64
+    },
+    {
+      "count": 134,
+      "name": "exit_group",
+      "nr": 94
+    },
+    {
+      "count": 132,
+      "name": "execve",
+      "nr": 221
+    },
+    {
+      "count": 132,
+      "name": "getrandom",
+      "nr": 278
+    },
+    {
+      "count": 132,
+      "name": "prlimit64",
+      "nr": 261
+    },
+    {
+      "count": 132,
+      "name": "set_tid_address",
+      "nr": 96
+    },
+    {
+      "count": 128,
+      "name": "clone",
+      "nr": 220
+    },
+    {
+      "count": 125,
+      "name": "rt_sigreturn",
+      "nr": 139
+    },
+    {
+      "count": 111,
+      "name": "getdents64",
+      "nr": 61
+    },
+    {
+      "count": 99,
+      "name": "unlinkat",
+      "nr": 35
+    },
+    {
+      "count": 93,
+      "name": "rt_sigaction",
+      "nr": 134
+    },
+    {
+      "count": 76,
+      "name": "mkdirat",
+      "nr": 34
+    },
+    {
+      "count": 58,
+      "name": "statfs",
+      "nr": 43
+    },
+    {
+      "count": 55,
+      "name": "chdir",
+      "nr": 49
+    },
+    {
+      "count": 51,
+      "name": "lseek",
+      "nr": 62
+    },
+    {
+      "count": 48,
+      "name": "fadvise64",
+      "nr": 223
+    },
+    {
+      "count": 47,
+      "name": "ioctl",
+      "nr": 29
+    },
+    {
+      "count": 39,
+      "name": "umask",
+      "nr": 166
+    },
+    {
+      "count": 33,
+      "name": "pipe2",
+      "nr": 59
+    },
+    {
+      "count": 18,
+      "name": "geteuid",
+      "nr": 175
+    },
+    {
+      "count": 16,
+      "name": "linkat",
+      "nr": 37
+    },
+    {
+      "count": 16,
+      "name": "sigaltstack",
+      "nr": 132
+    },
+    {
+      "count": 12,
+      "name": "dup",
+      "nr": 23
+    },
+    {
+      "count": 9,
+      "name": "getuid",
+      "nr": 174
+    },
+    {
+      "count": 6,
+      "name": "faccessat2",
+      "nr": 439
+    },
+    {
+      "count": 6,
+      "name": "getegid",
+      "nr": 177
+    },
+    {
+      "count": 6,
+      "name": "getgid",
+      "nr": 176
+    },
+    {
+      "count": 6,
+      "name": "getpid",
+      "nr": 172
+    },
+    {
+      "count": 6,
+      "name": "getppid",
+      "nr": 173
+    },
+    {
+      "count": 6,
+      "name": "prctl",
+      "nr": 167
+    },
+    {
+      "count": 4,
+      "name": "fchdir",
+      "nr": 50
+    },
+    {
+      "count": 4,
+      "name": "readlinkat",
+      "nr": 78
+    },
+    {
+      "count": 3,
+      "name": "fstatfs",
+      "nr": 44
+    },
+    {
+      "count": 3,
+      "name": "setgid",
+      "nr": 144
+    },
+    {
+      "count": 2,
+      "name": "uname",
+      "nr": 160
+    },
+    {
+      "count": 1,
+      "name": "futex",
+      "nr": 98
+    }
+  ],
+  "command": "bash scripts/android-syscall-usecase-profile.sh",
+  "context": {
+    "rootfs": "pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs",
+    "small_files": "16",
+    "trace_mode": "syscall"
+  },
+  "device_serial": "10.8.135.134:40455",
+  "events": [
+    {
+      "elapsed_s": 0.015,
+      "label": "shell_startup",
+      "raw_tail": [
+        "pdocker-direct-stats: #19 nr=278(getrandom) count=4",
+        "pdocker-direct-stats: #20 nr=29(ioctl) count=3",
+        "pdocker-direct-stats: #21 nr=135(rt_sigprocmask) count=3",
+        "pdocker-direct-stats: #22 nr=139(rt_sigreturn) count=3",
+        "pdocker-direct-stats: #23 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #24 nr=220(clone) count=3",
+        "pdocker-direct-stats: #25 nr=23(dup) count=2",
+        "pdocker-direct-stats: #26 nr=43(statfs) count=2",
+        "pdocker-direct-stats: #27 nr=59(pipe2) count=2",
+        "pdocker-direct-stats: #28 nr=61(getdents64) count=2",
+        "pdocker-direct-stats: #29 nr=64(write) count=1",
+        "pdocker-direct-stats: #30 nr=172(getpid) count=1",
+        "pdocker-direct-stats: #31 nr=173(getppid) count=1",
+        "pdocker-direct-stats: #32 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #33 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #34 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #35 nr=439(faccessat2) count=1",
+        "real 0.019527",
+        "user 0.002456",
+        "sys 0.017194"
+      ],
+      "rc": 0,
+      "real_s": 0.019527,
+      "reported_count_to_stops_ratio": 0.4903129657228018,
+      "reported_syscall_count": 329,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 671,
+      "sys_s": 0.017194,
+      "top_syscalls": [
+        {
+          "count": 47,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 44,
+          "name": "mmap",
+          "nr": 222,
+          "rank": 2
+        },
+        {
+          "count": 43,
+          "name": "openat",
+          "nr": 56,
+          "rank": 3
+        },
+        {
+          "count": 35,
+          "name": "close",
+          "nr": 57,
+          "rank": 4
+        },
+        {
+          "count": 24,
+          "name": "mprotect",
+          "nr": 226,
+          "rank": 5
+        },
+        {
+          "count": 19,
+          "name": "read",
+          "nr": 63,
+          "rank": 6
+        },
+        {
+          "count": 19,
+          "name": "munmap",
+          "nr": 215,
+          "rank": 7
+        },
+        {
+          "count": 12,
+          "name": "brk",
+          "nr": 214,
+          "rank": 8
+        },
+        {
+          "count": 8,
+          "name": "fcntl",
+          "nr": 25,
+          "rank": 9
+        },
+        {
+          "count": 7,
+          "name": "rt_sigaction",
+          "nr": 134,
+          "rank": 10
+        },
+        {
+          "count": 6,
+          "name": "set_robust_list",
+          "nr": 99,
+          "rank": 11
+        },
+        {
+          "count": 6,
+          "name": "wait4",
+          "nr": 260,
+          "rank": 12
+        },
+        {
+          "count": 5,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 13
+        },
+        {
+          "count": 4,
+          "name": "dup3",
+          "nr": 24,
+          "rank": 14
+        },
+        {
+          "count": 4,
+          "name": "exit_group",
+          "nr": 94,
+          "rank": 15
+        },
+        {
+          "count": 4,
+          "name": "set_tid_address",
+          "nr": 96,
+          "rank": 16
+        },
+        {
+          "count": 4,
+          "name": "execve",
+          "nr": 221,
+          "rank": 17
+        },
+        {
+          "count": 4,
+          "name": "prlimit64",
+          "nr": 261,
+          "rank": 18
+        },
+        {
+          "count": 4,
+          "name": "getrandom",
+          "nr": 278,
+          "rank": 19
+        },
+        {
+          "count": 3,
+          "name": "ioctl",
+          "nr": 29,
+          "rank": 20
+        },
+        {
+          "count": 3,
+          "name": "rt_sigprocmask",
+          "nr": 135,
+          "rank": 21
+        },
+        {
+          "count": 3,
+          "name": "rt_sigreturn",
+          "nr": 139,
+          "rank": 22
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 23
+        },
+        {
+          "count": 3,
+          "name": "clone",
+          "nr": 220,
+          "rank": 24
+        },
+        {
+          "count": 2,
+          "name": "dup",
+          "nr": 23,
+          "rank": 25
+        },
+        {
+          "count": 2,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 26
+        },
+        {
+          "count": 2,
+          "name": "pipe2",
+          "nr": 59,
+          "rank": 27
+        },
+        {
+          "count": 2,
+          "name": "getdents64",
+          "nr": 61,
+          "rank": 28
+        },
+        {
+          "count": 1,
+          "name": "write",
+          "nr": 64,
+          "rank": 29
+        },
+        {
+          "count": 1,
+          "name": "getpid",
+          "nr": 172,
+          "rank": 30
+        },
+        {
+          "count": 1,
+          "name": "getppid",
+          "nr": 173,
+          "rank": 31
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 32
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 33
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 34
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 35
+        }
+      ],
+      "user_s": 0.002456
+    },
+    {
+      "elapsed_s": 0.089,
+      "label": "package_metadata",
+      "raw_tail": [
+        "pdocker-direct-stats: #24 nr=220(clone) count=7",
+        "pdocker-direct-stats: #25 nr=135(rt_sigprocmask) count=6",
+        "pdocker-direct-stats: #26 nr=167(prctl) count=6",
+        "pdocker-direct-stats: #27 nr=59(pipe2) count=5",
+        "pdocker-direct-stats: #28 nr=78(readlinkat) count=4",
+        "pdocker-direct-stats: #29 nr=139(rt_sigreturn) count=4",
+        "pdocker-direct-stats: #30 nr=174(getuid) count=4",
+        "pdocker-direct-stats: #31 nr=144(setgid) count=3",
+        "pdocker-direct-stats: #32 nr=166(umask) count=3",
+        "pdocker-direct-stats: #33 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #34 nr=23(dup) count=2",
+        "pdocker-direct-stats: #35 nr=98(futex) count=1",
+        "pdocker-direct-stats: #36 nr=172(getpid) count=1",
+        "pdocker-direct-stats: #37 nr=173(getppid) count=1",
+        "pdocker-direct-stats: #38 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #39 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #40 nr=439(faccessat2) count=1",
+        "real 0.095867",
+        "user 0.023408",
+        "sys 0.067789"
+      ],
+      "rc": 0,
+      "real_s": 0.095867,
+      "reported_count_to_stops_ratio": 0.4964625518419127,
+      "reported_syscall_count": 2035,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 4099,
+      "sys_s": 0.067789,
+      "top_syscalls": [
+        {
+          "count": 1010,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 180,
+          "name": "openat",
+          "nr": 56,
+          "rank": 2
+        },
+        {
+          "count": 162,
+          "name": "mmap",
+          "nr": 222,
+          "rank": 3
+        },
+        {
+          "count": 117,
+          "name": "close",
+          "nr": 57,
+          "rank": 4
+        },
+        {
+          "count": 111,
+          "name": "read",
+          "nr": 63,
+          "rank": 5
+        },
+        {
+          "count": 88,
+          "name": "mprotect",
+          "nr": 226,
+          "rank": 6
+        },
+        {
+          "count": 81,
+          "name": "munmap",
+          "nr": 215,
+          "rank": 7
+        },
+        {
+          "count": 34,
+          "name": "fcntl",
+          "nr": 25,
+          "rank": 8
+        },
+        {
+          "count": 30,
+          "name": "brk",
+          "nr": 214,
+          "rank": 9
+        },
+        {
+          "count": 26,
+          "name": "rt_sigaction",
+          "nr": 134,
+          "rank": 10
+        },
+        {
+          "count": 22,
+          "name": "getdents64",
+          "nr": 61,
+          "rank": 11
+        },
+        {
+          "count": 19,
+          "name": "dup3",
+          "nr": 24,
+          "rank": 12
+        },
+        {
+          "count": 13,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 13
+        },
+        {
+          "count": 13,
+          "name": "set_robust_list",
+          "nr": 99,
+          "rank": 14
+        },
+        {
+          "count": 11,
+          "name": "wait4",
+          "nr": 260,
+          "rank": 15
+        },
+        {
+          "count": 9,
+          "name": "ioctl",
+          "nr": 29,
+          "rank": 16
+        },
+        {
+          "count": 8,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 17
+        },
+        {
+          "count": 8,
+          "name": "write",
+          "nr": 64,
+          "rank": 18
+        },
+        {
+          "count": 8,
+          "name": "exit_group",
+          "nr": 94,
+          "rank": 19
+        },
+        {
+          "count": 8,
+          "name": "set_tid_address",
+          "nr": 96,
+          "rank": 20
+        },
+        {
+          "count": 8,
+          "name": "execve",
+          "nr": 221,
+          "rank": 21
+        },
+        {
+          "count": 8,
+          "name": "prlimit64",
+          "nr": 261,
+          "rank": 22
+        },
+        {
+          "count": 8,
+          "name": "getrandom",
+          "nr": 278,
+          "rank": 23
+        },
+        {
+          "count": 7,
+          "name": "clone",
+          "nr": 220,
+          "rank": 24
+        },
+        {
+          "count": 6,
+          "name": "rt_sigprocmask",
+          "nr": 135,
+          "rank": 25
+        },
+        {
+          "count": 6,
+          "name": "prctl",
+          "nr": 167,
+          "rank": 26
+        },
+        {
+          "count": 5,
+          "name": "pipe2",
+          "nr": 59,
+          "rank": 27
+        },
+        {
+          "count": 4,
+          "name": "readlinkat",
+          "nr": 78,
+          "rank": 28
+        },
+        {
+          "count": 4,
+          "name": "rt_sigreturn",
+          "nr": 139,
+          "rank": 29
+        },
+        {
+          "count": 4,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 30
+        },
+        {
+          "count": 3,
+          "name": "setgid",
+          "nr": 144,
+          "rank": 31
+        },
+        {
+          "count": 3,
+          "name": "umask",
+          "nr": 166,
+          "rank": 32
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 33
+        },
+        {
+          "count": 2,
+          "name": "dup",
+          "nr": 23,
+          "rank": 34
+        },
+        {
+          "count": 1,
+          "name": "futex",
+          "nr": 98,
+          "rank": 35
+        },
+        {
+          "count": 1,
+          "name": "getpid",
+          "nr": 172,
+          "rank": 36
+        },
+        {
+          "count": 1,
+          "name": "getppid",
+          "nr": 173,
+          "rank": 37
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 38
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 39
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 40
+        }
+      ],
+      "user_s": 0.023408
+    },
+    {
+      "elapsed_s": 0.146,
+      "label": "source_scan",
+      "raw_tail": [
+        "pdocker-direct-stats: #28 nr=64(write) count=18",
+        "pdocker-direct-stats: #29 nr=62(lseek) count=17",
+        "pdocker-direct-stats: #30 nr=132(sigaltstack) count=16",
+        "pdocker-direct-stats: #31 nr=29(ioctl) count=6",
+        "pdocker-direct-stats: #32 nr=59(pipe2) count=3",
+        "pdocker-direct-stats: #33 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #34 nr=23(dup) count=2",
+        "pdocker-direct-stats: #35 nr=50(fchdir) count=2",
+        "pdocker-direct-stats: #36 nr=35(unlinkat) count=1",
+        "pdocker-direct-stats: #37 nr=44(fstatfs) count=1",
+        "pdocker-direct-stats: #38 nr=160(uname) count=1",
+        "pdocker-direct-stats: #39 nr=172(getpid) count=1",
+        "pdocker-direct-stats: #40 nr=173(getppid) count=1",
+        "pdocker-direct-stats: #41 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #42 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #43 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #44 nr=439(faccessat2) count=1",
+        "real 0.152737",
+        "user 0.038972",
+        "sys 0.103968"
+      ],
+      "rc": 0,
+      "real_s": 0.152737,
+      "reported_count_to_stops_ratio": 0.4909847434119279,
+      "reported_syscall_count": 4248,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 8652,
+      "sys_s": 0.103968,
+      "top_syscalls": [
+        {
+          "count": 724,
+          "name": "read",
+          "nr": 63,
+          "rank": 1
+        },
+        {
+          "count": 565,
+          "name": "mmap",
+          "nr": 222,
+          "rank": 2
+        },
+        {
+          "count": 469,
+          "name": "openat",
+          "nr": 56,
+          "rank": 3
+        },
+        {
+          "count": 449,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 4
+        },
+        {
+          "count": 335,
+          "name": "close",
+          "nr": 57,
+          "rank": 5
+        },
+        {
+          "count": 303,
+          "name": "mprotect",
+          "nr": 226,
+          "rank": 6
+        },
+        {
+          "count": 279,
+          "name": "munmap",
+          "nr": 215,
+          "rank": 7
+        },
+        {
+          "count": 117,
+          "name": "brk",
+          "nr": 214,
+          "rank": 8
+        },
+        {
+          "count": 105,
+          "name": "rt_sigprocmask",
+          "nr": 135,
+          "rank": 9
+        },
+        {
+          "count": 84,
+          "name": "fcntl",
+          "nr": 25,
+          "rank": 10
+        },
+        {
+          "count": 77,
+          "name": "wait4",
+          "nr": 260,
+          "rank": 11
+        },
+        {
+          "count": 70,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 12
+        },
+        {
+          "count": 58,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 13
+        },
+        {
+          "count": 51,
+          "name": "chdir",
+          "nr": 49,
+          "rank": 14
+        },
+        {
+          "count": 43,
+          "name": "set_robust_list",
+          "nr": 99,
+          "rank": 15
+        },
+        {
+          "count": 40,
+          "name": "exit_group",
+          "nr": 94,
+          "rank": 16
+        },
+        {
+          "count": 39,
+          "name": "set_tid_address",
+          "nr": 96,
+          "rank": 17
+        },
+        {
+          "count": 39,
+          "name": "rt_sigaction",
+          "nr": 134,
+          "rank": 18
+        },
+        {
+          "count": 39,
+          "name": "rt_sigreturn",
+          "nr": 139,
+          "rank": 19
+        },
+        {
+          "count": 39,
+          "name": "clone",
+          "nr": 220,
+          "rank": 20
+        },
+        {
+          "count": 39,
+          "name": "execve",
+          "nr": 221,
+          "rank": 21
+        },
+        {
+          "count": 39,
+          "name": "prlimit64",
+          "nr": 261,
+          "rank": 22
+        },
+        {
+          "count": 39,
+          "name": "getrandom",
+          "nr": 278,
+          "rank": 23
+        },
+        {
+          "count": 38,
+          "name": "dup3",
+          "nr": 24,
+          "rank": 24
+        },
+        {
+          "count": 38,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 25
+        },
+        {
+          "count": 34,
+          "name": "umask",
+          "nr": 166,
+          "rank": 26
+        },
+        {
+          "count": 20,
+          "name": "getdents64",
+          "nr": 61,
+          "rank": 27
+        },
+        {
+          "count": 18,
+          "name": "write",
+          "nr": 64,
+          "rank": 28
+        },
+        {
+          "count": 17,
+          "name": "lseek",
+          "nr": 62,
+          "rank": 29
+        },
+        {
+          "count": 16,
+          "name": "sigaltstack",
+          "nr": 132,
+          "rank": 30
+        },
+        {
+          "count": 6,
+          "name": "ioctl",
+          "nr": 29,
+          "rank": 31
+        },
+        {
+          "count": 3,
+          "name": "pipe2",
+          "nr": 59,
+          "rank": 32
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 33
+        },
+        {
+          "count": 2,
+          "name": "dup",
+          "nr": 23,
+          "rank": 34
+        },
+        {
+          "count": 2,
+          "name": "fchdir",
+          "nr": 50,
+          "rank": 35
+        },
+        {
+          "count": 1,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 36
+        },
+        {
+          "count": 1,
+          "name": "fstatfs",
+          "nr": 44,
+          "rank": 37
+        },
+        {
+          "count": 1,
+          "name": "uname",
+          "nr": 160,
+          "rank": 38
+        },
+        {
+          "count": 1,
+          "name": "getpid",
+          "nr": 172,
+          "rank": 39
+        },
+        {
+          "count": 1,
+          "name": "getppid",
+          "nr": 173,
+          "rank": 40
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 41
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 42
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 43
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 44
+        }
+      ],
+      "user_s": 0.038972
+    },
+    {
+      "elapsed_s": 0.548,
+      "label": "object_write",
+      "raw_tail": [
+        "pdocker-direct-stats: #24 nr=61(getdents64) count=22",
+        "pdocker-direct-stats: #25 nr=59(pipe2) count=19",
+        "pdocker-direct-stats: #26 nr=134(rt_sigaction) count=7",
+        "pdocker-direct-stats: #27 nr=29(ioctl) count=5",
+        "pdocker-direct-stats: #28 nr=43(statfs) count=4",
+        "pdocker-direct-stats: #29 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #30 nr=23(dup) count=2",
+        "pdocker-direct-stats: #31 nr=44(fstatfs) count=1",
+        "pdocker-direct-stats: #32 nr=49(chdir) count=1",
+        "pdocker-direct-stats: #33 nr=50(fchdir) count=1",
+        "pdocker-direct-stats: #34 nr=160(uname) count=1",
+        "pdocker-direct-stats: #35 nr=172(getpid) count=1",
+        "pdocker-direct-stats: #36 nr=173(getppid) count=1",
+        "pdocker-direct-stats: #37 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #38 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #39 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #40 nr=439(faccessat2) count=1",
+        "real 0.558485",
+        "user 0.075437",
+        "sys 0.448804"
+      ],
+      "rc": 0,
+      "real_s": 0.558485,
+      "reported_count_to_stops_ratio": 0.4895890410958904,
+      "reported_syscall_count": 3574,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 7300,
+      "sys_s": 0.448804,
+      "top_syscalls": [
+        {
+          "count": 507,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 443,
+          "name": "openat",
+          "nr": 56,
+          "rank": 2
+        },
+        {
+          "count": 427,
+          "name": "close",
+          "nr": 57,
+          "rank": 3
+        },
+        {
+          "count": 416,
+          "name": "read",
+          "nr": 63,
+          "rank": 4
+        },
+        {
+          "count": 374,
+          "name": "mmap",
+          "nr": 222,
+          "rank": 5
+        },
+        {
+          "count": 198,
+          "name": "mprotect",
+          "nr": 226,
+          "rank": 6
+        },
+        {
+          "count": 176,
+          "name": "munmap",
+          "nr": 215,
+          "rank": 7
+        },
+        {
+          "count": 131,
+          "name": "brk",
+          "nr": 214,
+          "rank": 8
+        },
+        {
+          "count": 118,
+          "name": "fcntl",
+          "nr": 25,
+          "rank": 9
+        },
+        {
+          "count": 88,
+          "name": "dup3",
+          "nr": 24,
+          "rank": 10
+        },
+        {
+          "count": 82,
+          "name": "write",
+          "nr": 64,
+          "rank": 11
+        },
+        {
+          "count": 75,
+          "name": "wait4",
+          "nr": 260,
+          "rank": 12
+        },
+        {
+          "count": 58,
+          "name": "set_robust_list",
+          "nr": 99,
+          "rank": 13
+        },
+        {
+          "count": 54,
+          "name": "rt_sigprocmask",
+          "nr": 135,
+          "rank": 14
+        },
+        {
+          "count": 48,
+          "name": "fadvise64",
+          "nr": 223,
+          "rank": 15
+        },
+        {
+          "count": 40,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 16
+        },
+        {
+          "count": 39,
+          "name": "exit_group",
+          "nr": 94,
+          "rank": 17
+        },
+        {
+          "count": 38,
+          "name": "set_tid_address",
+          "nr": 96,
+          "rank": 18
+        },
+        {
+          "count": 38,
+          "name": "rt_sigreturn",
+          "nr": 139,
+          "rank": 19
+        },
+        {
+          "count": 38,
+          "name": "clone",
+          "nr": 220,
+          "rank": 20
+        },
+        {
+          "count": 38,
+          "name": "execve",
+          "nr": 221,
+          "rank": 21
+        },
+        {
+          "count": 38,
+          "name": "prlimit64",
+          "nr": 261,
+          "rank": 22
+        },
+        {
+          "count": 38,
+          "name": "getrandom",
+          "nr": 278,
+          "rank": 23
+        },
+        {
+          "count": 22,
+          "name": "getdents64",
+          "nr": 61,
+          "rank": 24
+        },
+        {
+          "count": 19,
+          "name": "pipe2",
+          "nr": 59,
+          "rank": 25
+        },
+        {
+          "count": 7,
+          "name": "rt_sigaction",
+          "nr": 134,
+          "rank": 26
+        },
+        {
+          "count": 5,
+          "name": "ioctl",
+          "nr": 29,
+          "rank": 27
+        },
+        {
+          "count": 4,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 28
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 29
+        },
+        {
+          "count": 2,
+          "name": "dup",
+          "nr": 23,
+          "rank": 30
+        },
+        {
+          "count": 1,
+          "name": "fstatfs",
+          "nr": 44,
+          "rank": 31
+        },
+        {
+          "count": 1,
+          "name": "chdir",
+          "nr": 49,
+          "rank": 32
+        },
+        {
+          "count": 1,
+          "name": "fchdir",
+          "nr": 50,
+          "rank": 33
+        },
+        {
+          "count": 1,
+          "name": "uname",
+          "nr": 160,
+          "rank": 34
+        },
+        {
+          "count": 1,
+          "name": "getpid",
+          "nr": 172,
+          "rank": 35
+        },
+        {
+          "count": 1,
+          "name": "getppid",
+          "nr": 173,
+          "rank": 36
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 37
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 38
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 39
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 40
+        }
+      ],
+      "user_s": 0.075437
+    },
+    {
+      "elapsed_s": 0.521,
+      "label": "overlay_shape",
+      "raw_tail": [
+        "pdocker-direct-stats: #26 nr=37(linkat) count=16",
+        "pdocker-direct-stats: #27 nr=134(rt_sigaction) count=7",
+        "pdocker-direct-stats: #28 nr=34(mkdirat) count=6",
+        "pdocker-direct-stats: #29 nr=43(statfs) count=4",
+        "pdocker-direct-stats: #30 nr=49(chdir) count=3",
+        "pdocker-direct-stats: #31 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #32 nr=23(dup) count=2",
+        "pdocker-direct-stats: #33 nr=59(pipe2) count=2",
+        "pdocker-direct-stats: #34 nr=61(getdents64) count=2",
+        "pdocker-direct-stats: #35 nr=166(umask) count=2",
+        "pdocker-direct-stats: #36 nr=50(fchdir) count=1",
+        "pdocker-direct-stats: #37 nr=172(getpid) count=1",
+        "pdocker-direct-stats: #38 nr=173(getppid) count=1",
+        "pdocker-direct-stats: #39 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #40 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #41 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #42 nr=439(faccessat2) count=1",
+        "real 0.534130",
+        "user 0.059382",
+        "sys 0.482707"
+      ],
+      "rc": 0,
+      "real_s": 0.53413,
+      "reported_count_to_stops_ratio": 0.48775677896466724,
+      "reported_syscall_count": 2968,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 6085,
+      "sys_s": 0.482707,
+      "top_syscalls": [
+        {
+          "count": 421,
+          "name": "mmap",
+          "nr": 222,
+          "rank": 1
+        },
+        {
+          "count": 400,
+          "name": "openat",
+          "nr": 56,
+          "rank": 2
+        },
+        {
+          "count": 368,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 3
+        },
+        {
+          "count": 319,
+          "name": "close",
+          "nr": 57,
+          "rank": 4
+        },
+        {
+          "count": 230,
+          "name": "mprotect",
+          "nr": 226,
+          "rank": 5
+        },
+        {
+          "count": 191,
+          "name": "munmap",
+          "nr": 215,
+          "rank": 6
+        },
+        {
+          "count": 114,
+          "name": "brk",
+          "nr": 214,
+          "rank": 7
+        },
+        {
+          "count": 105,
+          "name": "read",
+          "nr": 63,
+          "rank": 8
+        },
+        {
+          "count": 105,
+          "name": "rt_sigprocmask",
+          "nr": 135,
+          "rank": 9
+        },
+        {
+          "count": 74,
+          "name": "wait4",
+          "nr": 260,
+          "rank": 10
+        },
+        {
+          "count": 72,
+          "name": "fcntl",
+          "nr": 25,
+          "rank": 11
+        },
+        {
+          "count": 68,
+          "name": "dup3",
+          "nr": 24,
+          "rank": 12
+        },
+        {
+          "count": 40,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 13
+        },
+        {
+          "count": 40,
+          "name": "set_robust_list",
+          "nr": 99,
+          "rank": 14
+        },
+        {
+          "count": 38,
+          "name": "exit_group",
+          "nr": 94,
+          "rank": 15
+        },
+        {
+          "count": 38,
+          "name": "set_tid_address",
+          "nr": 96,
+          "rank": 16
+        },
+        {
+          "count": 38,
+          "name": "execve",
+          "nr": 221,
+          "rank": 17
+        },
+        {
+          "count": 38,
+          "name": "prlimit64",
+          "nr": 261,
+          "rank": 18
+        },
+        {
+          "count": 38,
+          "name": "getrandom",
+          "nr": 278,
+          "rank": 19
+        },
+        {
+          "count": 37,
+          "name": "rt_sigreturn",
+          "nr": 139,
+          "rank": 20
+        },
+        {
+          "count": 37,
+          "name": "clone",
+          "nr": 220,
+          "rank": 21
+        },
+        {
+          "count": 33,
+          "name": "lseek",
+          "nr": 62,
+          "rank": 22
+        },
+        {
+          "count": 33,
+          "name": "write",
+          "nr": 64,
+          "rank": 23
+        },
+        {
+          "count": 20,
+          "name": "ioctl",
+          "nr": 29,
+          "rank": 24
+        },
+        {
+          "count": 17,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 25
+        },
+        {
+          "count": 16,
+          "name": "linkat",
+          "nr": 37,
+          "rank": 26
+        },
+        {
+          "count": 7,
+          "name": "rt_sigaction",
+          "nr": 134,
+          "rank": 27
+        },
+        {
+          "count": 6,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 28
+        },
+        {
+          "count": 4,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 29
+        },
+        {
+          "count": 3,
+          "name": "chdir",
+          "nr": 49,
+          "rank": 30
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 31
+        },
+        {
+          "count": 2,
+          "name": "dup",
+          "nr": 23,
+          "rank": 32
+        },
+        {
+          "count": 2,
+          "name": "pipe2",
+          "nr": 59,
+          "rank": 33
+        },
+        {
+          "count": 2,
+          "name": "getdents64",
+          "nr": 61,
+          "rank": 34
+        },
+        {
+          "count": 2,
+          "name": "umask",
+          "nr": 166,
+          "rank": 35
+        },
+        {
+          "count": 1,
+          "name": "fchdir",
+          "nr": 50,
+          "rank": 36
+        },
+        {
+          "count": 1,
+          "name": "getpid",
+          "nr": 172,
+          "rank": 37
+        },
+        {
+          "count": 1,
+          "name": "getppid",
+          "nr": 173,
+          "rank": 38
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 39
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 40
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 41
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 42
+        }
+      ],
+      "user_s": 0.059382
+    },
+    {
+      "elapsed_s": 0.062,
+      "label": "cleanup",
+      "raw_tail": [
+        "pdocker-direct-stats: #22 nr=24(dup3) count=4",
+        "pdocker-direct-stats: #23 nr=29(ioctl) count=4",
+        "pdocker-direct-stats: #24 nr=139(rt_sigreturn) count=4",
+        "pdocker-direct-stats: #25 nr=220(clone) count=4",
+        "pdocker-direct-stats: #26 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #27 nr=23(dup) count=2",
+        "pdocker-direct-stats: #28 nr=43(statfs) count=2",
+        "pdocker-direct-stats: #29 nr=59(pipe2) count=2",
+        "pdocker-direct-stats: #30 nr=44(fstatfs) count=1",
+        "pdocker-direct-stats: #31 nr=62(lseek) count=1",
+        "pdocker-direct-stats: #32 nr=64(write) count=1",
+        "pdocker-direct-stats: #33 nr=172(getpid) count=1",
+        "pdocker-direct-stats: #34 nr=173(getppid) count=1",
+        "pdocker-direct-stats: #35 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #36 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #37 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #38 nr=439(faccessat2) count=1",
+        "real 0.075843",
+        "user 0.014605",
+        "sys 0.061914"
+      ],
+      "rc": 0,
+      "real_s": 0.075843,
+      "reported_count_to_stops_ratio": 0.4939587775408671,
+      "reported_syscall_count": 695,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 1407,
+      "sys_s": 0.061914,
+      "top_syscalls": [
+        {
+          "count": 103,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 81,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 2
+        },
+        {
+          "count": 80,
+          "name": "close",
+          "nr": 57,
+          "rank": 3
+        },
+        {
+          "count": 79,
+          "name": "openat",
+          "nr": 56,
+          "rank": 4
+        },
+        {
+          "count": 75,
+          "name": "fcntl",
+          "nr": 25,
+          "rank": 5
+        },
+        {
+          "count": 53,
+          "name": "mmap",
+          "nr": 222,
+          "rank": 6
+        },
+        {
+          "count": 43,
+          "name": "getdents64",
+          "nr": 61,
+          "rank": 7
+        },
+        {
+          "count": 29,
+          "name": "mprotect",
+          "nr": 226,
+          "rank": 8
+        },
+        {
+          "count": 23,
+          "name": "munmap",
+          "nr": 215,
+          "rank": 9
+        },
+        {
+          "count": 21,
+          "name": "read",
+          "nr": 63,
+          "rank": 10
+        },
+        {
+          "count": 15,
+          "name": "brk",
+          "nr": 214,
+          "rank": 11
+        },
+        {
+          "count": 8,
+          "name": "wait4",
+          "nr": 260,
+          "rank": 12
+        },
+        {
+          "count": 7,
+          "name": "set_robust_list",
+          "nr": 99,
+          "rank": 13
+        },
+        {
+          "count": 7,
+          "name": "rt_sigaction",
+          "nr": 134,
+          "rank": 14
+        },
+        {
+          "count": 6,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 15
+        },
+        {
+          "count": 6,
+          "name": "rt_sigprocmask",
+          "nr": 135,
+          "rank": 16
+        },
+        {
+          "count": 5,
+          "name": "exit_group",
+          "nr": 94,
+          "rank": 17
+        },
+        {
+          "count": 5,
+          "name": "set_tid_address",
+          "nr": 96,
+          "rank": 18
+        },
+        {
+          "count": 5,
+          "name": "execve",
+          "nr": 221,
+          "rank": 19
+        },
+        {
+          "count": 5,
+          "name": "prlimit64",
+          "nr": 261,
+          "rank": 20
+        },
+        {
+          "count": 5,
+          "name": "getrandom",
+          "nr": 278,
+          "rank": 21
+        },
+        {
+          "count": 4,
+          "name": "dup3",
+          "nr": 24,
+          "rank": 22
+        },
+        {
+          "count": 4,
+          "name": "ioctl",
+          "nr": 29,
+          "rank": 23
+        },
+        {
+          "count": 4,
+          "name": "rt_sigreturn",
+          "nr": 139,
+          "rank": 24
+        },
+        {
+          "count": 4,
+          "name": "clone",
+          "nr": 220,
+          "rank": 25
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 26
+        },
+        {
+          "count": 2,
+          "name": "dup",
+          "nr": 23,
+          "rank": 27
+        },
+        {
+          "count": 2,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 28
+        },
+        {
+          "count": 2,
+          "name": "pipe2",
+          "nr": 59,
+          "rank": 29
+        },
+        {
+          "count": 1,
+          "name": "fstatfs",
+          "nr": 44,
+          "rank": 30
+        },
+        {
+          "count": 1,
+          "name": "lseek",
+          "nr": 62,
+          "rank": 31
+        },
+        {
+          "count": 1,
+          "name": "write",
+          "nr": 64,
+          "rank": 32
+        },
+        {
+          "count": 1,
+          "name": "getpid",
+          "nr": 172,
+          "rank": 33
+        },
+        {
+          "count": 1,
+          "name": "getppid",
+          "nr": 173,
+          "rank": 34
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 35
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 36
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 37
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 38
+        }
+      ],
+      "user_s": 0.014605
+    }
+  ],
+  "git_commit": "b0fbe38",
+  "git_dirty": true,
+  "kind": "pdocker.syscall-usecase-profile",
+  "notes": [
+    "seccomp mode is production-like and counts only syscalls intercepted by pdocker-direct.",
+    "syscall mode is diagnostic and counts all syscall entries seen by ptrace, but it is much slower.",
+    "read/write/close frequency is expected to appear only in syscall mode unless a specific fd operation is emulated."
+  ],
+  "parameters": {
+    "small_files": 16,
+    "trace_mode": "syscall"
+  },
+  "profile_rc": 0,
+  "schema": 1,
+  "timestamp_utc": "2026-05-06T07:21:44.536283+00:00"
+}

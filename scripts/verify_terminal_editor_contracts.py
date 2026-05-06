@@ -48,6 +48,7 @@ def main() -> int:
     require("terminal selection suppresses ime", "suppressImeForSelection" in source["terminal"] and "selectionSuppressesIme()" in source["terminal"] and "inputmode', 'none'" in source["terminal"])
     require("readonly selection actions keep ime suppressed", "runSelectionAction" in source["terminal"] and "if (readOnly) suppressImeForSelection()" in source["terminal"] and "if (readOnly || selectionSuppressesIme()) suppressImeForSelection()" in source["terminal"])
     require("terminal starts bridge-owned initial command", "fun startInitial()" in source["bridge"] and "PdockerBridge.startInitial()" in source["terminal"] and "PdockerBridge.start(PdockerBridge.initialCommand())" not in source["terminal"])
+    require("readonly build logs preserve carriage-return progress lines", "terminalDisplayText" in source["main"] and "index < text.lastIndex" in source["main"] and "\\u001B[2K" in source["main"] and "term.options.disableStdin = true" in source["terminal"])
 
     require("editor exposes visible whitespace transformer", "VisibleWhitespaceTransformation" in source["editor"])
     require("editor supports indent mode toggle", "toggleIndentMode" in source["editor"] and "convertIndentation(editor.text.toString()" in source["editor"])

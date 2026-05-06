@@ -1,0 +1,398 @@
+{
+  "artifacts": [
+    {
+      "path": "tests/direct_syscall_coverage.json",
+      "producer": "verify-direct-syscall",
+      "sha256": "d1aa3f03a55f95aaa882ac68c266eb9d390122d88efaa02419316a223888187d",
+      "size": 34071
+    },
+    {
+      "path": "docs/test/input-validation-latest.json",
+      "producer": "verify-input-validation",
+      "sha256": "f413876641f99e86b70cd4add6d5c21ca901f7ec8fd6ff7353492dd707c77e7f",
+      "size": 3506
+    },
+    {
+      "path": "tests/input_validation_cases.json",
+      "producer": "verify-input-validation",
+      "sha256": "6f1235fc8151c7c2973a2808bd0369396558f036254ee3815f2614e658df1d2b",
+      "size": 3414
+    },
+    {
+      "path": "tests/input_grammar_coverage.json",
+      "producer": "verify-input-validation",
+      "sha256": "1803a498a5102f19a4dae8a29658eb4b3f1e5daa2a651311713b10dbab23420c",
+      "size": 7025
+    },
+    {
+      "path": "docs/test/abnormal-events-latest.json",
+      "producer": "verify-abnormal-events",
+      "sha256": "99b9fc2401b2f665cf4a9f78239e13bc92cca4a879a2946106ced65ad923bf90",
+      "size": 15425
+    },
+    {
+      "path": "tests/abnormal_event_cases.json",
+      "producer": "verify-abnormal-events",
+      "sha256": "7e5b6917c7a737aa6af7812c08bc2f3e96922acf8db652793084974f1743eca0",
+      "size": 10398
+    },
+    {
+      "path": "docs/test/refactor-resilience-latest.json",
+      "producer": "verify-refactor-resilience",
+      "sha256": "e2b809e56198cb87f4a6e6e7fd6ecc59f5e9992770d48b55cb5f03142ecd16b7",
+      "size": 5799
+    },
+    {
+      "path": "tests/refactor_resilience_cases.json",
+      "producer": "verify-refactor-resilience",
+      "sha256": "54806742a35d8a5a0cbe5c494e52dfb7360c2d437bf4491b432defa7cbbc89e8",
+      "size": 6084
+    },
+    {
+      "path": "tests/input_grammar_coverage.json",
+      "producer": "verify-input-grammar-coverage",
+      "sha256": "1803a498a5102f19a4dae8a29658eb4b3f1e5daa2a651311713b10dbab23420c",
+      "size": 7025
+    },
+    {
+      "path": "docs/test/stress-regression-latest.json",
+      "producer": "verify-stress-regression",
+      "sha256": "a667762ed6c4d14065b1e4aa90a6e7f0b2b7c82d2e2661cf04c1ccaf2c28dd26",
+      "size": 1033
+    },
+    {
+      "path": "tests/stress_regression_cases.json",
+      "producer": "verify-stress-regression",
+      "sha256": "1691416b873a0bb2ea049da079ce9fb4790116b679bfa25440b6d2fbc5335b69",
+      "size": 3997
+    },
+    {
+      "path": "tests/blackbox_requirements.json",
+      "producer": "verify-blackbox-requirements",
+      "sha256": "d4b9af4dfd1fedc8aea81bc7b06de52bfec4b0d945db95e04055fa4612f4e649",
+      "size": 11336
+    },
+    {
+      "path": "tests/feature_scenarios.json",
+      "producer": "verify-feature-scenarios",
+      "sha256": "7767fb95f27417202f6abff500a5ac5d45009cf9adadb861aa942a41d6706973",
+      "size": 31281
+    },
+    {
+      "path": "docs/test/python-coverage-latest.json",
+      "producer": "python-coverage",
+      "sha256": "684c3ecde6c6db4318bfc489ee153756a628604b4d4ce61c6a84497d1f572e65",
+      "size": 1167853
+    }
+  ],
+  "commands": [
+    {
+      "artifacts": [],
+      "command": "python3 -m unittest discover -s tests -p 'test_*.py'",
+      "duration_seconds": 4.258,
+      "ended_at": "2026-05-06T08:30:45.503444+00:00",
+      "exit_code": 0,
+      "id": "unittest-all",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/001-host-smoke-unittest-all.log",
+      "started_at": "2026-05-06T08:30:41.245283+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [],
+      "command": "python3 docker-proot-setup/scripts/verify_runtime_contract.py",
+      "duration_seconds": 6.95,
+      "ended_at": "2026-05-06T08:30:52.454264+00:00",
+      "exit_code": 0,
+      "id": "verify-runtime-contract",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/002-host-smoke-verify-runtime-contract.log",
+      "started_at": "2026-05-06T08:30:45.503778+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "tests/direct_syscall_coverage.json",
+          "producer": "verify-direct-syscall",
+          "sha256": "d1aa3f03a55f95aaa882ac68c266eb9d390122d88efaa02419316a223888187d",
+          "size": 34071
+        }
+      ],
+      "command": "python3 scripts/verify_direct_syscall_contracts.py",
+      "duration_seconds": 1.554,
+      "ended_at": "2026-05-06T08:30:54.008849+00:00",
+      "exit_code": 0,
+      "id": "verify-direct-syscall",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/003-host-smoke-verify-direct-syscall.log",
+      "started_at": "2026-05-06T08:30:52.454605+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [],
+      "command": "python3 scripts/verify-build-profile.py",
+      "duration_seconds": 5.551,
+      "ended_at": "2026-05-06T08:30:59.560446+00:00",
+      "exit_code": 0,
+      "id": "verify-build-profile",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/004-host-smoke-verify-build-profile.log",
+      "started_at": "2026-05-06T08:30:54.009899+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [],
+      "command": "python3 scripts/verify-project-library.py",
+      "duration_seconds": 1.038,
+      "ended_at": "2026-05-06T08:31:00.599399+00:00",
+      "exit_code": 0,
+      "id": "verify-project-library",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/005-host-smoke-verify-project-library.log",
+      "started_at": "2026-05-06T08:30:59.560929+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/input-validation-latest.json",
+          "producer": "verify-input-validation",
+          "sha256": "f413876641f99e86b70cd4add6d5c21ca901f7ec8fd6ff7353492dd707c77e7f",
+          "size": 3506
+        },
+        {
+          "path": "tests/input_validation_cases.json",
+          "producer": "verify-input-validation",
+          "sha256": "6f1235fc8151c7c2973a2808bd0369396558f036254ee3815f2614e658df1d2b",
+          "size": 3414
+        },
+        {
+          "path": "tests/input_grammar_coverage.json",
+          "producer": "verify-input-validation",
+          "sha256": "1803a498a5102f19a4dae8a29658eb4b3f1e5daa2a651311713b10dbab23420c",
+          "size": 7025
+        }
+      ],
+      "command": "python3 scripts/verify-input-validation.py --write-artifact docs/test/input-validation-latest.json",
+      "duration_seconds": 3.906,
+      "ended_at": "2026-05-06T08:31:04.505476+00:00",
+      "exit_code": 0,
+      "id": "verify-input-validation",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/006-host-smoke-verify-input-validation.log",
+      "started_at": "2026-05-06T08:31:00.599726+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/abnormal-events-latest.json",
+          "producer": "verify-abnormal-events",
+          "sha256": "99b9fc2401b2f665cf4a9f78239e13bc92cca4a879a2946106ced65ad923bf90",
+          "size": 15425
+        },
+        {
+          "path": "tests/abnormal_event_cases.json",
+          "producer": "verify-abnormal-events",
+          "sha256": "7e5b6917c7a737aa6af7812c08bc2f3e96922acf8db652793084974f1743eca0",
+          "size": 10398
+        }
+      ],
+      "command": "python3 scripts/verify-abnormal-events.py --write-artifact docs/test/abnormal-events-latest.json",
+      "duration_seconds": 2.806,
+      "ended_at": "2026-05-06T08:31:07.315302+00:00",
+      "exit_code": 0,
+      "id": "verify-abnormal-events",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/007-host-smoke-verify-abnormal-events.log",
+      "started_at": "2026-05-06T08:31:04.509248+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/refactor-resilience-latest.json",
+          "producer": "verify-refactor-resilience",
+          "sha256": "e2b809e56198cb87f4a6e6e7fd6ecc59f5e9992770d48b55cb5f03142ecd16b7",
+          "size": 5799
+        },
+        {
+          "path": "tests/refactor_resilience_cases.json",
+          "producer": "verify-refactor-resilience",
+          "sha256": "54806742a35d8a5a0cbe5c494e52dfb7360c2d437bf4491b432defa7cbbc89e8",
+          "size": 6084
+        }
+      ],
+      "command": "python3 scripts/verify-refactor-resilience.py --write-artifact docs/test/refactor-resilience-latest.json",
+      "duration_seconds": 3.452,
+      "ended_at": "2026-05-06T08:31:10.771175+00:00",
+      "exit_code": 0,
+      "id": "verify-refactor-resilience",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/008-host-smoke-verify-refactor-resilience.log",
+      "started_at": "2026-05-06T08:31:07.319299+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "tests/input_grammar_coverage.json",
+          "producer": "verify-input-grammar-coverage",
+          "sha256": "1803a498a5102f19a4dae8a29658eb4b3f1e5daa2a651311713b10dbab23420c",
+          "size": 7025
+        }
+      ],
+      "command": "python3 scripts/verify-input-grammar-coverage.py",
+      "duration_seconds": 1.748,
+      "ended_at": "2026-05-06T08:31:12.520065+00:00",
+      "exit_code": 0,
+      "id": "verify-input-grammar-coverage",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/009-host-smoke-verify-input-grammar-coverage.log",
+      "started_at": "2026-05-06T08:31:10.772469+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/stress-regression-latest.json",
+          "producer": "verify-stress-regression",
+          "sha256": "a667762ed6c4d14065b1e4aa90a6e7f0b2b7c82d2e2661cf04c1ccaf2c28dd26",
+          "size": 1033
+        },
+        {
+          "path": "tests/stress_regression_cases.json",
+          "producer": "verify-stress-regression",
+          "sha256": "1691416b873a0bb2ea049da079ce9fb4790116b679bfa25440b6d2fbc5335b69",
+          "size": 3997
+        }
+      ],
+      "command": "python3 scripts/verify-stress-regression.py --write-artifact docs/test/stress-regression-latest.json",
+      "duration_seconds": 7.945,
+      "ended_at": "2026-05-06T08:31:20.471504+00:00",
+      "exit_code": 0,
+      "id": "verify-stress-regression",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/010-host-smoke-verify-stress-regression.log",
+      "started_at": "2026-05-06T08:31:12.526942+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "tests/blackbox_requirements.json",
+          "producer": "verify-blackbox-requirements",
+          "sha256": "d4b9af4dfd1fedc8aea81bc7b06de52bfec4b0d945db95e04055fa4612f4e649",
+          "size": 11336
+        }
+      ],
+      "command": "python3 scripts/verify-blackbox-requirements.py",
+      "duration_seconds": 1.854,
+      "ended_at": "2026-05-06T08:31:22.327270+00:00",
+      "exit_code": 0,
+      "id": "verify-blackbox-requirements",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/011-host-smoke-verify-blackbox-requirements.log",
+      "started_at": "2026-05-06T08:31:20.472902+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "tests/feature_scenarios.json",
+          "producer": "verify-feature-scenarios",
+          "sha256": "7767fb95f27417202f6abff500a5ac5d45009cf9adadb861aa942a41d6706973",
+          "size": 31281
+        }
+      ],
+      "command": "python3 scripts/verify-feature-scenarios.py",
+      "duration_seconds": 1.153,
+      "ended_at": "2026-05-06T08:31:23.481715+00:00",
+      "exit_code": 0,
+      "id": "verify-feature-scenarios",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/012-host-smoke-verify-feature-scenarios.log",
+      "started_at": "2026-05-06T08:31:22.328394+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [],
+      "command": "python3 scripts/verify-ui-actions.py",
+      "duration_seconds": 0.98,
+      "ended_at": "2026-05-06T08:31:24.463840+00:00",
+      "exit_code": 0,
+      "id": "verify-ui-actions",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/013-host-smoke-verify-ui-actions.log",
+      "started_at": "2026-05-06T08:31:23.483573+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [],
+      "command": "python3 scripts/verify_terminal_editor_contracts.py",
+      "duration_seconds": 0.854,
+      "ended_at": "2026-05-06T08:31:25.318466+00:00",
+      "exit_code": 0,
+      "id": "verify-terminal-editor",
+      "lane": "host-smoke",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/014-host-smoke-verify-terminal-editor.log",
+      "started_at": "2026-05-06T08:31:24.464166+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [],
+      "command": "tmpdir=$(mktemp -d); PDOCKER_TEST_SUITE_REPORT_DIR=\"$tmpdir/reports\" PDOCKER_DOCUMENTS_MOUNT=\"$tmpdir/documents\" PDOCKER_SHARED_DOCUMENTS_MOUNT=\"$tmpdir/shared\" PDOCKER_EXPORT_DIR=\"$tmpdir/documents/pdocker-exports\" PDOCKER_FAST_WORKDIR=\"$tmpdir/workspace\" app/src/main/assets/project-library/pdocker-test-suite/scripts/run-pdocker-test-suite.sh --scenario all; rm -rf \"$tmpdir\"",
+      "duration_seconds": 14.894,
+      "ended_at": "2026-05-06T08:31:40.212272+00:00",
+      "exit_code": 0,
+      "id": "pdocker-test-suite-local",
+      "lane": "test-suite-local",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/001-test-suite-local-pdocker-test-suite-local.log",
+      "started_at": "2026-05-06T08:31:25.318737+00:00",
+      "status": "pass"
+    },
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/python-coverage-latest.json",
+          "producer": "python-coverage",
+          "sha256": "684c3ecde6c6db4318bfc489ee153756a628604b4d4ce61c6a84497d1f572e65",
+          "size": 1167853
+        }
+      ],
+      "command": "bash scripts/run-python-coverage.sh",
+      "duration_seconds": 44.37,
+      "ended_at": "2026-05-06T08:32:24.582294+00:00",
+      "exit_code": 0,
+      "id": "python-coverage",
+      "lane": "python-coverage",
+      "log": "docs/test/runs/20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage/001-python-coverage-python-coverage.log",
+      "started_at": "2026-05-06T08:31:40.212729+00:00",
+      "status": "pass"
+    }
+  ],
+  "driver": "scripts/pdocker-test-driver.py",
+  "ended_at": "2026-05-06T08:32:24.587177+00:00",
+  "environment": {
+    "adb_serial": "",
+    "android_flavor": "compat",
+    "platform": "linux",
+    "python": "3.13.3"
+  },
+  "git": {
+    "branch": "main",
+    "commit": "b0fbe381df0d0fb005c42c8356efc5c5b5b96011",
+    "dirty": true
+  },
+  "lanes": [
+    "host-smoke",
+    "test-suite-local",
+    "python-coverage"
+  ],
+  "manifest": "tests/test_driver_manifest.json",
+  "run_id": "20260506T083041Z-b0fbe38-host-smoke-test-suite-local-python-coverage",
+  "schema": "pdocker.test-driver.v1.run",
+  "started_at": "2026-05-06T08:30:41.137004+00:00",
+  "status": "pass"
+}

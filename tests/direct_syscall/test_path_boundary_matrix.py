@@ -10,6 +10,7 @@ MANIFEST = ROOT / "tests" / "direct_syscall_coverage.json"
 REQUIRED_PATH_VARIANTS = {
     "path.absolute-rootfs-rewrite",
     "path.relative-dirfd-preserve",
+    "path.relative-dirfd-escape-deny",
     "path.rootfs-already-host-path",
     "path.proc-dev-sys-no-rewrite",
     "path.parent-segment-scratch-fallback",

@@ -1,0 +1,52 @@
+{
+  "artifacts": [
+    {
+      "path": "docs/test/python-coverage-latest.json",
+      "producer": "python-coverage",
+      "sha256": "c38ea27a080fcedff06d1e28b371a4553a7054366b01d59d5f4c7c3ea01672de",
+      "size": 1167853
+    }
+  ],
+  "commands": [
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/python-coverage-latest.json",
+          "producer": "python-coverage",
+          "sha256": "c38ea27a080fcedff06d1e28b371a4553a7054366b01d59d5f4c7c3ea01672de",
+          "size": 1167853
+        }
+      ],
+      "command": "bash scripts/run-python-coverage.sh",
+      "duration_seconds": 42.271,
+      "ended_at": "2026-05-06T08:30:29.080222+00:00",
+      "exit_code": 0,
+      "id": "python-coverage",
+      "lane": "python-coverage",
+      "log": "docs/test/runs/20260506T082946Z-b0fbe38-python-coverage/001-python-coverage-python-coverage.log",
+      "started_at": "2026-05-06T08:29:46.809433+00:00",
+      "status": "pass"
+    }
+  ],
+  "driver": "scripts/pdocker-test-driver.py",
+  "ended_at": "2026-05-06T08:30:29.087788+00:00",
+  "environment": {
+    "adb_serial": "",
+    "android_flavor": "compat",
+    "platform": "linux",
+    "python": "3.13.3"
+  },
+  "git": {
+    "branch": "main",
+    "commit": "b0fbe381df0d0fb005c42c8356efc5c5b5b96011",
+    "dirty": true
+  },
+  "lanes": [
+    "python-coverage"
+  ],
+  "manifest": "tests/test_driver_manifest.json",
+  "run_id": "20260506T082946Z-b0fbe38-python-coverage",
+  "schema": "pdocker.test-driver.v1.run",
+  "started_at": "2026-05-06T08:29:46.763509+00:00",
+  "status": "pass"
+}

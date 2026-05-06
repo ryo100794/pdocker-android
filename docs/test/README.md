@@ -28,6 +28,10 @@ run it, and where the latest result is stored.
 
 ## Canonical Sources
 
+- Use `scripts/pdocker-test-driver.py` and `tests/test_driver_manifest.json` as
+  the single automated test entrypoint and lane manifest. Every automated run
+  must write one run manifest to `docs/test/test-run-latest.json` and an
+  immutable copy under `docs/test/runs/<run-id>/manifest.json`.
 - Use [`COMPATIBILITY.md`](COMPATIBILITY.md) as the canonical repeatable
   compatibility procedure and matrix.
 - Use [`SCENARIOS.md`](SCENARIOS.md) and `tests/feature_scenarios.json` as the
@@ -46,6 +50,8 @@ run it, and where the latest result is stored.
 ## Maintenance
 
 - Keep command examples reproducible from the repository root.
-- Keep generated or recorded results in this category.
+- Keep generated or recorded results in this category, but register every
+  automated result through the test driver run manifest. Do not introduce a new
+  standalone test launcher with its own artifact convention.
 - Move product boundary decisions to [`../design/README.md`](../design/README.md).
 - Move active implementation tasks to [`../plan/TODO.md`](../plan/TODO.md).

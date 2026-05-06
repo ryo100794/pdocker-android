@@ -1,0 +1,55 @@
+$ bash scripts/run-python-coverage.sh
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.007s
+
+OK
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.004s
+
+OK
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.003s
+
+OK
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 0.005s
+
+OK
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.021s
+
+OK
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.129s
+
+OK
+verify-build-profile: PASS
+ok: llama gpu 10x comparison scenario is recorded
+ok: required templates listed
+ok: all compose templates include shared Documents volume
+ok: pdocker-test-suite template centralizes exec-run scenarios and Documents evidence
+ok: dev-workspace includes code-server, Continue, Codex, Claude Code, and GPU request
+ok: dev-workspace exposes pdocker management helpers, paths, guarded Engine wrappers, and tasks
+ok: llama-cpp-gpu template has compose, Dockerfile, GPU profile, and server entrypoint
+ok: ros2-humble-rviz-novnc template has Compose, Dockerfile, RViz, Xvnc/noVNC, logs, and healthcheck
+ok: blender-xvnc-novnc template has Compose, Dockerfile, Blender, Xvnc/noVNC, logs, healthcheck, llvmpipe defaults, and future Zink/Vulkan switches
+ok: direct syscall hook inventory has 69 active syscall hooks covered by 10 entries
+ok: direct syscall contract scaffold defines 14 heavy/local cases
+Combined data file .coverage.pdocker-python.localhost.8082.XwBjtIex
+Combined data file .coverage.pdocker-python.localhost.8134.XOCLtIDx
+Combined data file .coverage.pdocker-python.localhost.8170.XDvvnKfx
+Combined data file .coverage.pdocker-python.localhost.8219.XNxmEhpx
+Combined data file .coverage.pdocker-python.localhost.8275.XsQUlKwx
+Combined data file .coverage.pdocker-python.localhost.8343.XHliVLTx
+Combined data file .coverage.pdocker-python.localhost.8421.XJQkoNsx
+Combined data file .coverage.pdocker-python.localhost.8570.XIKOFSzx
+Combined data file .coverage.pdocker-python.localhost.8633.XkbTljfx
+Wrote JSON report to /root/tl/pdocker-android/docs/test/python-coverage-latest.json
+python coverage: lines=1913/6625 branches=574/2932 items=2487 percent=26.02
+coverage artifact: /root/tl/pdocker-android/docs/test/python-coverage-latest.json

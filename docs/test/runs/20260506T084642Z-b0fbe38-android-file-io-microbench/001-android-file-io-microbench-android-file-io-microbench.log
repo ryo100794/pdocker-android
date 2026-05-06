@@ -1,0 +1,4 @@
+$ bash scripts/android-file-io-microbench.sh
+[pdocker file-io microbench] building static workload
+[pdocker file-io microbench] building direct executor
+scripts/android-file-io-microbench.sh: line 72: adb -s 10.8.135.134:40455: command not found

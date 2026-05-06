@@ -17,24 +17,29 @@ python3 scripts/verify-blackbox-requirements.py
 python3 scripts/verify-refactor-resilience.py
 ```
 
-Run the combined automated flow with:
+Run automated lanes through the canonical driver:
 
 ```sh
-scripts/verify-scenarios.sh
+scripts/pdocker-test-driver.py --lane host-smoke
 ```
 
-Add short Android device checks with:
+Run Python coverage evidence through the same driver:
 
 ```sh
-scripts/verify-scenarios.sh --include-device
+scripts/pdocker-test-driver.py --lane python-coverage
 ```
 
-Add long GPU and llama benchmark checks only when the device can be occupied for
-a while:
+Run the compose/Dockerfile based test-suite on an Android device with:
 
 ```sh
-scripts/verify-scenarios.sh --include-long-device
+scripts/pdocker-test-driver.py --lane android-test-suite
 ```
+
+Each run writes the single machine-readable artifact manifest at
+`docs/test/test-run-latest.json`, plus an immutable copy under
+`docs/test/runs/<run-id>/manifest.json`. The older `verify-*.sh` scripts are
+compatibility wrappers or narrow helper scripts; new automation should be added
+to `tests/test_driver_manifest.json` first.
 
 ## Lanes
 
@@ -84,6 +89,7 @@ evidence exists:
 | Refactor resilience | `refactor.resilience.external-contracts` |
 | Storage metrics | `storage.metrics.accounting` |
 | Terminal/editor UI | `terminal.editor.ui-contracts` |
+| Test-suite container | `pdocker.test-suite.container-exec` |
 | Test design governance | `test.design.criteria` |
 | TTY/exec | `tty.exec.engine-it` |
 | VS Code workspace | `vscode.workspace.default` |
@@ -108,7 +114,7 @@ The manifest separates three coverage axes:
 
 | Axis | Manifest Field | Purpose |
 |---|---|---|
-| Path variants | `path_variant_matrix` | Guest absolute paths, relative dirfd paths, bind paths, pseudo-filesystems, dual-path operations, AF_UNIX paths, exec argv paths, and rootfs-fd lifecycle. |
+| Path variants | `path_variant_matrix` | Guest absolute paths, validated relative dirfd paths, unsafe relative escape denial, bind paths, pseudo-filesystems, dual-path operations, AF_UNIX paths, exec argv paths, and rootfs-fd lifecycle. |
 | Boundary values | `boundary_value_matrix` | `PATH_MAX`, `sockaddr_un.sun_path`, short `getcwd` buffers, exec argv/scratch limits, memory guard thresholds, uid/gid `-1` sentinels, and wait/signal status. |
 | Branch decisions | `branch_decision_matrix` | Required true/false/error branches for path rewriting, socket rewriting, exec rewriting, memory guard, credential emulation, cwd recovery, and tracee lifecycle. |
 
@@ -116,6 +122,32 @@ This is not a claim that every Linux syscall is Docker-compatible. It is a
 regression gate that every active direct-runtime hook and every declared
 branch/boundary obligation is either covered by a runnable scenario or recorded
 as a planned heavy scenario.
+
+## Containerized Test Suite
+
+`pdocker-test-suite` is the canonical repeatable container route for bundled
+runtime scenarios. The container starts idle through Compose, and every suite
+run is invoked through Docker exec so the same route can be used from the UI,
+ADB, or another development host:
+
+```sh
+docker exec pdocker-test-suite run-pdocker-test-suite --scenario all
+```
+
+The runner writes structured evidence to both `/reports` and the selected
+Documents exchange folder:
+
+```text
+/documents/pdocker-exports/pdocker-test-suite/latest.json
+/documents/pdocker-exports/pdocker-test-suite/latest.log
+```
+
+Scenario selectors are `all`, `smoke`, `direct`, `io`, `archive`, and
+`documents`. The current suite covers Documents/shared mount checks, direct
+runtime argv/proc/path behavior, the reusable direct-runtime probe payload,
+file-I/O smoke, tar/archive round-trip, and invalid-input rejection. New
+runtime-facing scenarios should be added here first unless they require a
+specialized heavyweight image such as llama.cpp or Blender.
 
 ## Blackbox Requirements
 

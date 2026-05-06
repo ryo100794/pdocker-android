@@ -77,7 +77,8 @@ ADB='/usr/bin/adb -s 127.0.0.1:<PORT>'
 PKG=io.github.ryo100794.pdocker
 $ADB install -r app/build/outputs/apk/debug/app-debug.apk
 $ADB shell am force-stop $PKG
-$ADB shell am start -n $PKG/.MainActivity
+ACTIVITY="$($ADB shell cmd package resolve-activity --brief $PKG | tail -1)"
+$ADB shell am start -n "$ACTIVITY"
 ```
 
 Start pdockerd from the app UI. The service is `exported=false`, so it is not

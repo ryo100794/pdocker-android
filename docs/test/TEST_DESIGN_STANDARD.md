@@ -3,9 +3,10 @@
 Snapshot date: 2026-05-05.
 
 This document defines the minimum test design standard for pdocker-android.
-The standard is executable: `scripts/verify-test-design-criteria.py` checks the
-ledgers, documentation, fast runner wiring, and check density on every fast
-verification run.
+The standard is executable. `scripts/pdocker-test-driver.py` is the canonical
+test entrypoint, and `scripts/verify-test-design-criteria.py` checks the
+ledgers, documentation, driver wiring, and check density on strict governance
+runs.
 
 ## Quality Bar
 
@@ -57,6 +58,35 @@ items, C1 branch decisions and outcomes, and C2 condition atoms and outcomes.
 It is structural design evidence, not a replacement for instrumented runtime
 coverage.
 
+All automated lanes and their artifact outputs are declared in one file:
+
+```sh
+tests/test_driver_manifest.json
+```
+
+Run manifests are also single-sourced. Each driver invocation writes
+`docs/test/test-run-latest.json` and an immutable copy under
+`docs/test/runs/<run-id>/manifest.json`, including command lines, log paths,
+artifact paths, sha256 hashes, git commit, build flavor, and device metadata.
+
+Instrumented Python coverage is generated separately:
+
+```sh
+bash scripts/run-python-coverage.sh
+```
+
+That command writes:
+
+```text
+docs/test/python-coverage-latest.json
+```
+
+The design verifier reads this artifact and adds covered Python lines and
+covered Python branch outcomes to the measured coverage evidence. Native C/C++
+and Android/Kotlin runtime coverage remain open work; until those are
+instrumented, the 2x token bar should continue to fail rather than being
+satisfied by structural counting alone.
+
 ## Required Axes
 
 Each release-bound feature set must cover these axes:
@@ -102,6 +132,32 @@ complete:
 4. Link the scenario to a doc or machine-readable artifact.
 5. If the check cannot run yet, record it as a planned gap with the lane,
    command, evidence target, and reason.
+
+For compatibility-surface logic, static checks are not enough. A change to a
+Dockerfile/Compose parser, builder, image puller, archive route, Engine API
+handler, terminal transport, filesystem mediation layer, or path rewrite layer
+must add or update a small executable compatibility case that exercises the
+same public construct through the implementation. Example: accepting a standard
+Dockerfile `COPY` glob requires an executable pdockerd build/COPY case, not
+only a template syntax check or a file-exists check. The case must include at
+least one negative/boundary route such as context escape, malformed pattern,
+missing source, invalid JSON, unsupported flag, or bad range as appropriate.
+The case must be independent of an existing image/build cache: a cache hit,
+static asset check, or previously materialized rootfs is not evidence that the
+changed parser/builder/path logic still accepts the public input.
+
+Path-related refactors require an impact matrix before merge. The matrix must
+cover at least: absolute and relative paths, `.` and `..`, trailing slashes,
+glob metacharacters, symlinks, missing sources, duplicate/multiple matches,
+context escape attempts, variable-expanded values, and the bundled project
+fixtures that already use the affected construct.
+
+Regression fixes require red/green evidence. Before a fix is accepted, the
+test record must show that the proposed scenario fails against the broken
+behavior: either by running the previous code, replaying the captured failing
+artifact, or using a committed fixture that reproduces the failure. A green run
+on the fixed code alone is not enough, because it can prove only that the test
+passes, not that it covers the regression.
 
 ## Blackbox Requirement Rule
 
@@ -250,10 +306,12 @@ scripts/verify-fast.sh
 scripts/verify-scenarios.sh
 ```
 
-If the ledgers drift, a required axis disappears, the literal token ratio falls
-below two times, or the runner stops invoking the design gate, the fast
-verification fails. The current baseline intentionally fails this 2x literal
-token gate until the structural and semantic evidence shortfall is closed.
+If the ledgers drift, a required axis disappears, instrumented coverage
+evidence is missing, the literal token ratio falls below two times, or the
+runner stops invoking the design gate, the fast verification fails. The current
+baseline intentionally fails this 2x literal token gate until instrumented
+coverage for Python, native, and Android/Kotlin paths closes the evidence
+shortfall.
 
 ## Current Baseline
 
@@ -262,15 +320,18 @@ baseline is:
 
 | Metric | Value |
 |---|---:|
-| Implementation-code tokens | 257,031 |
-| Semantic check items | 832 plus planned advanced-method axes |
-| C0 statement items | 16,390 |
-| C1 branch outcome items | 12,124 |
-| C2 condition outcome items | 13,808 |
-| Selected check items | 43,154 |
-| Required by literal 2x token rule | 514,062 |
-| Current literal ratio | 0.168x |
+| Implementation-code tokens | 267,199 |
+| Semantic check items | 858 |
+| Instrumented Python coverage items | 2,487 |
+| Python covered lines | 1,913 / 6,625 |
+| Python covered branches | 574 / 2,932 |
+| C0 statement items | 17,215 |
+| C1 branch outcome items | 12,822 |
+| C2 condition outcome items | 14,420 |
+| Selected check items | 47,802 |
+| Required by literal 2x token rule | 534,398 |
+| Current literal ratio | 0.179x |
 
 This keeps the shortfall visible and prevents the project from claiming the
-2x-token test design bar until generated structural coverage tests and their
-execution evidence are implemented.
+2x-token test design bar until native C/C++ and Android/Kotlin coverage joins
+the Python coverage evidence.

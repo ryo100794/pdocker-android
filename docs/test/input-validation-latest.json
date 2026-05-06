@@ -68,9 +68,9 @@
     {
       "area": "input-file-grammar",
       "label": "feature scenario required areas",
-      "required_area_count": 43,
+      "required_area_count": 45,
       "result": "pass",
-      "scenario_area_count": 43
+      "scenario_area_count": 45
     },
     {
       "area": "value-ranges",
@@ -109,7 +109,7 @@
       "result": "pass"
     }
   ],
-  "git_commit": "c194f2b3cd82",
+  "git_commit": "b0fbe381df0d",
   "kind": "input-validation",
   "ledgers": [
     "tests/input_validation_cases.json",
@@ -129,5 +129,5 @@
     "runnable_grammar_count": 6,
     "syntax_and_range_validation_recorded": true
   },
-  "timestamp_utc": "2026-05-05T23:39:51Z"
+  "timestamp_utc": "2026-05-06T08:31:04Z"
 }

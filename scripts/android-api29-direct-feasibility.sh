@@ -52,6 +52,16 @@ run_as() {
   adb_cmd shell "run-as $PKG sh -c $(remote_quote "$1")"
 }
 
+main_activity() {
+  local resolved
+  resolved="$(adb_cmd shell cmd package resolve-activity --brief "$PKG" 2>/dev/null | tail -1 | tr -d '\r')"
+  if [[ "$resolved" == "$PKG/"* && "$resolved" != *"No activity found"* ]]; then
+    printf '%s\n' "$resolved"
+  else
+    printf '%s/io.github.ryo100794.pdocker.MainActivity\n' "$PKG"
+  fi
+}
+
 wait_for_socket() {
   local i
   for i in $(seq 1 45); do
@@ -93,7 +103,7 @@ section "start app daemon"
 adb_cmd logcat -c >/dev/null 2>&1 || true
 adb_cmd shell am force-stop "$PKG" >/dev/null 2>&1 || true
 run_as 'rm -f files/pdocker/pdockerd.sock' >/dev/null 2>&1 || true
-adb_cmd shell am start -n "$PKG/.MainActivity" -a "$PKG.action.SMOKE_START" >/dev/null
+adb_cmd shell am start -n "$(main_activity)" -a "$PKG.action.SMOKE_START" >/dev/null
 wait_for_socket
 adb_cmd shell ps -AZ | grep "$PKG" || true
 

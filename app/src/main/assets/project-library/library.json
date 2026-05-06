@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "templates": [
     {
       "id": "dev-workspace",
@@ -24,6 +24,18 @@
       "dockerfile": "Dockerfile",
       "gpu": "none",
       "features": ["pdocker-direct", "runtime-test", "argv-preservation", "memory-guard", "container-probe"]
+    },
+    {
+      "id": "pdocker-test-suite",
+      "name": "pdocker Test Suite",
+      "category": "runtime-test",
+      "description": "Reusable test-suite container. Start it with Compose, run scenarios through docker exec, and mirror JSON/log evidence to the selected Android Documents folder.",
+      "assetPath": "project-library/pdocker-test-suite",
+      "projectDir": "pdocker-test-suite",
+      "compose": "compose.yaml",
+      "dockerfile": "Dockerfile",
+      "gpu": "none",
+      "features": ["test-suite", "docker-exec", "documents-reports", "direct-runtime", "file-io", "archive", "input-validation"]
     },
     {
       "id": "llama-cpp-gpu",

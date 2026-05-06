@@ -26,6 +26,7 @@ Then:
 import argparse
 import errno
 import fnmatch
+import glob
 import gc
 import hashlib
 import json
@@ -1531,7 +1532,8 @@ def _layer_tree(diff_id):
 
 
 def _layer_exists(diff_id):
-    return os.path.isdir(_layer_tree(diff_id))
+    ldir = _layer_dir(diff_id)
+    return os.path.isdir(os.path.join(ldir, "tree")) and os.path.isfile(os.path.join(ldir, "meta.json"))
 
 
 def _layer_size(diff_id):
@@ -1640,6 +1642,28 @@ def _mkparent(path):
         os.makedirs(d, exist_ok=True)
 
 
+def _context_path(context_dir, rel):
+    base = os.path.realpath(context_dir)
+    path = os.path.realpath(os.path.join(context_dir, str(rel).lstrip("/")))
+    if path != base and not path.startswith(base + os.sep):
+        raise RuntimeError(f"build context path escapes context: {rel}")
+    return path
+
+
+def _copy_source_matches(context_dir, source):
+    pattern = str(source).lstrip("/")
+    _context_path(context_dir, pattern)
+    if glob.has_magic(pattern):
+        matches = sorted(
+            p for p in glob.glob(os.path.join(context_dir, pattern))
+            if os.path.exists(p)
+        )
+    else:
+        path = _context_path(context_dir, pattern)
+        matches = [path] if os.path.exists(path) else []
+    return [_context_path(context_dir, os.path.relpath(path, context_dir)) for path in matches]
+
+
 def _extract_layer_tar(tar_path, diff_id):
     """Extract a layer tarball into LAYERS_DIR/<diff_id>/tree/ idempotently.
 
@@ -1647,45 +1671,51 @@ def _extract_layer_tar(tar_path, diff_id):
     consumed at merge time). Skips if layer already extracted.
     """
     ldir = _layer_dir(diff_id)
-    tree = _layer_tree(diff_id)
-    if os.path.isdir(tree):
+    if _layer_exists(diff_id):
         return False
+    if os.path.exists(ldir):
+        shutil.rmtree(ldir, ignore_errors=True)
+    tmp_ldir = f"{ldir}.tmp-{uuid.uuid4().hex}"
+    tree = os.path.join(tmp_ldir, "tree")
     os.makedirs(tree, exist_ok=True)
     link_mode = os.environ.get("PDOCKER_LINK_MODE", "hard")
-    if link_mode != "hard":
-        # Android SELinux denies link() on app_data_file — tar(1) falls
-        # over on hardlink entries. Use the Python path with symlink/copy
-        # fallback instead.
-        try:
+    try:
+        if link_mode != "hard":
+            # Android SELinux denies link() on app_data_file — tar(1) falls
+            # over on hardlink entries. Use the Python path with symlink/copy
+            # fallback instead.
             _extract_layer_python(tar_path, tree)
-        except Exception as e:
-            shutil.rmtree(ldir, ignore_errors=True)
-            raise RuntimeError(f"layer extract failed (python): {e}")
-    else:
-        # Use tar(1) — faster than Python tarfile for large images and
-        # handles xattr / hardlink tar entries correctly.
-        r = subprocess.run(
-            ["tar", "-xf", tar_path, "-C", tree, "--numeric-owner"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
-        if r.returncode != 0:
-            shutil.rmtree(ldir, ignore_errors=True)
-            raise RuntimeError(
-                f"layer extract failed: {r.stderr.decode('utf-8', 'replace')[:200]}"
+        else:
+            # Use tar(1) — faster than Python tarfile for large images and
+            # handles xattr / hardlink tar entries correctly.
+            r = subprocess.run(
+                ["tar", "-xf", tar_path, "-C", tree, "--numeric-owner"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
-    # Record metadata (per-file try/except — one broken symlink shouldn't
-    # zero out the whole total).
-    size = 0
-    for root, _, files in os.walk(tree):
-        for f in files:
-            try:
-                size += os.path.getsize(os.path.join(root, f))
-            except OSError:
-                pass
-    meta = {"diff_id": f"sha256:{diff_id}", "size": size,
-            "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    with open(os.path.join(ldir, "meta.json"), "w") as f:
-        json.dump(meta, f)
+            if r.returncode != 0:
+                raise RuntimeError(
+                    f"layer extract failed: {r.stderr.decode('utf-8', 'replace')[:200]}"
+                )
+        # Record metadata (per-file try/except — one broken symlink shouldn't
+        # zero out the whole total). The layer becomes visible only after
+        # meta.json and tree/ are both complete.
+        size = 0
+        for root, _, files in os.walk(tree):
+            for f in files:
+                try:
+                    size += os.path.getsize(os.path.join(root, f))
+                except OSError:
+                    pass
+        meta = {"diff_id": f"sha256:{diff_id}", "size": size,
+                "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        with open(os.path.join(tmp_ldir, "meta.json"), "w") as f:
+            json.dump(meta, f)
+        os.replace(tmp_ldir, ldir)
+    except Exception as e:
+        shutil.rmtree(tmp_ldir, ignore_errors=True)
+        if link_mode != "hard":
+            raise RuntimeError(f"layer extract failed (python): {e}")
+        raise
     return True
 
 
@@ -3406,77 +3436,90 @@ def pull_image(name, platform=None):
     """
     norm = normalize_image(name)
     d = image_dir(norm)
-    os.makedirs(d, exist_ok=True)
+    stage = f"{d}.pull-{uuid.uuid4().hex}"
+    backup = f"{d}.old-{uuid.uuid4().hex}"
+    os.makedirs(stage, exist_ok=True)
 
     plat = platform or PLATFORM
 
-    # 1. Fetch manifest (gives us per-layer blob digests)
-    log(f"Fetching manifest for {norm}")
-    manifest_bytes = _run_crane(
-        ["manifest", "--platform", plat, norm],
-        capture_output=True, check=True,
-    ).stdout
-    manifest = json.loads(manifest_bytes.decode("utf-8"))
+    try:
+        # 1. Fetch manifest (gives us per-layer blob digests)
+        log(f"Fetching manifest for {norm} ({plat})")
+        manifest_bytes = _run_crane(
+            ["manifest", "--platform", plat, norm],
+            capture_output=True, check=True,
+        ).stdout
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
 
-    # 2. Fetch config (gives us diff_ids — uncompressed layer digests)
-    log(f"Fetching config for {norm}")
-    cfg_bytes = _run_crane(
-        ["config", "--platform", plat, norm],
-        capture_output=True, check=True,
-    ).stdout
-    config = json.loads(cfg_bytes.decode("utf-8"))
-    with open(os.path.join(d, "config.json"), "wb") as f:
-        f.write(cfg_bytes)
+        # 2. Fetch config (gives us diff_ids — uncompressed layer digests)
+        log(f"Fetching config for {norm} ({plat})")
+        cfg_bytes = _run_crane(
+            ["config", "--platform", plat, norm],
+            capture_output=True, check=True,
+        ).stdout
+        config = json.loads(cfg_bytes.decode("utf-8"))
+        with open(os.path.join(stage, "config.json"), "wb") as f:
+            f.write(cfg_bytes)
 
-    diff_ids_full = (config.get("rootfs") or {}).get("diff_ids") or []
-    blob_descs = manifest.get("layers") or []
-    if len(diff_ids_full) != len(blob_descs):
-        raise RuntimeError(
-            f"diff_id count {len(diff_ids_full)} != manifest layer count "
-            f"{len(blob_descs)} for {norm}"
-        )
+        diff_ids_full = (config.get("rootfs") or {}).get("diff_ids") or []
+        blob_descs = manifest.get("layers") or []
+        if len(diff_ids_full) != len(blob_descs):
+            raise RuntimeError(
+                f"diff_id count {len(diff_ids_full)} != manifest layer count "
+                f"{len(blob_descs)} for {norm}"
+            )
 
-    # 3. Pull each layer blob, gunzip if needed, extract into
-    #    LAYERS_DIR/<diff_id>/tree/. Layers are shared across images —
-    #    `_layer_exists` short-circuits re-downloads.
-    diff_ids_bare = []
-    for i, (did_full, desc) in enumerate(zip(diff_ids_full, blob_descs)):
-        bare = did_full.split(":", 1)[-1]
-        diff_ids_bare.append(bare)
-        if _layer_exists(bare):
-            log(f"Layer {i+1}/{len(diff_ids_full)} cached: sha256:{bare[:12]}")
-            continue
-        log(f"Pulling layer {i+1}/{len(diff_ids_full)}: sha256:{bare[:12]}")
-        tmp_tar = _fetch_layer_blob(norm, desc["digest"], desc.get("mediaType", ""))
-        try:
-            actual = _sha256_file(tmp_tar)
-            if actual != bare:
-                raise RuntimeError(
-                    f"diff_id mismatch for layer {i}: expected {bare[:12]}, "
-                    f"got {actual[:12]}"
-                )
-            _extract_layer_tar(tmp_tar, bare)
-        finally:
+        # 3. Pull each layer blob, gunzip if needed, extract into
+        #    LAYERS_DIR/<diff_id>/tree/. Layers are shared across images —
+        #    `_layer_exists` short-circuits re-downloads.
+        diff_ids_bare = []
+        for i, (did_full, desc) in enumerate(zip(diff_ids_full, blob_descs)):
+            bare = did_full.split(":", 1)[-1]
+            diff_ids_bare.append(bare)
+            if _layer_exists(bare):
+                log(f"Layer {i+1}/{len(diff_ids_full)} cached: sha256:{bare[:12]}")
+                continue
+            log(f"Pulling layer {i+1}/{len(diff_ids_full)}: sha256:{bare[:12]}")
+            tmp_tar = _fetch_layer_blob(norm, desc["digest"], desc.get("mediaType", ""))
             try:
-                os.remove(tmp_tar)
-            except OSError:
-                pass
+                actual = _sha256_file(tmp_tar)
+                if actual != bare:
+                    raise RuntimeError(
+                        f"diff_id mismatch for layer {i}: expected {bare[:12]}, "
+                        f"got {actual[:12]}"
+                    )
+                _extract_layer_tar(tmp_tar, bare)
+            finally:
+                try:
+                    os.remove(tmp_tar)
+                except OSError:
+                    pass
 
-    # 4. Record image manifest (layer order + config)
-    _save_image_manifest(d, diff_ids_bare, config)
+        # 4. Record image manifest (layer order + config)
+        _save_image_manifest(stage, diff_ids_bare, config)
 
-    # 5. Materialize merged rootfs for flatten-path compatibility.
-    #    Phase 3 will drop this in favor of direct per-container merge.
-    rootfs = os.path.join(d, "rootfs")
-    if os.path.exists(rootfs):
-        shutil.rmtree(rootfs)
-    merge_layers_into(rootfs, diff_ids_bare)
+        # 5. Materialize merged rootfs for flatten-path compatibility.
+        #    Phase 3 will drop this in favor of direct per-container merge.
+        merge_layers_into(os.path.join(stage, "rootfs"), diff_ids_bare)
 
-    # Metadata
-    with open(os.path.join(d, "image_ref"), "w") as f:
-        f.write(norm)
-    with open(os.path.join(d, "pulled_at"), "w") as f:
-        f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        # Metadata
+        with open(os.path.join(stage, "image_ref"), "w") as f:
+            f.write(norm)
+        with open(os.path.join(stage, "platform"), "w") as f:
+            f.write(plat)
+        with open(os.path.join(stage, "pulled_at"), "w") as f:
+            f.write(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+
+        if os.path.exists(d):
+            os.replace(d, backup)
+        os.replace(stage, d)
+    except Exception:
+        if os.path.exists(backup) and not os.path.exists(d):
+            os.replace(backup, d)
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    finally:
+        shutil.rmtree(backup, ignore_errors=True)
 
     log(f"Pulled {norm} ({len(diff_ids_bare)} layer{'s' if len(diff_ids_bare) != 1 else ''})")
     return norm
@@ -5246,6 +5289,35 @@ def prune_build_artifacts(min_age_seconds=0, skip_active=True):
     kept unless PDOCKER_KEEP_FAILED_BUILD_ROOTFS=1 was set for debugging.
     """
     removed = []
+    if os.path.isdir(IMAGES_DIR):
+        for name in os.listdir(IMAGES_DIR):
+            path = os.path.join(IMAGES_DIR, name)
+            if ".pull-" in name:
+                shutil.rmtree(path, ignore_errors=True)
+                removed.append(f"image-stage:{name}")
+                continue
+            if ".old-" in name:
+                base = name.split(".old-", 1)[0]
+                base_path = os.path.join(IMAGES_DIR, base)
+                try:
+                    if not os.path.exists(base_path):
+                        os.replace(path, base_path)
+                        removed.append(f"image-restore:{name}")
+                    else:
+                        shutil.rmtree(path, ignore_errors=True)
+                        removed.append(f"image-backup:{name}")
+                except OSError as exc:
+                    log(f"image pull recovery {name} error: {exc}")
+    if os.path.isdir(LAYERS_DIR):
+        for name in os.listdir(LAYERS_DIR):
+            path = os.path.join(LAYERS_DIR, name)
+            if ".tmp-" in name:
+                shutil.rmtree(path, ignore_errors=True)
+                removed.append(f"layer-stage:{name}")
+                continue
+            if re.fullmatch(r"[A-Fa-f0-9]{64}", name or "") and not _layer_exists(name):
+                shutil.rmtree(path, ignore_errors=True)
+                removed.append(f"layer-partial:{name[:12]}")
     if os.path.isdir(CONTAINERS_DIR):
         for name in os.listdir(CONTAINERS_DIR):
             if not name.startswith("build_"):
@@ -8295,26 +8367,35 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit,
             copy_start = time.perf_counter()
             copied = 0
             for s in srcs:
-                spath = os.path.join(context_dir, s)
-                if not os.path.exists(spath):
+                try:
+                    matches = _copy_source_matches(context_dir, s)
+                except RuntimeError as exc:
+                    emit(f"COPY failed: {exc}")
+                    return fail_build()
+                if not matches:
                     emit(f"COPY failed: {s} not found")
-                    continue
-                if os.path.isdir(spath):
+                    return fail_build()
+                for spath in matches:
                     dst = target if dest.endswith("/") else target
-                    if os.path.exists(dst):
-                        copy_deleted.append(os.path.relpath(dst, rootfs))
-                        shutil.rmtree(dst)
-                    shutil.copytree(spath, dst, copy_function=_copy_no_xattr)
-                else:
-                    dst = target if dest.endswith("/") else target
-                    if dest.endswith("/") or os.path.isdir(dst):
+                    if len(matches) > 1 or dest.endswith("/") or os.path.isdir(dst):
                         dst = os.path.join(target, os.path.basename(spath))
-                    if os.path.lexists(dst):
-                        os.remove(dst)
-                    _copy_no_xattr(spath, dst)
-                copy_changed.append(os.path.relpath(dst, rootfs))
-                emit(f"  {s} -> {dest}")
-                copied += 1
+                    if os.path.isdir(spath):
+                        if os.path.exists(dst):
+                            copy_deleted.append(os.path.relpath(dst, rootfs))
+                            shutil.rmtree(dst)
+                        shutil.copytree(spath, dst, copy_function=_copy_no_xattr)
+                    else:
+                        _mkparent(dst)
+                        if os.path.lexists(dst):
+                            if os.path.isdir(dst) and not os.path.islink(dst):
+                                shutil.rmtree(dst)
+                            else:
+                                os.remove(dst)
+                        _copy_no_xattr(spath, dst)
+                    copy_changed.append(os.path.relpath(dst, rootfs))
+                    rel_src = os.path.relpath(spath, context_dir)
+                    emit(f"  {rel_src} -> {dest}")
+                    copied += 1
             emit(f"  build-profile {instr.lower()}-copy: {time.perf_counter() - copy_start:.3f}s sources={copied}")
             new_did = snapshot_layer(
                 instr, prev_diff_ids=diff_ids,

@@ -38,7 +38,7 @@ def load_pdockerd(tmp: Path):
     return mod
 
 
-def seed_base_image(mod, tmp: Path) -> None:
+def seed_base_image(mod, tmp: Path) -> str:
     stage = tmp / "base-stage"
     for idx in range(300):
         path = stage / "usr" / "share" / "pdocker-test" / f"f{idx:04d}.txt"
@@ -58,13 +58,22 @@ def seed_base_image(mod, tmp: Path) -> None:
     }
     mod._save_image_manifest(str(image_dir), [diff_id], config)
     (image_dir / "config.json").write_text(json.dumps(config))
+    return diff_id
 
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="pdocker-build-profile-") as td:
         tmp = Path(td)
         mod = load_pdockerd(tmp)
-        seed_base_image(mod, tmp)
+        base_diff_id = seed_base_image(mod, tmp)
+        p1: dict[str, object] = {}
+        idx1 = mod._build_layer_index([base_diff_id], profile=p1)
+        p2: dict[str, object] = {}
+        idx2 = mod._build_layer_index([base_diff_id], profile=p2)
+        if not idx1 or idx1 != idx2:
+            raise SystemExit("layer index cache changed index content")
+        if not p2.get("prev_index_cache_hit"):
+            raise SystemExit("layer index cache did not hit on repeated stack")
         ctx = tmp / "context"
         ctx.mkdir()
         (ctx / "Dockerfile").write_text(

@@ -64,7 +64,10 @@ nameserver 1.1.1.1
         val currentVersion = longVersionCode(ctx).toString()
 
         val versionChanged = versionStamp.readTextOrNull() != currentVersion
-        extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), versionChanged)
+        // Debug/dev installs often reuse the same versionCode. Always refresh
+        // pdockerd so Engine API fixes are not hidden behind a stale extracted
+        // daemon after `adb install -r`.
+        extractAsset(ctx, "pdockerd/pdockerd", File(bin, "pdockerd"), force = true)
 
         linkTo(File(nativeDir, "libcrane.so"),         File(dockerBin, "crane"))
         optionalLinkTo(File(nativeDir, "libpdockerdirect.so"), File(dockerBin, "pdocker-direct"))

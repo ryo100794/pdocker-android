@@ -8,6 +8,8 @@ import android.content.ServiceConnection
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.LocalSocket
@@ -24,12 +26,15 @@ import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.Settings
 import android.system.Os
+import android.text.Editable
 import android.text.TextUtils
+import android.text.TextWatcher
 import android.util.Base64
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -45,6 +50,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -144,6 +150,48 @@ class MainActivity : AppCompatActivity() {
         val label: String,
         val run: () -> Unit,
     )
+
+    private class ImageGraphLayout(context: Context) : LinearLayout(context) {
+        private var graphRows: List<ImageReferenceGraphRow> = emptyList()
+        private val density = resources.displayMetrics.density
+        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xaa888888.toInt()
+            strokeWidth = 2f * density
+            strokeCap = Paint.Cap.SQUARE
+        }
+
+        init {
+            setWillNotDraw(false)
+        }
+
+        fun setGraphRows(rows: List<ImageReferenceGraphRow>) {
+            graphRows = rows
+            invalidate()
+        }
+
+        override fun dispatchDraw(canvas: Canvas) {
+            val guideStep = 18f * density
+            val branchWidth = 24f * density
+            val branchXOffset = 9f * density
+            val horizontalEndInset = 2f * density
+            graphRows.forEachIndexed { index, row ->
+                val child = getChildAt(index) ?: return@forEachIndexed
+                val top = child.top.toFloat()
+                val bottom = child.bottom.toFloat()
+                val centerY = (top + bottom) / 2f
+                row.ancestorLast.forEachIndexed { level, ancestorIsLast ->
+                    if (!ancestorIsLast) {
+                        val x = level * guideStep + branchXOffset
+                        canvas.drawLine(x, top, x, bottom, linePaint)
+                    }
+                }
+                val x = row.depth * guideStep + branchXOffset
+                canvas.drawLine(x, top, x, if (row.isLast) centerY else bottom, linePaint)
+                canvas.drawLine(x, centerY, row.depth * guideStep + branchWidth - horizontalEndInset, centerY, linePaint)
+            }
+            super.dispatchDraw(canvas)
+        }
+    }
 
     private data class DockerJob(
         val id: String,
@@ -352,6 +400,7 @@ class MainActivity : AppCompatActivity() {
         private const val DOCUMENTS_SYNC_MIN_INTERVAL_MS = 3_000L
         private const val MAX_DOCUMENTS_MIRROR_OBSERVERS = 256
         private const val MAX_DOCUMENTS_SYNC_SCAN_ENTRIES = 512
+        private const val FALLBACK_IMAGE_PLATFORM = "linux/arm64"
         private const val PDOCKER_SERVICE_URL_LABEL_PREFIX = "io.github.ryo100794.pdocker.service-url."
         private const val PDOCKER_PROJECT_ID_LABEL = "io.github.ryo100794.pdocker.project-id"
         private const val PDOCKER_PROJECT_DIR_LABEL = "io.github.ryo100794.pdocker.project-dir"
@@ -892,14 +941,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderImages() {
         addSection(getString(R.string.section_images))
         addAction(getString(R.string.action_pull_image), getString(R.string.detail_pull_image)) {
-            runEngineJob(
-                getString(R.string.action_pull_image),
-                workspaceGroup(),
-                "engine pull ubuntu:22.04",
-            ) { emit ->
-                emit("Image ubuntu:22.04 Pulling")
-                pullImage("ubuntu:22.04")
-            }
+            showPullImageDialog()
         }
         addAction(getString(R.string.action_browse_image_files), getString(R.string.detail_browse_image_files)) {
             openImageFiles()
@@ -915,6 +957,208 @@ class MainActivity : AppCompatActivity() {
         val imageInfos = imageReferenceInfos(images)
         renderImageReferenceTree(imageInfos)
     }
+
+    private fun showPullImageDialog() {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            hint = getString(R.string.hint_image_reference)
+        }
+        var imagePlatform = currentImagePlatform()
+        val suggestions = imagePullSuggestions().toMutableList()
+        val suggestionList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val suggestionLabel = TextView(this).apply {
+            text = getString(R.string.label_image_pull_suggestions_fmt, imagePlatform)
+            textSize = 12f
+            setTextColor(0xff666666.toInt())
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(10), dp(20), 0)
+            addView(input, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            addView(suggestionLabel)
+            addView(ScrollView(this@MainActivity).apply {
+                addView(suggestionList)
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(220)))
+        }
+        var pendingHubSearch: Runnable? = null
+        var hubSearchSerial = 0
+
+        fun renderSuggestions(query: String) {
+            suggestionList.removeAllViews()
+            val q = query.trim()
+            suggestions
+                .filter { q.isBlank() || it.contains(q, ignoreCase = true) }
+                .take(30)
+                .forEach { ref ->
+                    suggestionList.addView(TextView(this).apply {
+                        text = ref
+                        textSize = 14f
+                        setPadding(dp(8), dp(8), dp(8), dp(8))
+                        setOnClickListener {
+                            input.setText(ref)
+                            input.setSelection(ref.length)
+                        }
+                    }, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                }
+        }
+
+        fun scheduleDockerHubSearch(query: String) {
+            pendingHubSearch?.let { ui.removeCallbacks(it) }
+            val q = query.trim()
+            if (q.length < 2 || "/" in q || ":" in q || "@" in q) {
+                suggestionLabel.text = getString(R.string.label_image_pull_suggestions_fmt, imagePlatform)
+                return
+            }
+            val serial = ++hubSearchSerial
+            val task = Runnable {
+                suggestionLabel.text = getString(R.string.message_docker_hub_searching_fmt, q, imagePlatform)
+                thread(isDaemon = true, name = "pdocker-docker-hub-search") {
+                    val remote = fetchDockerHubImageRefs(q)
+                    ui.post {
+                        if (serial != hubSearchSerial) return@post
+                        var added = 0
+                        remote.forEach { ref ->
+                            if (suggestions.none { it.equals(ref, ignoreCase = true) }) {
+                                suggestions.add(ref)
+                                added++
+                            }
+                        }
+                        suggestions.sortWith(compareBy<String> { it.substringBefore(":") }.thenBy { it })
+                        suggestionLabel.text = if (added > 0) {
+                            getString(R.string.message_docker_hub_results_fmt, added, q, imagePlatform)
+                        } else {
+                            getString(R.string.label_image_pull_suggestions_fmt, imagePlatform)
+                        }
+                        renderSuggestions(input.text?.toString().orEmpty())
+                    }
+                }
+            }
+            pendingHubSearch = task
+            ui.postDelayed(task, 450)
+        }
+
+        refreshImagePlatformForDialog { platform ->
+            imagePlatform = platform
+            suggestionLabel.text = getString(R.string.label_image_pull_suggestions_fmt, imagePlatform)
+            scheduleDockerHubSearch(input.text?.toString().orEmpty())
+        }
+
+        input.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val text = s?.toString().orEmpty()
+                renderSuggestions(text)
+                scheduleDockerHubSearch(text)
+            }
+            override fun afterTextChanged(s: Editable?) = Unit
+        })
+        renderSuggestions("")
+
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.dialog_pull_image_title))
+            .setView(body)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val image = input.text?.toString()?.trim().orEmpty()
+                if (image.isBlank()) {
+                    status.text = getString(R.string.message_image_reference_required)
+                } else {
+                    runPullImage(image)
+                }
+            }
+            .show()
+    }
+
+    private fun runPullImage(image: String) {
+        runEngineJob(
+            getString(R.string.terminal_pull_image_fmt, image),
+            workspaceGroup(),
+            "engine pull $image",
+        ) { emit ->
+            emit("Image $image Pulling")
+            pullImage(image)
+        }
+    }
+
+    private fun imagePullSuggestions(): List<String> {
+        val refs = linkedSetOf(
+            "ubuntu:22.04",
+            "ubuntu:24.04",
+            "debian:bookworm",
+            "alpine:3.20",
+            "busybox:latest",
+        )
+        imageDirs().mapNotNullTo(refs) { displayImageRef(it.name).takeIf { ref -> ref.isNotBlank() } }
+        val imageLine = Regex("""^\s*image\s*:\s*['"]?([^'"\s#]+)""")
+        composeFiles().forEach { file ->
+            runCatching {
+                file.readLines().forEach { line ->
+                    imageLine.find(line)?.groupValues?.getOrNull(1)?.let { refs.add(it) }
+                }
+            }
+        }
+        val fromLine = Regex("""^\s*FROM\s+(?:--platform=\S+\s+)?([^@\s]+(?:@[^\s]+|:[^\s]+)?)""", RegexOption.IGNORE_CASE)
+        dockerfiles().forEach { file ->
+            runCatching {
+                file.readLines().forEach { line ->
+                    fromLine.find(line)?.groupValues?.getOrNull(1)?.let { refs.add(it) }
+                }
+            }
+        }
+        return refs.filter { it.isNotBlank() }.sortedWith(compareBy<String> { it.substringBefore(":") }.thenBy { it })
+    }
+
+    private fun fetchDockerHubImageRefs(query: String): List<String> =
+        runCatching {
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val url = URL("https://hub.docker.com/v2/search/repositories/?query=$encoded&page_size=25")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 2500
+                readTimeout = 3500
+                requestMethod = "GET"
+                setRequestProperty("Accept", "application/json")
+            }
+            try {
+                val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
+                val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                val results = JSONObject(text).optJSONArray("results") ?: JSONArray()
+                (0 until results.length()).mapNotNull { i ->
+                    results.optJSONObject(i)?.optString("repo_name")
+                        ?.takeIf { it.isNotBlank() }
+                }
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrDefault(emptyList())
+
+    private fun currentImagePlatform(): String =
+        hostEnvironment?.optJSONObject("Runtime")?.optString("Platform").orEmpty()
+            .ifBlank { abiDefaultImagePlatform() }
+
+    private fun refreshImagePlatformForDialog(onReady: (String) -> Unit) {
+        thread(isDaemon = true, name = "pdocker-image-platform") {
+            val platform = runCatching {
+                engine.getObject("/system/host")
+                    .optJSONObject("Runtime")
+                    ?.optString("Platform")
+                    .orEmpty()
+            }.getOrDefault("")
+                .ifBlank { abiDefaultImagePlatform() }
+            ui.post { onReady(platform) }
+        }
+    }
+
+    private fun abiDefaultImagePlatform(): String =
+        when (Build.SUPPORTED_ABIS.firstOrNull().orEmpty()) {
+            "arm64-v8a" -> "linux/arm64"
+            "armeabi-v7a", "armeabi" -> "linux/arm/v7"
+            "x86_64" -> "linux/amd64"
+            "x86" -> "linux/386"
+            else -> FALLBACK_IMAGE_PLATFORM
+        }
 
     private fun renderContainers() {
         addSection(getString(R.string.section_containers))
@@ -3816,7 +4060,7 @@ class MainActivity : AppCompatActivity() {
     private fun terminalDisplayText(text: String): String {
         val out = StringBuilder(text.length + 16)
         text.forEachIndexed { index, ch ->
-            if (ch == '\r' && text.getOrNull(index + 1) != '\n') {
+            if (ch == '\r' && text.getOrNull(index + 1) != '\n' && index < text.lastIndex) {
                 out.append('\r').append("\u001B[2K")
             } else {
                 out.append(ch)
@@ -4277,9 +4521,10 @@ class MainActivity : AppCompatActivity() {
             })
             addView(HorizontalScrollView(this@MainActivity).apply {
                 isFillViewport = false
-                addView(LinearLayout(this@MainActivity).apply {
+                addView(ImageGraphLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     rows.forEach { row -> addImageGraphRow(this, row) }
+                    setGraphRows(rows)
                 })
             })
             content.addView(this)
@@ -4313,10 +4558,7 @@ class MainActivity : AppCompatActivity() {
         parent.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            row.ancestorLast.forEach { ancestorIsLast ->
-                addImageGraphGuideCell(this, active = !ancestorIsLast, rowHeight = rowHeight)
-            }
-            addImageGraphBranchCell(this, isLast = row.isLast, rowHeight = rowHeight)
+            addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(24 + row.depth * 18), rowHeight))
             addView(TextView(this@MainActivity).apply {
                 text = row.kind.label
                 textSize = 10f
@@ -4366,27 +4608,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }, LinearLayout.LayoutParams(dp(360), LinearLayout.LayoutParams.WRAP_CONTENT))
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, rowHeight))
-    }
-
-    private fun addImageGraphGuideCell(parent: LinearLayout, active: Boolean, rowHeight: Int) {
-        parent.addView(FrameLayout(this).apply {
-            if (active) {
-                addView(View(this@MainActivity).apply {
-                    setBackgroundColor(0x66888888)
-                }, FrameLayout.LayoutParams(dp(2), FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL))
-            }
-        }, LinearLayout.LayoutParams(dp(18), rowHeight))
-    }
-
-    private fun addImageGraphBranchCell(parent: LinearLayout, isLast: Boolean, rowHeight: Int) {
-        parent.addView(FrameLayout(this).apply {
-            addView(View(this@MainActivity).apply {
-                setBackgroundColor(0x66888888)
-            }, FrameLayout.LayoutParams(dp(2), if (isLast) rowHeight / 2 else FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL or Gravity.TOP))
-            addView(View(this@MainActivity).apply {
-                setBackgroundColor(0x66888888)
-            }, FrameLayout.LayoutParams(dp(18), dp(2), Gravity.CENTER_VERTICAL or Gravity.RIGHT))
-        }, LinearLayout.LayoutParams(dp(24), rowHeight))
     }
 
     private fun tintedRoundDrawable(color: Int): GradientDrawable =
@@ -4448,10 +4669,17 @@ class MainActivity : AppCompatActivity() {
         }
         return listOf(
             summarizeRootfs(rootfs),
+            getString(R.string.image_version_detail_fmt, imageVersionDetail(ref)),
             storage,
             ref,
             imageDir.name,
         ).filterNotNull().joinToString("\n")
+    }
+
+    private fun imageVersionDetail(ref: String): String {
+        if ("@" in ref) return ref.substringAfter("@").take(32)
+        val last = ref.substringAfterLast("/")
+        return last.substringAfterLast(":", "latest")
     }
 
     private fun imageReferenceInfos(images: List<File>): List<ImageReferenceInfo> {

@@ -1,0 +1,20 @@
+$ tmpdir=$(mktemp -d); PDOCKER_TEST_SUITE_REPORT_DIR="$tmpdir/reports" PDOCKER_DOCUMENTS_MOUNT="$tmpdir/documents" PDOCKER_SHARED_DOCUMENTS_MOUNT="$tmpdir/shared" PDOCKER_EXPORT_DIR="$tmpdir/documents/pdocker-exports" PDOCKER_FAST_WORKDIR="$tmpdir/workspace" app/src/main/assets/project-library/pdocker-test-suite/scripts/run-pdocker-test-suite.sh --scenario all; rm -rf "$tmpdir"
+pdocker test suite start: 20260506T082837Z
+scenario: all
+reports: /tmp/tmp.3cldytdY2w/reports
+documents export: /tmp/tmp.3cldytdY2w/documents/pdocker-exports/pdocker-test-suite
+workspace: /tmp/tmp.3cldytdY2w/workspace
+[pass] documents/documents_writable - /tmp/tmp.3cldytdY2w/documents/pdocker-exports/pdocker-test-suite/write-probe-20260506T082837Z.txt
+[pass] documents/shared_mount_visible - shared mount visible: /tmp/tmp.3cldytdY2w/shared
+[pass] smoke/workspace_writable - /tmp/tmp.3cldytdY2w/workspace/write-probe-20260506T082837Z.txt
+[pass] direct/argv_preservation - argv preserved
+[pass] direct/shell_bracket - bracket executable ok
+[pass] direct/proc_exe - /usr/bin/readlink
+[pass] direct/direct_runtime_probe - pdocker-container-probe: shell-basics start pdocker-container-probe: shell-basics ok pdocker-container-probe: argv-preservation start pdocker-container-probe: argv-preservation ok pdocker-container-probe: proc-view start pdocker-container-probe: proc-view ok exe=/usr/bin/readlink pdocker-container-probe: large-allocation start large_allocation_ok size=67108864 pdocker-container-probe: large-allocation ok pdocker-container-probe: all ok
+[pass] direct/path_semantics - path semantics ok
+[pass] smoke/invalid_inputs - invalid input rejection ok
+[pass] io/file_io_smoke - open_write_close_100_bytes=100
+[pass] archive/archive_roundtrip - tar roundtrip ok
+pdocker test suite pass passes=11 failures=0
+json: /tmp/tmp.3cldytdY2w/reports/pdocker-test-suite-20260506T082837Z.json
+documents json: /tmp/tmp.3cldytdY2w/documents/pdocker-exports/pdocker-test-suite/latest.json

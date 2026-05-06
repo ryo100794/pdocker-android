@@ -20,6 +20,7 @@ COVERAGE = ROOT / "tests" / "direct_syscall_coverage.json"
 REQUIRED_PATH_VARIANTS = {
     "path.absolute-rootfs-rewrite",
     "path.relative-dirfd-preserve",
+    "path.relative-dirfd-escape-deny",
     "path.rootfs-already-host-path",
     "path.proc-dev-sys-no-rewrite",
     "path.parent-segment-scratch-fallback",
@@ -301,6 +302,9 @@ def validate_static_contract_markers(source: str) -> None:
             "if (!rootfs || !rootfs[0] || !path || path[0] != '/') return 0;",
             "return -ENAMETOOLONG;",
             "path_has_parent_segment",
+            "validate_relative_tracee_path",
+            "validate_host_path_under_allowed",
+            "deny_path_syscall",
             "original[1] != '/'",
             "should_skip_unix_socket_rewrite",
             "strlen(rewritten) >= sizeof(addr.sun_path)",

@@ -1,0 +1,964 @@
+{
+  "aggregate_top_syscalls": [
+    {
+      "count": 5556,
+      "name": "newfstatat",
+      "nr": 79
+    },
+    {
+      "count": 4878,
+      "name": "openat",
+      "nr": 56
+    },
+    {
+      "count": 498,
+      "name": "faccessat",
+      "nr": 48
+    },
+    {
+      "count": 420,
+      "name": "execve",
+      "nr": 221
+    },
+    {
+      "count": 339,
+      "name": "unlinkat",
+      "nr": 35
+    },
+    {
+      "count": 268,
+      "name": "mkdirat",
+      "nr": 34
+    },
+    {
+      "count": 199,
+      "name": "chdir",
+      "nr": 49
+    },
+    {
+      "count": 154,
+      "name": "statfs",
+      "nr": 43
+    },
+    {
+      "count": 64,
+      "name": "linkat",
+      "nr": 37
+    },
+    {
+      "count": 18,
+      "name": "geteuid",
+      "nr": 175
+    },
+    {
+      "count": 9,
+      "name": "getuid",
+      "nr": 174
+    },
+    {
+      "count": 6,
+      "name": "faccessat2",
+      "nr": 439
+    },
+    {
+      "count": 6,
+      "name": "getegid",
+      "nr": 177
+    },
+    {
+      "count": 6,
+      "name": "getgid",
+      "nr": 176
+    },
+    {
+      "count": 4,
+      "name": "readlinkat",
+      "nr": 78
+    },
+    {
+      "count": 3,
+      "name": "setgid",
+      "nr": 144
+    }
+  ],
+  "command": "bash scripts/android-syscall-usecase-profile.sh",
+  "context": {
+    "path_profile": "1",
+    "rootfs": "pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs",
+    "small_files": "64",
+    "trace_mode": "seccomp"
+  },
+  "device_serial": "10.8.135.134:40455",
+  "events": [
+    {
+      "elapsed_s": 0.014,
+      "label": "shell_startup",
+      "path_profile": {
+        "absolute": 81,
+        "avg_us": 6.239,
+        "cache": {
+          "generation": 1,
+          "invalidations": 0,
+          "realpath_hits": 3,
+          "realpath_misses": 18,
+          "validation_hits": 0,
+          "validation_misses": 15
+        },
+        "calls": 90,
+        "denied": 0,
+        "empty": 8,
+        "no_rewrite": 76,
+        "phase_us": {
+          "read": 151.721,
+          "relative_validate": 44.688,
+          "resolve": 11.926,
+          "validate": 306.511,
+          "write": 24.22
+        },
+        "relative": 1,
+        "rewrote": 14,
+        "rootfd": 0,
+        "total_us": 561.512,
+        "validate": {
+          "avg_us": 17.66,
+          "calls": 15,
+          "lexical_us": 9.686,
+          "parent_loops": 0,
+          "parent_realpath_us": 39.428,
+          "realpath_full_us": 215.779
+        }
+      },
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.014s stops=137",
+        "pdocker-direct-path-profile: calls=90 empty=8 relative=1 absolute=81 no_rewrite=76 rewrote=14 rootfd=0 denied=0 total_us=561.512 avg_us=6.239",
+        "pdocker-direct-path-profile: phase_us read=151.721 relative_validate=44.688 resolve=11.926 validate=306.511 write=24.220",
+        "pdocker-direct-path-profile: validate calls=15 avg_us=17.660 lexical_us=9.686 realpath_full_us=215.779 parent_realpath_us=39.428 parent_loops=0",
+        "pdocker-direct-path-profile: cache validation_hits=0 validation_misses=15 realpath_hits=3 realpath_misses=18 invalidations=0 generation=1",
+        "pdocker-direct-stats: #1 nr=79(newfstatat) count=47",
+        "pdocker-direct-stats: #2 nr=56(openat) count=43",
+        "pdocker-direct-stats: #3 nr=48(faccessat) count=5",
+        "pdocker-direct-stats: #4 nr=221(execve) count=4",
+        "pdocker-direct-stats: #5 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #6 nr=43(statfs) count=2",
+        "pdocker-direct-stats: #7 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #8 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #9 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #10 nr=439(faccessat2) count=1",
+        "real 0.056647",
+        "user 0.015375",
+        "sys 0.037902"
+      ],
+      "rc": 0,
+      "real_s": 0.056647,
+      "reported_count_to_stops_ratio": 0.7883211678832117,
+      "reported_syscall_count": 108,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 137,
+      "sys_s": 0.037902,
+      "top_syscalls": [
+        {
+          "count": 47,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 43,
+          "name": "openat",
+          "nr": 56,
+          "rank": 2
+        },
+        {
+          "count": 5,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 3
+        },
+        {
+          "count": 4,
+          "name": "execve",
+          "nr": 221,
+          "rank": 4
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 5
+        },
+        {
+          "count": 2,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 6
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 7
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 8
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 9
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 10
+        }
+      ],
+      "user_s": 0.015375
+    },
+    {
+      "elapsed_s": 0.049,
+      "label": "package_metadata",
+      "path_profile": {
+        "absolute": 1129,
+        "avg_us": 3.891,
+        "cache": {
+          "generation": 1,
+          "invalidations": 0,
+          "realpath_hits": 302,
+          "realpath_misses": 361,
+          "validation_hits": 622,
+          "validation_misses": 350
+        },
+        "calls": 1190,
+        "denied": 0,
+        "empty": 60,
+        "no_rewrite": 223,
+        "phase_us": {
+          "read": 823.067,
+          "relative_validate": 27.188,
+          "resolve": 153.422,
+          "validate": 2937.757,
+          "write": 499.527
+        },
+        "relative": 1,
+        "rewrote": 967,
+        "rootfd": 0,
+        "total_us": 4630.514,
+        "validate": {
+          "avg_us": 1.885,
+          "calls": 972,
+          "lexical_us": 170.697,
+          "parent_loops": 1,
+          "parent_realpath_us": 199.313,
+          "realpath_full_us": 1462.541
+        }
+      },
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.049s stops=1299",
+        "pdocker-direct-path-profile: calls=1190 empty=60 relative=1 absolute=1129 no_rewrite=223 rewrote=967 rootfd=0 denied=0 total_us=4630.514 avg_us=3.891",
+        "pdocker-direct-path-profile: phase_us read=823.067 relative_validate=27.188 resolve=153.422 validate=2937.757 write=499.527",
+        "pdocker-direct-path-profile: validate calls=972 avg_us=1.885 lexical_us=170.697 realpath_full_us=1462.541 parent_realpath_us=199.313 parent_loops=1",
+        "pdocker-direct-path-profile: cache validation_hits=622 validation_misses=350 realpath_hits=302 realpath_misses=361 invalidations=0 generation=1",
+        "pdocker-direct-stats: #1 nr=79(newfstatat) count=1010",
+        "pdocker-direct-stats: #2 nr=56(openat) count=180",
+        "pdocker-direct-stats: #3 nr=48(faccessat) count=13",
+        "pdocker-direct-stats: #4 nr=43(statfs) count=8",
+        "pdocker-direct-stats: #5 nr=221(execve) count=8",
+        "pdocker-direct-stats: #6 nr=78(readlinkat) count=4",
+        "pdocker-direct-stats: #7 nr=174(getuid) count=4",
+        "pdocker-direct-stats: #8 nr=144(setgid) count=3",
+        "pdocker-direct-stats: #9 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #10 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #11 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #12 nr=439(faccessat2) count=1",
+        "real 0.072314",
+        "user 0.011960",
+        "sys 0.046397"
+      ],
+      "rc": 0,
+      "real_s": 0.072314,
+      "reported_count_to_stops_ratio": 0.9515011547344111,
+      "reported_syscall_count": 1236,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 1299,
+      "sys_s": 0.046397,
+      "top_syscalls": [
+        {
+          "count": 1010,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 180,
+          "name": "openat",
+          "nr": 56,
+          "rank": 2
+        },
+        {
+          "count": 13,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 3
+        },
+        {
+          "count": 8,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 4
+        },
+        {
+          "count": 8,
+          "name": "execve",
+          "nr": 221,
+          "rank": 5
+        },
+        {
+          "count": 4,
+          "name": "readlinkat",
+          "nr": 78,
+          "rank": 6
+        },
+        {
+          "count": 4,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 7
+        },
+        {
+          "count": 3,
+          "name": "setgid",
+          "nr": 144,
+          "rank": 8
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 9
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 10
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 11
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 12
+        }
+      ],
+      "user_s": 0.01196
+    },
+    {
+      "elapsed_s": 0.29,
+      "label": "source_scan",
+      "path_profile": {
+        "absolute": 2653,
+        "avg_us": 2.285,
+        "cache": {
+          "generation": 2,
+          "invalidations": 1,
+          "realpath_hits": 87,
+          "realpath_misses": 124,
+          "validation_hits": 447,
+          "validation_misses": 128
+        },
+        "calls": 3341,
+        "denied": 0,
+        "empty": 409,
+        "no_rewrite": 3111,
+        "phase_us": {
+          "read": 4347.725,
+          "relative_validate": 903.742,
+          "resolve": 229.747,
+          "validate": 1386.976,
+          "write": 340.888
+        },
+        "relative": 279,
+        "rewrote": 230,
+        "rootfd": 0,
+        "total_us": 7634.278,
+        "validate": {
+          "avg_us": 1.933,
+          "calls": 575,
+          "lexical_us": 93.694,
+          "parent_loops": 0,
+          "parent_realpath_us": 177.137,
+          "realpath_full_us": 840.364
+        }
+      },
+      "raw_tail": [
+        "pdocker-direct-path-profile: calls=3341 empty=409 relative=279 absolute=2653 no_rewrite=3111 rewrote=230 rootfd=0 denied=0 total_us=7634.278 avg_us=2.285",
+        "pdocker-direct-path-profile: phase_us read=4347.725 relative_validate=903.742 resolve=229.747 validate=1386.976 write=340.888",
+        "pdocker-direct-path-profile: validate calls=575 avg_us=1.933 lexical_us=93.694 realpath_full_us=840.364 parent_realpath_us=177.137 parent_loops=0",
+        "pdocker-direct-path-profile: cache validation_hits=447 validation_misses=128 realpath_hits=87 realpath_misses=124 invalidations=1 generation=2",
+        "pdocker-direct-stats: #1 nr=56(openat) count=1621",
+        "pdocker-direct-stats: #2 nr=79(newfstatat) count=1457",
+        "pdocker-direct-stats: #3 nr=34(mkdirat) count=262",
+        "pdocker-direct-stats: #4 nr=48(faccessat) count=202",
+        "pdocker-direct-stats: #5 nr=49(chdir) count=195",
+        "pdocker-direct-stats: #6 nr=221(execve) count=135",
+        "pdocker-direct-stats: #7 nr=43(statfs) count=134",
+        "pdocker-direct-stats: #8 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #9 nr=35(unlinkat) count=1",
+        "pdocker-direct-stats: #10 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #11 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #12 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #13 nr=439(faccessat2) count=1",
+        "real 0.311351",
+        "user 0.137416",
+        "sys 0.163278"
+      ],
+      "rc": 0,
+      "real_s": 0.311351,
+      "reported_count_to_stops_ratio": 0.7878312070657507,
+      "reported_syscall_count": 4014,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 5095,
+      "sys_s": 0.163278,
+      "top_syscalls": [
+        {
+          "count": 1621,
+          "name": "openat",
+          "nr": 56,
+          "rank": 1
+        },
+        {
+          "count": 1457,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 2
+        },
+        {
+          "count": 262,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 3
+        },
+        {
+          "count": 202,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 4
+        },
+        {
+          "count": 195,
+          "name": "chdir",
+          "nr": 49,
+          "rank": 5
+        },
+        {
+          "count": 135,
+          "name": "execve",
+          "nr": 221,
+          "rank": 6
+        },
+        {
+          "count": 134,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 7
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 8
+        },
+        {
+          "count": 1,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 9
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 10
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 11
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 12
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 13
+        }
+      ],
+      "user_s": 0.137416
+    },
+    {
+      "elapsed_s": 0.113,
+      "label": "object_write",
+      "path_profile": {
+        "absolute": 2431,
+        "avg_us": 2.359,
+        "cache": {
+          "generation": 1,
+          "invalidations": 0,
+          "realpath_hits": 142,
+          "realpath_misses": 240,
+          "validation_hits": 398,
+          "validation_misses": 236
+        },
+        "calls": 3254,
+        "denied": 0,
+        "empty": 472,
+        "no_rewrite": 2972,
+        "phase_us": {
+          "read": 2815.15,
+          "relative_validate": 3435.834,
+          "resolve": 152.824,
+          "validate": 612.859,
+          "write": 307.818
+        },
+        "relative": 351,
+        "rewrote": 282,
+        "rootfd": 0,
+        "total_us": 7677.75,
+        "validate": {
+          "avg_us": 3.653,
+          "calls": 634,
+          "lexical_us": 110.002,
+          "parent_loops": 0,
+          "parent_realpath_us": 102.603,
+          "realpath_full_us": 2103.44
+        }
+      },
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.113s stops=4351",
+        "pdocker-direct-path-profile: calls=3254 empty=472 relative=351 absolute=2431 no_rewrite=2972 rewrote=282 rootfd=0 denied=0 total_us=7677.750 avg_us=2.359",
+        "pdocker-direct-path-profile: phase_us read=2815.150 relative_validate=3435.834 resolve=152.824 validate=612.859 write=307.818",
+        "pdocker-direct-path-profile: validate calls=634 avg_us=3.653 lexical_us=110.002 realpath_full_us=2103.440 parent_realpath_us=102.603 parent_loops=0",
+        "pdocker-direct-path-profile: cache validation_hits=398 validation_misses=236 realpath_hits=142 realpath_misses=240 invalidations=0 generation=1",
+        "pdocker-direct-stats: #1 nr=79(newfstatat) count=1707",
+        "pdocker-direct-stats: #2 nr=56(openat) count=1547",
+        "pdocker-direct-stats: #3 nr=48(faccessat) count=136",
+        "pdocker-direct-stats: #4 nr=221(execve) count=134",
+        "pdocker-direct-stats: #5 nr=43(statfs) count=4",
+        "pdocker-direct-stats: #6 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #7 nr=49(chdir) count=1",
+        "pdocker-direct-stats: #8 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #9 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #10 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #11 nr=439(faccessat2) count=1",
+        "real 0.140371",
+        "user 0.066643",
+        "sys 0.071517"
+      ],
+      "rc": 0,
+      "real_s": 0.140371,
+      "reported_count_to_stops_ratio": 0.812686738680763,
+      "reported_syscall_count": 3536,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 4351,
+      "sys_s": 0.071517,
+      "top_syscalls": [
+        {
+          "count": 1707,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 1
+        },
+        {
+          "count": 1547,
+          "name": "openat",
+          "nr": 56,
+          "rank": 2
+        },
+        {
+          "count": 136,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 3
+        },
+        {
+          "count": 134,
+          "name": "execve",
+          "nr": 221,
+          "rank": 4
+        },
+        {
+          "count": 4,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 5
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 6
+        },
+        {
+          "count": 1,
+          "name": "chdir",
+          "nr": 49,
+          "rank": 7
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 8
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 9
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 10
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 11
+        }
+      ],
+      "user_s": 0.066643
+    },
+    {
+      "elapsed_s": 0.297,
+      "label": "overlay_shape",
+      "path_profile": {
+        "absolute": 2501,
+        "avg_us": 4.451,
+        "cache": {
+          "generation": 130,
+          "invalidations": 129,
+          "realpath_hits": 12,
+          "realpath_misses": 422,
+          "validation_hits": 6,
+          "validation_misses": 354
+        },
+        "calls": 2711,
+        "denied": 0,
+        "empty": 204,
+        "no_rewrite": 2359,
+        "phase_us": {
+          "read": 5122.127,
+          "relative_validate": 70.417,
+          "resolve": 265.106,
+          "validate": 5426.093,
+          "write": 652.35
+        },
+        "relative": 6,
+        "rewrote": 352,
+        "rootfd": 0,
+        "total_us": 12066.057,
+        "validate": {
+          "avg_us": 13.055,
+          "calls": 360,
+          "lexical_us": 91.886,
+          "parent_loops": 0,
+          "parent_realpath_us": 1524.479,
+          "realpath_full_us": 3083.285
+        }
+      },
+      "raw_tail": [
+        "pdocker-direct-path-profile: phase_us read=5122.127 relative_validate=70.417 resolve=265.106 validate=5426.093 write=652.350",
+        "pdocker-direct-path-profile: validate calls=360 avg_us=13.055 lexical_us=91.886 realpath_full_us=3083.285 parent_realpath_us=1524.479 parent_loops=0",
+        "pdocker-direct-path-profile: cache validation_hits=6 validation_misses=354 realpath_hits=12 realpath_misses=422 invalidations=129 generation=130",
+        "pdocker-direct-stats: #1 nr=56(openat) count=1408",
+        "pdocker-direct-stats: #2 nr=79(newfstatat) count=1232",
+        "pdocker-direct-stats: #3 nr=48(faccessat) count=136",
+        "pdocker-direct-stats: #4 nr=221(execve) count=134",
+        "pdocker-direct-stats: #5 nr=35(unlinkat) count=65",
+        "pdocker-direct-stats: #6 nr=37(linkat) count=64",
+        "pdocker-direct-stats: #7 nr=34(mkdirat) count=6",
+        "pdocker-direct-stats: #8 nr=43(statfs) count=4",
+        "pdocker-direct-stats: #9 nr=49(chdir) count=3",
+        "pdocker-direct-stats: #10 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #11 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #12 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #13 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #14 nr=439(faccessat2) count=1",
+        "real 0.318550",
+        "user 0.134517",
+        "sys 0.164653"
+      ],
+      "rc": 0,
+      "real_s": 0.31855,
+      "reported_count_to_stops_ratio": 0.7645588602849288,
+      "reported_syscall_count": 3059,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 4001,
+      "sys_s": 0.164653,
+      "top_syscalls": [
+        {
+          "count": 1408,
+          "name": "openat",
+          "nr": 56,
+          "rank": 1
+        },
+        {
+          "count": 1232,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 2
+        },
+        {
+          "count": 136,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 3
+        },
+        {
+          "count": 134,
+          "name": "execve",
+          "nr": 221,
+          "rank": 4
+        },
+        {
+          "count": 65,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 5
+        },
+        {
+          "count": 64,
+          "name": "linkat",
+          "nr": 37,
+          "rank": 6
+        },
+        {
+          "count": 6,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 7
+        },
+        {
+          "count": 4,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 8
+        },
+        {
+          "count": 3,
+          "name": "chdir",
+          "nr": 49,
+          "rank": 9
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 10
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 11
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 12
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 13
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 14
+        }
+      ],
+      "user_s": 0.134517
+    },
+    {
+      "elapsed_s": 0.025,
+      "label": "cleanup",
+      "path_profile": {
+        "absolute": 114,
+        "avg_us": 7.634,
+        "cache": {
+          "generation": 274,
+          "invalidations": 273,
+          "realpath_hits": 6,
+          "realpath_misses": 312,
+          "validation_hits": 28,
+          "validation_misses": 308
+        },
+        "calls": 455,
+        "denied": 0,
+        "empty": 36,
+        "no_rewrite": 424,
+        "phase_us": {
+          "read": 383.128,
+          "relative_validate": 2576.984,
+          "resolve": 19.42,
+          "validate": 397.136,
+          "write": 33.333
+        },
+        "relative": 305,
+        "rewrote": 31,
+        "rootfd": 0,
+        "total_us": 3473.451,
+        "validate": {
+          "avg_us": 6.061,
+          "calls": 336,
+          "lexical_us": 55.31,
+          "parent_loops": 0,
+          "parent_realpath_us": 1581.982,
+          "realpath_full_us": 399.326
+        }
+      },
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.025s stops=838",
+        "pdocker-direct-path-profile: calls=455 empty=36 relative=305 absolute=114 no_rewrite=424 rewrote=31 rootfd=0 denied=0 total_us=3473.451 avg_us=7.634",
+        "pdocker-direct-path-profile: phase_us read=383.128 relative_validate=2576.984 resolve=19.420 validate=397.136 write=33.333",
+        "pdocker-direct-path-profile: validate calls=336 avg_us=6.061 lexical_us=55.310 realpath_full_us=399.326 parent_realpath_us=1581.982 parent_loops=0",
+        "pdocker-direct-path-profile: cache validation_hits=28 validation_misses=308 realpath_hits=6 realpath_misses=312 invalidations=273 generation=274",
+        "pdocker-direct-stats: #1 nr=35(unlinkat) count=273",
+        "pdocker-direct-stats: #2 nr=79(newfstatat) count=103",
+        "pdocker-direct-stats: #3 nr=56(openat) count=79",
+        "pdocker-direct-stats: #4 nr=48(faccessat) count=6",
+        "pdocker-direct-stats: #5 nr=221(execve) count=5",
+        "pdocker-direct-stats: #6 nr=175(geteuid) count=3",
+        "pdocker-direct-stats: #7 nr=43(statfs) count=2",
+        "pdocker-direct-stats: #8 nr=174(getuid) count=1",
+        "pdocker-direct-stats: #9 nr=176(getgid) count=1",
+        "pdocker-direct-stats: #10 nr=177(getegid) count=1",
+        "pdocker-direct-stats: #11 nr=439(faccessat2) count=1",
+        "real 0.056871",
+        "user 0.002249",
+        "sys 0.054619"
+      ],
+      "rc": 0,
+      "real_s": 0.056871,
+      "reported_count_to_stops_ratio": 0.5668257756563246,
+      "reported_syscall_count": 475,
+      "stats_rc": 0,
+      "stats_reason": "root-exited",
+      "stops": 838,
+      "sys_s": 0.054619,
+      "top_syscalls": [
+        {
+          "count": 273,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 1
+        },
+        {
+          "count": 103,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 2
+        },
+        {
+          "count": 79,
+          "name": "openat",
+          "nr": 56,
+          "rank": 3
+        },
+        {
+          "count": 6,
+          "name": "faccessat",
+          "nr": 48,
+          "rank": 4
+        },
+        {
+          "count": 5,
+          "name": "execve",
+          "nr": 221,
+          "rank": 5
+        },
+        {
+          "count": 3,
+          "name": "geteuid",
+          "nr": 175,
+          "rank": 6
+        },
+        {
+          "count": 2,
+          "name": "statfs",
+          "nr": 43,
+          "rank": 7
+        },
+        {
+          "count": 1,
+          "name": "getuid",
+          "nr": 174,
+          "rank": 8
+        },
+        {
+          "count": 1,
+          "name": "getgid",
+          "nr": 176,
+          "rank": 9
+        },
+        {
+          "count": 1,
+          "name": "getegid",
+          "nr": 177,
+          "rank": 10
+        },
+        {
+          "count": 1,
+          "name": "faccessat2",
+          "nr": 439,
+          "rank": 11
+        }
+      ],
+      "user_s": 0.002249
+    }
+  ],
+  "git_commit": "b0fbe38",
+  "git_dirty": true,
+  "kind": "pdocker.syscall-usecase-profile",
+  "notes": [
+    "seccomp mode is production-like and counts only syscalls intercepted by pdocker-direct.",
+    "syscall mode is diagnostic and counts all syscall entries seen by ptrace, but it is much slower.",
+    "read/write/close frequency is expected to appear only in syscall mode unless a specific fd operation is emulated."
+  ],
+  "parameters": {
+    "path_profile": true,
+    "small_files": 64,
+    "trace_mode": "seccomp"
+  },
+  "profile_rc": 0,
+  "schema": 1,
+  "timestamp_utc": "2026-05-06T07:47:16.368681+00:00"
+}

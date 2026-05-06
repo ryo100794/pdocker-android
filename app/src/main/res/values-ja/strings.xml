@@ -183,7 +183,14 @@
 
     <string name="section_images">イメージ</string>
     <string name="action_pull_image">イメージを pull</string>
-    <string name="detail_pull_image">docker pull 用シェルを開く</string>
+    <string name="detail_pull_image">イメージ参照を検索または入力して Engine API で pull</string>
+    <string name="dialog_pull_image_title">イメージを pull</string>
+    <string name="hint_image_reference">イメージ参照 例: ubuntu:22.04</string>
+    <string name="message_image_reference_required">pull するイメージ参照を入力してください。</string>
+    <string name="terminal_pull_image_fmt">pull image: %1$s</string>
+    <string name="label_image_pull_suggestions_fmt">%1$s 向け候補</string>
+    <string name="message_docker_hub_searching_fmt">Docker Hub で %1$s を検索中 (%2$s)</string>
+    <string name="message_docker_hub_results_fmt">Docker Hub の候補を %1$d 件追加: %2$s (%3$s)</string>
     <string name="action_browse_image_files">イメージ内ファイルを参照</string>
     <string name="detail_browse_image_files">pull 済み rootfs ツリーを確認</string>
     <string name="action_delete_image_fmt">イメージ %1$s を削除</string>
@@ -199,6 +206,7 @@
     <string name="image_reference_legend_cache">cache/shared layer</string>
     <string name="image_reference_legend_reference">compose/container reference</string>
     <string name="image_storage_detail_fmt">view %1$s / unique image %2$s / shared cache %3$s</string>
+    <string name="image_version_detail_fmt">version/tag %1$s</string>
     <string name="image_reference_image_detail_fmt">view %1$s / unique image %2$s / %3$d layers</string>
     <string name="image_reference_cache_node">Shared layer cache</string>
     <string name="image_reference_cache_detail_fmt">shared %1$s / total layer bytes %2$s / %3$d layers</string>

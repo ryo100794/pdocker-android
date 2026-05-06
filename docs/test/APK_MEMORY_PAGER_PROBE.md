@@ -11,7 +11,8 @@ not from an unrelated `/data/local/tmp` binary.
 ## Probe Command
 
 ```sh
-adb shell am start -n io.github.ryo100794.pdocker.compat/.MainActivity
+ACTIVITY="$(adb shell cmd package resolve-activity --brief io.github.ryo100794.pdocker.compat | tail -1)"
+adb shell am start -n "$ACTIVITY"
 adb shell 'run-as io.github.ryo100794.pdocker.compat sh -lc \
   "files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-memory-pager-probe; rc=\$?; echo exact_rc=\$rc"'
 ```
@@ -40,7 +41,8 @@ exact_rc=0
 ## PoC Command
 
 ```sh
-adb shell am start -n io.github.ryo100794.pdocker.compat/.MainActivity
+ACTIVITY="$(adb shell cmd package resolve-activity --brief io.github.ryo100794.pdocker.compat | tail -1)"
+adb shell am start -n "$ACTIVITY"
 adb shell 'run-as io.github.ryo100794.pdocker.compat sh -lc \
   "files/pdocker-runtime/docker-bin/pdocker-direct --pdocker-memory-pager-poc; rc=\$?; echo exact_rc=\$rc"'
 ```

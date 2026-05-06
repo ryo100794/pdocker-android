@@ -1,0 +1,38 @@
+{
+  "artifacts": [],
+  "commands": [
+    {
+      "artifacts": [],
+      "command": "tmpdir=$(mktemp -d); PDOCKER_TEST_SUITE_REPORT_DIR=\"$tmpdir/reports\" PDOCKER_DOCUMENTS_MOUNT=\"$tmpdir/documents\" PDOCKER_SHARED_DOCUMENTS_MOUNT=\"$tmpdir/shared\" PDOCKER_EXPORT_DIR=\"$tmpdir/documents/pdocker-exports\" PDOCKER_FAST_WORKDIR=\"$tmpdir/workspace\" app/src/main/assets/project-library/pdocker-test-suite/scripts/run-pdocker-test-suite.sh --scenario all; rm -rf \"$tmpdir\"",
+      "duration_seconds": 11.897,
+      "ended_at": "2026-05-06T08:28:48.853040+00:00",
+      "exit_code": 0,
+      "id": "pdocker-test-suite-local",
+      "lane": "test-suite-local",
+      "log": "docs/test/runs/20260506T082836Z-b0fbe38-test-suite-local/001-test-suite-local-pdocker-test-suite-local.log",
+      "started_at": "2026-05-06T08:28:36.956321+00:00",
+      "status": "pass"
+    }
+  ],
+  "driver": "scripts/pdocker-test-driver.py",
+  "ended_at": "2026-05-06T08:28:48.853386+00:00",
+  "environment": {
+    "adb_serial": "",
+    "android_flavor": "compat",
+    "platform": "linux",
+    "python": "3.13.3"
+  },
+  "git": {
+    "branch": "main",
+    "commit": "b0fbe381df0d0fb005c42c8356efc5c5b5b96011",
+    "dirty": true
+  },
+  "lanes": [
+    "test-suite-local"
+  ],
+  "manifest": "tests/test_driver_manifest.json",
+  "run_id": "20260506T082836Z-b0fbe38-test-suite-local",
+  "schema": "pdocker.test-driver.v1.run",
+  "started_at": "2026-05-06T08:28:36.879953+00:00",
+  "status": "pass"
+}

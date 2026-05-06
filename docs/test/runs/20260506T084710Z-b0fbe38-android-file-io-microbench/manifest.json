@@ -1,0 +1,64 @@
+{
+  "artifacts": [
+    {
+      "path": "docs/test/file-io-microbench-latest.json",
+      "producer": "android-file-io-microbench",
+      "sha256": "fc89bd7bcab2191c1479d9b05436dd2b5bd9a60978e4474eb0623894cc7c5992",
+      "size": 44139
+    },
+    {
+      "path": "docs/test/file-io-microbench-latest.md",
+      "producer": "android-file-io-microbench",
+      "sha256": "a7972e8117b344095c949138419d631d6ea21dd5aa0f56ee58d01bf072a23ccb",
+      "size": 3299
+    }
+  ],
+  "commands": [
+    {
+      "artifacts": [
+        {
+          "path": "docs/test/file-io-microbench-latest.json",
+          "producer": "android-file-io-microbench",
+          "sha256": "fc89bd7bcab2191c1479d9b05436dd2b5bd9a60978e4474eb0623894cc7c5992",
+          "size": 44139
+        },
+        {
+          "path": "docs/test/file-io-microbench-latest.md",
+          "producer": "android-file-io-microbench",
+          "sha256": "a7972e8117b344095c949138419d631d6ea21dd5aa0f56ee58d01bf072a23ccb",
+          "size": 3299
+        }
+      ],
+      "command": "bash scripts/android-file-io-microbench.sh",
+      "duration_seconds": 16.327,
+      "ended_at": "2026-05-06T08:47:26.746439+00:00",
+      "exit_code": 0,
+      "id": "android-file-io-microbench",
+      "lane": "android-file-io-microbench",
+      "log": "docs/test/runs/20260506T084710Z-b0fbe38-android-file-io-microbench/001-android-file-io-microbench-android-file-io-microbench.log",
+      "started_at": "2026-05-06T08:47:10.419472+00:00",
+      "status": "pass"
+    }
+  ],
+  "driver": "scripts/pdocker-test-driver.py",
+  "ended_at": "2026-05-06T08:47:26.750368+00:00",
+  "environment": {
+    "adb_serial": "",
+    "android_flavor": "compat",
+    "platform": "linux",
+    "python": "3.13.3"
+  },
+  "git": {
+    "branch": "main",
+    "commit": "b0fbe381df0d0fb005c42c8356efc5c5b5b96011",
+    "dirty": true
+  },
+  "lanes": [
+    "android-file-io-microbench"
+  ],
+  "manifest": "tests/test_driver_manifest.json",
+  "run_id": "20260506T084710Z-b0fbe38-android-file-io-microbench",
+  "schema": "pdocker.test-driver.v1.run",
+  "started_at": "2026-05-06T08:47:10.359477+00:00",
+  "status": "pass"
+}

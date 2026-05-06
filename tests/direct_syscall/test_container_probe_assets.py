@@ -45,6 +45,26 @@ class ContainerProbeAssetsTest(unittest.TestCase):
         self.assertIn('"schema": "pdocker.direct-runtime-probe.v1"', start)
         self.assertIn('grep -q \'"status": "pass"\' /reports/latest.json', dockerfile)
 
+    def test_test_suite_container_runs_scenarios_by_exec_and_exports_documents_logs(self):
+        root = ROOT / "app" / "src" / "main" / "assets" / "project-library" / "pdocker-test-suite"
+        compose = (root / "compose.yaml").read_text()
+        dockerfile = (root / "Dockerfile").read_text()
+        start = (root / "scripts" / "start-pdocker-test-suite.sh").read_text()
+        runner = (root / "scripts" / "run-pdocker-test-suite.sh").read_text()
+        probe = (root / "scripts" / "pdocker-container-probe.sh").read_text()
+        self.assertIn("container_name: pdocker-test-suite", compose)
+        self.assertIn('command: ["/usr/local/bin/start-pdocker-test-suite"]', compose)
+        self.assertIn("${PDOCKER_DOCUMENTS_HOST:-./documents}:${PDOCKER_DOCUMENTS_MOUNT:-/documents}", compose)
+        self.assertIn("COPY scripts/pdocker-container-probe.sh", dockerfile)
+        self.assertIn("docker exec pdocker-test-suite run-pdocker-test-suite", start)
+        self.assertIn("--scenario all|smoke|direct|io|archive|documents", runner)
+        self.assertIn("run_selected_case direct_runtime_probe direct", runner)
+        self.assertIn("run_selected_case file_io_smoke io", runner)
+        self.assertIn("run_selected_case archive_roundtrip archive", runner)
+        self.assertIn("/documents/pdocker-exports", runner)
+        self.assertIn('"schema": "pdocker.test-suite.v1"', runner)
+        self.assertIn("test_argv_preservation", probe)
+
     def test_generic_runner_does_not_require_adb_or_apk_build(self):
         text = (ROOT / "scripts" / "container-direct-probe.sh").read_text()
         self.assertIn("pdocker-direct compatible", text)

@@ -1,241 +1,1504 @@
 {
   "comparisons": [
     {
-      "container_bytes": 262144,
-      "container_ms": 0.302291,
-      "container_ops": 64,
-      "label": "seq_write",
-      "native_bytes": 262144,
-      "native_ms": 1.119375,
-      "native_ops": 64,
-      "overhead_ms": -0.817084,
-      "overhead_ms_per_op": -0.0127669375,
-      "ratio": 0.2700533780011167,
-      "target_met": true
+      "app_bind_overhead_ms": 23.180155,
+      "app_bind_overhead_ms_per_op": 0.023180155,
+      "app_bind_ratio": 5.624181073580841,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 28.192968,
+      "container_app_bind_ops": 1000,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 45.586198,
+      "container_documents_bind_ops": 1000,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 34.103698,
+      "container_rootfs_ops": 1000,
+      "documents_bind_overhead_ms": 42.471094,
+      "documents_bind_overhead_ms_per_op": 0.042471094,
+      "documents_bind_ratio": 14.633924902667777,
+      "documents_bind_target_met": true,
+      "label": "open_close",
+      "native_app_bytes": 0,
+      "native_app_ms": 5.012813,
+      "native_app_ops": 1000,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 3.115104,
+      "native_documents_ops": 1000,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 2.219532,
+      "native_rootfs_ops": 1000,
+      "rootfs_overhead_ms": 31.884166,
+      "rootfs_overhead_ms_per_op": 0.031884166,
+      "rootfs_ratio": 15.365265290160268,
+      "rootfs_target_met": true
     },
     {
-      "container_bytes": 262144,
-      "container_ms": 0.080677,
-      "container_ops": 64,
-      "label": "seq_read",
-      "native_bytes": 262144,
-      "native_ms": 0.135,
-      "native_ops": 64,
-      "overhead_ms": -0.05432300000000001,
-      "overhead_ms_per_op": -0.0008487968750000002,
-      "ratio": 0.5976074074074074,
-      "target_met": true
+      "app_bind_overhead_ms": 34.915781,
+      "app_bind_overhead_ms_per_op": 0.034915781,
+      "app_bind_ratio": 9.672371037536632,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 38.941875,
+      "container_app_bind_ops": 1000,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 29.758386,
+      "container_documents_bind_ops": 1000,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 58.549948,
+      "container_rootfs_ops": 1000,
+      "documents_bind_overhead_ms": 27.213438,
+      "documents_bind_overhead_ms_per_op": 0.027213438,
+      "documents_bind_ratio": 11.693121431164801,
+      "documents_bind_target_met": true,
+      "label": "openat_only",
+      "native_app_bytes": 0,
+      "native_app_ms": 4.026094,
+      "native_app_ops": 1000,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 2.544948,
+      "native_documents_ops": 1000,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 1.762708,
+      "native_rootfs_ops": 1000,
+      "rootfs_overhead_ms": 56.78724,
+      "rootfs_overhead_ms_per_op": 0.056787239999999996,
+      "rootfs_ratio": 33.21590870410755,
+      "rootfs_target_met": true
     },
     {
-      "container_bytes": 2048,
-      "container_ms": 4.284792,
-      "container_ops": 64,
+      "app_bind_overhead_ms": -0.282656,
+      "app_bind_overhead_ms_per_op": -0.000282656,
+      "app_bind_ratio": 0.6966295632052153,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 0.649063,
+      "container_app_bind_ops": 1000,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 0.699635,
+      "container_documents_bind_ops": 1000,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 0.637969,
+      "container_rootfs_ops": 1000,
+      "documents_bind_overhead_ms": 0.206615,
+      "documents_bind_overhead_ms_per_op": 0.000206615,
+      "documents_bind_ratio": 1.4190803618514463,
+      "documents_bind_target_met": true,
+      "label": "close_only",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.931719,
+      "native_app_ops": 1000,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.49302,
+      "native_documents_ops": 1000,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.507031,
+      "native_rootfs_ops": 1000,
+      "rootfs_overhead_ms": 0.130938,
+      "rootfs_overhead_ms_per_op": 0.00013093799999999999,
+      "rootfs_ratio": 1.2582445649279828,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 56.620416000000006,
+      "app_bind_overhead_ms_per_op": 0.05662041600000001,
+      "app_bind_ratio": 60.685505446710366,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 57.569062,
+      "container_app_bind_ops": 1000,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 56.488958,
+      "container_documents_bind_ops": 1000,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 36.622187,
+      "container_rootfs_ops": 1000,
+      "documents_bind_overhead_ms": 54.836301999999996,
+      "documents_bind_overhead_ms_per_op": 0.054836301999999996,
+      "documents_bind_ratio": 34.18071153343467,
+      "documents_bind_target_met": true,
+      "label": "stat_same",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.948646,
+      "native_app_ops": 1000,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 1.652656,
+      "native_documents_ops": 1000,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.836094,
+      "native_rootfs_ops": 1000,
+      "rootfs_overhead_ms": 35.786092999999994,
+      "rootfs_overhead_ms_per_op": 0.03578609299999999,
+      "rootfs_ratio": 43.801518728755376,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": -0.0008850000000000247,
+      "app_bind_overhead_ms_per_op": -8.850000000000247e-07,
+      "app_bind_ratio": 0.9964797976181952,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 0.250521,
+      "container_app_bind_ops": 1000,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 0.251354,
+      "container_documents_bind_ops": 1000,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 0.287969,
+      "container_rootfs_ops": 1000,
+      "documents_bind_overhead_ms": 0.011615000000000014,
+      "documents_bind_overhead_ms_per_op": 1.1615000000000015e-05,
+      "documents_bind_ratio": 1.0484485211000296,
+      "documents_bind_target_met": true,
+      "label": "fstat_only",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.251406,
+      "native_app_ops": 1000,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.239739,
+      "native_documents_ops": 1000,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.252812,
+      "native_rootfs_ops": 1000,
+      "rootfs_overhead_ms": 0.035156999999999994,
+      "rootfs_overhead_ms_per_op": 3.5156999999999996e-05,
+      "rootfs_ratio": 1.139063810262171,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 0.010624999999999996,
+      "app_bind_overhead_ms_per_op": 1.0624999999999996e-05,
+      "app_bind_ratio": 1.0588065996225309,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 0.191302,
+      "container_app_bind_ops": 1000,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 0.191927,
+      "container_documents_bind_ops": 1000,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 0.191458,
+      "container_rootfs_ops": 1000,
+      "documents_bind_overhead_ms": 0.02395799999999998,
+      "documents_bind_overhead_ms_per_op": 2.395799999999998e-05,
+      "documents_bind_ratio": 1.14263346212694,
+      "documents_bind_target_met": true,
+      "label": "lseek_only",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.180677,
+      "native_app_ops": 1000,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.167969,
+      "native_documents_ops": 1000,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.180416,
+      "native_rootfs_ops": 1000,
+      "rootfs_overhead_ms": 0.011041999999999996,
+      "rootfs_overhead_ms_per_op": 1.1041999999999997e-05,
+      "rootfs_ratio": 1.06120299751685,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": -0.006823999999999997,
+      "app_bind_overhead_ms_per_op": -0.0004264999999999998,
+      "app_bind_ratio": 0.913116549107484,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 65536,
+      "container_app_bind_ms": 0.071718,
+      "container_app_bind_ops": 16,
+      "container_documents_bind_bytes": 65536,
+      "container_documents_bind_ms": 0.615521,
+      "container_documents_bind_ops": 16,
+      "container_rootfs_bytes": 65536,
+      "container_rootfs_ms": 0.073906,
+      "container_rootfs_ops": 16,
+      "documents_bind_overhead_ms": 0.53,
+      "documents_bind_overhead_ms_per_op": 0.033125,
+      "documents_bind_ratio": 7.197308263467452,
+      "documents_bind_target_met": true,
+      "label": "write_only",
+      "native_app_bytes": 65536,
+      "native_app_ms": 0.078542,
+      "native_app_ops": 16,
+      "native_documents_bytes": 65536,
+      "native_documents_ms": 0.085521,
+      "native_documents_ops": 16,
+      "native_rootfs_bytes": 65536,
+      "native_rootfs_ms": 0.070885,
+      "native_rootfs_ops": 16,
+      "rootfs_overhead_ms": 0.003020999999999996,
+      "rootfs_overhead_ms_per_op": 0.00018881249999999974,
+      "rootfs_ratio": 1.0426183254567256,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 0.0003119999999999998,
+      "app_bind_overhead_ms_per_op": 1.9499999999999986e-05,
+      "app_bind_ratio": 1.021018593371059,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 65536,
+      "container_app_bind_ms": 0.015156,
+      "container_app_bind_ops": 16,
+      "container_documents_bind_bytes": 65536,
+      "container_documents_bind_ms": 0.019062,
+      "container_documents_bind_ops": 16,
+      "container_rootfs_bytes": 65536,
+      "container_rootfs_ms": 0.015104,
+      "container_rootfs_ops": 16,
+      "documents_bind_overhead_ms": 0.003592999999999999,
+      "documents_bind_overhead_ms_per_op": 0.00022456249999999994,
+      "documents_bind_ratio": 1.2322709936001033,
+      "documents_bind_target_met": true,
+      "label": "read_only",
+      "native_app_bytes": 65536,
+      "native_app_ms": 0.014844,
+      "native_app_ops": 16,
+      "native_documents_bytes": 65536,
+      "native_documents_ms": 0.015469,
+      "native_documents_ops": 16,
+      "native_rootfs_bytes": 65536,
+      "native_rootfs_ms": 0.013594,
+      "native_rootfs_ops": 16,
+      "rootfs_overhead_ms": 0.0015099999999999992,
+      "rootfs_overhead_ms_per_op": 9.437499999999995e-05,
+      "rootfs_ratio": 1.1110784169486538,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 5.609271,
+      "app_bind_overhead_ms_per_op": 0.17528971875,
+      "app_bind_ratio": 145.7553806451613,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 5.648021,
+      "container_app_bind_ops": 32,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 12.455781,
+      "container_documents_bind_ops": 32,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 0.946042,
+      "container_rootfs_ops": 32,
+      "documents_bind_overhead_ms": 12.395,
+      "documents_bind_overhead_ms_per_op": 0.38734375,
+      "documents_bind_ratio": 204.92885934749344,
+      "documents_bind_target_met": true,
+      "label": "chmod_same",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.03875,
+      "native_app_ops": 32,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.060781,
+      "native_documents_ops": 32,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.032864,
+      "native_rootfs_ops": 32,
+      "rootfs_overhead_ms": 0.913178,
+      "rootfs_overhead_ms_per_op": 0.0285368125,
+      "rootfs_ratio": 28.786574975657256,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 10.960469,
+      "app_bind_overhead_ms_per_op": 0.171257328125,
+      "app_bind_ratio": 27.242814660869232,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 11.378125,
+      "container_app_bind_ops": 64,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 15.381719,
+      "container_documents_bind_ops": 64,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 8.307656,
+      "container_rootfs_ops": 64,
+      "documents_bind_overhead_ms": 14.785052,
+      "documents_bind_overhead_ms_per_op": 0.2310164375,
+      "documents_bind_ratio": 25.779402916534686,
+      "documents_bind_target_met": true,
+      "label": "rename_pair",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.417656,
+      "native_app_ops": 64,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.596667,
+      "native_documents_ops": 64,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.428959,
+      "native_rootfs_ops": 64,
+      "rootfs_overhead_ms": 7.878697,
+      "rootfs_overhead_ms_per_op": 0.123104640625,
+      "rootfs_ratio": 19.367016428143483,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 3.3823960000000004,
+      "app_bind_overhead_ms_per_op": 0.052849937500000006,
+      "app_bind_ratio": 5.206091777070903,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 4.186562,
+      "container_app_bind_ops": 64,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 3.046406,
+      "container_documents_bind_ops": 64,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 9.920417,
+      "container_rootfs_ops": 64,
+      "documents_bind_overhead_ms": 2.147239,
+      "documents_bind_overhead_ms_per_op": 0.033550609375,
+      "documents_bind_ratio": 3.3880313668095026,
+      "documents_bind_target_met": true,
+      "label": "mkdir_rmdir_pair",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.804166,
+      "native_app_ops": 64,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.899167,
+      "native_documents_ops": 64,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.908594,
+      "native_rootfs_ops": 64,
+      "rootfs_overhead_ms": 9.011823,
+      "rootfs_overhead_ms_per_op": 0.140809734375,
+      "rootfs_ratio": 10.918426712040802,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 3.2766659999999996,
+      "app_bind_overhead_ms_per_op": 0.051197906249999994,
+      "app_bind_ratio": 5.053864863995487,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 4.084948,
+      "container_app_bind_ops": 64,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 14.827813,
+      "container_documents_bind_ops": 64,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 11.532031,
+      "container_rootfs_ops": 64,
+      "documents_bind_overhead_ms": 13.902969,
+      "documents_bind_overhead_ms_per_op": 0.217233890625,
+      "documents_bind_ratio": 16.03277201344227,
+      "documents_bind_target_met": true,
+      "label": "symlink_unlink_pair",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.808282,
+      "native_app_ops": 64,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.924844,
+      "native_documents_ops": 64,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.888177,
+      "native_rootfs_ops": 64,
+      "rootfs_overhead_ms": 10.643854,
+      "rootfs_overhead_ms_per_op": 0.16631021875,
+      "rootfs_ratio": 12.983933382647828,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 0.692083,
+      "app_bind_overhead_ms_per_op": 0.02162759375,
+      "app_bind_ratio": 24.435813213233548,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 0.721614,
+      "container_app_bind_ops": 32,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 0.558437,
+      "container_documents_bind_ops": 32,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 1.069844,
+      "container_rootfs_ops": 32,
+      "documents_bind_overhead_ms": 0.5000509999999999,
+      "documents_bind_overhead_ms_per_op": 0.015626593749999997,
+      "documents_bind_ratio": 9.564570273695749,
+      "documents_bind_target_met": true,
+      "label": "readlink_only",
+      "native_app_bytes": 0,
+      "native_app_ms": 0.029531,
+      "native_app_ops": 32,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.058386,
+      "native_documents_ops": 32,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.039739,
+      "native_rootfs_ops": 32,
+      "rootfs_overhead_ms": 1.030105,
+      "rootfs_overhead_ms_per_op": 0.03219078125,
+      "rootfs_ratio": 26.921764513450267,
+      "rootfs_target_met": true
+    },
+    {
+      "app_bind_overhead_ms": 0.8884369999999999,
+      "app_bind_overhead_ms_per_op": 0.027763656249999998,
+      "app_bind_ratio": 2.040628989751098,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 1024,
+      "container_app_bind_ms": 1.742187,
+      "container_app_bind_ops": 32,
+      "container_documents_bind_bytes": 1024,
+      "container_documents_bind_ms": 5.032656,
+      "container_documents_bind_ops": 32,
+      "container_rootfs_bytes": 1024,
+      "container_rootfs_ms": 2.966719,
+      "container_rootfs_ops": 32,
+      "documents_bind_overhead_ms": 4.0984370000000006,
+      "documents_bind_overhead_ms_per_op": 0.12807615625000002,
+      "documents_bind_ratio": 5.387019531822839,
+      "documents_bind_target_met": true,
       "label": "small_create",
-      "native_bytes": 2048,
-      "native_ms": 4.02776,
-      "native_ops": 64,
-      "overhead_ms": 0.2570320000000006,
-      "overhead_ms_per_op": 0.004016125000000009,
-      "ratio": 1.0638151230460604,
-      "target_met": true
+      "native_app_bytes": 1024,
+      "native_app_ms": 0.85375,
+      "native_app_ops": 32,
+      "native_documents_bytes": 1024,
+      "native_documents_ms": 0.934219,
+      "native_documents_ops": 32,
+      "native_rootfs_bytes": 1024,
+      "native_rootfs_ms": 0.842812,
+      "native_rootfs_ops": 32,
+      "rootfs_overhead_ms": 2.123907,
+      "rootfs_overhead_ms_per_op": 0.06637209375,
+      "rootfs_ratio": 3.5200246318277384,
+      "rootfs_target_met": true
     },
     {
-      "container_bytes": 0,
-      "container_ms": 1.481407,
-      "container_ops": 64,
+      "app_bind_overhead_ms": 0.5795319999999999,
+      "app_bind_overhead_ms_per_op": 0.018110374999999998,
+      "app_bind_ratio": 16.390163586148287,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 0.617188,
+      "container_app_bind_ops": 32,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 2.566094,
+      "container_documents_bind_ops": 32,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 8.167344,
+      "container_rootfs_ops": 32,
+      "documents_bind_overhead_ms": 2.50349,
+      "documents_bind_overhead_ms_per_op": 0.0782340625,
+      "documents_bind_ratio": 40.98929780844674,
+      "documents_bind_target_met": true,
       "label": "small_stat",
-      "native_bytes": 0,
-      "native_ms": 0.191927,
-      "native_ops": 64,
-      "overhead_ms": 1.28948,
-      "overhead_ms_per_op": 0.020148125,
-      "ratio": 7.718596132904699,
-      "target_met": true
+      "native_app_bytes": 0,
+      "native_app_ms": 0.037656,
+      "native_app_ops": 32,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.062604,
+      "native_documents_ops": 32,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.032969,
+      "native_rootfs_ops": 32,
+      "rootfs_overhead_ms": 8.134375,
+      "rootfs_overhead_ms_per_op": 0.25419921875,
+      "rootfs_ratio": 247.72798689678183,
+      "rootfs_target_met": true
     },
     {
-      "container_bytes": 2048,
-      "container_ms": 1.746875,
-      "container_ops": 64,
+      "app_bind_overhead_ms": 0.6361460000000001,
+      "app_bind_overhead_ms_per_op": 0.019879562500000003,
+      "app_bind_ratio": 7.645279904731065,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 1024,
+      "container_app_bind_ms": 0.731875,
+      "container_app_bind_ops": 32,
+      "container_documents_bind_bytes": 1024,
+      "container_documents_bind_ms": 3.201667,
+      "container_documents_bind_ops": 32,
+      "container_rootfs_bytes": 1024,
+      "container_rootfs_ms": 1.341355,
+      "container_rootfs_ops": 32,
+      "documents_bind_overhead_ms": 3.075052,
+      "documents_bind_overhead_ms_per_op": 0.096095375,
+      "documents_bind_ratio": 25.28663270544564,
+      "documents_bind_target_met": true,
       "label": "small_read",
-      "native_bytes": 2048,
-      "native_ms": 0.599531,
-      "native_ops": 64,
-      "overhead_ms": 1.147344,
-      "overhead_ms_per_op": 0.01792725,
-      "ratio": 2.9137359035646195,
-      "target_met": true
+      "native_app_bytes": 1024,
+      "native_app_ms": 0.095729,
+      "native_app_ops": 32,
+      "native_documents_bytes": 1024,
+      "native_documents_ms": 0.126615,
+      "native_documents_ops": 32,
+      "native_rootfs_bytes": 1024,
+      "native_rootfs_ms": 0.102344,
+      "native_rootfs_ops": 32,
+      "rootfs_overhead_ms": 1.239011,
+      "rootfs_overhead_ms_per_op": 0.03871909375,
+      "rootfs_ratio": 13.106337450168061,
+      "rootfs_target_met": true
     },
     {
-      "container_bytes": 0,
-      "container_ms": 6.395417,
-      "container_ops": 65,
+      "app_bind_overhead_ms": 1.433281,
+      "app_bind_overhead_ms_per_op": 0.03873732432432433,
+      "app_bind_ratio": 3.476511447084233,
+      "app_bind_target_met": true,
+      "container_app_bind_bytes": 0,
+      "container_app_bind_ms": 2.012031,
+      "container_app_bind_ops": 37,
+      "container_documents_bind_bytes": 0,
+      "container_documents_bind_ms": 2.211042,
+      "container_documents_bind_ops": 37,
+      "container_rootfs_bytes": 0,
+      "container_rootfs_ms": 3.876198,
+      "container_rootfs_ops": 37,
+      "documents_bind_overhead_ms": 1.6735419999999999,
+      "documents_bind_overhead_ms_per_op": 0.04523086486486486,
+      "documents_bind_ratio": 4.113566511627907,
+      "documents_bind_target_met": true,
       "label": "unlink",
-      "native_bytes": 0,
-      "native_ms": 2.48375,
-      "native_ops": 65,
-      "overhead_ms": 3.911667,
-      "overhead_ms_per_op": 0.06017949230769231,
-      "ratio": 2.5749036738802213,
-      "target_met": true
+      "native_app_bytes": 0,
+      "native_app_ms": 0.57875,
+      "native_app_ops": 37,
+      "native_documents_bytes": 0,
+      "native_documents_ms": 0.5375,
+      "native_documents_ops": 37,
+      "native_rootfs_bytes": 0,
+      "native_rootfs_ms": 0.527604,
+      "native_rootfs_ops": 37,
+      "rootfs_overhead_ms": 3.3485940000000003,
+      "rootfs_overhead_ms_per_op": 0.09050254054054055,
+      "rootfs_ratio": 7.346794186549003,
+      "rootfs_target_met": true
     }
   ],
   "contexts": [
-    "device=10.8.135.134:39827;files=64;blocks=64;block_size=4096;fsync=0;trace_mode=seccomp",
-    "rootfs=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs;workload=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs/tmp/pdocker_fileio_microbench;direct=pdocker/bench/pdocker-direct-microbench"
+    "device=10.8.135.134:40455;files=32;blocks=16;block_size=4096;fsync=0;open_close=1000;trace_mode=seccomp",
+    "rootfs=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs;workload=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs/tmp/pdocker_fileio_microbench;app_workload=pdocker/bench/pdocker_fileio_microbench;direct=pdocker/bench/pdocker-direct-microbench;documents_host=/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/documents-saf-mediated/mirror"
   ],
-  "device_serial": "10.8.135.134:39827",
+  "device_serial": "10.8.135.134:40455",
   "events": [
     {
       "raw_tail": [],
       "rc": 0,
       "results": [
         {
-          "bytes": 262144,
-          "elapsed_ms": 1.119375,
-          "label": "seq_write",
+          "bytes": 0,
+          "elapsed_ms": 5.012813,
+          "label": "open_close",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 4.026094,
+          "label": "openat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.931719,
+          "label": "close_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.948646,
+          "label": "stat_same",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.251406,
+          "label": "fstat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.180677,
+          "label": "lseek_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.078542,
+          "label": "write_only",
+          "ops": 16
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.014844,
+          "label": "read_only",
+          "ops": 16
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.03875,
+          "label": "chmod_same",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.417656,
+          "label": "rename_pair",
           "ops": 64
         },
         {
-          "bytes": 262144,
-          "elapsed_ms": 0.135,
-          "label": "seq_read",
+          "bytes": 0,
+          "elapsed_ms": 0.804166,
+          "label": "mkdir_rmdir_pair",
           "ops": 64
         },
         {
-          "bytes": 2048,
-          "elapsed_ms": 4.02776,
+          "bytes": 0,
+          "elapsed_ms": 0.808282,
+          "label": "symlink_unlink_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.029531,
+          "label": "readlink_only",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 0.85375,
           "label": "small_create",
-          "ops": 64
+          "ops": 32
         },
         {
           "bytes": 0,
-          "elapsed_ms": 0.191927,
+          "elapsed_ms": 0.037656,
           "label": "small_stat",
-          "ops": 64
+          "ops": 32
         },
         {
-          "bytes": 2048,
-          "elapsed_ms": 0.599531,
+          "bytes": 1024,
+          "elapsed_ms": 0.095729,
           "label": "small_read",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.57875,
+          "label": "unlink",
+          "ops": 37
+        }
+      ],
+      "scope": "native_app"
+    },
+    {
+      "raw_tail": [],
+      "rc": 0,
+      "results": [
+        {
+          "bytes": 0,
+          "elapsed_ms": 2.219532,
+          "label": "open_close",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 1.762708,
+          "label": "openat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.507031,
+          "label": "close_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.836094,
+          "label": "stat_same",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.252812,
+          "label": "fstat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.180416,
+          "label": "lseek_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.070885,
+          "label": "write_only",
+          "ops": 16
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.013594,
+          "label": "read_only",
+          "ops": 16
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.032864,
+          "label": "chmod_same",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.428959,
+          "label": "rename_pair",
           "ops": 64
         },
         {
           "bytes": 0,
-          "elapsed_ms": 2.48375,
+          "elapsed_ms": 0.908594,
+          "label": "mkdir_rmdir_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.888177,
+          "label": "symlink_unlink_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.039739,
+          "label": "readlink_only",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 0.842812,
+          "label": "small_create",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.032969,
+          "label": "small_stat",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 0.102344,
+          "label": "small_read",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.527604,
           "label": "unlink",
-          "ops": 65
+          "ops": 37
         }
       ],
       "scope": "native_rootfs"
     },
     {
-      "direct_stops": 264,
+      "direct_stops": 4603,
       "raw_tail": [
-        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.020s stops=264",
-        "pdocker-direct-stats: #1 nr=56(openat) count=130",
-        "pdocker-direct-stats: #2 nr=35(unlinkat) count=65",
-        "pdocker-direct-stats: #3 nr=79(newfstatat) count=64",
-        "pdocker-direct-stats: #4 nr=34(mkdirat) count=1",
-        "pdocker-direct-stats: #5 nr=78(readlinkat) count=1",
-        "pdocker-direct-stats: #6 nr=221(execve) count=1"
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.222s stops=4603",
+        "pdocker-direct-stats: #1 nr=56(openat) count=3072",
+        "pdocker-direct-stats: #2 nr=79(newfstatat) count=1032",
+        "pdocker-direct-stats: #3 nr=35(unlinkat) count=102",
+        "pdocker-direct-stats: #4 nr=38(renameat) count=64",
+        "pdocker-direct-stats: #5 nr=34(mkdirat) count=33",
+        "pdocker-direct-stats: #6 nr=36(symlinkat) count=33",
+        "pdocker-direct-stats: #7 nr=78(readlinkat) count=33",
+        "pdocker-direct-stats: #8 nr=53(fchmodat) count=32",
+        "pdocker-direct-stats: #9 nr=221(execve) count=1"
       ],
       "rc": 0,
       "results": [
         {
-          "bytes": 262144,
-          "elapsed_ms": 0.302291,
-          "label": "seq_write",
+          "bytes": 0,
+          "elapsed_ms": 34.103698,
+          "label": "open_close",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 58.549948,
+          "label": "openat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.637969,
+          "label": "close_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 36.622187,
+          "label": "stat_same",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.287969,
+          "label": "fstat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.191458,
+          "label": "lseek_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.073906,
+          "label": "write_only",
+          "ops": 16
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.015104,
+          "label": "read_only",
+          "ops": 16
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.946042,
+          "label": "chmod_same",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 8.307656,
+          "label": "rename_pair",
           "ops": 64
         },
         {
-          "bytes": 262144,
-          "elapsed_ms": 0.080677,
-          "label": "seq_read",
+          "bytes": 0,
+          "elapsed_ms": 9.920417,
+          "label": "mkdir_rmdir_pair",
           "ops": 64
         },
         {
-          "bytes": 2048,
-          "elapsed_ms": 4.284792,
+          "bytes": 0,
+          "elapsed_ms": 11.532031,
+          "label": "symlink_unlink_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 1.069844,
+          "label": "readlink_only",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 2.966719,
           "label": "small_create",
-          "ops": 64
+          "ops": 32
         },
         {
           "bytes": 0,
-          "elapsed_ms": 1.481407,
+          "elapsed_ms": 8.167344,
           "label": "small_stat",
-          "ops": 64
+          "ops": 32
         },
         {
-          "bytes": 2048,
-          "elapsed_ms": 1.746875,
+          "bytes": 1024,
+          "elapsed_ms": 1.341355,
           "label": "small_read",
-          "ops": 64
+          "ops": 32
         },
         {
           "bytes": 0,
-          "elapsed_ms": 6.395417,
+          "elapsed_ms": 3.876198,
           "label": "unlink",
-          "ops": 65
+          "ops": 37
         }
       ],
       "scope": "container_rootfs",
       "top_syscalls": [
         {
-          "count": 130,
+          "count": 3072,
           "name": "openat",
           "nr": 56,
           "rank": 1
         },
         {
-          "count": 65,
-          "name": "unlinkat",
-          "nr": 35,
+          "count": 1032,
+          "name": "newfstatat",
+          "nr": 79,
           "rank": 2
         },
         {
-          "count": 64,
-          "name": "newfstatat",
-          "nr": 79,
+          "count": 102,
+          "name": "unlinkat",
+          "nr": 35,
           "rank": 3
         },
         {
-          "count": 1,
-          "name": "mkdirat",
-          "nr": 34,
+          "count": 64,
+          "name": "renameat",
+          "nr": 38,
           "rank": 4
         },
         {
-          "count": 1,
+          "count": 33,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 5
+        },
+        {
+          "count": 33,
+          "name": "symlinkat",
+          "nr": 36,
+          "rank": 6
+        },
+        {
+          "count": 33,
           "name": "readlinkat",
           "nr": 78,
-          "rank": 5
+          "rank": 7
+        },
+        {
+          "count": 32,
+          "name": "fchmodat",
+          "nr": 53,
+          "rank": 8
         },
         {
           "count": 1,
           "name": "execve",
           "nr": 221,
+          "rank": 9
+        }
+      ]
+    },
+    {
+      "direct_stops": 4603,
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.189s stops=4603",
+        "pdocker-direct-stats: #1 nr=56(openat) count=3072",
+        "pdocker-direct-stats: #2 nr=79(newfstatat) count=1032",
+        "pdocker-direct-stats: #3 nr=35(unlinkat) count=102",
+        "pdocker-direct-stats: #4 nr=38(renameat) count=64",
+        "pdocker-direct-stats: #5 nr=34(mkdirat) count=33",
+        "pdocker-direct-stats: #6 nr=36(symlinkat) count=33",
+        "pdocker-direct-stats: #7 nr=78(readlinkat) count=33",
+        "pdocker-direct-stats: #8 nr=53(fchmodat) count=32",
+        "pdocker-direct-stats: #9 nr=221(execve) count=1"
+      ],
+      "rc": 0,
+      "results": [
+        {
+          "bytes": 0,
+          "elapsed_ms": 28.192968,
+          "label": "open_close",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 38.941875,
+          "label": "openat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.649063,
+          "label": "close_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 57.569062,
+          "label": "stat_same",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.250521,
+          "label": "fstat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.191302,
+          "label": "lseek_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.071718,
+          "label": "write_only",
+          "ops": 16
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.015156,
+          "label": "read_only",
+          "ops": 16
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 5.648021,
+          "label": "chmod_same",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 11.378125,
+          "label": "rename_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 4.186562,
+          "label": "mkdir_rmdir_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 4.084948,
+          "label": "symlink_unlink_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.721614,
+          "label": "readlink_only",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 1.742187,
+          "label": "small_create",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.617188,
+          "label": "small_stat",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 0.731875,
+          "label": "small_read",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 2.012031,
+          "label": "unlink",
+          "ops": 37
+        }
+      ],
+      "scope": "container_app_bind",
+      "top_syscalls": [
+        {
+          "count": 3072,
+          "name": "openat",
+          "nr": 56,
+          "rank": 1
+        },
+        {
+          "count": 1032,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 2
+        },
+        {
+          "count": 102,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 3
+        },
+        {
+          "count": 64,
+          "name": "renameat",
+          "nr": 38,
+          "rank": 4
+        },
+        {
+          "count": 33,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 5
+        },
+        {
+          "count": 33,
+          "name": "symlinkat",
+          "nr": 36,
           "rank": 6
+        },
+        {
+          "count": 33,
+          "name": "readlinkat",
+          "nr": 78,
+          "rank": 7
+        },
+        {
+          "count": 32,
+          "name": "fchmodat",
+          "nr": 53,
+          "rank": 8
+        },
+        {
+          "count": 1,
+          "name": "execve",
+          "nr": 221,
+          "rank": 9
+        }
+      ]
+    },
+    {
+      "raw_tail": [],
+      "rc": 0,
+      "results": [
+        {
+          "bytes": 0,
+          "elapsed_ms": 3.115104,
+          "label": "open_close",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 2.544948,
+          "label": "openat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.49302,
+          "label": "close_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 1.652656,
+          "label": "stat_same",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.239739,
+          "label": "fstat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.167969,
+          "label": "lseek_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.085521,
+          "label": "write_only",
+          "ops": 16
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.015469,
+          "label": "read_only",
+          "ops": 16
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.060781,
+          "label": "chmod_same",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.596667,
+          "label": "rename_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.899167,
+          "label": "mkdir_rmdir_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.924844,
+          "label": "symlink_unlink_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.058386,
+          "label": "readlink_only",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 0.934219,
+          "label": "small_create",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.062604,
+          "label": "small_stat",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 0.126615,
+          "label": "small_read",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.5375,
+          "label": "unlink",
+          "ops": 37
+        }
+      ],
+      "scope": "native_documents"
+    },
+    {
+      "direct_stops": 4603,
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.239s stops=4603",
+        "pdocker-direct-stats: #1 nr=56(openat) count=3072",
+        "pdocker-direct-stats: #2 nr=79(newfstatat) count=1032",
+        "pdocker-direct-stats: #3 nr=35(unlinkat) count=102",
+        "pdocker-direct-stats: #4 nr=38(renameat) count=64",
+        "pdocker-direct-stats: #5 nr=34(mkdirat) count=33",
+        "pdocker-direct-stats: #6 nr=36(symlinkat) count=33",
+        "pdocker-direct-stats: #7 nr=78(readlinkat) count=33",
+        "pdocker-direct-stats: #8 nr=53(fchmodat) count=32",
+        "pdocker-direct-stats: #9 nr=221(execve) count=1"
+      ],
+      "rc": 0,
+      "results": [
+        {
+          "bytes": 0,
+          "elapsed_ms": 45.586198,
+          "label": "open_close",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 29.758386,
+          "label": "openat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.699635,
+          "label": "close_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 56.488958,
+          "label": "stat_same",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.251354,
+          "label": "fstat_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.191927,
+          "label": "lseek_only",
+          "ops": 1000
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.615521,
+          "label": "write_only",
+          "ops": 16
+        },
+        {
+          "bytes": 65536,
+          "elapsed_ms": 0.019062,
+          "label": "read_only",
+          "ops": 16
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 12.455781,
+          "label": "chmod_same",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 15.381719,
+          "label": "rename_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 3.046406,
+          "label": "mkdir_rmdir_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 14.827813,
+          "label": "symlink_unlink_pair",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.558437,
+          "label": "readlink_only",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 5.032656,
+          "label": "small_create",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 2.566094,
+          "label": "small_stat",
+          "ops": 32
+        },
+        {
+          "bytes": 1024,
+          "elapsed_ms": 3.201667,
+          "label": "small_read",
+          "ops": 32
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 2.211042,
+          "label": "unlink",
+          "ops": 37
+        }
+      ],
+      "scope": "container_documents_bind",
+      "top_syscalls": [
+        {
+          "count": 3072,
+          "name": "openat",
+          "nr": 56,
+          "rank": 1
+        },
+        {
+          "count": 1032,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 2
+        },
+        {
+          "count": 102,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 3
+        },
+        {
+          "count": 64,
+          "name": "renameat",
+          "nr": 38,
+          "rank": 4
+        },
+        {
+          "count": 33,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 5
+        },
+        {
+          "count": 33,
+          "name": "symlinkat",
+          "nr": 36,
+          "rank": 6
+        },
+        {
+          "count": 33,
+          "name": "readlinkat",
+          "nr": 78,
+          "rank": 7
+        },
+        {
+          "count": 32,
+          "name": "fchmodat",
+          "nr": 53,
+          "rank": 8
+        },
+        {
+          "count": 1,
+          "name": "execve",
+          "nr": 221,
+          "rank": 9
         }
       ]
     }
   ],
-  "git_commit": "731919b",
+  "git_commit": "b0fbe38",
+  "git_dirty": true,
+  "git_status": [
+    " M .gitignore",
+    " M app/src/main/assets/project-library/library.json",
+    " M app/src/main/cpp/pdocker_direct_exec.c",
+    " M app/src/main/jniLibs/arm64-v8a/libpdockerdirect.so",
+    " M app/src/main/kotlin/io/github/ryo100794/pdocker/MainActivity.kt",
+    " M app/src/main/kotlin/io/github/ryo100794/pdocker/PdockerdRuntime.kt",
+    " M app/src/main/kotlin/io/github/ryo100794/pdocker/SafDocumentsMediator.kt",
+    " M docker-proot-setup/bin/pdockerd",
+    " M docs/showcase/PROJECT_DASHBOARD.md",
+    " M docs/showcase/WIKI_HOME.md",
+    " M docs/test/README.md",
+    " M docs/test/SCENARIOS.md",
+    " M docs/test/TEST_DESIGN_STANDARD.md",
+    " M docs/test/abnormal-events-latest.json",
+    " M docs/test/file-io-microbench-latest.json",
+    " M docs/test/file-io-microbench-latest.md",
+    " M docs/test/input-validation-latest.json",
+    " M docs/test/refactor-resilience-latest.json",
+    " M docs/test/stress-regression-latest.json",
+    " M docs/test/test-design-criteria-latest.json",
+    " M scripts/android-file-io-microbench.sh",
+    " M scripts/verify-build-profile.py",
+    " M scripts/verify-project-library.py",
+    " M scripts/verify-test-design-criteria.py",
+    " M scripts/verify-ui-actions.py",
+    " M scripts/verify_direct_syscall_contracts.py",
+    " M tests/direct_syscall/test_container_probe_assets.py",
+    " M tests/direct_syscall/test_path_boundary_matrix.py",
+    " M tests/direct_syscall_coverage.json",
+    " M tests/feature_scenarios.json",
+    " M tools/pdocker_fileio_microbench.c",
+    "?? app/src/main/assets/project-library/pdocker-test-suite/",
+    "?? docs/test/path-micro-profile-cached-latest.json",
+    "?? docs/test/path-micro-profile-cached-latest.md",
+    "?? docs/test/path-micro-profile-latest.json",
+    "?? docs/test/path-micro-profile-latest.md",
+    "?? docs/test/python-coverage-latest.json",
+    "?? docs/test/runs/",
+    "?? docs/test/syscall-usecase-profile-latest.json",
+    "?? docs/test/syscall-usecase-profile-latest.md",
+    "?? docs/test/syscall-usecase-profile-syscall-latest.json",
+    "?? docs/test/syscall-usecase-profile-syscall-latest.md",
+    "?? docs/test/test-run-latest.json",
+    "?? scripts/android-direct-path-boundary-probe.sh",
+    "?? scripts/android-syscall-usecase-profile.sh",
+    "?? scripts/android-test-suite-container-exec.sh",
+    "?? scripts/pdocker-test-driver.py",
+    "?? scripts/run-python-coverage.sh",
+    "?? tests/test_driver_manifest.json",
+    "?? tests/test_test_driver.py",
+    "?? tmp/",
+    "?? tools/pdocker_path_boundary_probe.c"
+  ],
   "kind": "pdocker.file-io-microbench",
   "parameters": {
     "block_size": 4096,
-    "blocks": 64,
-    "files": 64,
+    "blocks": 16,
+    "files": 32,
     "fsync": 0,
+    "open_close": 1000,
     "trace_mode": "seccomp"
   },
   "run_rc": 0,
   "schema": 1,
   "summary": {
     "all_rc_zero": true,
-    "max_overhead_ms": 3.911667,
-    "max_overhead_ms_per_op": 0.06017949230769231,
+    "max_overhead_ms_per_op": 0.38734375,
     "target_met": true,
     "target_overhead_ms_per_op": 1.0
   },
-  "timestamp_utc": "2026-05-06T05:17:20.450641+00:00"
+  "timestamp_utc": "2026-05-06T09:11:36.339407+00:00"
 }

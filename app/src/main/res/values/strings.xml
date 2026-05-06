@@ -183,7 +183,14 @@
 
     <string name="section_images">Images</string>
     <string name="action_pull_image">Pull image</string>
-    <string name="detail_pull_image">Open docker pull shell</string>
+    <string name="detail_pull_image">Search or enter an image reference, then pull through the Engine API</string>
+    <string name="dialog_pull_image_title">Pull image</string>
+    <string name="hint_image_reference">Image reference, for example ubuntu:22.04</string>
+    <string name="message_image_reference_required">Enter an image reference to pull.</string>
+    <string name="terminal_pull_image_fmt">pull image: %1$s</string>
+    <string name="label_image_pull_suggestions_fmt">Suggestions for %1$s</string>
+    <string name="message_docker_hub_searching_fmt">Searching Docker Hub for %1$s (%2$s)</string>
+    <string name="message_docker_hub_results_fmt">Added %1$d Docker Hub result(s) for %2$s (%3$s)</string>
     <string name="action_browse_image_files">Browse image files</string>
     <string name="detail_browse_image_files">Inspect pulled rootfs trees</string>
     <string name="action_delete_image_fmt">Delete image %1$s</string>
@@ -199,6 +206,7 @@
     <string name="image_reference_legend_cache">cache/shared layer</string>
     <string name="image_reference_legend_reference">compose/container reference</string>
     <string name="image_storage_detail_fmt">view %1$s / unique image %2$s / shared cache %3$s</string>
+    <string name="image_version_detail_fmt">version/tag %1$s</string>
     <string name="image_reference_image_detail_fmt">view %1$s / unique image %2$s / %3$d layers</string>
     <string name="image_reference_cache_node">Shared layer cache</string>
     <string name="image_reference_cache_detail_fmt">shared %1$s / total layer bytes %2$s / %3$d layers</string>

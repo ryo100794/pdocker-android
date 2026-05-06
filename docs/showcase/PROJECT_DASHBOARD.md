@@ -21,7 +21,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 
 | Signal | Value |
 |---|---:|
-| Project-library templates | 5 |
+| Project-library templates | 6 |
 | TODO done entries | 51 |
 | TODO doing entries | 8 |
 | TODO next entries | 35 |
@@ -34,6 +34,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 |---|---|---|---|---|
 | dev-workspace | pdocker Management Workspace + code-server + Codex | pdocker-management | vulkan-cuda-compat | pdocker-management, project-creation, project-maintenance, build-compose, engine-socket-helpers |
 | direct-runtime-probe | pdocker Direct Runtime Probe | runtime-test | none | pdocker-direct, runtime-test, argv-preservation, memory-guard, container-probe |
+| pdocker-test-suite | pdocker Test Suite | runtime-test | none | test-suite, docker-exec, documents-reports, direct-runtime, file-io |
 | llama-cpp-gpu | llama.cpp GPU workspace | ai-runtime | auto | llama.cpp, vulkan, cuda-compat, cpu-fallback, gguf-models |
 | ros2-humble-rviz-novnc | ROS 2 Humble RViz noVNC | robotics | none | ros2-humble, rviz, xvnc, novnc, websockify |
 | blender-xvnc-novnc | Blender Xvnc noVNC | graphics | future-vulkan-zink | blender, opengl, glsl, xvnc, novnc |
