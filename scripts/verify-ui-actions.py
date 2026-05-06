@@ -351,7 +351,7 @@ def main() -> int:
 
     require("interactive terminal font remains 12pt", "const initialFontSize = readOnly ? 8 : 12" in xterm_src and "fontSize: initialFontSize" in xterm_src)
     require("terminal shortcut key palette is present", 'id="keybar"' in xterm_src and 'data-toggle="ctrl"' in xterm_src)
-    require("terminal input normalizes ime enter and releases one-shot modifiers", "normalizeTerminalInput" in xterm_src and "replace(/\\r\\n/g, '\\r').replace(/\\n/g, '\\r')" in xterm_src and "clearTransientModifiers" in xterm_src and "window.pdockerTestSendInput" in xterm_src and "window.pdockerTestCtrlInput" in xterm_src and "pdocker-ui-it-ctrlc-ok" in main_src)
+    require("terminal input normalizes ime enter and releases one-shot modifiers", "normalizeTerminalInput" in xterm_src and "replace(/\\r\\n/g, '\\r').replace(/\\n/g, '\\r')" in xterm_src and "clearTransientModifiers" in xterm_src and "scheduleModifierClear" in xterm_src and "installHelperInputFallback" in xterm_src and "inputType === 'insertLineBreak'" in xterm_src and "window.pdockerTestSendInput" in xterm_src and "window.pdockerTestCtrlInput" in xterm_src and "pdocker-ui-it-ctrlc-ok" in main_src)
     require("terminal supports pinch zoom", "setFontSize" in xterm_src and "event.touches.length === 2" in xterm_src)
     require("terminal touch scroll remains available", "viewport.scrollTop -= deltaY" in xterm_src and "touchScroll" in xterm_src and "touchScrollThreshold" in xterm_src)
     require("terminal shows touch selection markers", "selection-handle" in xterm_src and "term.select(" in xterm_src and "data-toggle=\"select\"" in xterm_src)

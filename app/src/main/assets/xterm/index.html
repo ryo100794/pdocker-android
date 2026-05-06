@@ -403,7 +403,17 @@
     if (data == null) return '';
     return data.replace(/\r\n/g, '\r').replace(/\n/g, '\r');
   };
+  let modifierClearTimer = null;
+  const scheduleModifierClear = () => {
+    clearTimeout(modifierClearTimer);
+    if (!mods.ctrl && !mods.alt && !mods.esc) return;
+    modifierClearTimer = setTimeout(() => {
+      clearTransientModifiers();
+    }, 4000);
+  };
   const clearTransientModifiers = () => {
+    clearTimeout(modifierClearTimer);
+    modifierClearTimer = null;
     if (!mods.ctrl && !mods.alt && !mods.esc) return;
     mods.ctrl = false;
     mods.alt = false;
@@ -436,9 +446,12 @@
     if (readOnly) return;
     const normalized = normalizeTerminalInput(data);
     const payload = raw ? normalized : applyModifiers(normalized);
-    if (!payload) return;
-    PdockerBridge.input(toB64(enc.encode(payload)));
-    clearTransientModifiers();
+    try {
+      if (!payload) return;
+      PdockerBridge.input(toB64(enc.encode(payload)));
+    } finally {
+      clearTransientModifiers();
+    }
   };
   window.pdockerTestSendInput = sendInput;
   window.pdockerTestCtrlInput = (data) => {
@@ -479,6 +492,7 @@
         }
       }
       refreshModifiers();
+      scheduleModifierClear();
       focusTerm();
       return;
     }
@@ -544,6 +558,45 @@
       ta.removeAttribute('disabled');
       ta.setAttribute('inputmode', 'text');
     }
+  };
+
+  const installHelperInputFallback = () => {
+    const ta = helperTextarea();
+    if (!ta || ta.dataset.pdockerFallback === '1') return;
+    ta.dataset.pdockerFallback = '1';
+    ta.addEventListener('beforeinput', (event) => {
+      if (readOnly || selectionSuppressesIme()) return;
+      if (event.inputType === 'insertLineBreak') {
+        event.preventDefault();
+        sendInput('\r', true);
+        ta.value = '';
+        return;
+      }
+      if ((mods.ctrl || mods.alt || mods.esc) && event.data) {
+        event.preventDefault();
+        sendInput(event.data, false);
+        ta.value = '';
+      }
+    }, true);
+    ta.addEventListener('keydown', (event) => {
+      if (readOnly || selectionSuppressesIme()) return;
+      if ((mods.ctrl || mods.alt || mods.esc) && event.key && event.key.length === 1) {
+        event.preventDefault();
+        sendInput(event.key, false);
+        ta.value = '';
+        return;
+      }
+      if ((mods.ctrl || mods.alt || mods.esc) && event.key === 'Enter') {
+        event.preventDefault();
+        sendInput('\r', true);
+        ta.value = '';
+      }
+    }, true);
+    ta.addEventListener('input', () => {
+      if (!mods.ctrl && !mods.alt && !mods.esc) return;
+      ta.value = '';
+      clearTransientModifiers();
+    }, true);
   };
 
   termHost.addEventListener('touchstart', (event) => {
@@ -663,7 +716,7 @@
     PdockerBridge.startInitial();
     term.focus();
   }
-  setTimeout(() => { tuneIme(); pushResize(); }, 100);
+  setTimeout(() => { tuneIme(); installHelperInputFallback(); pushResize(); }, 100);
   setTimeout(pushResize, 500);
 </script>
 </body>
