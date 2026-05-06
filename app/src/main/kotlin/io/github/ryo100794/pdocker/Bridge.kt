@@ -13,6 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -107,8 +108,11 @@ class Bridge(
         val socket = engineSocket
         if (socket != null) {
             runCatching {
+                recordEngineExecInput(bytes)
                 socket.outputStream.write(bytes)
                 socket.outputStream.flush()
+            }.onFailure {
+                recordEngineExecEvent("input-failed", error = it.message.orEmpty())
             }
             return
         }
@@ -149,13 +153,16 @@ class Bridge(
             sendTerminalText("[pdocker] missing container id\n")
             return
         }
+        resetEngineExecInputDiagnostics(containerId)
         alive.set(true)
         reader = Thread({
             runCatching {
                 sendTerminalText("[pdocker] Engine exec -it: $containerId\n")
                 val execId = createEngineExec(containerId)
+                recordEngineExecEvent("created", execId = execId)
                 val socket = startEngineExecStream(execId)
                 engineSocket = socket
+                recordEngineExecEvent("stream-started", execId = execId)
                 val buffer = ByteArray(4096)
                 while (alive.get()) {
                     val n = socket.inputStream.read(buffer)
@@ -165,8 +172,10 @@ class Bridge(
                     sendTerminalBytes(chunk)
                 }
             }.onFailure {
+                recordEngineExecEvent("failure", error = it.message.orEmpty())
                 sendTerminalText("\n[pdocker] Engine exec failed: ${it.message.orEmpty()}\n")
             }
+            recordEngineExecEvent("reader-ended")
             alive.set(false)
         }, "engine-exec-reader").also { it.start() }
     }
@@ -177,14 +186,15 @@ class Bridge(
             .put("AttachStdout", true)
             .put("AttachStderr", true)
             .put("Tty", true)
-            .put("Env", listOf("ENV=", "BASH_ENV="))
-            .put("Cmd", listOf("/bin/sh", "-i"))
+            .put("Env", JSONArray(listOf("ENV=", "BASH_ENV=")))
+            .put("Cmd", JSONArray(listOf("/bin/sh", "-i")))
         val response = engineRequest(
             "POST",
             "/containers/${DockerEngineClient.encodePath(containerId)}/exec",
             payload.toString().toByteArray(Charsets.UTF_8),
         )
         val text = response.body.toString(Charsets.UTF_8)
+        recordEngineExecEvent("create-response", status = response.status, body = text)
         check(response.status in 200..299) { text.ifBlank { "HTTP ${response.status}" } }
         return JSONObject(text).getString("Id")
     }
@@ -208,20 +218,26 @@ class Bridge(
         socket.outputStream.write(body)
         socket.outputStream.flush()
         val head = readHttpHead(socket.inputStream)
+        recordEngineExecEvent("start-response", execId = execId, body = head)
         check(head.startsWith("HTTP/1.1 101") || head.startsWith("HTTP/1.0 101")) { head.lineSequence().firstOrNull().orEmpty() }
         return socket
     }
 
     private data class EngineResponse(val status: Int, val body: ByteArray)
 
-    private fun engineRequest(method: String, path: String, body: ByteArray = ByteArray(0)): EngineResponse {
+    private fun engineRequest(
+        method: String,
+        path: String,
+        body: ByteArray = ByteArray(0),
+        contentType: String = "application/json",
+    ): EngineResponse {
         connectEngineSocket().use { socket ->
             val header = buildString {
                 append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
                 append("Host: pdocker\r\n")
                 append("Connection: close\r\n")
                 if (body.isNotEmpty()) {
-                    append("Content-Type: application/json\r\n")
+                    append("Content-Type: ").append(contentType).append("\r\n")
                     append("Content-Length: ").append(body.size).append("\r\n")
                 }
                 append("\r\n")
@@ -269,6 +285,63 @@ class Bridge(
             webView.evaluateJavascript("window.pdockerRecv('$b64')", null)
         }
     }
+
+    private fun resetEngineExecInputDiagnostics(containerId: String) {
+        runCatching {
+            val file = engineExecInputDiagnosticsFile()
+            file.parentFile?.mkdirs()
+            file.writeText(
+                JSONObject()
+                    .put("event", "start")
+                    .put("container", containerId)
+                    .put("timestampMs", System.currentTimeMillis())
+                    .toString() + "\n",
+            )
+        }
+    }
+
+    private fun recordEngineExecInput(bytes: ByteArray) {
+        runCatching {
+            val file = engineExecInputDiagnosticsFile()
+            file.parentFile?.mkdirs()
+            if (file.length() > 64 * 1024) file.delete()
+            file.appendText(
+                JSONObject()
+                    .put("event", "input")
+                    .put("timestampMs", System.currentTimeMillis())
+                    .put("bytes", bytes.size)
+                    .put("hex", bytes.joinToString(" ") { "%02x".format(it.toInt() and 0xff) })
+                    .put("text", bytes.toString(Charsets.UTF_8).replace("\u001b", "\\e"))
+                    .toString() + "\n",
+            )
+        }
+    }
+
+    private fun recordEngineExecEvent(
+        event: String,
+        execId: String = "",
+        status: Int = 0,
+        body: String = "",
+        error: String = "",
+    ) {
+        runCatching {
+            val file = engineExecInputDiagnosticsFile()
+            file.parentFile?.mkdirs()
+            file.appendText(
+                JSONObject()
+                    .put("event", event)
+                    .put("timestampMs", System.currentTimeMillis())
+                    .put("execId", execId)
+                    .put("status", status)
+                    .put("body", body.take(2048))
+                    .put("error", error)
+                    .toString() + "\n",
+            )
+        }
+    }
+
+    private fun engineExecInputDiagnosticsFile(): File =
+        File(activity.filesDir, "pdocker/diagnostics/engine-exec-input-latest.jsonl")
 
     private fun detectShell(): String {
         // Prefer the bundled proot-run entrypoint once assets are unpacked;

@@ -133,6 +133,27 @@ printf '%s\n' \"\$exec_out\" | grep -q 'pdocker-it-ok'
 "
 }
 
+ui_engine_exec_it_selftest() {
+  local container_ref="$1"
+  echo "[pdocker smoke] ui self-test engine exec -it"
+  run_as "rm -f files/pdocker/diagnostics/ui-it-selftest-latest.json" >/dev/null 2>&1 || true
+  run_adb shell am start \
+    -n "$PKG/$CLASS_PREFIX.MainActivity" \
+    -a "$ACTION_PREFIX.action.SMOKE_UI_IT_SELFTEST" \
+    --es container "$container_ref" >/dev/null
+  local i
+  for i in $(seq 1 30); do
+    if run_as "test -f files/pdocker/diagnostics/ui-it-selftest-latest.json"; then
+      run_as "cat files/pdocker/diagnostics/ui-it-selftest-latest.json"
+      run_as "grep -q '\"Success\": true' files/pdocker/diagnostics/ui-it-selftest-latest.json"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "UI exec -it self-test did not produce diagnostics" >&2
+  return 1
+}
+
 run_gpu_bench() {
   local bench_dir="files/pdocker/bench"
   echo "[pdocker smoke] android-gpu-bench"
@@ -244,6 +265,7 @@ echo "[pdocker smoke] docker ps filters"
 docker_cmd "FILTERED=\$(docker ps -a --filter name=device-smoke-app-1 -q) && test -n \"\$FILTERED\" && case \"$CID\" in \"\$FILTERED\"*) true ;; *) case \"\$FILTERED\" in \"$CID\"*) true ;; *) echo \"filter mismatch expected=$CID actual=\$FILTERED\"; false ;; esac ;; esac && test -z \"\$(docker ps -a --filter name=pdocker-smoke-filter-miss -q)\""
 echo "[pdocker smoke] engine exec -it"
 engine_exec_it_smoke "$CID"
+ui_engine_exec_it_selftest "$CID"
 docker_cmd "cd pdocker/projects/$PROJECT && docker compose down"
 
 echo "[pdocker smoke] checking UI-visible job state path"

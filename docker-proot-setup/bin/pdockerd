@@ -45,6 +45,7 @@ import time
 import traceback
 import urllib.parse
 import uuid
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler
 
 
@@ -1505,6 +1506,8 @@ def _container_host_path(state, cdir, ctr_path, for_write=False):
 
 WHITEOUT_PREFIX = ".wh."
 OPAQUE_MARKER = ".wh..wh..opq"
+LAYER_INDEX_CACHE_MAX = int(os.environ.get("PDOCKER_LAYER_INDEX_CACHE_MAX", "4") or "0")
+_layer_index_cache = OrderedDict()
 
 
 def _sha256_file(path):
@@ -2004,6 +2007,49 @@ def _path_is_skipped(p_rel, skip_paths):
     return False
 
 
+def _layer_index_cache_key(diff_ids, skip_paths):
+    layers = tuple(d.split(":", 1)[-1] for d in (diff_ids or []))
+    skips = tuple(sorted(set(skip_paths or [])))
+    return (layers, skips)
+
+
+def _layer_index_cache_get(key, profile=None):
+    if LAYER_INDEX_CACHE_MAX <= 0:
+        return None
+    layers, _ = key
+    for did in layers:
+        if not os.path.isdir(_layer_tree(did)):
+            _layer_index_cache.clear()
+            if profile is not None:
+                profile["prev_index_cache_stale"] = 1
+            return None
+    cached = _layer_index_cache.get(key)
+    if cached is None:
+        if profile is not None:
+            profile["prev_index_cache_miss"] = 1
+        return None
+    _layer_index_cache.move_to_end(key)
+    if profile is not None:
+        profile["prev_index_cache_hit"] = 1
+        profile["prev_paths"] = len(cached)
+    return cached
+
+
+def _layer_index_cache_put(key, index, profile=None):
+    if LAYER_INDEX_CACHE_MAX <= 0:
+        return
+    _layer_index_cache[key] = index
+    _layer_index_cache.move_to_end(key)
+    while len(_layer_index_cache) > LAYER_INDEX_CACHE_MAX:
+        _layer_index_cache.popitem(last=False)
+    if profile is not None:
+        profile["prev_index_cache_size"] = len(_layer_index_cache)
+
+
+def clear_layer_index_cache():
+    _layer_index_cache.clear()
+
+
 def _build_layer_index(diff_ids, skip_paths=None, profile=None):
     """Build the merged prior-layer path map without materializing a rootfs.
 
@@ -2015,6 +2061,11 @@ def _build_layer_index(diff_ids, skip_paths=None, profile=None):
     """
     start = time.perf_counter()
     skip_paths = set(skip_paths or [])
+    cache_key = _layer_index_cache_key(diff_ids, skip_paths)
+    cached = _layer_index_cache_get(cache_key, profile)
+    if cached is not None:
+        _profile_add(profile, "prev_index", time.perf_counter() - start)
+        return cached
     index = {}
 
     for did in diff_ids or []:
@@ -2049,6 +2100,7 @@ def _build_layer_index(diff_ids, skip_paths=None, profile=None):
     _profile_add(profile, "prev_index", time.perf_counter() - start)
     if profile is not None:
         profile["prev_paths"] = len(index)
+    _layer_index_cache_put(cache_key, index, profile)
     return index
 
 
@@ -5345,6 +5397,8 @@ def prune_unreferenced_layers(min_age_seconds=60):
             reclaimed += size
         except OSError as exc:
             log(f"layer prune {name} error: {exc}")
+    if removed:
+        clear_layer_index_cache()
     return {"Deleted": removed, "SpaceReclaimed": reclaimed}
 
 
@@ -5573,6 +5627,7 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         if proc.stdout: fds.append((1, proc.stdout))
         if proc.stderr: fds.append((2, proc.stderr))
         fdmap = {f.fileno(): (st, f) for st, f in fds}
+        seen = 0
         while fdmap:
             try:
                 ready, _, _ = select.select(list(fdmap.keys()), [], [], 1.0)
@@ -5587,6 +5642,19 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                 if not chunk:
                     fdmap.pop(fd, None)
                     continue
+                if seen < 16:
+                    seen += 1
+                    try:
+                        diag_dir = os.path.join(PDOCKER_HOME, "diagnostics")
+                        os.makedirs(diag_dir, exist_ok=True)
+                        with open(os.path.join(diag_dir, "hijack-stdout-latest.log"), "a") as f:
+                            f.write(
+                                f"chunk={seen} stream={st} bytes={len(chunk)} "
+                                f"hex={chunk[:160].hex(' ')} "
+                                f"text={chunk[:160]!r}\n"
+                            )
+                    except OSError:
+                        pass
                 try:
                     if tty:
                         self.wfile.write(chunk)
@@ -5620,21 +5688,31 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             return None
 
         def pump():
-            import select
+            seen = 0
             try:
                 while proc.poll() is None:
                     try:
-                        ready, _, _ = select.select([self.connection], [], [], 0.25)
-                    except (OSError, ValueError):
-                        break
-                    if not ready:
-                        continue
-                    try:
-                        chunk = self.connection.recv(4096)
+                        read = getattr(self.rfile, "read1", None)
+                        chunk = read(4096) if read else self.rfile.read(1)
                     except socket.timeout:
                         continue
+                    except ValueError:
+                        break
                     if not chunk:
                         break
+                    if seen < 8:
+                        seen += 1
+                        try:
+                            diag_dir = os.path.join(PDOCKER_HOME, "diagnostics")
+                            os.makedirs(diag_dir, exist_ok=True)
+                            with open(os.path.join(diag_dir, "hijack-stdin-latest.log"), "a") as f:
+                                f.write(
+                                    f"chunk={seen} bytes={len(chunk)} "
+                                    f"hex={chunk[:96].hex(' ')} "
+                                    f"text={chunk[:96]!r}\n"
+                                )
+                        except OSError:
+                            pass
                     if getattr(proc, "_pdocker_pipe_tty_fallback", False):
                         chunk = chunk.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
                     try:
@@ -6591,6 +6669,9 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             if not state:
                 self._send_json(404, {"message": f"No such container: {cid}"})
                 return
+            if not state.get("State", {}).get("Running"):
+                self._send_json(409, {"message": f"Container {cid} is not running"})
+                return
             payload = self._read_json()
             exec_id = uuid.uuid4().hex
             exec_sessions[exec_id] = {
@@ -6601,6 +6682,7 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
                 "tty": payload.get("Tty", False),
                 "running": False,
                 "exit_code": None,
+                "proc": None,
             }
             self._send_json(201, {"Id": exec_id})
             return
@@ -6619,6 +6701,23 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             tty = bool(payload.get("Tty") or ses.get("tty"))
             ses["running"] = True
             try:
+                try:
+                    diag_dir = os.path.join(PDOCKER_HOME, "diagnostics")
+                    os.makedirs(diag_dir, exist_ok=True)
+                    with open(os.path.join(diag_dir, "hijack-exec-latest.log"), "a") as f:
+                        f.write(
+                            json.dumps({
+                                "exec_id": exec_id,
+                                "container": ses["container"],
+                                "cmd": ses["cmd"],
+                                "env": ses["env"],
+                                "workdir": ses["workdir"],
+                                "tty": tty,
+                                "time": time.time(),
+                            }, sort_keys=True) + "\n"
+                        )
+                except OSError:
+                    pass
                 proc = spawn_in_container(
                     ses["container"], ses["cmd"],
                     env=ses["env"], workdir=ses["workdir"], tty=tty,
@@ -6631,10 +6730,12 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             if proc is None:
                 self._send_json(404, {"message": "container missing"})
                 return
+            ses["proc"] = proc
             if detach:
                 self._send_stream_started("application/vnd.docker.raw-stream")
                 ses["running"] = False
                 ses["exit_code"] = 0
+                ses["proc"] = None
                 return
             self._send_hijacked()
             self._pipe_hijacked_stdin(proc)
@@ -6642,6 +6743,7 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
             self._pipe_to_multiplexed(proc, tty=tty)
             ses["exit_code"] = proc.wait()
             ses["running"] = False
+            ses["proc"] = None
             return
 
         # /exec/{id}/json
@@ -7309,6 +7411,8 @@ def execute_dockerfile_build(dockerfile_path, context_dir, tag, buildargs, emit,
             f"seen={int(profile.get('seen_paths', 0))}",
             f"prev={int(profile.get('prev_paths', 0))}",
             f"whiteout={int(profile.get('whiteout_paths', 0))}",
+            f"index-cache={'hit' if profile.get('prev_index_cache_hit') else 'miss' if profile.get('prev_index_cache_miss') else 'off'}",
+            f"index-cache-size={int(profile.get('prev_index_cache_size', len(_layer_index_cache)))}",
             f"mode={'paths' if changed_paths is not None else 'scan'}",
         ]
         emit(f"  build-profile snapshot {label}: " + " ".join(parts))

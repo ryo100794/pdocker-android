@@ -43,8 +43,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import org.json.JSONArray
 import org.json.JSONObject
@@ -322,6 +324,8 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_SMOKE_COMPOSE_UP = "io.github.ryo100794.pdocker.action.SMOKE_COMPOSE_UP"
         private const val ACTION_SMOKE_DOCUMENTS_SYNC_TO_TREE = "io.github.ryo100794.pdocker.action.SMOKE_DOCUMENTS_SYNC_TO_TREE"
         private const val ACTION_SMOKE_DOCUMENTS_SYNC_FROM_TREE = "io.github.ryo100794.pdocker.action.SMOKE_DOCUMENTS_SYNC_FROM_TREE"
+        private const val ACTION_SMOKE_DOCUMENTS_WRITE_FILE = "io.github.ryo100794.pdocker.action.SMOKE_DOCUMENTS_WRITE_FILE"
+        private const val ACTION_SMOKE_UI_IT_SELFTEST = "io.github.ryo100794.pdocker.action.SMOKE_UI_IT_SELFTEST"
         private const val PREFS_NAME = "pdocker-settings"
         private const val PREF_DOCUMENTS_TREE_URI = "documents.treeUri"
         private const val PREF_DOCUMENTS_HOST_PATH = "documents.hostPath"
@@ -896,19 +900,29 @@ class MainActivity : AppCompatActivity() {
             val image = state?.optString("Image")?.ifBlank { getString(R.string.unknown_image) } ?: getString(R.string.unknown_image)
             val statusText = snapshot?.optString("Status")?.takeIf { it.isNotBlank() }
                 ?: containerCachedStatus(state)
+            val running = containerIsRunning(snapshot, state)
             addWidget(name, statusText, "$image\n${containerNetworkSummary(state)}\n${containerLogPreview(dir)}") {
-                openDockerInteractiveTerminal(
-                    getString(R.string.terminal_container_fmt, name),
-                    target,
-                    name,
-                )
+                if (running) {
+                    openDockerInteractiveTerminal(
+                        getString(R.string.terminal_container_fmt, name),
+                        target,
+                        name,
+                    )
+                } else {
+                    runContainerAction(name, getString(R.string.terminal_container_start_fmt, name)) {
+                        post("/containers/${DockerEngineClient.encodePath(target)}/start")
+                        formatContainers(getArray("/containers/json?all=1"))
+                    }
+                }
             }
-            addAction(getString(R.string.action_container_terminal_fmt, name), getString(R.string.detail_container_terminal)) {
-                openDockerInteractiveTerminal(
-                    getString(R.string.terminal_container_fmt, name),
-                    target,
-                    name,
-                )
+            if (running) {
+                addAction(getString(R.string.action_container_terminal_fmt, name), getString(R.string.detail_container_terminal)) {
+                    openDockerInteractiveTerminal(
+                        getString(R.string.terminal_container_fmt, name),
+                        target,
+                        name,
+                    )
+                }
             }
             addAction(getString(R.string.action_container_start_fmt, name), target) {
                 runContainerAction(name, getString(R.string.terminal_container_start_fmt, name)) {
@@ -965,6 +979,11 @@ class MainActivity : AppCompatActivity() {
         snapshot?.optString("Id")?.takeIf { it.isNotBlank() }
             ?: state?.optString("Id")?.takeIf { it.isNotBlank() }
             ?: dir.name
+
+    private fun containerIsRunning(snapshot: JSONObject?, state: JSONObject?): Boolean {
+        if (snapshot != null) return containerSnapshotIsRunning(snapshot)
+        return state?.optJSONObject("State")?.optBoolean("Running", false) == true
+    }
 
     private fun containerEngineIdKeys(dir: File, state: JSONObject?): List<String> =
         listOf(
@@ -2352,7 +2371,216 @@ class MainActivity : AppCompatActivity() {
                     safDocumentsMediator().syncFromTree()
                 }
             }
+            ACTION_SMOKE_DOCUMENTS_WRITE_FILE -> {
+                val source = intent.getStringExtra("source").orEmpty()
+                val target = intent.getStringExtra("target").orEmpty()
+                val mimeType = intent.getStringExtra("mimeType").orEmpty().ifBlank { "application/octet-stream" }
+                thread(isDaemon = true, name = "pdocker-documents-direct-write") {
+                    val result = writeDocumentsFileForAutomation(source, target, mimeType)
+                    File(pdockerHome, "diagnostics/saf-write-latest.json").apply {
+                        parentFile?.mkdirs()
+                        writeText(result.toString(2) + "\n")
+                    }
+                }
+            }
+            ACTION_SMOKE_UI_IT_SELFTEST -> {
+                val container = intent.getStringExtra("container").orEmpty()
+                thread(isDaemon = true, name = "pdocker-ui-it-selftest") {
+                    val result = runUiItSelfTest(container)
+                    File(pdockerHome, "diagnostics/ui-it-selftest-latest.json").apply {
+                        parentFile?.mkdirs()
+                        writeText(result.toString(2) + "\n")
+                    }
+                }
+            }
         }
+    }
+
+    private fun runUiItSelfTest(requestedContainer: String): JSONObject {
+        val startedAt = System.currentTimeMillis()
+        val result = JSONObject()
+            .put("Name", "ui-engine-exec-it")
+            .put("StartedAtMs", startedAt)
+            .put("RequestedContainer", requestedContainer)
+        val output = StringBuffer()
+        var bridge: Bridge? = null
+        var webView: WebView? = null
+        return runCatching {
+            startDaemon()
+            check(waitForEngine(30_000)) { "pdockerd did not become ready" }
+            val containerId = resolveUiItSelfTestContainer(requestedContainer)
+            result.put("Container", containerId)
+
+            val ready = CountDownLatch(1)
+            ui.post {
+                val view = WebView(this).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    alpha = 0.01f
+                }
+                val b = Bridge(this, view, engineExecTerminalCommand(containerId)) { bytes ->
+                    output.append(bytes.toString(Charsets.UTF_8))
+                }
+                view.addJavascriptInterface(b, "PdockerBridge")
+                view.loadUrl("file:///android_asset/xterm/index.html")
+                if (::lowerHost.isInitialized) {
+                    lowerHost.addView(view, FrameLayout.LayoutParams(1, 1))
+                }
+                webView = view
+                bridge = b
+                ready.countDown()
+            }
+            check(ready.await(5, TimeUnit.SECONDS)) { "UI bridge was not created" }
+
+            check(waitUntil(5_000) {
+                output.toString().contains("# ") ||
+                    output.toString().contains("can't access tty")
+            }) { "UI exec -it did not reach an interactive shell prompt" }
+
+            val script = "echo pdocker-ui-it-ok\n/usr/bin/[ \"x\" = \"x\" ] && echo pdocker-ui-it-bracket-ok\npwd\nexit\n"
+            val inputB64 = Base64.encodeToString(script.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            ui.post { bridge?.input(inputB64) }
+            val passed = waitUntil(12_000) {
+                val text = output.toString()
+                text.contains("pdocker-ui-it-ok") && text.contains("pdocker-ui-it-bracket-ok")
+            }
+            val text = output.toString()
+            val bracketNoise = Regex("(/usr/bin/)?\\[: extra argument").containsMatchIn(text)
+            check(passed) { "UI exec -it did not echo expected markers" }
+            check(!bracketNoise) { "UI exec -it produced bracket argv noise" }
+            result
+                .put("Success", true)
+                .put("DurationMs", System.currentTimeMillis() - startedAt)
+                .put("OutputTail", text.takeLast(4096))
+        }.getOrElse { err ->
+            result
+                .put("Success", false)
+                .put("DurationMs", System.currentTimeMillis() - startedAt)
+                .put("Error", err.message.orEmpty())
+                .put("OutputTail", output.toString().takeLast(4096))
+                .put("EngineExecDiagnostics", File(pdockerHome, "diagnostics/engine-exec-input-latest.jsonl").readTextIfExists().takeLast(4096))
+        }.also {
+            ui.post {
+                bridge?.close()
+                webView?.let { view ->
+                    (view.parent as? FrameLayout)?.removeView(view)
+                    view.destroy()
+                }
+            }
+        }
+    }
+
+    private fun resolveUiItSelfTestContainer(requestedContainer: String): String {
+        val containers = engine.getArray("/containers/json?all=1")
+        fun objAt(i: Int): JSONObject? = containers.optJSONObject(i)
+        val requested = requestedContainer.trim()
+        val chosen = if (requested.isNotEmpty()) {
+            (0 until containers.length()).asSequence()
+                .mapNotNull(::objAt)
+                .firstOrNull { obj ->
+                    val id = obj.optString("Id")
+                    val names = obj.optJSONArray("Names")
+                    id == requested || id.startsWith(requested) ||
+                        (0 until (names?.length() ?: 0)).any { idx ->
+                            names?.optString(idx)?.trimStart('/') == requested
+                        }
+                }
+                ?: error("container not found: $requested")
+        } else {
+            (0 until containers.length()).asSequence()
+                .mapNotNull(::objAt)
+                .firstOrNull { it.optString("State") == "running" }
+                ?: (0 until containers.length()).asSequence().mapNotNull(::objAt).firstOrNull()
+                ?: error("no containers available for UI exec self-test")
+        }
+        val id = chosen.getString("Id")
+        if (chosen.optString("State") != "running") {
+            engine.post("/containers/${DockerEngineClient.encodePath(id)}/start")
+            check(waitUntil(15_000) {
+                val refreshed = engine.getArray("/containers/json?all=1")
+                (0 until refreshed.length()).asSequence()
+                    .mapNotNull { refreshed.optJSONObject(it) }
+                    .any { it.optString("Id") == id && it.optString("State") == "running" }
+            }) { "container did not start for UI exec self-test: $id" }
+        }
+        return id
+    }
+
+    private fun waitUntil(timeoutMs: Long, predicate: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (runCatching { predicate() }.getOrDefault(false)) return true
+            Thread.sleep(100)
+        }
+        return runCatching { predicate() }.getOrDefault(false)
+    }
+
+    private fun File.readTextIfExists(): String =
+        runCatching { if (isFile) readText() else "" }.getOrDefault("")
+
+    private fun writeDocumentsFileForAutomation(sourcePath: String, targetPath: String, mimeType: String): JSONObject {
+        val metadata = documentsTreeMetadata()
+        val mediator = safDocumentsMediator()
+        val grants = mediator.persistedGrantState()
+        val source = File(sourcePath)
+        val normalizedTarget = targetPath.replace('\\', '/').trimStart('/')
+        val attempts = JSONArray()
+        val out = JSONObject()
+            .put("Source", sourcePath)
+            .put("Target", normalizedTarget)
+            .put("MimeType", mimeType)
+            .put("Access", metadata.writeAccess.envValue)
+            .put("PersistedWriteGrant", grants.write)
+            .put("SelectedHostPath", metadata.selectedHostPath)
+            .put("ActiveHostPath", metadata.activeHostPath)
+        if (!source.isFile) {
+            return out.put("Success", false).put("Error", "source file is missing")
+        }
+        val primary = if (metadata.writeAccess == DocumentsWriteAccess.DirectPathWritable) {
+            runCatching {
+                val target = File(metadata.directHostPath, normalizedTarget)
+                target.parentFile?.mkdirs()
+                source.inputStream().use { input ->
+                    target.outputStream().use { output -> input.copyTo(output) }
+                }
+                JSONObject()
+                    .put("Success", true)
+                    .put("Mode", "direct-path")
+                    .put("RelativePath", normalizedTarget)
+                    .put("HostPath", target.absolutePath)
+                    .put("Bytes", source.length())
+            }.getOrElse {
+                JSONObject()
+                    .put("Success", false)
+                    .put("Mode", "direct-path")
+                    .put("RelativePath", normalizedTarget)
+                    .put("Bytes", 0L)
+                    .put("Error", it.message ?: it.toString())
+            }
+        } else {
+            mediator.writeFile(normalizedTarget, source, mimeType)
+        }
+        attempts.put(primary)
+        if (primary.optBoolean("Success", false)) {
+            return out
+                .put("Success", true)
+                .put("Bytes", primary.optLong("Bytes", source.length()))
+                .put("Mode", primary.optString("Mode"))
+                .put("Attempts", attempts)
+        }
+        val fallback = mediator.writeMirrorFallbackFile(
+            relativePath = normalizedTarget,
+            source = source,
+            mimeType = mimeType,
+            reason = primary.optString("Error", "primary Documents write failed"),
+        )
+        attempts.put(fallback)
+        return out
+            .put("Success", fallback.optBoolean("Success", false))
+            .put("Bytes", fallback.optLong("Bytes", 0L))
+            .put("Mode", fallback.optString("Mode"))
+            .put("Fallback", true)
+            .put("Attempts", attempts)
     }
 
     private fun prefs() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -2913,9 +3141,10 @@ class MainActivity : AppCompatActivity() {
         group: String = workspaceGroup(),
         onOutput: ((ByteArray) -> Unit)? = null,
         contextualize: Boolean = true,
+        keyOverride: String? = null,
     ) {
         val launchCommand = if (contextualize) terminalSessionCommand(title, group, command) else command
-        val key = "$title\n$launchCommand"
+        val key = keyOverride ?: "$title\n$launchCommand"
         val existing = toolTabs.indexOfFirst {
             it.kind == ToolKind.Terminal && it.group == group && it.key == key
         }
@@ -2965,6 +3194,7 @@ class MainActivity : AppCompatActivity() {
             engineExecTerminalCommand(containerId),
             group,
             contextualize = false,
+            keyOverride = "engine-exec:${containerId.trim()}:${System.nanoTime()}",
         )
     }
 
