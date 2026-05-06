@@ -2475,6 +2475,35 @@ def _effective_binds(state):
     return out
 
 
+def _bind_host_path(bind_spec):
+    parts = (bind_spec or "").split(":")
+    if len(parts) < 2:
+        return ""
+    host = parts[0]
+    if not host.startswith("/"):
+        return ""
+    return os.path.abspath(host)
+
+
+def _ensure_bind_hosts(binds):
+    """Create missing host directories for Docker -v style bind sources.
+
+    The direct executor resolves bind targets through its own path table. If a
+    bind source does not exist yet, realpath/prefix validation cannot prove the
+    target is allowed and guest `mkdir -p /mount` can be denied as an unsafe
+    cross-device path. Docker's legacy -v behavior creates missing host
+    directories, so do the same before runtime preflight and process start.
+    """
+    for bind in binds or []:
+        host = _bind_host_path(bind)
+        if not host or os.path.exists(host):
+            continue
+        try:
+            os.makedirs(host, exist_ok=True)
+        except OSError as exc:
+            raise RuntimeError(f"pdocker bind source setup failed: {host}: {exc}") from exc
+
+
 def _gpu_request_modes(state):
     """Return requested pdocker GPU modes from Docker HostConfig.
 
@@ -5010,6 +5039,7 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     # HostConfig.Mounts. Named volumes are auto-created and resolved to
     # $VOLUMES_DIR/<name>/_data so compose volumes: blocks work transparently.
     binds = _effective_binds(state) + _gpu_binds(state) + _media_binds(state)
+    _ensure_bind_hosts(binds)
 
     # Inject /etc/hosts entries for connected named-network members.
     # Also handle docker-compose's `--network NAME` flow where the
@@ -5737,6 +5767,7 @@ def spawn_in_container(cid, cmd, env=None, workdir=None, tty=False,
     wd = workdir or state.get("WorkingDir", "/")
     e = _container_env(state, env)
     binds = _effective_binds(state) + _gpu_binds(state) + _media_binds(state)
+    _ensure_bind_hosts(binds)
     fault = runtime_preflight(rootfs, e, workdir=wd, binds=binds, cow_bind=cow)
     if fault:
         raise RuntimeError(fault)
@@ -5857,6 +5888,7 @@ def exec_in_container(cid, cmd, env=None, workdir=None, tty=False):
     wd = workdir or state.get("WorkingDir", "/")
     e = _container_env(state, env)
     binds = _effective_binds(state) + _gpu_binds(state) + _media_binds(state)
+    _ensure_bind_hosts(binds)
     fault = runtime_preflight(rootfs, e, workdir=wd, binds=binds, cow_bind=cow)
     if fault:
         raise RuntimeError(fault)
@@ -5905,6 +5937,7 @@ def runtime_preflight(rootfs, env=None, workdir="/", binds=None, cow_bind=None):
         shell = os.path.join(rootfs, "usr/bin/sh")
     if not os.path.exists(shell):
         return ""
+    _ensure_bind_hosts(binds)
     try:
         proc = subprocess.run(
             build_run_argv(rootfs, ["/bin/sh", "-c", "true"],

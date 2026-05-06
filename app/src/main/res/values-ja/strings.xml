@@ -137,10 +137,12 @@
     <string name="project_dashboard_models_fmt">モデル: %1$s</string>
     <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
     <string name="project_dashboard_gpu_invalid">診断JSONが不正</string>
+    <string name="project_dashboard_runtime_fmt">Runtime: %1$s</string>
     <string name="project_dashboard_jobs_fmt">ジョブ: %1$s</string>
     <string name="action_open_project_compose_fmt">%1$s compose を開く</string>
     <string name="action_open_project_dockerfile_fmt">%1$s Dockerfile を開く</string>
     <string name="action_open_project_file_fmt">%1$s を開く</string>
+    <string name="action_open_runtime_diagnostics">Runtime 診断を開く</string>
 
     <string name="section_project_library">プロジェクトライブラリ</string>
     <string name="action_library_shell">ライブラリシェル</string>

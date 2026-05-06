@@ -362,7 +362,14 @@ class MainActivity : AppCompatActivity() {
         val gpuProfileSummary: String,
         val gpuDiagnostics: File?,
         val containerStatusSummary: String,
+        val runtimeDiagnosticSummary: String,
+        val runtimeDiagnosticLog: File?,
         val jobSummary: String,
+    )
+
+    private data class ProjectRuntimeDiagnostic(
+        val summary: String,
+        val log: File?,
     )
 
     private data class ProjectServiceUrl(
@@ -4920,9 +4927,10 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.project_dashboard_service_health_fmt, project.serviceHealth),
                 getString(R.string.project_dashboard_models_fmt, project.modelSummary),
                 getString(R.string.project_dashboard_gpu_fmt, project.gpuProfileSummary),
+                getString(R.string.project_dashboard_runtime_fmt, project.runtimeDiagnosticSummary),
                 getString(R.string.project_dashboard_jobs_fmt, project.jobSummary),
             ).joinToString("\n")
-            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail, detailLines = 9) {
+            addWidget(project.dir.name, getString(R.string.section_project_dashboard), detail, detailLines = 10) {
                 openProjectPrimaryFile(project)
             }
             project.compose.take(2).forEach { file ->
@@ -4957,6 +4965,13 @@ class MainActivity : AppCompatActivity() {
                     openEditor(file)
                 }
             }
+            project.runtimeDiagnosticLog?.takeIf { it.isFile }?.let { file ->
+                addAction(getString(R.string.action_open_runtime_diagnostics), file.name) {
+                    openTextToolAsync(getString(R.string.section_project_dashboard), getString(R.string.action_open_runtime_diagnostics)) {
+                        readFileTailText(file, MAX_JOB_LOG_VIEW_BYTES)
+                    }
+                }
+            }
             project.editable
                 .filterNot { it in project.compose || it in project.dockerfiles }
                 .take(4)
@@ -4986,6 +5001,7 @@ class MainActivity : AppCompatActivity() {
                 .distinctBy { it.absolutePath }
                 .flatMap { parseComposeServices(it) }
             val serviceUrls = projectServiceUrls(services)
+            val runtimeDiagnostic = projectRuntimeDiagnostic(dir)
             ProjectSummary(
                 dir = dir,
                 compose = compose,
@@ -4998,6 +5014,8 @@ class MainActivity : AppCompatActivity() {
                 gpuProfileSummary = projectGpuProfileSummary(dir),
                 gpuDiagnostics = File(dir, "profiles/pdocker-gpu-diagnostics.json").takeIf { it.isFile },
                 containerStatusSummary = projectContainerStatusSummary(dir),
+                runtimeDiagnosticSummary = runtimeDiagnostic.summary,
+                runtimeDiagnosticLog = runtimeDiagnostic.log,
                 jobSummary = projectJobSummary(dir.name),
             )
         }.sortedWith(compareBy<ProjectSummary> {
@@ -5038,16 +5056,113 @@ class MainActivity : AppCompatActivity() {
 
     private fun projectContainerStatusSummary(projectDir: File): String {
         val snapshots = projectContainerSnapshots(projectDir)
-        if (snapshots.isEmpty()) {
+        val localStates = projectContainerStates(projectDir)
+        if (snapshots.isEmpty() && localStates.isEmpty()) {
             return if (lastContainerSnapshotAt == 0L) {
                 getString(R.string.container_status_syncing)
             } else {
                 getString(R.string.container_inventory_fmt, 0, 0)
             }
         }
-        val running = snapshots.count { containerSnapshotIsRunning(it) }
-        return getString(R.string.container_inventory_fmt, snapshots.size, running)
+        if (snapshots.isNotEmpty()) {
+            val running = snapshots.count { containerSnapshotIsRunning(it) }
+            return getString(R.string.container_inventory_fmt, snapshots.size, running)
+        }
+        val running = localStates.count { containerStateIsRunning(it) }
+        return getString(R.string.container_inventory_fmt, localStates.size, running)
     }
+
+    private fun projectRuntimeDiagnostic(projectDir: File): ProjectRuntimeDiagnostic {
+        val states = projectContainerStates(projectDir)
+        if (states.isEmpty()) return ProjectRuntimeDiagnostic("-", null)
+        val failed = states.firstOrNull { state ->
+            val runtime = state.optJSONObject("State")
+            !containerStateIsRunning(state) &&
+                ((runtime?.optInt("ExitCode", 0) ?: 0) != 0 || !runtime?.optString("Error").orEmpty().isNullOrBlank())
+        }
+        val selected = failed ?: states.first()
+        val logFile = containerLogFile(selected)
+        val runtime = selected.optJSONObject("State")
+        val name = selected.optString("Name").trim('/').ifBlank { selected.optString("Id").take(12) }
+        if (containerStateIsRunning(selected) && failed == null) {
+            val running = states.count { containerStateIsRunning(it) }
+            return ProjectRuntimeDiagnostic("running $running/${states.size}: $name", logFile)
+        }
+        val status = runtime?.optString("Status").orEmpty().ifBlank { "unknown" }
+        val exit = runtime?.optInt("ExitCode", 0) ?: 0
+        val reason = runtimeFailureReason(runtime?.optString("Error").orEmpty(), logFile)
+        val summary = listOf("$status $name rc=$exit", reason)
+            .filter { it.isNotBlank() }
+            .joinToString(": ")
+        return ProjectRuntimeDiagnostic(summary.ifBlank { "-" }, logFile)
+    }
+
+    private fun projectContainerStates(projectDir: File): List<JSONObject> {
+        val projectId = projectIdFor(projectDir)
+        val composeNames = projectComposeContainerNames(projectDir).keys.toSet()
+        return containerDirs().mapNotNull { readState(it) }
+            .filter { state ->
+                val labels = containerLabels(state)
+                val labelledProject = labels?.optString(PDOCKER_PROJECT_ID_LABEL).orEmpty()
+                when {
+                    labelledProject.isNotBlank() -> labelledProject == projectId
+                    else -> state.optString("Name").trim('/') in composeNames
+                }
+            }
+            .sortedWith(
+                compareByDescending<JSONObject> { if (containerStateIsRunning(it)) 1 else 0 }
+                    .thenByDescending { it.optString("Created") }
+                    .thenBy { it.optString("Name") },
+            )
+    }
+
+    private fun containerLabels(state: JSONObject): JSONObject? =
+        state.optJSONObject("Labels") ?: state.optJSONObject("Config")?.optJSONObject("Labels")
+
+    private fun containerStateIsRunning(state: JSONObject): Boolean =
+        state.optJSONObject("State")?.optBoolean("Running", false) == true
+
+    private fun containerLogFile(state: JSONObject): File? {
+        val id = state.optString("Id").takeIf { it.isNotBlank() } ?: return null
+        return File(pdockerHome, "logs/$id.log")
+    }
+
+    private fun runtimeFailureReason(error: String, logFile: File?): String {
+        val logTail = logFile?.takeIf { it.isFile }?.let { readFileTailText(it, 64 * 1024) }.orEmpty()
+        val normalized = logTail.replace('\r', '\n')
+        if ("unsafe path" in normalized && "Cross-device link" in normalized) {
+            val paths = Regex("unsafe path=([^\\s]+)")
+                .findAll(normalized)
+                .map { it.groupValues[1] }
+                .distinct()
+                .take(4)
+                .joinToString(", ")
+            return "bind path denied ${paths.ifBlank { "container mount" }} (Cross-device link)"
+        }
+        val interesting = normalized.lineSequence()
+            .map { it.trim() }
+            .filter { line ->
+                line.contains("ERROR", ignoreCase = true) ||
+                    line.contains("failed", ignoreCase = true) ||
+                    line.contains("cannot", ignoreCase = true) ||
+                    line.contains("No devices found", ignoreCase = true) ||
+                    line.contains("OOM", ignoreCase = true) ||
+                    line.contains("Killed", ignoreCase = true)
+            }
+            .lastOrNull()
+            ?.take(180)
+            .orEmpty()
+        return interesting.ifBlank { error.take(180) }
+    }
+
+    private fun readFileTailText(file: File, maxBytes: Int): String =
+        runCatching {
+            val size = file.length()
+            file.inputStream().use { input ->
+                if (size > maxBytes) input.skip(size - maxBytes)
+                input.readBytes().toString(Charsets.UTF_8)
+            }
+        }.getOrElse { getString(R.string.engine_operation_failed_fmt, it.message.orEmpty()) }
 
     private fun projectContainerSnapshots(projectDir: File): List<JSONObject> {
         val projectId = projectIdFor(projectDir)

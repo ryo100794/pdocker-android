@@ -137,10 +137,12 @@
     <string name="project_dashboard_models_fmt">Models: %1$s</string>
     <string name="project_dashboard_gpu_fmt">GPU: %1$s</string>
     <string name="project_dashboard_gpu_invalid">invalid diagnostics</string>
+    <string name="project_dashboard_runtime_fmt">Runtime: %1$s</string>
     <string name="project_dashboard_jobs_fmt">Jobs: %1$s</string>
     <string name="action_open_project_compose_fmt">Open %1$s compose</string>
     <string name="action_open_project_dockerfile_fmt">Open %1$s Dockerfile</string>
     <string name="action_open_project_file_fmt">Open %1$s</string>
+    <string name="action_open_runtime_diagnostics">Open runtime diagnostics</string>
 
     <string name="section_project_library">Project Library</string>
     <string name="action_library_shell">Library shell</string>
