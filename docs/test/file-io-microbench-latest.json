@@ -1,0 +1,234 @@
+{
+  "comparisons": [
+    {
+      "container_bytes": 262144,
+      "container_ms": 0.267656,
+      "container_ops": 64,
+      "label": "seq_write",
+      "native_bytes": 262144,
+      "native_ms": 0.437969,
+      "native_ops": 64,
+      "overhead_ms": -0.170313,
+      "ratio": 0.6111300114848311,
+      "target_met": true
+    },
+    {
+      "container_bytes": 262144,
+      "container_ms": 0.148281,
+      "container_ops": 64,
+      "label": "seq_read",
+      "native_bytes": 262144,
+      "native_ms": 0.096094,
+      "native_ops": 64,
+      "overhead_ms": 0.052187,
+      "ratio": 1.5430828147438966,
+      "target_met": true
+    },
+    {
+      "container_bytes": 2048,
+      "container_ms": 5.820521,
+      "container_ops": 64,
+      "label": "small_create",
+      "native_bytes": 2048,
+      "native_ms": 2.78526,
+      "native_ops": 64,
+      "overhead_ms": 3.035261,
+      "ratio": 2.089758586272018,
+      "target_met": true
+    },
+    {
+      "container_bytes": 0,
+      "container_ms": 5.668438,
+      "container_ops": 64,
+      "label": "small_stat",
+      "native_bytes": 0,
+      "native_ms": 0.250781,
+      "native_ops": 64,
+      "overhead_ms": 5.417657,
+      "ratio": 22.603139791292005,
+      "target_met": true
+    },
+    {
+      "container_bytes": 2048,
+      "container_ms": 1.338281,
+      "container_ops": 64,
+      "label": "small_read",
+      "native_bytes": 2048,
+      "native_ms": 0.404375,
+      "native_ops": 64,
+      "overhead_ms": 0.9339060000000001,
+      "ratio": 3.309504791344668,
+      "target_met": true
+    },
+    {
+      "container_bytes": 0,
+      "container_ms": 5.855781,
+      "container_ops": 65,
+      "label": "unlink",
+      "native_bytes": 0,
+      "native_ms": 1.767813,
+      "native_ops": 65,
+      "overhead_ms": 4.087968,
+      "ratio": 3.312443680411899,
+      "target_met": true
+    }
+  ],
+  "contexts": [
+    "device=10.8.135.134:39827;files=64;blocks=64;block_size=4096;fsync=0;trace_mode=seccomp",
+    "rootfs=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs;workload=pdocker/containers/8518ac4caa104e8faab1251a03e78768/rootfs/tmp/pdocker_fileio_microbench;direct=pdocker/bench/pdocker-direct-microbench"
+  ],
+  "device_serial": "10.8.135.134:39827",
+  "events": [
+    {
+      "raw_tail": [],
+      "rc": 0,
+      "results": [
+        {
+          "bytes": 262144,
+          "elapsed_ms": 0.437969,
+          "label": "seq_write",
+          "ops": 64
+        },
+        {
+          "bytes": 262144,
+          "elapsed_ms": 0.096094,
+          "label": "seq_read",
+          "ops": 64
+        },
+        {
+          "bytes": 2048,
+          "elapsed_ms": 2.78526,
+          "label": "small_create",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 0.250781,
+          "label": "small_stat",
+          "ops": 64
+        },
+        {
+          "bytes": 2048,
+          "elapsed_ms": 0.404375,
+          "label": "small_read",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 1.767813,
+          "label": "unlink",
+          "ops": 65
+        }
+      ],
+      "scope": "native_rootfs"
+    },
+    {
+      "direct_stops": 264,
+      "raw_tail": [
+        "pdocker-direct-stats: reason=root-exited rc=0 elapsed=0.022s stops=264",
+        "pdocker-direct-stats: #1 nr=56(openat) count=130",
+        "pdocker-direct-stats: #2 nr=35(unlinkat) count=65",
+        "pdocker-direct-stats: #3 nr=79(newfstatat) count=64",
+        "pdocker-direct-stats: #4 nr=34(mkdirat) count=1",
+        "pdocker-direct-stats: #5 nr=78(readlinkat) count=1",
+        "pdocker-direct-stats: #6 nr=221(execve) count=1"
+      ],
+      "rc": 0,
+      "results": [
+        {
+          "bytes": 262144,
+          "elapsed_ms": 0.267656,
+          "label": "seq_write",
+          "ops": 64
+        },
+        {
+          "bytes": 262144,
+          "elapsed_ms": 0.148281,
+          "label": "seq_read",
+          "ops": 64
+        },
+        {
+          "bytes": 2048,
+          "elapsed_ms": 5.820521,
+          "label": "small_create",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 5.668438,
+          "label": "small_stat",
+          "ops": 64
+        },
+        {
+          "bytes": 2048,
+          "elapsed_ms": 1.338281,
+          "label": "small_read",
+          "ops": 64
+        },
+        {
+          "bytes": 0,
+          "elapsed_ms": 5.855781,
+          "label": "unlink",
+          "ops": 65
+        }
+      ],
+      "scope": "container_rootfs",
+      "top_syscalls": [
+        {
+          "count": 130,
+          "name": "openat",
+          "nr": 56,
+          "rank": 1
+        },
+        {
+          "count": 65,
+          "name": "unlinkat",
+          "nr": 35,
+          "rank": 2
+        },
+        {
+          "count": 64,
+          "name": "newfstatat",
+          "nr": 79,
+          "rank": 3
+        },
+        {
+          "count": 1,
+          "name": "mkdirat",
+          "nr": 34,
+          "rank": 4
+        },
+        {
+          "count": 1,
+          "name": "readlinkat",
+          "nr": 78,
+          "rank": 5
+        },
+        {
+          "count": 1,
+          "name": "execve",
+          "nr": 221,
+          "rank": 6
+        }
+      ]
+    }
+  ],
+  "git_commit": "89173db",
+  "kind": "pdocker.file-io-microbench",
+  "parameters": {
+    "block_size": 4096,
+    "blocks": 64,
+    "files": 64,
+    "fsync": 0,
+    "trace_mode": "seccomp"
+  },
+  "run_rc": 0,
+  "schema": 1,
+  "summary": {
+    "all_rc_zero": true,
+    "max_overhead_ms": 5.417657,
+    "target_met": true,
+    "target_overhead_ms": 10.0
+  },
+  "timestamp_utc": "2026-05-06T05:06:43.413519+00:00"
+}

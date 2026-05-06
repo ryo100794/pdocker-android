@@ -581,6 +581,36 @@ static int file_starts_with(const char *path, const char *magic) {
     return n >= strlen(magic) && memcmp(buf, magic, strlen(magic)) == 0;
 }
 
+static int elf_has_interp(const char *path) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return -1;
+    Elf64_Ehdr eh;
+    ssize_t n = read(fd, &eh, sizeof(eh));
+    if (n != (ssize_t)sizeof(eh) || memcmp(eh.e_ident, ELFMAG, SELFMAG) != 0 ||
+        eh.e_ident[EI_CLASS] != ELFCLASS64 || eh.e_phoff == 0 ||
+        eh.e_phentsize != sizeof(Elf64_Phdr)) {
+        close(fd);
+        return -1;
+    }
+    if (lseek(fd, (off_t)eh.e_phoff, SEEK_SET) < 0) {
+        close(fd);
+        return -1;
+    }
+    for (int i = 0; i < eh.e_phnum; ++i) {
+        Elf64_Phdr ph;
+        if (read(fd, &ph, sizeof(ph)) != (ssize_t)sizeof(ph)) {
+            close(fd);
+            return -1;
+        }
+        if (ph.p_type == PT_INTERP) {
+            close(fd);
+            return 1;
+        }
+    }
+    close(fd);
+    return 0;
+}
+
 static void trim_trailing_slashes(char *path) {
     size_t len = strlen(path);
     while (len > 1 && path[len - 1] == '/') {
@@ -2130,6 +2160,28 @@ static void normalize_absolute_symlinks_recursive(const char *rootfs, const char
     closedir(d);
 }
 
+static void normalize_absolute_symlinks_once(const char *rootfs) {
+    const char *mode = getenv("PDOCKER_DIRECT_NORMALIZE_SYMLINKS");
+    if (mode && strcmp(mode, "never") == 0) return;
+
+    char marker[PATH_MAX];
+    if (snprintf(marker, sizeof(marker), "%s/.pdocker-absolute-symlinks-normalized", rootfs) >=
+        (int)sizeof(marker)) {
+        normalize_absolute_symlinks_recursive(rootfs, rootfs);
+        return;
+    }
+    if (!mode || strcmp(mode, "always") != 0) {
+        if (access(marker, F_OK) == 0) return;
+    }
+    normalize_absolute_symlinks_recursive(rootfs, rootfs);
+    int fd = open(marker, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (fd >= 0) {
+        const char msg[] = "normalized=1\n";
+        (void)write(fd, msg, sizeof(msg) - 1);
+        close(fd);
+    }
+}
+
 static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState *state,
                               const char *rootfs, const char *loader, const char *libpath) {
     char original[PATH_MAX];
@@ -2197,6 +2249,28 @@ static int rewrite_execve_arg(pid_t pid, struct user_pt_regs *regs, TraceeState 
         } else {
             snprintf(program_argv0, sizeof(program_argv0), "/bin/bash");
         }
+    }
+
+    if (!is_script && elf_has_interp(target) == 0) {
+        unsigned long long scratch_span =
+            ((unsigned long long)strlen(target) + 1ULL + EXEC_REWRITE_STACK_SAFETY + 15ULL) & ~15ULL;
+        if (scratch_span > EXEC_REWRITE_MAX_SCRATCH || scratch_span >= regs->sp) {
+            fprintf(stderr,
+                    "pdocker-direct-trace: pid=%d static exec rewrite scratch too large bytes=%llu path=%s\n",
+                    (int)pid, scratch_span, original);
+            return 0;
+        }
+        unsigned long long scratch = (regs->sp - scratch_span) & ~15ULL;
+        if (write_tracee_string(pid, scratch, target) != 0) return 0;
+        regs->regs[0] = scratch;
+        if (state) {
+            char original_guest[PATH_MAX];
+            guest_exec_path(rootfs, original, original_guest, sizeof(original_guest));
+            snprintf(state->exec_guest_path, sizeof(state->exec_guest_path), "%s", original_guest);
+        }
+        TRACE_LOG("pdocker-direct-trace: pid=%d rewrite static execve %s -> %s\n",
+                  (int)pid, original, target);
+        return 1;
     }
 
     unsigned long long old_argv = regs->regs[1];
@@ -3278,7 +3352,7 @@ loader_found:
     }
 
     if (!getenv("PDOCKER_DIRECT_PRESERVE_ABSOLUTE_SYMLINKS")) {
-        normalize_absolute_symlinks_recursive(rootfs, rootfs);
+        normalize_absolute_symlinks_once(rootfs);
     }
 
     char target[PATH_MAX];
@@ -3351,6 +3425,7 @@ loader_found:
     }
 
     int is_script = file_starts_with(target, "#!");
+    int is_static_elf = !is_script && elf_has_interp(target) == 0;
     char shell[PATH_MAX];
     char shell_argv0[PATH_MAX];
     char shell_arg[PATH_MAX];
@@ -3387,18 +3462,22 @@ loader_found:
         return 126;
     }
     int n = 0;
-    nargv[n++] = (char *)loader;
-    nargv[n++] = "--library-path";
-    nargv[n++] = libpath;
-    nargv[n++] = "--argv0";
-    nargv[n++] = is_script && shell_argv0[0] ? shell_argv0 : (char *)cmd0;
-    if (preload[0]) {
-        nargv[n++] = "--preload";
-        nargv[n++] = preload;
+    if (is_static_elf) {
+        nargv[n++] = (char *)program;
+    } else {
+        nargv[n++] = (char *)loader;
+        nargv[n++] = "--library-path";
+        nargv[n++] = libpath;
+        nargv[n++] = "--argv0";
+        nargv[n++] = is_script && shell_argv0[0] ? shell_argv0 : (char *)cmd0;
+        if (preload[0]) {
+            nargv[n++] = "--preload";
+            nargv[n++] = preload;
+        }
+        nargv[n++] = (char *)program;
+        if (is_script && has_shell_arg) nargv[n++] = shell_arg;
+        if (is_script) nargv[n++] = target;
     }
-    nargv[n++] = (char *)program;
-    if (is_script && has_shell_arg) nargv[n++] = shell_arg;
-    if (is_script) nargv[n++] = target;
     for (int i = command_index + 1; i < argc; ++i) nargv[n++] = argv[i];
     nargv[n] = NULL;
 
