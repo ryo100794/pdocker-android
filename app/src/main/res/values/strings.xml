@@ -204,6 +204,9 @@
     <string name="image_reference_cache_detail_fmt">shared %1$s / total layer bytes %2$s / %3$d layers</string>
     <string name="image_reference_compose_detail">compose service uses this image</string>
     <string name="image_reference_container_detail">container was created from this image</string>
+    <string name="image_reference_action_files">Files</string>
+    <string name="image_reference_action_delete">Delete</string>
+    <string name="image_reference_action_clean">Clean</string>
     <string name="summary_rootfs_fmt">%1$d top-level entries</string>
 
     <string name="section_containers">Containers</string>

@@ -137,6 +137,12 @@ class MainActivity : AppCompatActivity() {
         val title: String,
         val detail: String,
         val kind: ImageGraphKind,
+        val actions: List<ImageGraphAction> = emptyList(),
+    )
+
+    private data class ImageGraphAction(
+        val label: String,
+        val run: () -> Unit,
     )
 
     private data class DockerJob(
@@ -907,20 +913,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val imageInfos = imageReferenceInfos(images)
-        images.forEach { image ->
-            val ref = imageRef(image)
-            val displayRef = displayImageRef(ref)
-            val info = imageInfos.firstOrNull { it.dir == image }
-            addWidget(displayRef, getString(R.string.detail_image_rootfs), imageDetail(image, ref, info)) {
-                openImageFiles(image)
-            }
-            addAction(getString(R.string.action_delete_image_fmt, displayRef), getString(R.string.detail_delete_image)) {
-                confirmDeleteImage(ref, cleanCache = false)
-            }
-            addAction(getString(R.string.action_clean_image_cache_fmt, displayRef), getString(R.string.detail_clean_image_cache)) {
-                confirmDeleteImage(ref, cleanCache = true)
-            }
-        }
         renderImageReferenceTree(imageInfos)
     }
 
@@ -4313,15 +4305,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addImageGraphRow(parent: LinearLayout, row: ImageReferenceGraphRow) {
+        val rowHeight = when {
+            row.actions.isNotEmpty() -> dp(116)
+            row.detail.count { it == '\n' } >= 2 -> dp(96)
+            else -> dp(58)
+        }
         parent.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(36)
-            setPadding(0, 2, 0, 2)
             row.ancestorLast.forEach { ancestorIsLast ->
-                addImageGraphGuideCell(this, active = !ancestorIsLast)
+                addImageGraphGuideCell(this, active = !ancestorIsLast, rowHeight = rowHeight)
             }
-            addImageGraphBranchCell(this, isLast = row.isLast)
+            addImageGraphBranchCell(this, isLast = row.isLast, rowHeight = rowHeight)
             addView(TextView(this@MainActivity).apply {
                 text = row.kind.label
                 textSize = 10f
@@ -4345,33 +4340,53 @@ class MainActivity : AppCompatActivity() {
                         text = row.detail
                         textSize = 11f
                         alpha = 0.72f
-                        setSingleLine(true)
+                        maxLines = 5
                         ellipsize = TextUtils.TruncateAt.MIDDLE
                     })
                 }
+                if (row.actions.isNotEmpty()) {
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        setPadding(0, dp(6), 0, 0)
+                        row.actions.forEach { action ->
+                            addView(Button(this@MainActivity).apply {
+                                text = action.label
+                                textSize = 10f
+                                minHeight = 0
+                                minimumHeight = 0
+                                minWidth = 0
+                                minimumWidth = 0
+                                setPadding(dp(8), 0, dp(8), 0)
+                                setOnClickListener { action.run() }
+                            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)).apply {
+                                setMargins(0, 0, dp(6), 0)
+                            })
+                        }
+                    })
+                }
             }, LinearLayout.LayoutParams(dp(360), LinearLayout.LayoutParams.WRAP_CONTENT))
-        })
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, rowHeight))
     }
 
-    private fun addImageGraphGuideCell(parent: LinearLayout, active: Boolean) {
+    private fun addImageGraphGuideCell(parent: LinearLayout, active: Boolean, rowHeight: Int) {
         parent.addView(FrameLayout(this).apply {
             if (active) {
                 addView(View(this@MainActivity).apply {
                     setBackgroundColor(0x66888888)
                 }, FrameLayout.LayoutParams(dp(2), FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL))
             }
-        }, LinearLayout.LayoutParams(dp(18), dp(36)))
+        }, LinearLayout.LayoutParams(dp(18), rowHeight))
     }
 
-    private fun addImageGraphBranchCell(parent: LinearLayout, isLast: Boolean) {
+    private fun addImageGraphBranchCell(parent: LinearLayout, isLast: Boolean, rowHeight: Int) {
         parent.addView(FrameLayout(this).apply {
             addView(View(this@MainActivity).apply {
                 setBackgroundColor(0x66888888)
-            }, FrameLayout.LayoutParams(dp(2), if (isLast) dp(18) else FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL or Gravity.TOP))
+            }, FrameLayout.LayoutParams(dp(2), if (isLast) rowHeight / 2 else FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL or Gravity.TOP))
             addView(View(this@MainActivity).apply {
                 setBackgroundColor(0x66888888)
             }, FrameLayout.LayoutParams(dp(18), dp(2), Gravity.CENTER_VERTICAL or Gravity.RIGHT))
-        }, LinearLayout.LayoutParams(dp(24), dp(36)))
+        }, LinearLayout.LayoutParams(dp(24), rowHeight))
     }
 
     private fun tintedRoundDrawable(color: Int): GradientDrawable =
@@ -4578,13 +4593,19 @@ class MainActivity : AppCompatActivity() {
             ancestorLast = ancestorLast,
             isLast = isLast,
             title = image.displayRef,
-            detail = getString(
-                R.string.image_reference_image_detail_fmt,
-                formatBytes(image.viewBytes),
-                formatBytes(image.uniqueLayerBytes),
-                image.diffIds.size,
-            ),
+            detail = imageDetail(image.dir, image.ref, image),
             kind = ImageGraphKind.Image,
+            actions = listOf(
+                ImageGraphAction(getString(R.string.image_reference_action_files)) {
+                    openImageFiles(image.dir)
+                },
+                ImageGraphAction(getString(R.string.image_reference_action_delete)) {
+                    confirmDeleteImage(image.ref, cleanCache = false)
+                },
+                ImageGraphAction(getString(R.string.image_reference_action_clean)) {
+                    confirmDeleteImage(image.ref, cleanCache = true)
+                },
+            ),
         )
         rows += attached
         children.forEachIndexed { index, child ->

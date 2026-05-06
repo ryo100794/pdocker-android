@@ -136,6 +136,7 @@ class ImageFilesActivity : AppCompatActivity() {
             }
             selectedImage != null -> {
                 val image = File(imageRoot, selectedImage)
+                standaloneRoot = true
                 selectRoot(image.name, File(image, "rootfs"))
             }
             selectedContainer != null -> {
@@ -447,27 +448,33 @@ class ImageFilesActivity : AppCompatActivity() {
 
     private fun addRow(label: String, detail: String, onClick: () -> Unit) {
         LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             isClickable = true
-            setPadding(0, 18, 0, 18)
+            minimumHeight = dp(52)
+            setPadding(0, dp(10), 0, dp(10))
             setOnClickListener { onClick() }
             addView(TextView(this@ImageFilesActivity).apply {
                 text = label
                 textSize = 16f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
                 setSingleLine(true)
                 ellipsize = TextUtils.TruncateAt.MIDDLE
-            })
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.48f))
             addView(TextView(this@ImageFilesActivity).apply {
                 text = detail
                 textSize = 12f
                 alpha = 0.72f
                 setSingleLine(true)
-                ellipsize = TextUtils.TruncateAt.END
-            })
+                ellipsize = TextUtils.TruncateAt.MIDDLE
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.52f))
             body.addView(this)
             addDivider()
         }
     }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt().coerceAtLeast(1)
 
     private fun addMessage(text: String) {
         TextView(this).apply {
