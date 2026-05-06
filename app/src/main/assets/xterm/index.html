@@ -442,6 +442,11 @@
     term.focus();
     tuneIme();
   };
+  const claimImeEvent = (event) => {
+    event.preventDefault();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    else event.stopPropagation();
+  };
   const sendInput = (data, raw = false) => {
     if (readOnly) return;
     const normalized = normalizeTerminalInput(data);
@@ -567,13 +572,13 @@
     ta.addEventListener('beforeinput', (event) => {
       if (readOnly || selectionSuppressesIme()) return;
       if (event.inputType === 'insertLineBreak') {
-        event.preventDefault();
+        claimImeEvent(event);
         sendInput('\r', true);
         ta.value = '';
         return;
       }
       if ((mods.ctrl || mods.alt || mods.esc) && event.data) {
-        event.preventDefault();
+        claimImeEvent(event);
         sendInput(event.data, false);
         ta.value = '';
       }
@@ -581,13 +586,13 @@
     ta.addEventListener('keydown', (event) => {
       if (readOnly || selectionSuppressesIme()) return;
       if ((mods.ctrl || mods.alt || mods.esc) && event.key && event.key.length === 1) {
-        event.preventDefault();
+        claimImeEvent(event);
         sendInput(event.key, false);
         ta.value = '';
         return;
       }
       if ((mods.ctrl || mods.alt || mods.esc) && event.key === 'Enter') {
-        event.preventDefault();
+        claimImeEvent(event);
         sendInput('\r', true);
         ta.value = '';
       }

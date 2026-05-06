@@ -186,7 +186,7 @@ class Bridge(
             .put("AttachStdout", true)
             .put("AttachStderr", true)
             .put("Tty", true)
-            .put("Env", JSONArray(listOf("ENV=", "BASH_ENV=")))
+            .put("Env", JSONArray(listOf("TERM=xterm-256color", "COLORTERM=truecolor", "ENV=", "BASH_ENV=")))
             .put("Cmd", JSONArray(listOf("/bin/sh", "-i")))
         val response = engineRequest(
             "POST",

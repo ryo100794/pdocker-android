@@ -2439,7 +2439,7 @@ class MainActivity : AppCompatActivity() {
                 "UI exec -it is not attached to a controlling tty"
             }
 
-            val script = "p=pdocker-ui-it\necho \${p}-ok\n/usr/bin/[ \"x\" = \"x\" ] && echo \${p}-bracket-ok\npwd\n[ -t 0 ] && echo \${p}-tty-ok\ntop -b -n 1 >/dev/null && echo \${p}-top-ok\nsleep 15\n"
+            val script = "p=pdocker-ui-it\necho \${p}-ok\n/usr/bin/[ \"x\" = \"x\" ] && echo \${p}-bracket-ok\npwd\n[ -t 0 ] && echo \${p}-tty-ok\n[ \"\$TERM\" = \"xterm-256color\" ] && echo \${p}-term-ok\ntop -b -n 1 >/dev/null && echo \${p}-top-ok\nsleep 15\n"
             ui.post {
                 webView?.evaluateJavascript(
                     "window.pdockerTestSendInput && window.pdockerTestSendInput(${JSONObject.quote(script)}, false)",
@@ -2464,6 +2464,7 @@ class MainActivity : AppCompatActivity() {
                 text.contains("pdocker-ui-it-ok") &&
                     text.contains("pdocker-ui-it-bracket-ok") &&
                     text.contains("pdocker-ui-it-tty-ok") &&
+                    text.contains("pdocker-ui-it-term-ok") &&
                     text.contains("pdocker-ui-it-top-ok") &&
                     text.contains("pdocker-ui-it-ctrlc-ok")
             }
