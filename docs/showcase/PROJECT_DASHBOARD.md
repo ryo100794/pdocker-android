@@ -43,7 +43,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 | State | Item |
 |---|---|
 | doing | [#4](https://github.com/ryo100794/pdocker-android/issues/4) llama GPU bridge ABI: keep llama.cpp unmodified while expanding the pdocker Vulkan/OpenCL bridge from device discovery and... |
-| next | [#5](https://github.com/ryo100794/pdocker-android/issues/5) Terminal `-it` interactive path: direct executor long argv/bracket argv preservation is covered by regression tests; the... |
+| next | [#5](https://github.com/ryo100794/pdocker-android/issues/5) Terminal `-it` interactive path: refactor the terminal stack according to `docs/design/TERMINAL_STREAM_ARCHITECTURE.md`. The UI... |
 | next | [#6](https://github.com/ryo100794/pdocker-android/issues/6) Real listener service health: probe the actual device listener for default workspace `18080` and llama `18081`, correlate it with... |
 | next | [#6](https://github.com/ryo100794/pdocker-android/issues/6) ID/label-based container truth: reconcile project cards, logs, lifecycle actions, and duplicate-name cleanup from Engine... |
 | next | [#4](https://github.com/ryo100794/pdocker-android/issues/4) llama GPU performance workflow after Vulkan clamp: keep CPU fallback hiding Vulkan devices, force Vulkan only for measured GPU... |
