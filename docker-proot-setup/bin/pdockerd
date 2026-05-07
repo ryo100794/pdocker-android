@@ -4313,10 +4313,32 @@ def create_container(config, name=None):
 def save_container_state(cid, state):
     cdir = os.path.join(CONTAINERS_DIR, cid)
     path = os.path.join(cdir, "state.json")
-    tmp = path + ".tmp"
+    os.makedirs(cdir, exist_ok=True)
+    tmp = f"{path}.tmp.{os.getpid()}.{threading.get_ident()}"
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, path)
+    try:
+        dir_fd = os.open(cdir, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass
+
+
+def _load_json_first_object(path):
+    with open(path) as f:
+        text = f.read()
+    decoder = json.JSONDecoder()
+    obj, end = decoder.raw_decode(text)
+    if text[end:].strip():
+        return obj, True
+    return obj, False
 
 
 def load_container_state(cid):
@@ -4324,8 +4346,10 @@ def load_container_state(cid):
     if os.path.exists(path):
         for _ in range(3):
             try:
-                with open(path) as f:
-                    return json.load(f)
+                state, repaired = _load_json_first_object(path)
+                if repaired and isinstance(state, dict):
+                    save_container_state(cid, state)
+                return state
             except json.JSONDecodeError:
                 time.sleep(0.02)
         return None

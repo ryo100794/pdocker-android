@@ -414,6 +414,12 @@ typedef struct {
 } VulkanBindingAlias;
 
 typedef struct {
+    uint8_t used;
+    uint8_t readable;
+    uint8_t writable;
+} SpirvDescriptorAccess;
+
+typedef struct {
     int valid;
     uint64_t value;
 } SpirvScalarConstant;
@@ -1272,6 +1278,90 @@ static int rewrite_duplicate_descriptor_bindings(
     return 0;
 }
 
+static int collect_spirv_descriptor_bindings(
+        const uint32_t *code,
+        size_t bytes,
+        uint8_t *used,
+        size_t used_count) {
+    if (!used || used_count == 0) return 0;
+    memset(used, 0, used_count);
+    if (!code || bytes < 20 || (bytes % sizeof(uint32_t)) != 0 ||
+        code[0] != 0x07230203u) {
+        return 0;
+    }
+    const size_t words = bytes / sizeof(uint32_t);
+    for (size_t i = 5; i < words;) {
+        uint32_t inst = code[i];
+        uint16_t word_count = (uint16_t)(inst >> 16);
+        uint16_t op = (uint16_t)(inst & 0xffffu);
+        if (word_count == 0 || i + word_count > words) break;
+        if (op == 71 && word_count >= 4 && code[i + 2] == 33) {
+            uint32_t binding = code[i + 3];
+            if (binding < used_count) used[binding] = 1;
+        }
+        i += word_count;
+    }
+    return 0;
+}
+
+static int collect_spirv_descriptor_accesses(
+        const uint32_t *code,
+        size_t bytes,
+        SpirvDescriptorAccess *accesses,
+        size_t access_count) {
+    if (!accesses || access_count == 0) return 0;
+    memset(accesses, 0, access_count * sizeof(accesses[0]));
+    if (!code || bytes < 20 || (bytes % sizeof(uint32_t)) != 0 ||
+        code[0] != 0x07230203u) {
+        return 0;
+    }
+    const size_t words = bytes / sizeof(uint32_t);
+    const uint32_t bound = code[3];
+    if (bound == 0 || bound > 65536) return 0;
+    int32_t *binding_by_id = (int32_t *)malloc(bound * sizeof(binding_by_id[0]));
+    uint8_t *non_readable = (uint8_t *)calloc(bound, sizeof(non_readable[0]));
+    uint8_t *non_writable = (uint8_t *)calloc(bound, sizeof(non_writable[0]));
+    if (!binding_by_id || !non_readable || !non_writable) {
+        free(binding_by_id);
+        free(non_readable);
+        free(non_writable);
+        return 0;
+    }
+    for (uint32_t i = 0; i < bound; ++i) binding_by_id[i] = -1;
+    for (size_t i = 5; i < words;) {
+        uint32_t inst = code[i];
+        uint16_t word_count = (uint16_t)(inst >> 16);
+        uint16_t op = (uint16_t)(inst & 0xffffu);
+        if (word_count == 0 || i + word_count > words) break;
+        if (op == 71 && word_count >= 3) {
+            uint32_t target = code[i + 1];
+            uint32_t decoration = code[i + 2];
+            if (target < bound) {
+                if (decoration == 33 && word_count >= 4) {
+                    binding_by_id[target] = (int32_t)code[i + 3];
+                } else if (decoration == 24) {
+                    non_writable[target] = 1;
+                } else if (decoration == 25) {
+                    non_readable[target] = 1;
+                }
+            }
+        }
+        i += word_count;
+    }
+    for (uint32_t id = 0; id < bound; ++id) {
+        int32_t binding = binding_by_id[id];
+        if (binding < 0 || (size_t)binding >= access_count) continue;
+        SpirvDescriptorAccess *access = &accesses[binding];
+        access->used = 1;
+        if (!non_readable[id]) access->readable = 1;
+        if (!non_writable[id]) access->writable = 1;
+    }
+    free(binding_by_id);
+    free(non_readable);
+    free(non_writable);
+    return 0;
+}
+
 static int binding_index_for_number(const VulkanDispatchBinding *bindings,
                                     size_t binding_count,
                                     uint32_t binding) {
@@ -1330,6 +1420,9 @@ static void write_vulkan_binding_report(
         FILE *out,
         const VulkanDispatchBinding *bindings,
         size_t binding_count,
+        const uint8_t *active,
+        const uint8_t *readable,
+        const uint8_t *writable,
         const int *cache_hits,
         const int *cache_resident,
         const int *mutable_cache_hits,
@@ -1338,13 +1431,17 @@ static void write_vulkan_binding_report(
     for (size_t i = 0; i < binding_count; ++i) {
         fprintf(out,
                 "%s{\"index\":%zu,\"binding\":%u,\"offset\":%lld,"
-                "\"size\":%zu,\"resident\":%s,\"cache_hit\":%s,"
+                "\"size\":%zu,\"active\":%s,\"readable\":%s,\"writable\":%s,"
+                "\"resident\":%s,\"cache_hit\":%s,"
                 "\"mutable_reused\":%s,\"mutable_cache_hit\":%s}",
                 i ? "," : "",
                 i,
                 bindings[i].binding,
                 (long long)bindings[i].offset,
                 bindings[i].size,
+                active && active[i] ? "true" : "false",
+                readable && readable[i] ? "true" : "false",
+                writable && writable[i] ? "true" : "false",
                 cache_resident && cache_resident[i] ? "true" : "false",
                 cache_hits && cache_hits[i] ? "true" : "false",
                 mutable_cache_reused && mutable_cache_reused[i] ? "true" : "false",
@@ -1359,6 +1456,7 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
         int fd,
         const VulkanDispatchBinding *binding,
         VulkanVectorBuffer *temporary,
+        int initialize_from_fd,
         int *cache_hit,
         int *cache_resident,
         int *mutable_cache_hit,
@@ -1367,6 +1465,12 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
     *cache_resident = 0;
     *mutable_cache_hit = 0;
     *mutable_cache_reused = 0;
+    if (!initialize_from_fd) {
+        if (create_vulkan_vector_buffer(physical_device, device, binding->size, NULL, temporary) != 0) {
+            return NULL;
+        }
+        return temporary;
+    }
     dev_t dev = 0;
     ino_t ino = 0;
     const int have_key = resident_cache_key(fd, &dev, &ino) == 0;
@@ -2285,6 +2389,15 @@ static int run_vulkan_dispatch_fd(
     size_t binding_alias_count = 0;
     int have_spirv_summary = 0;
     int specialization_materialized = 0;
+    const int skip_unused_descriptor_transfers =
+        env_truthy("PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS", 1);
+    const int use_spirv_descriptor_access =
+        env_truthy("PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS", 1);
+    uint8_t shader_used_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    SpirvDescriptorAccess shader_binding_access[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint8_t active_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint8_t binding_read_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint8_t binding_write_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     memset(temp_buffers, 0, sizeof(temp_buffers));
     memset(vk_buffers, 0, sizeof(vk_buffers));
     memset(cache_hits, 0, sizeof(cache_hits));
@@ -2295,6 +2408,11 @@ static int run_vulkan_dispatch_fd(
     memset(&vk_spec_info, 0, sizeof(vk_spec_info));
     memset(&spirv_summary, 0, sizeof(spirv_summary));
     memset(binding_aliases, 0, sizeof(binding_aliases));
+    memset(shader_used_bindings, 0, sizeof(shader_used_bindings));
+    memset(shader_binding_access, 0, sizeof(shader_binding_access));
+    memset(active_bindings, 0, sizeof(active_bindings));
+    memset(binding_read_needed, 0, sizeof(binding_read_needed));
+    memset(binding_write_needed, 0, sizeof(binding_write_needed));
     if (!shader_code) return -21;
     if (read_fd_exact(shader_fd, shader_code, shader_size, 0) != 0) goto cleanup;
     if (env_truthy("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", 1)) {
@@ -2306,8 +2424,6 @@ static int run_vulkan_dispatch_fd(
             specialization_data,
             specialization_data_size);
     }
-    spirv_summary = summarize_spirv(shader_code, shader_size);
-    have_spirv_summary = 1;
     if (env_truthy("PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS", 1)) {
         if (rewrite_duplicate_descriptor_bindings(
                 shader_code,
@@ -2328,9 +2444,88 @@ static int run_vulkan_dispatch_fd(
             goto cleanup;
         }
     }
+    spirv_summary = summarize_spirv(shader_code, shader_size);
+    have_spirv_summary = 1;
+    if (skip_unused_descriptor_transfers) {
+        collect_spirv_descriptor_bindings(
+            shader_code,
+            shader_size,
+            shader_used_bindings,
+            sizeof(shader_used_bindings));
+        if (use_spirv_descriptor_access) {
+            collect_spirv_descriptor_accesses(
+                shader_code,
+                shader_size,
+                shader_binding_access,
+                sizeof(shader_binding_access) / sizeof(shader_binding_access[0]));
+        }
+        for (size_t i = 0; i < binding_alias_count; ++i) {
+            if (binding_aliases[i].rewritten_binding < sizeof(shader_used_bindings) &&
+                shader_used_bindings[binding_aliases[i].rewritten_binding] &&
+                binding_aliases[i].original_binding < sizeof(shader_used_bindings)) {
+                shader_used_bindings[binding_aliases[i].original_binding] = 1;
+            }
+            if (use_spirv_descriptor_access &&
+                binding_aliases[i].rewritten_binding <
+                    sizeof(shader_binding_access) / sizeof(shader_binding_access[0]) &&
+                binding_aliases[i].original_binding <
+                    sizeof(shader_binding_access) / sizeof(shader_binding_access[0])) {
+                SpirvDescriptorAccess *original =
+                    &shader_binding_access[binding_aliases[i].original_binding];
+                const SpirvDescriptorAccess *rewritten =
+                    &shader_binding_access[binding_aliases[i].rewritten_binding];
+                original->used |= rewritten->used;
+                original->readable |= rewritten->readable;
+                original->writable |= rewritten->writable;
+            }
+        }
+    }
+    size_t active_binding_count = 0;
+    size_t read_binding_count = 0;
+    size_t write_binding_count = 0;
+    size_t skipped_binding_count = 0;
+    size_t skipped_binding_bytes = 0;
+    size_t skipped_upload_bytes = 0;
+    size_t skipped_download_bytes = 0;
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (!skip_unused_descriptor_transfers ||
+            (bindings[i].binding < sizeof(shader_used_bindings) &&
+             shader_used_bindings[bindings[i].binding])) {
+            active_bindings[i] = 1;
+            active_binding_count++;
+            if (!skip_unused_descriptor_transfers || !use_spirv_descriptor_access ||
+                bindings[i].binding >= sizeof(shader_binding_access) / sizeof(shader_binding_access[0])) {
+                binding_read_needed[i] = 1;
+                binding_write_needed[i] = 1;
+            } else {
+                const SpirvDescriptorAccess *access = &shader_binding_access[bindings[i].binding];
+                binding_read_needed[i] = access->readable;
+                binding_write_needed[i] = access->writable;
+            }
+            if (binding_read_needed[i]) {
+                read_binding_count++;
+            } else {
+                skipped_upload_bytes += bindings[i].size;
+            }
+            if (binding_write_needed[i]) {
+                write_binding_count++;
+            } else {
+                skipped_download_bytes += bindings[i].size;
+            }
+        } else {
+            skipped_binding_count++;
+            skipped_binding_bytes += bindings[i].size;
+        }
+    }
+    if (active_binding_count == 0) {
+        json_fail("vulkan-dispatch", "shader uses no passed storage bindings");
+        ret = 64;
+        goto cleanup;
+    }
 
     double upload_start = now_ms();
     for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i]) continue;
         fail_stage = "create-dispatch-buffer";
         vk_buffers[i] = acquire_dispatch_buffer(
             rt->physical_device,
@@ -2338,6 +2533,7 @@ static int run_vulkan_dispatch_fd(
             buffer_fds[i],
             &bindings[i],
             &temp_buffers[i],
+            binding_read_needed[i],
             &cache_hits[i],
             &cache_resident[i],
             &mutable_cache_hits[i],
@@ -2472,6 +2668,7 @@ static int run_vulkan_dispatch_fd(
     memset(writes, 0, sizeof(writes));
     size_t write_count = 0;
     for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i]) continue;
         infos[write_count].buffer = vk_buffers[i]->buffer;
         infos[write_count].offset = 0;
         infos[write_count].range = (VkDeviceSize)bindings[i].size;
@@ -2543,6 +2740,8 @@ static int run_vulkan_dispatch_fd(
     double dispatch_ms = now_ms() - dispatch_start;
     double download_start = now_ms();
     for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i]) continue;
+        if (!binding_write_needed[i]) continue;
         if (cache_resident[i]) continue;
         if (write_fd_exact(buffer_fds[i], vk_buffers[i]->map, bindings[i].size, bindings[i].offset) != 0) goto cleanup;
     }
@@ -2554,6 +2753,7 @@ static int run_vulkan_dispatch_fd(
     size_t mutable_hit_count = 0;
     size_t mutable_bytes = 0;
     for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i]) continue;
         if (cache_resident[i]) {
             resident_count++;
             resident_bytes += bindings[i].size;
@@ -2585,14 +2785,23 @@ static int run_vulkan_dispatch_fd(
             "\"resident_bindings\":%zu,\"hits\":%zu,\"bytes\":%zu},"
             "\"mutable_buffer_cache\":{\"enabled\":%s,\"entries\":%u,"
             "\"reused_bindings\":%zu,\"hits\":%zu,\"bytes\":%zu},"
+            "\"descriptor_usage\":{\"active_bindings\":%zu,"
+            "\"read_bindings\":%zu,\"write_bindings\":%zu,"
+            "\"skipped_bindings\":%zu,\"skipped_bytes\":%zu,"
+            "\"skipped_upload_bytes\":%zu,\"skipped_download_bytes\":%zu},"
             "\"valid\":true,",
             upload_ms, dispatch_ms, download_ms,
             env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1) ? "true" : "false",
             resident_count, hit_count, resident_bytes,
             env_truthy("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", 1) ? "true" : "false",
             PDOCKER_GPU_MUTABLE_BUFFER_CACHE_SLOTS,
-            mutable_count, mutable_hit_count, mutable_bytes);
+            mutable_count, mutable_hit_count, mutable_bytes,
+            active_binding_count, read_binding_count, write_binding_count,
+            skipped_binding_count, skipped_binding_bytes,
+            skipped_upload_bytes, skipped_download_bytes);
     write_vulkan_binding_report(json_out(), bindings, binding_count,
+                                active_bindings,
+                                binding_read_needed, binding_write_needed,
                                 cache_hits, cache_resident,
                                 mutable_cache_hits, mutable_cache_reused);
     fprintf(json_out(), "}\n");
@@ -2693,6 +2902,8 @@ cleanup:
         }
         fprintf(json_out(), "],");
         write_vulkan_binding_report(json_out(), bindings, binding_count,
+                                    active_bindings,
+                                    binding_read_needed, binding_write_needed,
                                     cache_hits, cache_resident,
                                     mutable_cache_hits, mutable_cache_reused);
         fprintf(json_out(), ",");

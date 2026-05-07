@@ -18,7 +18,7 @@ PREDICT="${PDOCKER_LLAMA_BENCH_PREDICT:-4}"
 REPEAT="${PDOCKER_LLAMA_BENCH_REPEAT:-1}"
 OUT="${PDOCKER_LLAMA_COMPARE_OUT:-$ROOT/docs/test/llama-gpu-compare-latest.json}"
 MODEL_PATH="${PDOCKER_LLAMA_MODEL_PATH:-/models/model.gguf}"
-MODEL_URL="${PDOCKER_LLAMA_MODEL_URL:-}"
+MODEL_URL="${PDOCKER_LLAMA_MODEL_URL:-https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf}"
 RESTORE_CPU=0
 RUN_CPU=1
 CPU_TPS_OVERRIDE="${PDOCKER_LLAMA_CPU_TPS:-}"
@@ -228,11 +228,11 @@ container_payload() {
   local mode="$1"
   local ctx="$2"
   local gpu_layers="${3:-}"
-  python3 - "$IMAGE" "$DEVICE_PROJECT" "$mode" "$ctx" "$gpu_layers" "$REMOTE_PORT" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" <<'PY'
+  python3 - "$IMAGE" "$DEVICE_PROJECT" "$DEVICE_MODEL_HOST" "$DEVICE_WORKSPACE_HOST" "$mode" "$ctx" "$gpu_layers" "$REMOTE_PORT" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" <<'PY'
 import json
 import sys
 
-image, project, mode, ctx, gpu_layers, port, trace_alloc, model_path, model_url = sys.argv[1:10]
+image, project, model_host, workspace_host, mode, ctx, gpu_layers, port, trace_alloc, model_path, model_url = sys.argv[1:12]
 env = [
     "PDOCKER_GPU=auto",
     "PDOCKER_GPU_AUTO=1",
@@ -275,8 +275,8 @@ payload = {
     },
     "HostConfig": {
         "Binds": [
-            f"{project}/models:/models",
-            f"{project}/workspace:/workspace",
+            f"{model_host}:/models",
+            f"{workspace_host}:/workspace",
             f"{project}/profiles:/profiles",
         ],
         "PortBindings": {
@@ -390,6 +390,8 @@ bench_http() {
 
 wait_for_engine
 DEVICE_PROJECT="$(run_as "cd $(remote_quote "$PROJECT") && pwd" | tr -d '\r')"
+DEVICE_MODEL_HOST="$(run_as "cd $(remote_quote "$PROJECT") && . ./.env >/dev/null 2>&1 && printf '%s' \"\${PDOCKER_MODEL_HOST:-$DEVICE_PROJECT/models}\"" | tr -d '\r')"
+DEVICE_WORKSPACE_HOST="$(run_as "cd $(remote_quote "$PROJECT") && . ./.env >/dev/null 2>&1 && printf '%s' \"\${PDOCKER_FAST_WORKSPACE_HOST:-$DEVICE_PROJECT/workspace}\"" | tr -d '\r')"
 CPU_JSON="$TMP/cpu.json"
 if [[ "$RUN_CPU" -eq 1 ]]; then
   echo "[pdocker llama compare] start CPU baseline"
@@ -829,7 +831,15 @@ result = {
         "target_met": target_met,
     },
     "bridge_overhead_phase": {
-        "phase": "served_but_transfer_bound" if blocker_class == "bridge_dispatch_performance" else "not_yet_served",
+        "phase": (
+            "served_but_transfer_bound"
+            if blocker_class == "bridge_dispatch_performance"
+            else "served_output_only_offload"
+            if blocker_class == "insufficient_gpu_offload_depth"
+            else "served_without_bridge_profile"
+            if bool(int(gpu_served_s))
+            else "not_yet_served"
+        ),
         "served": bool(int(gpu_served_s)),
         "gpu_layers": int(gpu_layers),
         "cpu_tokens_per_second": cpu_tps,

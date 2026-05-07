@@ -36,6 +36,9 @@ class GpuAbiContractTest(unittest.TestCase):
             '\\"binding\\":%u',
             '\\"offset\\":%lld',
             '\\"size\\":%zu',
+            '\\"active\\":%s',
+            '\\"readable\\":%s',
+            '\\"writable\\":%s',
             '\\"resident\\":%s',
             '\\"cache_hit\\":%s',
             '\\"mutable_reused\\":%s',
@@ -57,6 +60,22 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", source)
         self.assertIn("vk_spec_ptr = specialization_materialized ? NULL : &vk_spec_info;", source)
         self.assertIn('\\"specialization_materialized\\":%s', source)
+
+    def test_vulkan_dispatch_can_skip_unused_descriptor_transfers(self):
+        source = GPU_EXECUTOR.read_text()
+        self.assertIn("collect_spirv_descriptor_bindings", source)
+        self.assertIn("PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS", source)
+        self.assertIn("PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS", source)
+        self.assertIn("collect_spirv_descriptor_accesses", source)
+        self.assertIn("uint8_t active_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("uint8_t binding_read_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("uint8_t binding_write_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("if (!active_bindings[i]) continue;", source)
+        self.assertIn("if (!binding_write_needed[i]) continue;", source)
+        self.assertIn('\\"descriptor_usage\\":{\\"active_bindings\\":%zu,', source)
+        self.assertIn('\\"read_bindings\\":%zu,\\"write_bindings\\":%zu,', source)
+        self.assertIn('\\"skipped_upload_bytes\\":%zu,\\"skipped_download_bytes\\":%zu}', source)
+        self.assertIn("active_bindings,\n                                binding_read_needed, binding_write_needed,\n                                cache_hits", source)
 
 
 if __name__ == "__main__":

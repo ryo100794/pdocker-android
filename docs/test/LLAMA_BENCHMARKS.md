@@ -37,6 +37,40 @@ SMALL_GGUF_URL=https://.../small.gguf
 bash scripts/android-llama-gpu-compare.sh --model-path /models/small.gguf --model-url "$SMALL_GGUF_URL" --gpu-layers 1 --gpu-ctx 512 --predict 2 --repeat 1
 ```
 
+## 2026-05-07 CPU/GPU Comparison After Descriptor Transfer Skip
+
+- Local full comparison: `docs/test/llama-cpu-gpu-compare-20260507-full.json`.
+- Local NGL=1 comparison: `docs/test/llama-cpu-gpu-compare-20260507-ngl1.json`.
+- Device copies: `files/pdocker/bench/llama-cpu-gpu-compare-20260507-full.json`
+  and `files/pdocker/bench/llama-cpu-gpu-compare-20260507-ngl1.json`.
+- Model: Qwen3 8B GGUF, Q4_K_M, `/models/model.gguf`, 8.19B parameters.
+- Policy: llama.cpp was not modified. The container uses the standard Vulkan
+  loader through `pdocker-vulkan-icd.so`.
+- Measurement: HTTP `/completion`, prompt `Hello`, `n_predict=4`, repeat 1.
+- Driver fix made during this run: the compare script now binds `/models` to
+  the same host model directory as the project-library Compose template
+  (`files/pdocker/models/llama-cpp-gpu`) instead of the stale project-local
+  `models` directory.
+
+| Mode | Served | Offload Evidence | Generation Speed | Speedup vs CPU | Result |
+| --- | --- | --- | ---: | ---: | --- |
+| CPU baseline | Yes | CPU only | 0.0562 tok/s | 1.00x | Baseline |
+| Vulkan NGL=1 | Yes | output layer only, 1/37 layers | 0.1153 tok/s | 2.05x | Functional but far below 10x |
+| Vulkan NGL=2 | No | output + 1 repeating layer, 2/37 layers | 0.0000 tok/s | 0.00x | Fails during warmup |
+
+NGL=1 currently proves that the container can load the model through the pdocker
+Vulkan bridge and produce a measurable HTTP completion, but it offloads only the
+output layer. NGL=2 reaches model load and assigns one repeating transformer
+layer to Vulkan, then fails during warmup with `vk::Queue::submit:
+ErrorFeatureNotPresent`.
+
+Current blocker: the next layer-depth step is not throughput-bound yet; it is a
+Vulkan feature/dispatch correctness issue around the generic SPIR-V submit path.
+The next implementation target is to map the failing SPIR-V capabilities and
+descriptor alias shape to the Android Vulkan executor, then either lower that
+shader correctly or clamp the glibc-facing advertised capabilities so llama.cpp
+chooses a supported path.
+
 ## 2026-05-05 Copy-Buffer Semantics Probe Result
 
 - Local path: `docs/test/llama-gpu-compare-latest.json`.
