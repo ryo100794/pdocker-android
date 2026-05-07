@@ -5788,7 +5788,11 @@ class MainActivity : AppCompatActivity() {
         val staleGpuLayerDefault =
             templateVersion < 7 ||
                 "LLAMA_ARG_N_GPU_LAYERS: \"\${LLAMA_ARG_N_GPU_LAYERS:-2}\"" in composeText
-        if (!stalePdockerShaderTuning && !staleCheckout && !staleKvOffloadGuard && !staleGpuLayerDefault) return
+        val stalePipelineOptimizationDefault =
+            templateVersion < 8 ||
+                "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION" !in composeText
+        if (!stalePdockerShaderTuning && !staleCheckout && !staleKvOffloadGuard &&
+            !staleGpuLayerDefault && !stalePipelineOptimizationDefault) return
         val backupDir = File(project, ".pdocker-template-backups/llama-cpp-gpu-${System.currentTimeMillis()}")
         backupDir.mkdirs()
         listOf(
@@ -5805,7 +5809,7 @@ class MainActivity : AppCompatActivity() {
             if (relative.startsWith("scripts/")) dest.setExecutable(true, false)
         }
         File(project, ".pdocker-template-id").writeText("llama-cpp-gpu\n")
-        File(project, ".pdocker-template-version").writeText("7\n")
+        File(project, ".pdocker-template-version").writeText("8\n")
         ensureProjectDocumentsEnv(project)
     }
 

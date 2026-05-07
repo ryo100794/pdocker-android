@@ -7,6 +7,7 @@ LLAMA_ROOT = ROOT / "app" / "src" / "main" / "assets" / "project-library" / "lla
 LLAMA_DOCKERFILE = LLAMA_ROOT / "Dockerfile"
 LLAMA_COMPOSE = LLAMA_ROOT / "compose.yaml"
 LLAMA_START = LLAMA_ROOT / "scripts" / "start-llama-server.sh"
+MAIN_ACTIVITY = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "MainActivity.kt"
 
 
 class LlamaTemplateContractTest(unittest.TestCase):
@@ -15,6 +16,7 @@ class LlamaTemplateContractTest(unittest.TestCase):
         cls.dockerfile = LLAMA_DOCKERFILE.read_text()
         cls.compose = LLAMA_COMPOSE.read_text()
         cls.start = LLAMA_START.read_text()
+        cls.main_activity = MAIN_ACTIVITY.read_text()
 
     def test_openblas_uses_standard_cmake_detection(self):
         self.assertIn("-DGGML_BLAS=ON", self.dockerfile)
@@ -63,6 +65,8 @@ class LlamaTemplateContractTest(unittest.TestCase):
             'PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION: "${PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION:-0}"',
             self.compose,
         )
+        self.assertIn("stalePipelineOptimizationDefault", self.main_activity)
+        self.assertIn('.pdocker-template-version").writeText("8', self.main_activity)
 
     def test_kv_guard_does_not_patch_llama_sources_or_build_flow(self):
         forbidden = [
