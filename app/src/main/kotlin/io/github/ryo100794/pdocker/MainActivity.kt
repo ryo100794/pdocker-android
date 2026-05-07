@@ -5805,7 +5805,14 @@ class MainActivity : AppCompatActivity() {
         ).forEach { relative ->
             val dest = File(project, relative)
             if (dest.exists()) dest.copyTo(File(backupDir, relative).also { it.parentFile?.mkdirs() }, overwrite = true)
-            copyAssetFile("project-library/llama-cpp-gpu/$relative", dest)
+            if (relative == ".dockerignore") {
+                if (!copyAssetFileIfPresent("project-library/llama-cpp-gpu/$relative", dest)) {
+                    dest.parentFile?.mkdirs()
+                    dest.writeText("models/\nworkspace/\nprofiles/\nlogs/\n*.gguf\n*.gguf.*\n")
+                }
+            } else {
+                copyAssetFile("project-library/llama-cpp-gpu/$relative", dest)
+            }
             if (relative.startsWith("scripts/")) dest.setExecutable(true, false)
         }
         File(project, ".pdocker-template-id").writeText("llama-cpp-gpu\n")
@@ -5818,6 +5825,13 @@ class MainActivity : AppCompatActivity() {
         assets.open(assetPath).use { input ->
             dest.outputStream().use { output -> input.copyTo(output) }
         }
+    }
+
+    private fun copyAssetFileIfPresent(assetPath: String, dest: File): Boolean {
+        return runCatching {
+            copyAssetFile(assetPath, dest)
+            true
+        }.getOrDefault(false)
     }
 
     private fun migrateDefaultDevWorkspace(project: File) {
