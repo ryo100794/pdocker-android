@@ -755,11 +755,23 @@ static bool copy_alias_candidate(PdockerVkMemory *src_memory) {
 
 static void execute_recorded_copy_ops(PdockerVkCommandBuffer *cmd) {
     if (!cmd) return;
+    size_t op_count = 0;
+    size_t alias_ops = 0;
+    size_t memmove_ops = 0;
+    size_t skipped_ops = 0;
+    VkDeviceSize alias_bytes = 0;
+    VkDeviceSize memmove_bytes = 0;
+    VkDeviceSize skipped_bytes = 0;
     for (uint32_t i = 0; i < cmd->copy_op_count; ++i) {
         PdockerVkCopyOp *op = &cmd->copy_ops[i];
+        op_count++;
         void *dst_ptr = buffer_ptr(op->dst, op->region.dstOffset, op->region.size);
         void *src_ptr = buffer_ptr(op->src, op->region.srcOffset, op->region.size);
-        if (!src_ptr || !dst_ptr) continue;
+        if (!src_ptr || !dst_ptr) {
+            skipped_ops++;
+            skipped_bytes += op->region.size;
+            continue;
+        }
         PdockerVkMemory *alias_memory = op->src->memory;
         VkDeviceSize alias_offset = op->src->memory_offset + op->region.srcOffset;
         (void)resolve_copy_alias(op->src, op->region.srcOffset, op->region.size,
@@ -767,6 +779,8 @@ static void execute_recorded_copy_ops(PdockerVkCommandBuffer *cmd) {
         if (copy_alias_candidate(alias_memory)) {
             add_copy_alias(op->dst, op->region.dstOffset, op->region.size,
                            alias_memory, alias_offset);
+            alias_ops++;
+            alias_bytes += op->region.size;
             if (trace_allocations()) {
                 fprintf(stderr,
                         "pdocker-vulkan-icd: copy-alias dst_size=%zu dst_off=%llu src_mem=%zu src_off=%llu bytes=%llu\n",
@@ -780,6 +794,19 @@ static void execute_recorded_copy_ops(PdockerVkCommandBuffer *cmd) {
         }
         invalidate_copy_aliases(op->dst, op->region.dstOffset, op->region.size);
         memmove(dst_ptr, src_ptr, (size_t)op->region.size);
+        memmove_ops++;
+        memmove_bytes += op->region.size;
+    }
+    if (trace_allocations() && op_count > 0) {
+        fprintf(stderr,
+                "pdocker-vulkan-icd: copy-submit summary ops=%zu alias_ops=%zu memmove_ops=%zu skipped_ops=%zu alias_bytes=%llu memmove_bytes=%llu skipped_bytes=%llu\n",
+                op_count,
+                alias_ops,
+                memmove_ops,
+                skipped_ops,
+                (unsigned long long)alias_bytes,
+                (unsigned long long)memmove_bytes,
+                (unsigned long long)skipped_bytes);
     }
 }
 

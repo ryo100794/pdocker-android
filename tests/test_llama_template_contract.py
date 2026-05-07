@@ -58,6 +58,12 @@ class LlamaTemplateContractTest(unittest.TestCase):
         self.assertIn('LLAMA_ARG_N_GPU_LAYERS: "${LLAMA_ARG_N_GPU_LAYERS:-1}"', self.compose)
         self.assertNotIn("LLAMA_ARG_N_GPU_LAYERS:-2", self.compose)
 
+    def test_llama_template_uses_measured_pipeline_optimization_default(self):
+        self.assertIn(
+            'PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION: "${PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION:-0}"',
+            self.compose,
+        )
+
     def test_kv_guard_does_not_patch_llama_sources_or_build_flow(self):
         forbidden = [
             "sed -i",

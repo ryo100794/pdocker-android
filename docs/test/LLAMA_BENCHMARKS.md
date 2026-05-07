@@ -102,6 +102,8 @@ depth that minimizes boundary traffic. Current best short result is NGL=3 at
 Trace run:
 
 - Local path: `docs/test/llama-cpu-gpu-compare-20260507-ngl3-trace.json`.
+- Copy-profile path:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-copy-profile.json`.
 - Scenario: NGL=3, context 2048, `n_predict=2`, trace allocation enabled.
 - Result: GPU 0.1909 tok/s, 3.40x vs the current CPU baseline, still below
   the 10x target.
@@ -114,6 +116,21 @@ Trace run:
   to keep repeated copy sources/destinations registered across submissions and
   batch transfer-only command buffers so they stop crossing the APK/container
   boundary every token.
+- Follow-up copy profile: GPU 0.1199 tok/s, 2.13x vs CPU with trace enabled.
+  The ICD recorded 566 copy submits: 565 were alias-only, 1 performed a real
+  16 KiB `memmove`, and 0 were skipped. This rules out host-side
+  `vkCmdCopyBuffer` replay as the current dominant cost. The remaining target
+  is generic dispatch transfer overhead, especially repeated mutable-buffer
+  upload/download and per-dispatch synchronization across the container/APK
+  bridge.
+- Pipeline optimization probe:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-pipeline-opt.json` measured
+  0.1436 tok/s, 2.56x vs CPU, with
+  `PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION=0`. The traced companion run
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-pipeline-opt-trace.json`
+  measured 0.1253 tok/s, 2.23x vs CPU under trace overhead. The llama project
+  template now defaults this setting to `0` while leaving an env opt-out for
+  devices where Android pipeline optimization proves unstable.
 
 ## 2026-05-05 Copy-Buffer Semantics Probe Result
 

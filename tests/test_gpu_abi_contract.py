@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_HEADER = ROOT / "app" / "src" / "main" / "cpp" / "pdocker_gpu_abi.h"
 CONTAINER_HEADER = ROOT / "docker-proot-setup" / "src" / "gpu" / "pdocker_gpu_abi.h"
 GPU_EXECUTOR = ROOT / "app" / "src" / "main" / "cpp" / "pdocker_gpu_executor.c"
+VULKAN_ICD = ROOT / "docker-proot-setup" / "src" / "gpu" / "pdocker_vulkan_icd.c"
+LLAMA_COMPARE = ROOT / "scripts" / "android-llama-gpu-compare.sh"
 
 
 def defines(path):
@@ -82,6 +84,39 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn('\\"skipped_upload_bytes\\":%zu,\\"skipped_download_bytes\\":%zu}', source)
         self.assertIn('\\"fail_binding_index\\":%d,\\"io_result\\":%d,', source)
         self.assertIn("active_bindings,\n                                binding_read_needed, binding_write_needed,\n                                cache_hits", source)
+
+    def test_vulkan_copy_submit_profile_is_recorded(self):
+        source = VULKAN_ICD.read_text()
+        self.assertIn("copy-submit summary ops=%zu alias_ops=%zu memmove_ops=%zu skipped_ops=%zu", source)
+        for field in [
+            "alias_bytes",
+            "memmove_bytes",
+            "skipped_bytes",
+            "copy_alias_candidate(alias_memory)",
+        ]:
+            self.assertIn(field, source)
+        compare = LLAMA_COMPARE.read_text()
+        for field in [
+            "copy_submit_alias_ops",
+            "copy_submit_memmove_ops",
+            "copy_submit_skipped_ops",
+            "copy_submit_alias_bytes",
+            "copy_submit_memmove_bytes",
+        ]:
+            self.assertIn(field, compare)
+
+    def test_llama_gpu_compare_can_forward_bridge_tuning_env(self):
+        compare = LLAMA_COMPARE.read_text()
+        self.assertIn("import os", compare)
+        for key in [
+            "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION",
+            "PDOCKER_GPU_MUTABLE_BUFFER_CACHE_MAX_BYTES",
+            "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
+            "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
+            "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
+        ]:
+            self.assertIn(f'"{key}"', compare)
+        self.assertIn("value = os.environ.get(key)", compare)
 
 
 if __name__ == "__main__":

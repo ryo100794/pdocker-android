@@ -230,6 +230,7 @@ container_payload() {
   local gpu_layers="${3:-}"
   python3 - "$IMAGE" "$DEVICE_PROJECT" "$DEVICE_MODEL_HOST" "$DEVICE_WORKSPACE_HOST" "$mode" "$ctx" "$gpu_layers" "$REMOTE_PORT" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" <<'PY'
 import json
+import os
 import sys
 
 image, project, model_host, workspace_host, mode, ctx, gpu_layers, port, trace_alloc, model_path, model_url = sys.argv[1:12]
@@ -256,6 +257,16 @@ if mode == "vulkan-raw":
     ])
     if trace_alloc == "1":
         env.append("PDOCKER_VULKAN_ICD_TRACE_ALLOC=1")
+for key in [
+    "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION",
+    "PDOCKER_GPU_MUTABLE_BUFFER_CACHE_MAX_BYTES",
+    "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
+    "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
+    "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
+]:
+    value = os.environ.get(key)
+    if value is not None:
+        env.append(f"{key}={value}")
 port_key = f"{port}/tcp"
 payload = {
     "Image": image,
@@ -753,6 +764,21 @@ copy_buffer_bytes = [
     int(m.group(1))
     for m in re.finditer(r"pdocker-vulkan-icd: copy-buffer .* bytes=([0-9]+) ok=1", log)
 ]
+copy_submit_summaries = [
+    {
+        "ops": int(m.group(1)),
+        "alias_ops": int(m.group(2)),
+        "memmove_ops": int(m.group(3)),
+        "skipped_ops": int(m.group(4)),
+        "alias_bytes": int(m.group(5)),
+        "memmove_bytes": int(m.group(6)),
+        "skipped_bytes": int(m.group(7)),
+    }
+    for m in re.finditer(
+        r"pdocker-vulkan-icd: copy-submit summary ops=([0-9]+) alias_ops=([0-9]+) memmove_ops=([0-9]+) skipped_ops=([0-9]+) alias_bytes=([0-9]+) memmove_bytes=([0-9]+) skipped_bytes=([0-9]+)",
+        log,
+    )
+]
 bridge_dispatch_profile = {
     "samples": len(dispatch_ms),
     "upload_ms_mean": (sum(dispatch_upload_ms) / len(dispatch_upload_ms)) if dispatch_upload_ms else 0.0,
@@ -760,6 +786,14 @@ bridge_dispatch_profile = {
     "download_ms_mean": (sum(dispatch_download_ms) / len(dispatch_download_ms)) if dispatch_download_ms else 0.0,
     "copy_buffer_ops_in_log": len(copy_buffer_bytes),
     "copy_buffer_bytes_in_log": sum(copy_buffer_bytes),
+    "copy_submit_count": len(copy_submit_summaries),
+    "copy_submit_ops": sum(item["ops"] for item in copy_submit_summaries),
+    "copy_submit_alias_ops": sum(item["alias_ops"] for item in copy_submit_summaries),
+    "copy_submit_memmove_ops": sum(item["memmove_ops"] for item in copy_submit_summaries),
+    "copy_submit_skipped_ops": sum(item["skipped_ops"] for item in copy_submit_summaries),
+    "copy_submit_alias_bytes": sum(item["alias_bytes"] for item in copy_submit_summaries),
+    "copy_submit_memmove_bytes": sum(item["memmove_bytes"] for item in copy_submit_summaries),
+    "copy_submit_skipped_bytes": sum(item["skipped_bytes"] for item in copy_submit_summaries),
 }
 speedup = (gpu_tps / cpu_tps) if cpu_tps and gpu_tps else 0.0
 target_met = bool(cpu_tps and gpu_tps >= target_tps)
@@ -780,7 +814,7 @@ next_action = (
     else "increase n-gpu-layers until repeating transformer layers are offloaded"
     if blocker_class == "insufficient_gpu_offload_depth"
     else "reduce bridge upload/copy overhead with persistent registered buffers; rerun with larger n_predict"
-    if evidence["generic_spirv_dispatch_seen"] and bool(int(gpu_served_s))
+    if blocker_class == "bridge_dispatch_performance"
     else "make Vulkan device discovery reliable"
 )
 if blocker_class == "bridge_dispatch_performance":
