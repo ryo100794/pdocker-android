@@ -45,9 +45,15 @@ class GpuAbiContractTest(unittest.TestCase):
             '\\"cache_hit\\":%s',
             '\\"mutable_reused\\":%s',
             '\\"mutable_cache_hit\\":%s',
+            '\\"upload_ms\\":%.4f',
+            '\\"download_ms\\":%.4f',
         ]:
             self.assertIn(field, source)
         self.assertGreaterEqual(source.count("write_vulkan_binding_report(json_out()"), 2)
+        self.assertIn("binding_upload_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_download_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_upload_ms[i] = now_ms() - binding_start;", source)
+        self.assertIn("binding_download_ms[i] = now_ms() - binding_start;", source)
 
     def test_vulkan_duplicate_binding_rewrite_avoids_passed_bindings(self):
         source = GPU_EXECUTOR.read_text()
@@ -124,6 +130,19 @@ class GpuAbiContractTest(unittest.TestCase):
         ]:
             self.assertIn(field, compare)
 
+    def test_llama_compare_summarizes_binding_timing(self):
+        compare = LLAMA_COMPARE.read_text()
+        for field in [
+            "binding_timing_samples",
+            "binding_upload_ms_max",
+            "binding_download_ms_max",
+            "top_binding_uploads",
+            "top_binding_downloads",
+        ]:
+            self.assertIn(field, compare)
+        self.assertIn('detail.get("upload_ms")', compare)
+        self.assertIn('detail.get("download_ms")', compare)
+
     def test_llama_gpu_compare_can_forward_bridge_tuning_env(self):
         compare = LLAMA_COMPARE.read_text()
         self.assertIn("import os", compare)
@@ -133,9 +152,21 @@ class GpuAbiContractTest(unittest.TestCase):
             "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
             "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
             "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
+            "PDOCKER_GPU_WRITEONLY_BUFFER_CACHE",
         ]:
             self.assertIn(f'"{key}"', compare)
         self.assertIn("value = os.environ.get(key)", compare)
+
+    def test_gpu_executor_has_opt_in_writeonly_buffer_cache(self):
+        source = GPU_EXECUTOR.read_text()
+        for marker in [
+            "PDOCKER_GPU_WRITEONLY_BUFFER_CACHE",
+            "writeonly_buffer_cache_enabled",
+            "if (!initialize_from_fd)",
+            "find_mutable_buffer_cache_entry(",
+            "*mutable_cache_hit = 1;",
+        ]:
+            self.assertIn(marker, source)
 
 
 if __name__ == "__main__":

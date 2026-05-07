@@ -141,6 +141,19 @@ Trace run:
   write spans. This confirms the virtual-memory guard is active for the large
   bridge allocation, and also confirms the next speed target is a V3 dispatch
   protocol that sends dirty page spans instead of whole mutable binding ranges.
+- Binding timing trace:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-binding-timing.json` adds
+  per-binding upload/download timing. The heaviest one-time upload is the
+  510,504,960-byte resident model binding. The recurring bottleneck is a
+  write-only 319,553,536-byte binding: it costs hundreds of milliseconds to
+  allocate and then hundreds more to write back as a whole range. An opt-in
+  write-only buffer cache probe was also recorded:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-writeonly-cache.json` and
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-writeonly-cache-512m.json`.
+  It did not improve this llama path because the large write-only binding uses
+  changing offsets, so cache keys do not repeat. Keep the cache opt-in only.
+  The next useful optimization remains dirty-span download for the large
+  write-only binding.
 
 ## 2026-05-05 Copy-Buffer Semantics Probe Result
 

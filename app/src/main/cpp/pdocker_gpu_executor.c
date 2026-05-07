@@ -924,6 +924,10 @@ static int mutable_buffer_cache_candidate(uint32_t binding, size_t size) {
     return max_bytes > 0 && size > 0 && size <= max_bytes;
 }
 
+static int writeonly_buffer_cache_enabled(void) {
+    return env_truthy("PDOCKER_GPU_WRITEONLY_BUFFER_CACHE", 0);
+}
+
 static VulkanResidentCacheEntry *find_resident_cache_entry(
         dev_t dev, ino_t ino, off_t offset, size_t size, uint32_t binding) {
     for (size_t i = 0; i < PDOCKER_GPU_RESIDENT_CACHE_SLOTS; ++i) {
@@ -1475,14 +1479,17 @@ static void write_vulkan_binding_report(
         const int *cache_hits,
         const int *cache_resident,
         const int *mutable_cache_hits,
-        const int *mutable_cache_reused) {
+        const int *mutable_cache_reused,
+        const double *upload_ms,
+        const double *download_ms) {
     fprintf(out, "\"binding_details\":[");
     for (size_t i = 0; i < binding_count; ++i) {
         fprintf(out,
                 "%s{\"index\":%zu,\"binding\":%u,\"offset\":%lld,"
                 "\"size\":%zu,\"active\":%s,\"readable\":%s,\"writable\":%s,"
                 "\"resident\":%s,\"cache_hit\":%s,"
-                "\"mutable_reused\":%s,\"mutable_cache_hit\":%s}",
+                "\"mutable_reused\":%s,\"mutable_cache_hit\":%s,"
+                "\"upload_ms\":%.4f,\"download_ms\":%.4f}",
                 i ? "," : "",
                 i,
                 bindings[i].binding,
@@ -1494,7 +1501,9 @@ static void write_vulkan_binding_report(
                 cache_resident && cache_resident[i] ? "true" : "false",
                 cache_hits && cache_hits[i] ? "true" : "false",
                 mutable_cache_reused && mutable_cache_reused[i] ? "true" : "false",
-                mutable_cache_hits && mutable_cache_hits[i] ? "true" : "false");
+                mutable_cache_hits && mutable_cache_hits[i] ? "true" : "false",
+                upload_ms ? upload_ms[i] : 0.0,
+                download_ms ? download_ms[i] : 0.0);
     }
     fprintf(out, "]");
 }
@@ -1514,15 +1523,41 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
     *cache_resident = 0;
     *mutable_cache_hit = 0;
     *mutable_cache_reused = 0;
+    dev_t dev = 0;
+    ino_t ino = 0;
+    const int have_key = resident_cache_key(fd, &dev, &ino) == 0;
     if (!initialize_from_fd) {
+        if (have_key &&
+            writeonly_buffer_cache_enabled() &&
+            mutable_buffer_cache_candidate(binding->binding, binding->size)) {
+            VulkanMutableBufferCacheEntry *entry = find_mutable_buffer_cache_entry(
+                dev, ino, binding->offset, binding->size, binding->binding);
+            if (entry) {
+                entry->hits++;
+                *mutable_cache_hit = 1;
+                *mutable_cache_reused = 1;
+                return &entry->buffer;
+            }
+            entry = select_mutable_buffer_cache_slot(device);
+            if (create_vulkan_vector_buffer(physical_device, device, binding->size, NULL, &entry->buffer) == 0) {
+                entry->valid = 1;
+                entry->dev = dev;
+                entry->ino = ino;
+                entry->offset = binding->offset;
+                entry->size = binding->size;
+                entry->binding = binding->binding;
+                entry->hits = 1;
+                *mutable_cache_reused = 1;
+                return &entry->buffer;
+            }
+            destroy_vulkan_vector_buffer(device, &entry->buffer);
+            memset(entry, 0, sizeof(*entry));
+        }
         if (create_vulkan_vector_buffer(physical_device, device, binding->size, NULL, temporary) != 0) {
             return NULL;
         }
         return temporary;
     }
-    dev_t dev = 0;
-    ino_t ino = 0;
-    const int have_key = resident_cache_key(fd, &dev, &ino) == 0;
     if (resident_cache_candidate(binding->binding, binding->size)) {
         if (have_key) {
             VulkanResidentCacheEntry *entry = find_resident_cache_entry(
@@ -2423,6 +2458,8 @@ static int run_vulkan_dispatch_fd(
     int cache_resident[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     int mutable_cache_hits[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     int mutable_cache_reused[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    double binding_upload_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    double binding_download_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
     VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
     VkShaderModule shader = VK_NULL_HANDLE;
@@ -2455,6 +2492,8 @@ static int run_vulkan_dispatch_fd(
     memset(cache_resident, 0, sizeof(cache_resident));
     memset(mutable_cache_hits, 0, sizeof(mutable_cache_hits));
     memset(mutable_cache_reused, 0, sizeof(mutable_cache_reused));
+    memset(binding_upload_ms, 0, sizeof(binding_upload_ms));
+    memset(binding_download_ms, 0, sizeof(binding_download_ms));
     memset(vk_spec_entries, 0, sizeof(vk_spec_entries));
     memset(&vk_spec_info, 0, sizeof(vk_spec_info));
     memset(&spirv_summary, 0, sizeof(spirv_summary));
@@ -2579,6 +2618,7 @@ static int run_vulkan_dispatch_fd(
         if (!active_bindings[i]) continue;
         fail_binding = (int)i;
         fail_stage = "create-dispatch-buffer";
+        double binding_start = now_ms();
         vk_buffers[i] = acquire_dispatch_buffer(
             rt->physical_device,
             rt->device,
@@ -2590,6 +2630,7 @@ static int run_vulkan_dispatch_fd(
             &cache_resident[i],
             &mutable_cache_hits[i],
             &mutable_cache_reused[i]);
+        binding_upload_ms[i] = now_ms() - binding_start;
         if (!vk_buffers[i]) goto cleanup;
     }
     fail_binding = -1;
@@ -2798,7 +2839,9 @@ static int run_vulkan_dispatch_fd(
         if (cache_resident[i]) continue;
         fail_stage = "download-dispatch-buffer";
         fail_binding = (int)i;
+        double binding_start = now_ms();
         io_rc = write_fd_exact(buffer_fds[i], vk_buffers[i]->map, bindings[i].size, bindings[i].offset);
+        binding_download_ms[i] = now_ms() - binding_start;
         if (io_rc != 0) goto cleanup;
     }
     fail_binding = -1;
@@ -2860,7 +2903,8 @@ static int run_vulkan_dispatch_fd(
                                 active_bindings,
                                 binding_read_needed, binding_write_needed,
                                 cache_hits, cache_resident,
-                                mutable_cache_hits, mutable_cache_reused);
+                                mutable_cache_hits, mutable_cache_reused,
+                                binding_upload_ms, binding_download_ms);
     fprintf(json_out(), "}\n");
     fflush(json_out());
     ret = 0;
@@ -2964,7 +3008,8 @@ cleanup:
                                     active_bindings,
                                     binding_read_needed, binding_write_needed,
                                     cache_hits, cache_resident,
-                                    mutable_cache_hits, mutable_cache_reused);
+                                    mutable_cache_hits, mutable_cache_reused,
+                                    binding_upload_ms, binding_download_ms);
         fprintf(json_out(), ",");
         write_spirv_feature_report(json_out(), &spirv_summary, rt);
         fprintf(json_out(), ",");

@@ -263,6 +263,7 @@ for key in [
     "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
     "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
     "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
+    "PDOCKER_GPU_WRITEONLY_BUFFER_CACHE",
 ]:
     value = os.environ.get(key)
     if value is not None:
@@ -792,6 +793,36 @@ guarded_bindings = [
         log,
     )
 ]
+binding_timing_samples = []
+for event_index, event in enumerate(executor_events):
+    if event.get("kernel") != "generic_spirv" or event.get("valid") is not True:
+        continue
+    for detail in event.get("binding_details") or []:
+        if not isinstance(detail, dict):
+            continue
+        binding_timing_samples.append({
+            "event_index": event_index,
+            "binding": int(detail.get("binding") or 0),
+            "size": int(detail.get("size") or 0),
+            "readable": bool(detail.get("readable")),
+            "writable": bool(detail.get("writable")),
+            "resident": bool(detail.get("resident")),
+            "cache_hit": bool(detail.get("cache_hit")),
+            "mutable_reused": bool(detail.get("mutable_reused")),
+            "mutable_cache_hit": bool(detail.get("mutable_cache_hit")),
+            "upload_ms": float(detail.get("upload_ms") or 0.0),
+            "download_ms": float(detail.get("download_ms") or 0.0),
+        })
+top_binding_uploads = sorted(
+    binding_timing_samples,
+    key=lambda item: item["upload_ms"],
+    reverse=True,
+)[:8]
+top_binding_downloads = sorted(
+    binding_timing_samples,
+    key=lambda item: item["download_ms"],
+    reverse=True,
+)[:8]
 bridge_dispatch_profile = {
     "samples": len(dispatch_ms),
     "upload_ms_mean": (sum(dispatch_upload_ms) / len(dispatch_upload_ms)) if dispatch_upload_ms else 0.0,
@@ -811,6 +842,11 @@ bridge_dispatch_profile = {
     "guarded_binding_max_resident_bytes": max((item["resident_bytes"] for item in guarded_bindings), default=0),
     "guarded_binding_max_dirty_bytes": max((item["dirty_bytes"] for item in guarded_bindings), default=0),
     "guarded_binding_max_range_bytes": max((item["range"] for item in guarded_bindings), default=0),
+    "binding_timing_samples": len(binding_timing_samples),
+    "binding_upload_ms_max": max((item["upload_ms"] for item in binding_timing_samples), default=0.0),
+    "binding_download_ms_max": max((item["download_ms"] for item in binding_timing_samples), default=0.0),
+    "top_binding_uploads": top_binding_uploads,
+    "top_binding_downloads": top_binding_downloads,
 }
 speedup = (gpu_tps / cpu_tps) if cpu_tps and gpu_tps else 0.0
 target_met = bool(cpu_tps and gpu_tps >= target_tps)
