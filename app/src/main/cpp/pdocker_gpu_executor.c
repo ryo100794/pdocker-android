@@ -412,6 +412,10 @@ typedef struct {
     size_t dirty_probe_min_bytes;
     int has_dirty_writeback;
     int dirty_writeback;
+    int has_writeonly_buffer_cache;
+    int writeonly_buffer_cache;
+    int has_mutable_buffer_cache_max_bytes;
+    size_t mutable_buffer_cache_max_bytes;
 } VulkanDispatchOptions;
 
 typedef struct {
@@ -946,10 +950,12 @@ static size_t mutable_buffer_cache_max_bytes(void) {
     return PDOCKER_GPU_MUTABLE_BUFFER_CACHE_DEFAULT_MAX_BYTES;
 }
 
-static int mutable_buffer_cache_candidate(uint32_t binding, size_t size) {
+static int mutable_buffer_cache_candidate_with_max(
+        uint32_t binding,
+        size_t size,
+        size_t max_bytes) {
     (void)binding;
     if (!env_truthy("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", 1)) return 0;
-    const size_t max_bytes = mutable_buffer_cache_max_bytes();
     return max_bytes > 0 && size > 0 && size <= max_bytes;
 }
 
@@ -1061,6 +1067,31 @@ static int parse_vulkan_dispatch_option(VulkanDispatchOptions *options, const ch
         if (!end || *end != '\0') return -1;
         options->has_dirty_probe_min_bytes = 1;
         options->dirty_probe_min_bytes = (size_t)parsed;
+        return 0;
+    }
+    if (strncmp(token, "writeonly_cache=", 16) == 0) {
+        const char *value = token + 16;
+        if (strcmp(value, "1") == 0 || strcasecmp(value, "true") == 0 ||
+            strcasecmp(value, "yes") == 0 || strcasecmp(value, "on") == 0) {
+            options->has_writeonly_buffer_cache = 1;
+            options->writeonly_buffer_cache = 1;
+            return 0;
+        }
+        if (strcmp(value, "0") == 0 || strcasecmp(value, "false") == 0 ||
+            strcasecmp(value, "no") == 0 || strcasecmp(value, "off") == 0) {
+            options->has_writeonly_buffer_cache = 1;
+            options->writeonly_buffer_cache = 0;
+            return 0;
+        }
+        return -1;
+    }
+    if (strncmp(token, "mutable_cache_max=", 18) == 0) {
+        const char *value = token + 18;
+        char *end = NULL;
+        unsigned long long parsed = strtoull(value, &end, 10);
+        if (!end || *end != '\0') return -1;
+        options->has_mutable_buffer_cache_max_bytes = 1;
+        options->mutable_buffer_cache_max_bytes = (size_t)parsed;
         return 0;
     }
     return -1;
@@ -1754,7 +1785,9 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
         int *cache_hit,
         int *cache_resident,
         int *mutable_cache_hit,
-        int *mutable_cache_reused) {
+        int *mutable_cache_reused,
+        int writeonly_scratch_enabled,
+        size_t mutable_cache_max_bytes) {
     *cache_hit = 0;
     *cache_resident = 0;
     *mutable_cache_hit = 0;
@@ -1763,8 +1796,11 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
     ino_t ino = 0;
     const int have_key = resident_cache_key(fd, &dev, &ino) == 0;
     if (!initialize_from_fd) {
-        if (writeonly_buffer_cache_enabled() &&
-            mutable_buffer_cache_candidate(binding->binding, binding->size)) {
+        if (writeonly_scratch_enabled &&
+            mutable_buffer_cache_candidate_with_max(
+                binding->binding,
+                binding->size,
+                mutable_cache_max_bytes)) {
             VulkanMutableBufferCacheEntry *entry = find_writeonly_scratch_cache_entry(
                 binding->size, binding->binding);
             if (entry) {
@@ -1821,7 +1857,11 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
             memset(entry, 0, sizeof(*entry));
         }
     }
-    if (have_key && mutable_buffer_cache_candidate(binding->binding, binding->size)) {
+    if (have_key &&
+        mutable_buffer_cache_candidate_with_max(
+            binding->binding,
+            binding->size,
+            mutable_cache_max_bytes)) {
         VulkanMutableBufferCacheEntry *entry = find_mutable_buffer_cache_entry(
             dev, ino, binding->offset, binding->size, binding->binding);
         if (entry) {
@@ -2766,6 +2806,12 @@ static int run_vulkan_dispatch_fd(
         ? options->dirty_probe_min_bytes
         : writeonly_dirty_probe_min_bytes();
     const size_t dirty_probe_pagesize = dirty_probe_page_size();
+    const int writeonly_scratch_enabled = options && options->has_writeonly_buffer_cache
+        ? options->writeonly_buffer_cache
+        : writeonly_buffer_cache_enabled();
+    const size_t mutable_cache_max_bytes = options && options->has_mutable_buffer_cache_max_bytes
+        ? options->mutable_buffer_cache_max_bytes
+        : mutable_buffer_cache_max_bytes();
     uint8_t shader_used_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     SpirvDescriptorAccess shader_binding_access[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     uint8_t active_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
@@ -2925,7 +2971,9 @@ static int run_vulkan_dispatch_fd(
             &cache_hits[i],
             &cache_resident[i],
             &mutable_cache_hits[i],
-            &mutable_cache_reused[i]);
+            &mutable_cache_reused[i],
+            writeonly_scratch_enabled,
+            mutable_cache_max_bytes);
         binding_upload_ms[i] = now_ms() - binding_start;
         if (!vk_buffers[i]) goto cleanup;
         if ((dirty_probe_enabled || dirty_writeback_enabled) &&

@@ -45,6 +45,12 @@ bash scripts/android-llama-gpu-compare.sh --model-path /models/small.gguf --mode
   `docs/test/llama-cpu-gpu-compare-20260507-ngl3-dirty-writeback-cached.json`.
 - Partial writeback plus scratch-cache attempt:
   `docs/test/llama-cpu-gpu-compare-20260507-ngl3-dirty-writeback-scratch.json`.
+- Scratch-cache protocol forwarding:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-scratch-protocol.json`.
+- Warm scratch-cache protocol run:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-scratch-protocol-warm.json`.
+- Warm scratch-cache no-trace run:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl3-scratch-protocol-notrace.json`.
 - CPU baseline: 0.056159 tok/s.
 - Policy: llama.cpp was not modified; all changes are in the pdocker Vulkan ICD,
   APK GPU executor, and benchmark parser.
@@ -54,13 +60,15 @@ bash scripts/android-llama-gpu-compare.sh --model-path /models/small.gguf --mode
 | Dirty probe only | 3 | 2 | 0.1331 tok/s | 2.37x | 319,553,536B write-only binding dirtied only 32-96 KiB, but full scan cost 418-498ms |
 | Dirty writeback cached | 3 | 4 | 0.0915 tok/s | 1.63x | cached partial writeback reduced repeated 319,553,536B downloads to 0.09-0.20ms |
 | Dirty writeback + scratch flag | 3 | 4 | 0.1038 tok/s | 1.85x | downloads stayed low, but 319,553,536B buffer acquisition remained 451-542ms |
+| Scratch options forwarded | 3 | 4 | 0.1310 tok/s | 2.33x | ICD now forwards scratch/max-cache options to the APK executor; repeated 319,553,536B upload/download reached ~0.001ms / 0.06-0.08ms |
+| Warm scratch options | 3 | 8 | 0.1179 tok/s | 2.10x | same executor process reused dirty and scratch state from the start; 319,553,536B upload/download stayed ~0.001ms / 0.06-0.18ms |
+| Warm scratch, no trace | 3 | 8 | 0.1161 tok/s | 2.07x | throughput remains around 2x even without allocation trace logging |
 
-Conclusion: writeback volume is no longer the only blocker. The next hotspot is
-large write-only buffer acquisition on the APK executor side. The existing
-write-only scratch flag is still not propagated as an executor-side runtime
-option for this path, so a follow-up must move more tuning options into the
-Vulkan dispatch protocol or make safe write-only scratch reuse an executor
-policy.
+Conclusion: the large write-only transfer path is no longer the dominant
+blocker once the executor is warm. The next hotspot has moved toward generic
+SPIR-V dispatch and remaining per-dispatch setup overhead. The first large
+resident model binding still has a one-time ~1.1-1.6s upload cost, but repeated
+319,553,536B scratch/write-only buffers now reuse executor-side state.
 
 ## 2026-05-07 CPU/GPU Comparison After Descriptor Transfer Skip
 

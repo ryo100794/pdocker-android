@@ -669,6 +669,25 @@ static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
         if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
         off += (size_t)n;
     }
+    if (getenv("PDOCKER_GPU_WRITEONLY_BUFFER_CACHE")) {
+        n = snprintf(command + off, sizeof(command) - off,
+                     " writeonly_cache=%u",
+                     env_truthy_default("PDOCKER_GPU_WRITEONLY_BUFFER_CACHE", false) ? 1u : 0u);
+        if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+        off += (size_t)n;
+    }
+    const char *mutable_cache_max = getenv("PDOCKER_GPU_MUTABLE_BUFFER_CACHE_MAX_BYTES");
+    if (mutable_cache_max && mutable_cache_max[0]) {
+        char *end = NULL;
+        unsigned long long parsed = strtoull(mutable_cache_max, &end, 10);
+        if (end && *end == '\0') {
+            n = snprintf(command + off, sizeof(command) - off,
+                         " mutable_cache_max=%llu",
+                         parsed);
+            if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+            off += (size_t)n;
+        }
+    }
     const char *dirty_probe_min = getenv("PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_MIN_BYTES");
     if (dirty_probe_min && dirty_probe_min[0]) {
         char *end = NULL;

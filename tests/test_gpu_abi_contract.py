@@ -189,6 +189,9 @@ class GpuAbiContractTest(unittest.TestCase):
             "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_SENTINEL",
             "writeonly_dirty_probe_enabled",
             "writeonly_dirty_writeback_enabled",
+            "has_writeonly_buffer_cache",
+            "has_mutable_buffer_cache_max_bytes",
+            "mutable_buffer_cache_candidate_with_max",
             "VulkanDirtyMaskCacheEntry",
             "find_dirty_mask_cache_entry",
             "update_dirty_mask_cache",
@@ -203,10 +206,14 @@ class GpuAbiContractTest(unittest.TestCase):
         for marker in [
             "dirty_probe=%u",
             "dirty_writeback=%u",
+            "writeonly_cache=%u",
+            "mutable_cache_max=%llu",
             "dirty_probe_min=%llu",
             "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE",
             "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_MIN_BYTES",
             "PDOCKER_GPU_WRITEONLY_DIRTY_WRITEBACK",
+            "PDOCKER_GPU_WRITEONLY_BUFFER_CACHE",
+            "PDOCKER_GPU_MUTABLE_BUFFER_CACHE_MAX_BYTES",
         ]:
             self.assertIn(marker, icd)
         compare = LLAMA_COMPARE.read_text()
