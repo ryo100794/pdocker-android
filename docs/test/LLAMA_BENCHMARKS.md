@@ -51,6 +51,10 @@ bash scripts/android-llama-gpu-compare.sh --model-path /models/small.gguf --mode
   `docs/test/llama-cpu-gpu-compare-20260507-ngl3-scratch-protocol-warm.json`.
 - Warm scratch-cache no-trace run:
   `docs/test/llama-cpu-gpu-compare-20260507-ngl3-scratch-protocol-notrace.json`.
+- NGL=4 current scratch protocol:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl4-scratch-protocol.json`.
+- NGL=6 current scratch protocol:
+  `docs/test/llama-cpu-gpu-compare-20260507-ngl6-scratch-protocol.json`.
 - CPU baseline: 0.056159 tok/s.
 - Policy: llama.cpp was not modified; all changes are in the pdocker Vulkan ICD,
   APK GPU executor, and benchmark parser.
@@ -63,12 +67,21 @@ bash scripts/android-llama-gpu-compare.sh --model-path /models/small.gguf --mode
 | Scratch options forwarded | 3 | 4 | 0.1310 tok/s | 2.33x | ICD now forwards scratch/max-cache options to the APK executor; repeated 319,553,536B upload/download reached ~0.001ms / 0.06-0.08ms |
 | Warm scratch options | 3 | 8 | 0.1179 tok/s | 2.10x | same executor process reused dirty and scratch state from the start; 319,553,536B upload/download stayed ~0.001ms / 0.06-0.18ms |
 | Warm scratch, no trace | 3 | 8 | 0.1161 tok/s | 2.07x | throughput remains around 2x even without allocation trace logging |
+| NGL=4 scratch options | 4 | 4 | 0.0607 tok/s | 1.08x | repeated dispatch count and graph splits increased; no large dirty-writeback wins appeared |
+| NGL=6 scratch options | 6 | 4 | 0.0987 tok/s | 1.76x | several 319MiB bindings became true full-range read/write traffic; partial dirty writeback cannot reduce those |
 
 Conclusion: the large write-only transfer path is no longer the dominant
 blocker once the executor is warm. The next hotspot has moved toward generic
 SPIR-V dispatch and remaining per-dispatch setup overhead. The first large
 resident model binding still has a one-time ~1.1-1.6s upload cost, but repeated
 319,553,536B scratch/write-only buffers now reuse executor-side state.
+
+For NGL=4 and above, the main limit is not simply the number of layers copied to
+Vulkan. The scheduler introduces more GPU/CPU boundary traffic and some
+319MiB-class bindings are genuinely full-range readable or full-range dirty.
+Those buffers need a device-resident bridge protocol so GPU-produced tensors can
+remain GPU-owned across subsequent dispatches instead of being materialized back
+through the container-visible file descriptor after each command.
 
 ## 2026-05-07 CPU/GPU Comparison After Descriptor Transfer Skip
 
