@@ -257,6 +257,10 @@ def test_start_container_reconciles_live_pid() -> None:
             fail("start_container did not preserve the live runtime pid")
         if not saved["State"]["Running"] or saved["State"]["Status"] != "running":
             fail(f"start_container did not reconcile live pid to running: {saved['State']!r}")
+        if saved["State"].get("ExitCode") != 0 or saved["State"].get("Error"):
+            fail(f"start_container left stale failure fields while running: {saved['State']!r}")
+        if saved["State"].get("FinishedAt") != "0001-01-01T00:00:00.000000000Z":
+            fail(f"start_container left stale FinishedAt while running: {saved['State']!r}")
         ok("container start reconciles verified live pid without double-starting")
 
 

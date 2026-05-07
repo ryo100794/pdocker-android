@@ -1,0 +1,407 @@
+{
+  "Id": "502abfaf8df646f7ac5765c624a67732",
+  "Name": "/pdocker-llama-cpp",
+  "Image": "docker.io/pdocker/llama-cpp-gpu:latest",
+  "ImageId": "sha256:58d05029dc291a38125b3b19e96956072fc277021a4e40e74b8731b8f77e87de",
+  "Cmd": [
+    "/usr/local/bin/start-llama-server"
+  ],
+  "Entrypoint": [],
+  "Env": [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "LANG=C.UTF-8",
+    "LC_ALL=C.UTF-8",
+    "SHELL=/bin/bash",
+    "PDOCKER_GPU=auto",
+    "PDOCKER_GPU_AUTO=1",
+    "PDOCKER_GPU_MODE=vulkan-raw",
+    "LLAMA_ARG_MODEL=/models/model.gguf",
+    "LLAMA_ARG_CTX=4096",
+    "LLAMA_ARG_PORT=18081",
+    "LLAMA_ARG_THREADS=",
+    "LLAMA_ARG_N_GPU_LAYERS=2",
+    "LLAMA_GPU_PROFILE_REFRESH=auto",
+    "LLAMA_EXTRA_ARGS=",
+    "LLAMA_LOG_FILE=/workspace/logs/llama-server.log",
+    "LLAMA_MODEL_URL=https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+    "PDOCKER_DOCUMENTS_MOUNT=/documents",
+    "PDOCKER_SHARED_DOCUMENTS_MOUNT=/shared",
+    "PDOCKER_EXPORT_DIR=/documents/pdocker-exports",
+    "PDOCKER_FAST_WORKDIR=/workspace",
+    "PDOCKER_GPU_MODES=cuda-compat,opencl,vulkan",
+    "PDOCKER_GPU_COMMAND_API=pdocker-gpu-command-v1",
+    "PDOCKER_GPU_ABI_VERSION=0.1",
+    "PDOCKER_GPU_EXECUTOR_ROLE=apk-bionic-gpu-command-executor",
+    "PDOCKER_GPU_LLM_ENGINE_LOCATION=container",
+    "PDOCKER_GPU_SHIM=/usr/local/bin/pdocker-gpu-shim",
+    "PDOCKER_GPU_SHARED_DIR=/run/pdocker-gpu",
+    "NVIDIA_VISIBLE_DEVICES=all",
+    "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics",
+    "PDOCKER_GPU_EXECUTOR_AVAILABLE=1",
+    "PDOCKER_GPU_QUEUE_SOCKET=/run/pdocker-gpu/pdocker-gpu.sock",
+    "PDOCKER_VULKAN_PASSTHROUGH=1",
+    "VK_ICD_FILENAMES=/etc/vulkan/icd.d/pdocker-android.json",
+    "PDOCKER_VULKAN_ICD=/usr/local/lib/pdocker-vulkan-icd.so",
+    "PDOCKER_VULKAN_ICD_KIND=pdocker-bridge-minimal",
+    "PDOCKER_VULKAN_ICD_READY=0",
+    "PDOCKER_CUDA_COMPAT=1",
+    "CUDA_VISIBLE_DEVICES=0",
+    "CUDA_DEVICE_ORDER=PCI_BUS_ID",
+    "PDOCKER_OPENCL_PASSTHROUGH=1",
+    "OCL_ICD_VENDORS=/etc/OpenCL/vendors",
+    "PDOCKER_OPENCL_ICD=/usr/local/lib/pdocker-opencl-icd.so",
+    "PDOCKER_OPENCL_ICD_KIND=pdocker-bridge-minimal",
+    "PDOCKER_OPENCL_ICD_READY=1",
+    "PDOCKER_OPENCL_API_VERSION=1.2",
+    "PDOCKER_GPU_VIRTUAL_MEMORY=guarded",
+    "PDOCKER_GPU_VIRTUAL_MEMORY_MIN_BYTES=67108864",
+    "PDOCKER_VULKAN_HEAP_BYTES=2147483648",
+    "PDOCKER_VULKAN_MAX_BUFFER_BYTES=2147483648",
+    "GGML_VK_FORCE_MAX_BUFFER_SIZE=2147483648",
+    "GGML_VK_FORCE_MAX_ALLOCATION_SIZE=2147483648",
+    "GGML_VK_SUBALLOCATION_BLOCK_SIZE=268435456",
+    "PDOCKER_VULKAN_ICD_DEBUG=1",
+    "PDOCKER_VULKAN_ICD_TRACE_ALLOC=1",
+    "PDOCKER_VULKAN_DUMP_SPIRV_DIR=/workspace/logs/spirv",
+    "PDOCKER_VULKAN_DISABLE_8BIT_STORAGE=1",
+    "PDOCKER_VULKAN_DISABLE_16BIT_STORAGE=0",
+    "PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS=1",
+    "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION=1"
+  ],
+  "WorkingDir": "/workspace",
+  "Labels": {
+    "io.github.ryo100794.pdocker.project-id": "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/projects/llama-cpp-gpu",
+    "io.github.ryo100794.pdocker.project-dir": "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/projects/llama-cpp-gpu",
+    "io.github.ryo100794.pdocker.project-name": "llama-cpp-gpu",
+    "io.github.ryo100794.pdocker.compose-service": "llama-cpp",
+    "com.docker.compose.project": "llama-cpp-gpu",
+    "com.docker.compose.service": "llama-cpp",
+    "com.docker.compose.oneoff": "False",
+    "io.github.ryo100794.pdocker.service-url.18081": "llama.cpp"
+  },
+  "Volumes": {},
+  "HostConfig": {
+    "Binds": [
+      "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/models/llama-cpp-gpu:/models",
+      "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/workspaces/llama-cpp-gpu:/workspace",
+      "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/projects/llama-cpp-gpu/./profiles:/profiles",
+      "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/documents-saf-mediated/mirror:/documents",
+      "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/documents-saf-mediated/mirror/pdocker/shared:/shared"
+    ],
+    "PortBindings": {
+      "18081/tcp": [
+        {
+          "HostPort": "18081"
+        }
+      ]
+    },
+    "DeviceRequests": [
+      {
+        "Driver": "pdocker-gpu",
+        "Count": -1,
+        "Capabilities": [
+          [
+            "gpu"
+          ]
+        ],
+        "Options": {
+          "pdocker.gpu": "vulkan",
+          "pdocker.cuda": "compat",
+          "pdocker.opencl": "opencl"
+        }
+      }
+    ]
+  },
+  "Storage": {
+    "Mode": "libcow",
+    "Rootfs": "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/containers/502abfaf8df646f7ac5765c624a67732/rootfs"
+  },
+  "PdockerGpu": {
+    "Modes": [
+      "cuda-compat",
+      "opencl",
+      "vulkan"
+    ],
+    "Kind": "android-vulkan-passthrough+cuda-compat"
+  },
+  "PdockerMedia": {
+    "Modes": [],
+    "Kind": "android-media-bridge-phase1",
+    "Status": "executor-control-plane-ready-capture-disabled",
+    "QueueSocket": "/run/pdocker-media/pdocker-media.sock",
+    "CaptureReady": false
+  },
+  "PdockerNetwork": {
+    "IPAddress": "10.88.80.42",
+    "Ports": {
+      "18081/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "18081"
+        }
+      ]
+    },
+    "PortRewrite": [
+      {
+        "ContainerPort": 18081,
+        "Protocol": "tcp",
+        "HostIp": "127.0.0.1",
+        "HostPort": 18081,
+        "Hook": "bind",
+        "Status": "planned"
+      }
+    ],
+    "Kind": "host-network-with-syscall-hook-plan",
+    "Warnings": [
+      "pdocker records Docker/Compose network metadata, but Android runtime is host-network-only: there is no TUN, bridge namespace, iptables, or embedded DNS yet. Named-network aliases are /etc/hosts compatibility entries and all process traffic still uses the Android app network.",
+      "pdocker records requested port publishing, but Android sandbox runtime is still host-network-only; bind/connect syscall rewrite is planned and not active yet."
+    ],
+    "PortMappingStatus": [
+      {
+        "ContainerId": "502abfaf8df646f7ac5765c624a67732",
+        "ContainerName": "pdocker-llama-cpp",
+        "ContainerPort": 18081,
+        "Protocol": "tcp",
+        "HostIp": "127.0.0.1",
+        "HostPort": 18081,
+        "State": "inactive",
+        "Active": false,
+        "Conflict": [],
+        "Runtime": "host-network-only",
+        "Limitation": "pdocker records Docker/Compose network metadata, but Android runtime is host-network-only: there is no TUN, bridge namespace, iptables, or embedded DNS yet. Named-network aliases are /etc/hosts compatibility entries and all process traffic still uses the Android app network.",
+        "Message": "pdocker has recorded this published port, but no pdocker-owned listener/proxy/rewrite is active for it yet.",
+        "ProxyTarget": ""
+      }
+    ],
+    "PortMappingSummary": {
+      "Runtime": "host-network-only",
+      "Active": 0,
+      "Inactive": 1,
+      "Planned": 0,
+      "Conflict": 0
+    },
+    "Networks": {
+      "bridge": {
+        "NetworkID": "f984d5760ef908d29f334d99a71867026ab01df931c8657fefa88cd66ef8ab76",
+        "EndpointID": "ad95eae206bab58e619fe44baee6baee0cf186aea169c24bb8bb10faeb57727a",
+        "Gateway": "",
+        "IPAddress": "10.88.80.42",
+        "IPPrefixLen": 32,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "MacAddress": "",
+        "DriverOpts": {},
+        "Aliases": [
+          "pdocker-llama-cpp",
+          "502abfaf8df6",
+          "llama-cpp"
+        ]
+      }
+    },
+    "Runtime": "host-network-only",
+    "Limitation": "pdocker records Docker/Compose network metadata, but Android runtime is host-network-only: there is no TUN, bridge namespace, iptables, or embedded DNS yet. Named-network aliases are /etc/hosts compatibility entries and all process traffic still uses the Android app network."
+  },
+  "Warnings": [
+    "pdocker records Docker/Compose network metadata, but Android runtime is host-network-only: there is no TUN, bridge namespace, iptables, or embedded DNS yet. Named-network aliases are /etc/hosts compatibility entries and all process traffic still uses the Android app network.",
+    "pdocker records requested port publishing, but Android sandbox runtime is still host-network-only; bind/connect syscall rewrite is planned and not active yet."
+  ],
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 18693,
+    "ExitCode": 0,
+    "PdockerRawReturnCode": 0,
+    "PdockerSignal": 0,
+    "Error": "",
+    "StartedAt": "2026-05-07T06:31:21.000000000Z",
+    "FinishedAt": "0001-01-01T00:00:00.000000000Z",
+    "Health": {
+      "Status": "healthy",
+      "FailingStreak": 0,
+      "Log": [
+        {
+          "Start": "2026-05-07T06:31:23.000000000Z",
+          "End": "2026-05-07T06:31:23.000000000Z",
+          "ExitCode": 22,
+          "Output": "curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\n"
+        },
+        {
+          "Start": "2026-05-07T06:31:53.000000000Z",
+          "End": "2026-05-07T06:31:54.000000000Z",
+          "ExitCode": 22,
+          "Output": "curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\n"
+        },
+        {
+          "Start": "2026-05-07T06:32:24.000000000Z",
+          "End": "2026-05-07T06:32:24.000000000Z",
+          "ExitCode": 22,
+          "Output": "curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\n"
+        },
+        {
+          "Start": "2026-05-07T06:32:54.000000000Z",
+          "End": "2026-05-07T06:32:54.000000000Z",
+          "ExitCode": 0,
+          "Output": ""
+        }
+      ]
+    },
+    "PdockerLauncherPid": 18693,
+    "PdockerLauncherPidStartTime": "58822386",
+    "PdockerKnownPids": [
+      {
+        "Pid": 18693,
+        "StartTime": "58822386"
+      },
+      {
+        "Pid": 18697,
+        "StartTime": "58822388"
+      },
+      {
+        "Pid": 18760,
+        "StartTime": "58822419"
+      }
+    ],
+    "PdockerLastKnownPids": [
+      {
+        "Pid": 24101,
+        "StartTime": "58511014"
+      },
+      {
+        "Pid": 24107,
+        "StartTime": "58511018"
+      },
+      {
+        "Pid": 24168,
+        "StartTime": "58511041"
+      }
+    ],
+    "PidStartTime": "58822386"
+  },
+  "Created": "2026-05-07T03:58:52.000000000Z",
+  "Config": {
+    "Hostname": "pdocker-llama-cpp",
+    "Image": "pdocker/llama-cpp-gpu:latest",
+    "Cmd": [
+      "/usr/local/bin/start-llama-server"
+    ],
+    "Entrypoint": [],
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "LANG=C.UTF-8",
+      "LC_ALL=C.UTF-8",
+      "SHELL=/bin/bash",
+      "PDOCKER_GPU=auto",
+      "PDOCKER_GPU_AUTO=1",
+      "PDOCKER_GPU_MODE=vulkan-raw",
+      "LLAMA_ARG_MODEL=/models/model.gguf",
+      "LLAMA_ARG_CTX=4096",
+      "LLAMA_ARG_PORT=18081",
+      "LLAMA_ARG_THREADS=",
+      "LLAMA_ARG_N_GPU_LAYERS=2",
+      "LLAMA_GPU_PROFILE_REFRESH=auto",
+      "LLAMA_EXTRA_ARGS=",
+      "LLAMA_LOG_FILE=/workspace/logs/llama-server.log",
+      "LLAMA_MODEL_URL=https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+      "PDOCKER_DOCUMENTS_MOUNT=/documents",
+      "PDOCKER_SHARED_DOCUMENTS_MOUNT=/shared",
+      "PDOCKER_EXPORT_DIR=/documents/pdocker-exports",
+      "PDOCKER_FAST_WORKDIR=/workspace",
+      "PDOCKER_GPU_MODES=cuda-compat,opencl,vulkan",
+      "PDOCKER_GPU_COMMAND_API=pdocker-gpu-command-v1",
+      "PDOCKER_GPU_ABI_VERSION=0.1",
+      "PDOCKER_GPU_EXECUTOR_ROLE=apk-bionic-gpu-command-executor",
+      "PDOCKER_GPU_LLM_ENGINE_LOCATION=container",
+      "PDOCKER_GPU_SHIM=/usr/local/bin/pdocker-gpu-shim",
+      "PDOCKER_GPU_SHARED_DIR=/run/pdocker-gpu",
+      "NVIDIA_VISIBLE_DEVICES=all",
+      "NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics",
+      "PDOCKER_GPU_EXECUTOR_AVAILABLE=1",
+      "PDOCKER_GPU_QUEUE_SOCKET=/run/pdocker-gpu/pdocker-gpu.sock",
+      "PDOCKER_VULKAN_PASSTHROUGH=1",
+      "VK_ICD_FILENAMES=/etc/vulkan/icd.d/pdocker-android.json",
+      "PDOCKER_VULKAN_ICD=/usr/local/lib/pdocker-vulkan-icd.so",
+      "PDOCKER_VULKAN_ICD_KIND=pdocker-bridge-minimal",
+      "PDOCKER_VULKAN_ICD_READY=0",
+      "PDOCKER_CUDA_COMPAT=1",
+      "CUDA_VISIBLE_DEVICES=0",
+      "CUDA_DEVICE_ORDER=PCI_BUS_ID",
+      "PDOCKER_OPENCL_PASSTHROUGH=1",
+      "OCL_ICD_VENDORS=/etc/OpenCL/vendors",
+      "PDOCKER_OPENCL_ICD=/usr/local/lib/pdocker-opencl-icd.so",
+      "PDOCKER_OPENCL_ICD_KIND=pdocker-bridge-minimal",
+      "PDOCKER_OPENCL_ICD_READY=1",
+      "PDOCKER_OPENCL_API_VERSION=1.2",
+      "PDOCKER_GPU_VIRTUAL_MEMORY=guarded",
+      "PDOCKER_GPU_VIRTUAL_MEMORY_MIN_BYTES=67108864",
+      "PDOCKER_VULKAN_HEAP_BYTES=2147483648",
+      "PDOCKER_VULKAN_MAX_BUFFER_BYTES=2147483648",
+      "GGML_VK_FORCE_MAX_BUFFER_SIZE=2147483648",
+      "GGML_VK_FORCE_MAX_ALLOCATION_SIZE=2147483648",
+      "GGML_VK_SUBALLOCATION_BLOCK_SIZE=268435456",
+      "PDOCKER_VULKAN_ICD_DEBUG=1",
+      "PDOCKER_VULKAN_ICD_TRACE_ALLOC=1",
+      "PDOCKER_VULKAN_DUMP_SPIRV_DIR=/workspace/logs/spirv",
+      "PDOCKER_VULKAN_DISABLE_8BIT_STORAGE=1",
+      "PDOCKER_VULKAN_DISABLE_16BIT_STORAGE=0",
+      "PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS=1",
+      "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION=1"
+    ],
+    "WorkingDir": "/workspace",
+    "Labels": {
+      "io.github.ryo100794.pdocker.project-id": "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/projects/llama-cpp-gpu",
+      "io.github.ryo100794.pdocker.project-dir": "/data/user/0/io.github.ryo100794.pdocker.compat/files/pdocker/projects/llama-cpp-gpu",
+      "io.github.ryo100794.pdocker.project-name": "llama-cpp-gpu",
+      "io.github.ryo100794.pdocker.compose-service": "llama-cpp",
+      "com.docker.compose.project": "llama-cpp-gpu",
+      "com.docker.compose.service": "llama-cpp",
+      "com.docker.compose.oneoff": "False",
+      "io.github.ryo100794.pdocker.service-url.18081": "llama.cpp"
+    },
+    "AttachStdin": false,
+    "AttachStdout": true,
+    "AttachStderr": true,
+    "Tty": false,
+    "OpenStdin": false,
+    "Healthcheck": {
+      "Test": [
+        "CMD-SHELL",
+        "curl -fsS http://127.0.0.1:18081/health >/dev/null || curl -fsS http://127.0.0.1:18081/v1/models >/dev/null"
+      ]
+    }
+  },
+  "NetworkSettings": {
+    "IPAddress": "10.88.80.42",
+    "Ports": {
+      "18081/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "18081"
+        }
+      ]
+    },
+    "Networks": {
+      "bridge": {
+        "NetworkID": "f984d5760ef908d29f334d99a71867026ab01df931c8657fefa88cd66ef8ab76",
+        "EndpointID": "ad95eae206bab58e619fe44baee6baee0cf186aea169c24bb8bb10faeb57727a",
+        "Gateway": "",
+        "IPAddress": "10.88.80.42",
+        "IPPrefixLen": 32,
+        "IPv6Gateway": "",
+        "GlobalIPv6Address": "",
+        "GlobalIPv6PrefixLen": 0,
+        "MacAddress": "",
+        "DriverOpts": {},
+        "Aliases": [
+          "pdocker-llama-cpp",
+          "502abfaf8df6",
+          "llama-cpp"
+        ]
+      }
+    }
+  }
+}

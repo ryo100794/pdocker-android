@@ -1,0 +1,360 @@
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0454,"dispatch_ms":7.6841,"download_ms":0.0556,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0437,"dispatch_ms":0.8866,"download_ms":0.0197,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0405,"dispatch_ms":1.0075,"download_ms":0.0222,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0607,"dispatch_ms":6.7426,"download_ms":0.0191,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0544,"dispatch_ms":7.0079,"download_ms":0.0248,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0544,"dispatch_ms":7.2011,"download_ms":0.1176,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0777,"dispatch_ms":1.0029,"download_ms":0.0599,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0397,"dispatch_ms":0.7159,"download_ms":0.0203,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0650,"dispatch_ms":7.2219,"download_ms":0.0414,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0452,"dispatch_ms":0.8358,"download_ms":0.0192,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0620,"dispatch_ms":8.7966,"download_ms":0.0224,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0568,"dispatch_ms":1.0635,"download_ms":0.0455,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0583,"dispatch_ms":1.0025,"download_ms":0.0531,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0410,"dispatch_ms":1.0208,"download_ms":0.0233,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=133440 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=510504960 src_mem=510504960 src_off=0 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=512 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=512 effective=512
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33280 range=8 effective=8
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":11604,"entry":"main","specializations":0,"bindings":5,"dispatch":[64,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":false,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.0471,"dispatch_ms":1.0703,"download_ms":0.0201,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":131080},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":33280,"size":8,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":0,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=0 dst_size=161495072 dst_mem=161495072 dst_off=100672 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=35136 dst_size=92274688 dst_mem=92274688 dst_off=0 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=67904 dst_size=92274688 dst_mem=92274688 dst_off=33296 bytes=32768 ok=1
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33296 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=122618880 offset=0 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=33296 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=16384 range=9437184 effective=9437184
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33296 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=66064 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=66064 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=66064 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=11812864 range=3440640 effective=3440640
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33296 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=98832 range=8192 effective=8192
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=98832 range=8192 effective=8192
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=98832 range=8192 effective=8192
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=9453568 range=2359296 effective=2359296
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=33296 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=107024 range=8192 effective=8192
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=107024 range=8192 effective=8192
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=107024 range=8192 effective=8192
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=66064 range=92208624 effective=92208624
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=122618880 offset=24691200 range=97927680 effective=97927680
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=33296 range=92241392 effective=92241392
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=33280 range=92241408 effective=92241408
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=92274688 effective=92274688
+pdocker-vulkan-icd: descriptor storage binding=5 buffer_size=92274688 offset=33296 range=92241392 effective=92241392
+pdocker-vulkan-icd: descriptor storage binding=6 buffer_size=92274688 offset=0 range=92274688 effective=92274688
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=107024 range=92167664 effective=92167664
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=122618880 offset=24690688 range=97928192 effective=97928192
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=66064 range=92208624 effective=92208624
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=33280 range=92241408 effective=92241408
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=0 range=92274688 effective=92274688
+pdocker-vulkan-icd: descriptor storage binding=5 buffer_size=92274688 offset=66064 range=92208624 effective=92208624
+pdocker-vulkan-icd: descriptor storage binding=6 buffer_size=92274688 offset=0 range=92274688 effective=92274688
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":25952,"entry":"main","specializations":2,"bindings":7,"dispatch":[8,2,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":0,"specialization_materialized":true,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":false,"int64":false,"storage16":false,"storage8":false,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":1371.2460,"dispatch_ms":8.7045,"download_ms":110.5915,"resident_cache":{"enabled":true,"resident_bindings":1,"hits":1,"bytes":92167664},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":0,"hits":0,"bytes":0},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":107024,"size":92167664,"resident":true,"cache_hit":true,"mutable_reused":false,"mutable_cache_hit":false},{"index":1,"binding":1,"offset":24690688,"size":97928192,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":2,"binding":2,"offset":66064,"size":92208624,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":3,"binding":3,"offset":33280,"size":92241408,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":4,"binding":4,"offset":0,"size":92274688,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":5,"binding":5,"offset":66064,"size":92208624,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":6,"binding":6,"offset":0,"size":92274688,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=66064 dst_size=161495072 dst_mem=161495072 dst_off=35136 bytes=8192 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=98832 dst_size=161495072 dst_mem=161495072 dst_off=43328 bytes=8192 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=33296 dst_size=161495072 dst_mem=161495072 dst_off=51520 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=67904 dst_size=92274688 dst_mem=92274688 dst_off=32768 bytes=32768 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: copy-buffer src_size=161495072 src_mem=161495072 src_off=35072 dst_size=92274688 dst_mem=92274688 dst_off=65536 bytes=4 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+pdocker-vulkan-icd: fill-buffer dst_size=1024 dst_mem=1024 off=0 bytes=1024 available=1024
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=15253504 range=9437184 effective=9437184
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=65552 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=65552 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=65552 range=32768 effective=32768
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":18756,"entry":"main","specializations":3,"bindings":5,"dispatch":[2048,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":2,"specialization_materialized":true,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":true,"int64":false,"storage16":true,"storage8":true,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":3.7627,"dispatch_ms":1.0150,"download_ms":1.8186,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":9568256},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":15253504,"size":9437184,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":32768,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":65552,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":65552,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":65552,"size":32768,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=0 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=65536 range=4 effective=4
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=32768 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=65552 range=32768 effective=32768
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=65536 range=4 effective=4
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=32768 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=122618880 offset=24691712 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=24708096 range=28311552 effective=28311552
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=0 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=65536 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=65536 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=65536 range=49152 effective=49152
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":18756,"entry":"main","specializations":3,"bindings":7,"dispatch":[6144,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":2,"specialization_materialized":true,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":true,"int64":false,"storage16":true,"storage8":true,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":283.5829,"dispatch_ms":1.0804,"download_ms":44.9456,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":28475392},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":24708096,"size":28311552,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":0,"size":16384,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":65536,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":65536,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":65536,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":5,"binding":5,"offset":33296,"size":92241392,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":6,"binding":6,"offset":0,"size":92274688,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false}]}
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=94307328 range=28311552 effective=28311552
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=0 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=114688 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=114688 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=114688 range=49152 effective=49152
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":18756,"entry":"main","specializations":3,"bindings":7,"dispatch":[6144,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":2,"specialization_materialized":true,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":true,"int64":false,"storage16":true,"storage8":true,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":283.2714,"dispatch_ms":1.5091,"download_ms":41.6067,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":5,"hits":5,"bytes":28475392},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":94307328,"size":28311552,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":1,"binding":1,"offset":0,"size":16384,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":114688,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":114688,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":114688,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":5,"binding":5,"offset":66064,"size":92208624,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":6,"binding":6,"offset":0,"size":92274688,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false}]}
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=65536 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=114688 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=0 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=122618880 offset=53019648 range=41287680 effective=41287680
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=0 range=49152 effective=49152
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=65536 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=49152 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=65536 range=16384 effective=16384
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":26688,"entry":"main","specializations":3,"bindings":5,"dispatch":[2048,1,1],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":1,"specialization_materialized":true,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":true,"int64":false,"storage16":true,"storage8":true,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":50.7237,"dispatch_ms":1.8170,"download_ms":9.9906,"resident_cache":{"enabled":true,"resident_bindings":0,"hits":0,"bytes":0},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":4,"hits":4,"bytes":98304},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":53019648,"size":41287680,"resident":false,"cache_hit":false,"mutable_reused":false,"mutable_cache_hit":false},{"index":1,"binding":1,"offset":0,"size":49152,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":65536,"size":16384,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":49152,"size":16384,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":65536,"size":16384,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=92274688 offset=65536 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=16384 offset=0 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=65536 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=65536 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=0 buffer_size=510504960 offset=0 range=510504960 effective=510504960
+pdocker-vulkan-icd: descriptor storage binding=1 buffer_size=92274688 offset=65536 range=16384 effective=16384
+pdocker-vulkan-icd: descriptor storage binding=2 buffer_size=92274688 offset=81920 range=607744 effective=607744
+pdocker-vulkan-icd: descriptor storage binding=3 buffer_size=92274688 offset=81920 range=607744 effective=607744
+pdocker-vulkan-icd: descriptor storage binding=4 buffer_size=92274688 offset=81920 range=607744 effective=607744
+pdocker-vulkan-icd: generic dispatch response: {"executor":"pdocker-gpu-executor","api":"pdocker-gpu-command-v1","abi_version":"0.1","backend_impl":"android_vulkan","kernel":"generic_spirv","shader_bytes":26688,"entry":"main","specializations":3,"bindings":5,"dispatch":[1187,1,64],"backend_cached":true,"pipeline_cache":{"hit":true,"entries":32},"descriptor_aliases":1,"specialization_materialized":true,"spirv_feature_requirements":{"float16":false,"int16":false,"int8":true,"int64":false,"storage16":true,"storage8":true,"subgroup_arithmetic":false},"spirv_feature_mismatch":false,"spirv_feature_mismatches":[],"upload_ms":0.3398,"dispatch_ms":15.4705,"download_ms":0.3102,"resident_cache":{"enabled":true,"resident_bindings":1,"hits":1,"bytes":510504960},"mutable_buffer_cache":{"enabled":true,"entries":32,"reused_bindings":4,"hits":4,"bytes":1839616},"valid":true,"binding_details":[{"index":0,"binding":0,"offset":0,"size":510504960,"resident":true,"cache_hit":true,"mutable_reused":false,"mutable_cache_hit":false},{"index":1,"binding":1,"offset":65536,"size":16384,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":2,"binding":2,"offset":81920,"size":607744,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":3,"binding":3,"offset":81920,"size":607744,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true},{"index":4,"binding":4,"offset":81920,"size":607744,"resident":false,"cache_hit":false,"mutable_reused":true,"mutable_cache_hit":true}]}
+pdocker-vulkan-icd: copy-buffer src_size=92274688 src_mem=92274688 src_off=81920 dst_size=2431008 dst_mem=2431008 dst_off=0 bytes=607744 ok=1
+pdocker-vulkan-icd: queue-submit transfer-only command buffer
+no implementations specified for speculative decoding
+slot   load_model: id  0 | task -1 | new slot, n_ctx = 2048
+no implementations specified for speculative decoding
+slot   load_model: id  1 | task -1 | new slot, n_ctx = 2048
+no implementations specified for speculative decoding
+slot   load_model: id  2 | task -1 | new slot, n_ctx = 2048
+no implementations specified for speculative decoding
+slot   load_model: id  3 | task -1 | new slot, n_ctx = 2048
+srv    load_model: prompt cache is enabled, size limit: 8192 MiB
+srv    load_model: use `--cache-ram 0` to disable the prompt cache
+srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+srv          init: init: idle slots will be saved to prompt cache and cleared upon starting a new task
+init: chat template, example_format: '<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+'
+srv          init: init: chat template, thinking = 1
+main: model loaded
+main: server is listening on http://0.0.0.0:18081
+main: starting the main loop...
+srv  update_slots: all slots are idle

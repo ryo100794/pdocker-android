@@ -1,0 +1,57 @@
+{
+  "timestamp_utc": "2026-05-07T06:32:30Z",
+  "device": "10.52.99.79:43859",
+  "package": "io.github.ryo100794.pdocker.compat",
+  "container_id": "502abfaf8df646f7ac5765c624a67732",
+  "container_name": "/pdocker-llama-cpp",
+  "image": "docker.io/pdocker/llama-cpp-gpu:latest",
+  "state": {
+    "Status": "running",
+    "Running": true,
+    "Pid": 18693,
+    "ExitCode": 0,
+    "PdockerRawReturnCode": 0,
+    "Error": "",
+    "FinishedAt": "0001-01-01T00:00:00.000000000Z",
+    "Health": {
+      "Status": "healthy",
+      "FailingStreak": 0,
+      "Log": [
+        {
+          "Start": "2026-05-07T06:31:23.000000000Z",
+          "End": "2026-05-07T06:31:23.000000000Z",
+          "ExitCode": 22,
+          "Output": "curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\n"
+        },
+        {
+          "Start": "2026-05-07T06:31:53.000000000Z",
+          "End": "2026-05-07T06:31:54.000000000Z",
+          "ExitCode": 22,
+          "Output": "curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\n"
+        },
+        {
+          "Start": "2026-05-07T06:32:24.000000000Z",
+          "End": "2026-05-07T06:32:24.000000000Z",
+          "ExitCode": 22,
+          "Output": "curl: (22) The requested URL returned error: 503\ncurl: (22) The requested URL returned error: 503\n"
+        },
+        {
+          "Start": "2026-05-07T06:32:54.000000000Z",
+          "End": "2026-05-07T06:32:54.000000000Z",
+          "ExitCode": 0,
+          "Output": ""
+        }
+      ]
+    }
+  },
+  "ngl": "2",
+  "health_ok": true,
+  "model_loaded": true,
+  "server_listening": true,
+  "offload_line": "load_tensors: offloaded 2/37 layers to GPU",
+  "dispatch_count_tail": 21,
+  "materialized_dispatches_tail": 6,
+  "invalid_dispatch_tail": 0,
+  "largest_dispatch_tail": 75968,
+  "largest_binding_bytes_tail": 510504960
+}

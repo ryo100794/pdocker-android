@@ -5065,6 +5065,11 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
         state.setdefault("State", {})["Running"] = True
         state["State"]["Status"] = "running"
         state["State"]["Pid"] = live_pid
+        state["State"]["ExitCode"] = 0
+        state["State"]["PdockerRawReturnCode"] = 0
+        state["State"]["PdockerSignal"] = 0
+        state["State"]["Error"] = ""
+        state["State"]["FinishedAt"] = "0001-01-01T00:00:00.000000000Z"
         start_time = _pid_start_time(live_pid)
         if start_time:
             state["State"]["PidStartTime"] = start_time
@@ -5161,6 +5166,11 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
     state["State"]["Running"] = True
     state["State"]["Status"] = "running"
     state["State"]["Pid"] = proc.pid
+    state["State"]["ExitCode"] = 0
+    state["State"]["PdockerRawReturnCode"] = 0
+    state["State"]["PdockerSignal"] = 0
+    state["State"]["Error"] = ""
+    state["State"]["FinishedAt"] = "0001-01-01T00:00:00.000000000Z"
     start_time = _pid_start_time(proc.pid)
     if start_time:
         state["State"]["PidStartTime"] = start_time
@@ -5193,6 +5203,11 @@ def start_container(cid, stdout_stream=None, stderr_stream=None, attach=False):
                 s["State"]["Running"] = True
                 s["State"]["Status"] = "running"
                 s["State"]["Pid"] = current_pid
+                s["State"]["ExitCode"] = 0
+                s["State"]["PdockerRawReturnCode"] = 0
+                s["State"]["PdockerSignal"] = 0
+                s["State"]["Error"] = ""
+                s["State"]["FinishedAt"] = "0001-01-01T00:00:00.000000000Z"
                 start_time = _pid_start_time(current_pid)
                 if start_time:
                     s["State"]["PidStartTime"] = start_time

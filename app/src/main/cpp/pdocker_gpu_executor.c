@@ -414,6 +414,17 @@ typedef struct {
 } VulkanBindingAlias;
 
 typedef struct {
+    int valid;
+    uint64_t value;
+} SpirvScalarConstant;
+
+typedef struct {
+    int valid;
+    uint32_t count;
+    uint64_t values[4];
+} SpirvCompositeConstant;
+
+typedef struct {
     int ready;
     VkInstance instance;
     VkPhysicalDevice physical_device;
@@ -1017,10 +1028,182 @@ static int specialization_value_for_id(
     return 0;
 }
 
+static int materialize_spirv_specialization_constants(
+        uint32_t *code,
+        size_t *bytes,
+        const VulkanDispatchSpecialization *specializations,
+        size_t specialization_count,
+        const uint8_t *specialization_data,
+        size_t specialization_data_size) {
+    if (!code || !bytes || *bytes < 20 || (*bytes % sizeof(uint32_t)) != 0 ||
+        code[0] != 0x07230203u || !specializations || specialization_count == 0) {
+        return 0;
+    }
+    const size_t words = *bytes / sizeof(uint32_t);
+    const uint32_t bound = code[3];
+    if (bound == 0 || bound > 65536) return 0;
+    uint32_t *spec_ids = (uint32_t *)calloc(bound, sizeof(uint32_t));
+    uint8_t *has_spec_id = (uint8_t *)calloc(bound, sizeof(uint8_t));
+    SpirvScalarConstant *scalars = (SpirvScalarConstant *)calloc(bound, sizeof(SpirvScalarConstant));
+    SpirvCompositeConstant *composites = (SpirvCompositeConstant *)calloc(bound, sizeof(SpirvCompositeConstant));
+    uint32_t *out = (uint32_t *)malloc(*bytes);
+    if (!spec_ids || !has_spec_id || !scalars || !composites || !out) {
+        free(spec_ids);
+        free(has_spec_id);
+        free(scalars);
+        free(composites);
+        free(out);
+        return 0;
+    }
+
+    for (size_t i = 5; i < words;) {
+        uint32_t inst = code[i];
+        uint16_t word_count = (uint16_t)(inst >> 16);
+        uint16_t op = (uint16_t)(inst & 0xffffu);
+        if (word_count == 0 || i + word_count > words) break;
+        if (op == 71 && word_count >= 4 && code[i + 2] == 1 && code[i + 1] < bound) {
+            has_spec_id[code[i + 1]] = 1;
+            spec_ids[code[i + 1]] = code[i + 3];
+        }
+        i += word_count;
+    }
+
+    memcpy(out, code, 5 * sizeof(uint32_t));
+    size_t out_words = 5;
+    int changed = 0;
+    int unsupported = 0;
+    for (size_t i = 5; i < words;) {
+        uint32_t inst = code[i];
+        uint16_t word_count = (uint16_t)(inst >> 16);
+        uint16_t op = (uint16_t)(inst & 0xffffu);
+        if (word_count == 0 || i + word_count > words) {
+            unsupported = 1;
+            break;
+        }
+
+        if (op == 71 && word_count >= 4 && code[i + 2] == 1 && code[i + 1] < bound) {
+            changed = 1;
+            i += word_count;
+            continue;
+        }
+
+        if (op == 43 && word_count >= 4 && code[i + 2] < bound) {
+            scalars[code[i + 2]].valid = 1;
+            scalars[code[i + 2]].value = code[i + 3];
+        } else if (op == 44 && word_count >= 3 && code[i + 2] < bound) {
+            SpirvCompositeConstant *cc = &composites[code[i + 2]];
+            cc->valid = 1;
+            cc->count = 0;
+            for (uint16_t j = 3; j < word_count && cc->count < 4; ++j) {
+                uint32_t id = code[i + j];
+                if (id >= bound || !scalars[id].valid) {
+                    cc->valid = 0;
+                    break;
+                }
+                cc->values[cc->count++] = scalars[id].value;
+            }
+        } else if (op == 50 && word_count >= 4 && code[i + 2] < bound) {
+            uint64_t value = code[i + 3];
+            if (has_spec_id[code[i + 2]]) {
+                (void)specialization_value_for_id(
+                    specializations, specialization_count,
+                    specialization_data, specialization_data_size,
+                    spec_ids[code[i + 2]], &value);
+            }
+            uint32_t rewritten[4] = {
+                (4u << 16) | 43u,
+                code[i + 1],
+                code[i + 2],
+                (uint32_t)value,
+            };
+            memcpy(out + out_words, rewritten, sizeof(rewritten));
+            scalars[code[i + 2]].valid = 1;
+            scalars[code[i + 2]].value = (uint32_t)value;
+            out_words += 4;
+            changed = 1;
+            i += word_count;
+            continue;
+        } else if (op == 51 && word_count >= 3 && code[i + 2] < bound) {
+            out[out_words++] = ((uint32_t)word_count << 16) | 44u;
+            for (uint16_t j = 1; j < word_count; ++j) out[out_words++] = code[i + j];
+            SpirvCompositeConstant *cc = &composites[code[i + 2]];
+            cc->valid = 1;
+            cc->count = 0;
+            for (uint16_t j = 3; j < word_count && cc->count < 4; ++j) {
+                uint32_t id = code[i + j];
+                if (id >= bound || !scalars[id].valid) {
+                    cc->valid = 0;
+                    break;
+                }
+                cc->values[cc->count++] = scalars[id].value;
+            }
+            changed = 1;
+            i += word_count;
+            continue;
+        } else if (op == 52 && word_count >= 5 && code[i + 2] < bound) {
+            uint32_t spec_op = code[i + 3];
+            uint64_t value = 0;
+            int folded = 0;
+            if (spec_op == 134 && word_count == 6) {
+                uint32_t a = code[i + 4];
+                uint32_t b = code[i + 5];
+                if (a < bound && b < bound && scalars[a].valid &&
+                    scalars[b].valid && scalars[b].value != 0) {
+                    value = scalars[a].value / scalars[b].value;
+                    folded = 1;
+                }
+            } else if (spec_op == 81 && word_count == 6) {
+                uint32_t composite = code[i + 4];
+                uint32_t index = code[i + 5];
+                if (composite < bound && composites[composite].valid &&
+                    index < composites[composite].count) {
+                    value = composites[composite].values[index];
+                    folded = 1;
+                }
+            }
+            if (!folded) {
+                unsupported = 1;
+                break;
+            }
+            uint32_t rewritten[4] = {
+                (4u << 16) | 43u,
+                code[i + 1],
+                code[i + 2],
+                (uint32_t)value,
+            };
+            memcpy(out + out_words, rewritten, sizeof(rewritten));
+            scalars[code[i + 2]].valid = 1;
+            scalars[code[i + 2]].value = (uint32_t)value;
+            out_words += 4;
+            changed = 1;
+            i += word_count;
+            continue;
+        }
+
+        memcpy(out + out_words, code + i, word_count * sizeof(uint32_t));
+        out_words += word_count;
+        i += word_count;
+    }
+
+    if (changed && !unsupported && out_words <= words) {
+        memcpy(code, out, out_words * sizeof(uint32_t));
+        *bytes = out_words * sizeof(uint32_t);
+    } else {
+        changed = 0;
+    }
+    free(spec_ids);
+    free(has_spec_id);
+    free(scalars);
+    free(composites);
+    free(out);
+    return changed;
+}
+
 static int rewrite_duplicate_descriptor_bindings(
         uint32_t *code,
         size_t bytes,
-        uint32_t first_new_binding,
+        const VulkanDispatchBinding *bindings,
+        size_t binding_count,
         VulkanBindingAlias *aliases,
         size_t *alias_count,
         uint32_t *max_binding) {
@@ -1033,7 +1216,11 @@ static int rewrite_duplicate_descriptor_bindings(
     uint8_t first_seen[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     memset(used, 0, sizeof(used));
     memset(first_seen, 0, sizeof(first_seen));
-    (void)first_new_binding;
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (!bindings) break;
+        if (bindings[i].binding >= PDOCKER_GPU_MAX_VULKAN_BINDINGS) return -1;
+        used[bindings[i].binding] = 1;
+    }
 
     for (size_t i = 5; i < words;) {
         uint32_t inst = code[i];
@@ -1137,6 +1324,33 @@ static VulkanPipelineCacheEntry *select_pipeline_cache_slot(VkDevice device) {
     }
     destroy_pipeline_cache_entry(device, &g_vulkan_pipeline_cache[victim]);
     return &g_vulkan_pipeline_cache[victim];
+}
+
+static void write_vulkan_binding_report(
+        FILE *out,
+        const VulkanDispatchBinding *bindings,
+        size_t binding_count,
+        const int *cache_hits,
+        const int *cache_resident,
+        const int *mutable_cache_hits,
+        const int *mutable_cache_reused) {
+    fprintf(out, "\"binding_details\":[");
+    for (size_t i = 0; i < binding_count; ++i) {
+        fprintf(out,
+                "%s{\"index\":%zu,\"binding\":%u,\"offset\":%lld,"
+                "\"size\":%zu,\"resident\":%s,\"cache_hit\":%s,"
+                "\"mutable_reused\":%s,\"mutable_cache_hit\":%s}",
+                i ? "," : "",
+                i,
+                bindings[i].binding,
+                (long long)bindings[i].offset,
+                bindings[i].size,
+                cache_resident && cache_resident[i] ? "true" : "false",
+                cache_hits && cache_hits[i] ? "true" : "false",
+                mutable_cache_reused && mutable_cache_reused[i] ? "true" : "false",
+                mutable_cache_hits && mutable_cache_hits[i] ? "true" : "false");
+    }
+    fprintf(out, "]");
 }
 
 static VulkanVectorBuffer *acquire_dispatch_buffer(
@@ -2070,6 +2284,7 @@ static int run_vulkan_dispatch_fd(
     VulkanBindingAlias binding_aliases[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     size_t binding_alias_count = 0;
     int have_spirv_summary = 0;
+    int specialization_materialized = 0;
     memset(temp_buffers, 0, sizeof(temp_buffers));
     memset(vk_buffers, 0, sizeof(vk_buffers));
     memset(cache_hits, 0, sizeof(cache_hits));
@@ -2082,13 +2297,23 @@ static int run_vulkan_dispatch_fd(
     memset(binding_aliases, 0, sizeof(binding_aliases));
     if (!shader_code) return -21;
     if (read_fd_exact(shader_fd, shader_code, shader_size, 0) != 0) goto cleanup;
+    if (env_truthy("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", 1)) {
+        specialization_materialized = materialize_spirv_specialization_constants(
+            shader_code,
+            &shader_size,
+            specializations,
+            specialization_count,
+            specialization_data,
+            specialization_data_size);
+    }
     spirv_summary = summarize_spirv(shader_code, shader_size);
     have_spirv_summary = 1;
     if (env_truthy("PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS", 1)) {
         if (rewrite_duplicate_descriptor_bindings(
                 shader_code,
                 shader_size,
-                layout_count,
+                bindings,
+                binding_count,
                 binding_aliases,
                 &binding_alias_count,
                 &max_binding) != 0) {
@@ -2136,7 +2361,7 @@ static int run_vulkan_dispatch_fd(
         vk_spec_info.pMapEntries = vk_spec_entries;
         vk_spec_info.dataSize = specialization_data_size;
         vk_spec_info.pData = specialization_data;
-        vk_spec_ptr = &vk_spec_info;
+        vk_spec_ptr = specialization_materialized ? NULL : &vk_spec_info;
     }
     const uint64_t spec_hash = pipeline_specialization_hash(
         specializations,
@@ -2346,12 +2571,13 @@ static int run_vulkan_dispatch_fd(
             "\"shader_bytes\":%zu,\"entry\":\"%s\",\"specializations\":%zu,"
             "\"bindings\":%zu,\"dispatch\":[%u,%u,%u],"
             "\"backend_cached\":%s,\"pipeline_cache\":{\"hit\":%s,\"entries\":%u},"
-            "\"descriptor_aliases\":%zu,",
+            "\"descriptor_aliases\":%zu,\"specialization_materialized\":%s,",
             PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
             shader_size, entry_name, specialization_count, binding_count, gx, gy, gz, was_ready ? "true" : "false",
             pipeline_cache_hit ? "true" : "false",
             PDOCKER_GPU_PIPELINE_CACHE_SLOTS,
-            binding_alias_count);
+            binding_alias_count,
+            specialization_materialized ? "true" : "false");
     write_spirv_feature_report(json_out(), &spirv_summary, rt);
     fprintf(json_out(),
             ",\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,"
@@ -2359,13 +2585,17 @@ static int run_vulkan_dispatch_fd(
             "\"resident_bindings\":%zu,\"hits\":%zu,\"bytes\":%zu},"
             "\"mutable_buffer_cache\":{\"enabled\":%s,\"entries\":%u,"
             "\"reused_bindings\":%zu,\"hits\":%zu,\"bytes\":%zu},"
-            "\"valid\":true}\n",
+            "\"valid\":true,",
             upload_ms, dispatch_ms, download_ms,
             env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1) ? "true" : "false",
             resident_count, hit_count, resident_bytes,
             env_truthy("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", 1) ? "true" : "false",
             PDOCKER_GPU_MUTABLE_BUFFER_CACHE_SLOTS,
             mutable_count, mutable_hit_count, mutable_bytes);
+    write_vulkan_binding_report(json_out(), bindings, binding_count,
+                                cache_hits, cache_resident,
+                                mutable_cache_hits, mutable_cache_reused);
+    fprintf(json_out(), "}\n");
     fflush(json_out());
     ret = 0;
 
@@ -2401,6 +2631,7 @@ cleanup:
                 "\"layout_bindings\":%u,"
                 "\"dispatch\":[%u,%u,%u],\"push_bytes\":%zu,"
                 "\"estimated_workgroup_bytes\":%llu,"
+                "\"specialization_materialized\":%s,"
                 "\"spirv_hash\":\"0x%016llx\","
                 "\"spirv_valid\":%s,\"spirv_truncated\":%u,"
                 "\"spirv_local_size\":[%u,%u,%u],"
@@ -2412,6 +2643,7 @@ cleanup:
                 binding_count, layout_count,
                 gx, gy, gz, push_size,
                 (unsigned long long)estimated_workgroup_bytes,
+                specialization_materialized ? "true" : "false",
                 (unsigned long long)spirv_summary.hash,
                 spirv_summary.valid ? "true" : "false",
                 spirv_summary.truncated,
@@ -2460,6 +2692,10 @@ cleanup:
             fprintf(json_out(), "%s%u", i ? "," : "", spirv_summary.capabilities[i]);
         }
         fprintf(json_out(), "],");
+        write_vulkan_binding_report(json_out(), bindings, binding_count,
+                                    cache_hits, cache_resident,
+                                    mutable_cache_hits, mutable_cache_reused);
+        fprintf(json_out(), ",");
         write_spirv_feature_report(json_out(), &spirv_summary, rt);
         fprintf(json_out(), ",");
         write_vulkan_limits_report(json_out(), rt);
