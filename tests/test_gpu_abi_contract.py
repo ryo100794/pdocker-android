@@ -138,15 +138,27 @@ class GpuAbiContractTest(unittest.TestCase):
         source = VULKAN_ICD.read_text()
         for marker in [
             "PDOCKER_VK_MAX_DISPATCH_OPS",
+            "PDOCKER_VK_MAX_COMMAND_OPS",
             "PdockerVkDispatchOp dispatch_ops[PDOCKER_VK_MAX_DISPATCH_OPS]",
+            "PdockerVkCommandOp command_ops[PDOCKER_VK_MAX_COMMAND_OPS]",
             "cmd->dispatch_op_count = 0;",
-            "PdockerVkDispatchOp *op = &cmd->dispatch_ops[cmd->dispatch_op_count++];",
+            "clear_recorded_command_ops(cmd)",
+            "append_command_op(cmd, &command_op)",
+            "append_command_op(cmd, &op)",
+            "PdockerVkDispatchOp *op = &cmd->dispatch_ops[op_index];",
             "send_generic_vulkan_dispatch_op",
             "for (uint32_t op_index = 0; op_index < cmd->dispatch_op_count; ++op_index)",
+            "for (uint32_t op_index = 0; op_index < cmd->command_op_count; ++op_index)",
+            "execute_recorded_copy_op(&cmd->copy_ops[op->index], &stats)",
+            "execute_recorded_fill_op(op)",
+            "execute_recorded_update_op(op)",
+            "queue-submit replayed ordered ops=%u dispatches=%u",
             "queue-submit replayed dispatch ops=%u",
         ]:
             self.assertIn(marker, source)
         submit_body = source.split("VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit", 1)[1].split("VKAPI_ATTR VkResult VKAPI_CALL vkWaitForFences", 1)[0]
+        self.assertIn("cmd->command_op_count > 0", submit_body)
+        self.assertIn("send_generic_vulkan_dispatch_op(dispatch)", submit_body)
         self.assertIn("cmd->dispatch_op_count > 0", submit_body)
         self.assertIn("send_generic_vulkan_dispatch_op(op)", submit_body)
 

@@ -64,6 +64,7 @@ typedef struct PdockerVkFence PdockerVkFence;
 #define PDOCKER_VK_REQUIREMENT_ALIGNMENT 16ull
 #define PDOCKER_VK_MAX_COPY_OPS 64
 #define PDOCKER_VK_MAX_DISPATCH_OPS 128
+#define PDOCKER_VK_MAX_COMMAND_OPS 256
 #define PDOCKER_VK_MAX_COPY_ALIASES 128
 #define PDOCKER_VK_ALIAS_MIN_SOURCE_BYTES (64ull * 1024ull * 1024ull)
 #define PDOCKER_VK_MAX_GUARDED_MEMORIES 256
@@ -157,6 +158,24 @@ typedef struct {
     uint32_t push_constant_size;
 } PdockerVkDispatchOp;
 
+typedef enum {
+    PDOCKER_VK_COMMAND_COPY = 1,
+    PDOCKER_VK_COMMAND_FILL = 2,
+    PDOCKER_VK_COMMAND_UPDATE = 3,
+    PDOCKER_VK_COMMAND_DISPATCH = 4,
+    PDOCKER_VK_COMMAND_BARRIER = 5,
+} PdockerVkCommandOpType;
+
+typedef struct {
+    PdockerVkCommandOpType type;
+    uint32_t index;
+    PdockerVkBuffer *buffer;
+    VkDeviceSize offset;
+    VkDeviceSize size;
+    uint32_t data;
+    void *payload;
+} PdockerVkCommandOp;
+
 typedef struct {
     VK_LOADER_DATA loader;
     PdockerVkPipeline *pipeline;
@@ -165,6 +184,8 @@ typedef struct {
     uint32_t copy_op_count;
     PdockerVkDispatchOp dispatch_ops[PDOCKER_VK_MAX_DISPATCH_OPS];
     uint32_t dispatch_op_count;
+    PdockerVkCommandOp command_ops[PDOCKER_VK_MAX_COMMAND_OPS];
+    uint32_t command_op_count;
     uint32_t dispatch_x;
     uint32_t dispatch_y;
     uint32_t dispatch_z;
@@ -184,6 +205,8 @@ static PdockerVkMemory *g_guarded_memories[PDOCKER_VK_MAX_GUARDED_MEMORIES];
 static struct sigaction g_previous_sigsegv;
 static bool g_guarded_sigsegv_installed;
 
+static bool trace_allocations(void);
+
 static bool env_enabled(const char *name) {
     const char *value = getenv(name);
     return value && value[0] && strcmp(value, "0") != 0 &&
@@ -201,6 +224,34 @@ static bool env_truthy_default(const char *name, bool default_value) {
         strcasecmp(value, "no") == 0) {
         return false;
     }
+    return true;
+}
+
+static void clear_recorded_command_ops(PdockerVkCommandBuffer *cmd) {
+    if (!cmd) return;
+    for (uint32_t i = 0; i < cmd->command_op_count; ++i) {
+        if (cmd->command_ops[i].type == PDOCKER_VK_COMMAND_UPDATE) {
+            free(cmd->command_ops[i].payload);
+            cmd->command_ops[i].payload = NULL;
+        }
+    }
+    cmd->command_op_count = 0;
+    cmd->copy_op_count = 0;
+    cmd->dispatch_op_count = 0;
+}
+
+static bool append_command_op(PdockerVkCommandBuffer *cmd, const PdockerVkCommandOp *op) {
+    if (!cmd || !op) return false;
+    if (cmd->command_op_count >= PDOCKER_VK_MAX_COMMAND_OPS) {
+        if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: command buffer op list full max=%u type=%u\n",
+                    PDOCKER_VK_MAX_COMMAND_OPS,
+                    (unsigned)op->type);
+        }
+        return false;
+    }
+    cmd->command_ops[cmd->command_op_count++] = *op;
     return true;
 }
 
@@ -784,9 +835,14 @@ static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
 
 static size_t buffer_available(const PdockerVkBuffer *buffer, VkDeviceSize offset) {
     if (!buffer || !buffer->memory) return 0;
+    if (offset > buffer->size) return 0;
     VkDeviceSize absolute = buffer->memory_offset + offset;
     if (absolute > buffer->memory->size) return 0;
-    return buffer->memory->size - (size_t)absolute;
+    size_t allocation_available = buffer->memory->size - (size_t)absolute;
+    size_t buffer_available_bytes = buffer->size - (size_t)offset;
+    return allocation_available < buffer_available_bytes
+        ? allocation_available
+        : buffer_available_bytes;
 }
 
 static void *buffer_ptr(PdockerVkBuffer *buffer, VkDeviceSize offset, VkDeviceSize bytes) {
@@ -861,60 +917,91 @@ static bool copy_alias_candidate(PdockerVkMemory *src_memory) {
            src_memory->size >= PDOCKER_VK_ALIAS_MIN_SOURCE_BYTES;
 }
 
+typedef struct {
+    size_t op_count;
+    size_t alias_ops;
+    size_t memmove_ops;
+    size_t skipped_ops;
+    VkDeviceSize alias_bytes;
+    VkDeviceSize memmove_bytes;
+    VkDeviceSize skipped_bytes;
+} PdockerVkCopyStats;
+
+static void execute_recorded_copy_op(PdockerVkCopyOp *op, PdockerVkCopyStats *stats) {
+    if (!op) return;
+    if (stats) stats->op_count++;
+    void *dst_ptr = buffer_ptr(op->dst, op->region.dstOffset, op->region.size);
+    void *src_ptr = buffer_ptr(op->src, op->region.srcOffset, op->region.size);
+    if (!src_ptr || !dst_ptr) {
+        if (stats) {
+            stats->skipped_ops++;
+            stats->skipped_bytes += op->region.size;
+        }
+        return;
+    }
+    PdockerVkMemory *alias_memory = op->src->memory;
+    VkDeviceSize alias_offset = op->src->memory_offset + op->region.srcOffset;
+    (void)resolve_copy_alias(op->src, op->region.srcOffset, op->region.size,
+                             &alias_memory, &alias_offset);
+    if (copy_alias_candidate(alias_memory)) {
+        add_copy_alias(op->dst, op->region.dstOffset, op->region.size,
+                       alias_memory, alias_offset);
+        if (stats) {
+            stats->alias_ops++;
+            stats->alias_bytes += op->region.size;
+        }
+        if (trace_allocations()) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: copy-alias dst_size=%zu dst_off=%llu src_mem=%zu src_off=%llu bytes=%llu\n",
+                    op->dst->size,
+                    (unsigned long long)op->region.dstOffset,
+                    alias_memory ? alias_memory->size : 0,
+                    (unsigned long long)alias_offset,
+                    (unsigned long long)op->region.size);
+        }
+        return;
+    }
+    invalidate_copy_aliases(op->dst, op->region.dstOffset, op->region.size);
+    memmove(dst_ptr, src_ptr, (size_t)op->region.size);
+    if (stats) {
+        stats->memmove_ops++;
+        stats->memmove_bytes += op->region.size;
+    }
+}
+
+static void execute_recorded_fill_op(const PdockerVkCommandOp *op) {
+    if (!op || !op->buffer || !op->buffer->memory || op->size == 0) return;
+    uint32_t *p = (uint32_t *)buffer_ptr(op->buffer, op->offset, op->size);
+    if (!p) return;
+    invalidate_copy_aliases(op->buffer, op->offset, op->size);
+    for (size_t i = 0; i < op->size / sizeof(uint32_t); ++i) p[i] = op->data;
+}
+
+static void execute_recorded_update_op(const PdockerVkCommandOp *op) {
+    if (!op || !op->buffer || !op->buffer->memory || !op->payload || op->size == 0) return;
+    void *dst_ptr = buffer_ptr(op->buffer, op->offset, op->size);
+    if (!dst_ptr) return;
+    invalidate_copy_aliases(op->buffer, op->offset, op->size);
+    memcpy(dst_ptr, op->payload, (size_t)op->size);
+}
+
 static void execute_recorded_copy_ops(PdockerVkCommandBuffer *cmd) {
     if (!cmd) return;
-    size_t op_count = 0;
-    size_t alias_ops = 0;
-    size_t memmove_ops = 0;
-    size_t skipped_ops = 0;
-    VkDeviceSize alias_bytes = 0;
-    VkDeviceSize memmove_bytes = 0;
-    VkDeviceSize skipped_bytes = 0;
+    PdockerVkCopyStats stats;
+    memset(&stats, 0, sizeof(stats));
     for (uint32_t i = 0; i < cmd->copy_op_count; ++i) {
-        PdockerVkCopyOp *op = &cmd->copy_ops[i];
-        op_count++;
-        void *dst_ptr = buffer_ptr(op->dst, op->region.dstOffset, op->region.size);
-        void *src_ptr = buffer_ptr(op->src, op->region.srcOffset, op->region.size);
-        if (!src_ptr || !dst_ptr) {
-            skipped_ops++;
-            skipped_bytes += op->region.size;
-            continue;
-        }
-        PdockerVkMemory *alias_memory = op->src->memory;
-        VkDeviceSize alias_offset = op->src->memory_offset + op->region.srcOffset;
-        (void)resolve_copy_alias(op->src, op->region.srcOffset, op->region.size,
-                                 &alias_memory, &alias_offset);
-        if (copy_alias_candidate(alias_memory)) {
-            add_copy_alias(op->dst, op->region.dstOffset, op->region.size,
-                           alias_memory, alias_offset);
-            alias_ops++;
-            alias_bytes += op->region.size;
-            if (trace_allocations()) {
-                fprintf(stderr,
-                        "pdocker-vulkan-icd: copy-alias dst_size=%zu dst_off=%llu src_mem=%zu src_off=%llu bytes=%llu\n",
-                        op->dst->size,
-                        (unsigned long long)op->region.dstOffset,
-                        alias_memory ? alias_memory->size : 0,
-                        (unsigned long long)alias_offset,
-                        (unsigned long long)op->region.size);
-            }
-            continue;
-        }
-        invalidate_copy_aliases(op->dst, op->region.dstOffset, op->region.size);
-        memmove(dst_ptr, src_ptr, (size_t)op->region.size);
-        memmove_ops++;
-        memmove_bytes += op->region.size;
+        execute_recorded_copy_op(&cmd->copy_ops[i], &stats);
     }
-    if (trace_allocations() && op_count > 0) {
+    if (trace_allocations() && stats.op_count > 0) {
         fprintf(stderr,
                 "pdocker-vulkan-icd: copy-submit summary ops=%zu alias_ops=%zu memmove_ops=%zu skipped_ops=%zu alias_bytes=%llu memmove_bytes=%llu skipped_bytes=%llu\n",
-                op_count,
-                alias_ops,
-                memmove_ops,
-                skipped_ops,
-                (unsigned long long)alias_bytes,
-                (unsigned long long)memmove_bytes,
-                (unsigned long long)skipped_bytes);
+                stats.op_count,
+                stats.alias_ops,
+                stats.memmove_ops,
+                stats.skipped_ops,
+                (unsigned long long)stats.alias_bytes,
+                (unsigned long long)stats.memmove_bytes,
+                (unsigned long long)stats.skipped_bytes);
     }
 }
 
@@ -2147,7 +2234,9 @@ VKAPI_ATTR void VKAPI_CALL vkFreeCommandBuffers(
     (void)device;
     (void)commandPool;
     for (uint32_t i = 0; i < commandBufferCount; ++i) {
-        free((void *)pCommandBuffers[i]);
+        PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)pCommandBuffers[i];
+        clear_recorded_command_ops(cmd);
+        free((void *)cmd);
     }
 }
 
@@ -2157,10 +2246,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(
     (void)pBeginInfo;
     PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
     if (!cmd) return VK_ERROR_INITIALIZATION_FAILED;
+    clear_recorded_command_ops(cmd);
     cmd->pipeline = NULL;
     cmd->set = NULL;
-    cmd->copy_op_count = 0;
-    cmd->dispatch_op_count = 0;
     cmd->dispatch_x = 0;
     cmd->dispatch_y = 0;
     cmd->dispatch_z = 0;
@@ -2224,7 +2312,8 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
         cmd->dispatch_z = groupCountZ;
         cmd->has_dispatch = true;
         if (cmd->dispatch_op_count < PDOCKER_VK_MAX_DISPATCH_OPS) {
-            PdockerVkDispatchOp *op = &cmd->dispatch_ops[cmd->dispatch_op_count++];
+            uint32_t op_index = cmd->dispatch_op_count++;
+            PdockerVkDispatchOp *op = &cmd->dispatch_ops[op_index];
             op->pipeline = cmd->pipeline;
             op->set = cmd->set;
             op->dispatch_x = groupCountX;
@@ -2232,6 +2321,11 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
             op->dispatch_z = groupCountZ;
             op->push_constant_size = cmd->push_constant_size;
             memcpy(op->push_constants, cmd->push_constants, sizeof(op->push_constants));
+            PdockerVkCommandOp command_op;
+            memset(&command_op, 0, sizeof(command_op));
+            command_op.type = PDOCKER_VK_COMMAND_DISPATCH;
+            command_op.index = op_index;
+            (void)append_command_op(cmd, &command_op);
         } else if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
             fprintf(stderr,
                     "pdocker-vulkan-icd: dispatch command buffer full max=%u\n",
@@ -2267,7 +2361,6 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(
         const VkBufferMemoryBarrier *pBufferMemoryBarriers,
         uint32_t imageMemoryBarrierCount,
         const VkImageMemoryBarrier *pImageMemoryBarriers) {
-    (void)commandBuffer;
     (void)srcStageMask;
     (void)dstStageMask;
     (void)dependencyFlags;
@@ -2277,6 +2370,13 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier(
     (void)pBufferMemoryBarriers;
     (void)imageMemoryBarrierCount;
     (void)pImageMemoryBarriers;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
+    if (cmd) {
+        PdockerVkCommandOp op;
+        memset(&op, 0, sizeof(op));
+        op.type = PDOCKER_VK_COMMAND_BARRIER;
+        (void)append_command_op(cmd, &op);
+    }
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(
@@ -2295,11 +2395,16 @@ VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(
         void *src_ptr = buffer_ptr(src, r->srcOffset, r->size);
         bool appended = false;
         if (cmd->copy_op_count < PDOCKER_VK_MAX_COPY_OPS) {
-            PdockerVkCopyOp *op = &cmd->copy_ops[cmd->copy_op_count++];
+            uint32_t op_index = cmd->copy_op_count++;
+            PdockerVkCopyOp *op = &cmd->copy_ops[op_index];
             op->src = src;
             op->dst = dst;
             op->region = *r;
-            appended = true;
+            PdockerVkCommandOp command_op;
+            memset(&command_op, 0, sizeof(command_op));
+            command_op.type = PDOCKER_VK_COMMAND_COPY;
+            command_op.index = op_index;
+            appended = append_command_op(cmd, &command_op);
         }
         if (trace_allocations()) {
             fprintf(stderr,
@@ -2327,7 +2432,7 @@ VKAPI_ATTR void VKAPI_CALL vkCmdFillBuffer(
         VkDeviceSize dstOffset,
         VkDeviceSize size,
         uint32_t data) {
-    (void)commandBuffer;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
     PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
     if (!dst || !dst->memory) return;
     size_t available = buffer_available(dst, dstOffset);
@@ -2342,10 +2447,15 @@ VKAPI_ATTR void VKAPI_CALL vkCmdFillBuffer(
                 bytes,
                 available);
     }
-    uint32_t *p = (uint32_t *)buffer_ptr(dst, dstOffset, bytes);
-    if (!p) return;
-    invalidate_copy_aliases(dst, dstOffset, bytes);
-    for (size_t i = 0; i < bytes / sizeof(uint32_t); ++i) p[i] = data;
+    if (!cmd || bytes == 0) return;
+    PdockerVkCommandOp op;
+    memset(&op, 0, sizeof(op));
+    op.type = PDOCKER_VK_COMMAND_FILL;
+    op.buffer = dst;
+    op.offset = dstOffset;
+    op.size = bytes;
+    op.data = data;
+    (void)append_command_op(cmd, &op);
 }
 
 VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(
@@ -2354,22 +2464,33 @@ VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(
         VkDeviceSize dstOffset,
         VkDeviceSize dataSize,
         const void *pData) {
-    (void)commandBuffer;
+    PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)commandBuffer;
     PdockerVkBuffer *dst = (PdockerVkBuffer *)dstBuffer;
     if (!dst || !dst->memory || !pData) return;
-    void *dst_ptr = buffer_ptr(dst, dstOffset, dataSize);
+    size_t available = buffer_available(dst, dstOffset);
+    size_t bytes = (size_t)dataSize < available ? (size_t)dataSize : available;
+    void *dst_ptr = buffer_ptr(dst, dstOffset, bytes);
     if (trace_allocations()) {
         fprintf(stderr,
                 "pdocker-vulkan-icd: update-buffer dst_size=%zu dst_mem=%zu off=%llu bytes=%llu ok=%u\n",
                 dst->size,
                 dst->memory->size,
                 (unsigned long long)dstOffset,
-                (unsigned long long)dataSize,
+                (unsigned long long)bytes,
                 dst_ptr ? 1u : 0u);
     }
-    if (!dst_ptr) return;
-    invalidate_copy_aliases(dst, dstOffset, dataSize);
-    memcpy(dst_ptr, pData, (size_t)dataSize);
+    if (!cmd || !dst_ptr || bytes == 0) return;
+    void *payload = malloc(bytes);
+    if (!payload) return;
+    memcpy(payload, pData, bytes);
+    PdockerVkCommandOp op;
+    memset(&op, 0, sizeof(op));
+    op.type = PDOCKER_VK_COMMAND_UPDATE;
+    op.buffer = dst;
+    op.offset = dstOffset;
+    op.size = bytes;
+    op.payload = payload;
+    if (!append_command_op(cmd, &op)) free(payload);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
@@ -2383,6 +2504,74 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
         for (uint32_t j = 0; j < pSubmits[i].commandBufferCount; ++j) {
             PdockerVkCommandBuffer *cmd = (PdockerVkCommandBuffer *)pSubmits[i].pCommandBuffers[j];
             if (!cmd) return VK_ERROR_INITIALIZATION_FAILED;
+            if (cmd->command_op_count > 0) {
+                PdockerVkCopyStats stats;
+                memset(&stats, 0, sizeof(stats));
+                uint32_t dispatches = 0;
+                for (uint32_t op_index = 0; op_index < cmd->command_op_count; ++op_index) {
+                    PdockerVkCommandOp *op = &cmd->command_ops[op_index];
+                    switch (op->type) {
+                        case PDOCKER_VK_COMMAND_COPY:
+                            if (op->index < cmd->copy_op_count) {
+                                execute_recorded_copy_op(&cmd->copy_ops[op->index], &stats);
+                            }
+                            break;
+                        case PDOCKER_VK_COMMAND_FILL:
+                            execute_recorded_fill_op(op);
+                            break;
+                        case PDOCKER_VK_COMMAND_UPDATE:
+                            execute_recorded_update_op(op);
+                            break;
+                        case PDOCKER_VK_COMMAND_DISPATCH:
+                            if (op->index < cmd->dispatch_op_count) {
+                                PdockerVkDispatchOp *dispatch = &cmd->dispatch_ops[op->index];
+                                if (!dispatch->pipeline || !dispatch->pipeline->shader ||
+                                    dispatch->pipeline->shader->code_size <= sizeof(uint32_t)) {
+                                    return VK_ERROR_FEATURE_NOT_PRESENT;
+                                }
+                                int generic_rc = send_generic_vulkan_dispatch_op(dispatch);
+                                if (generic_rc != 0) {
+                                    if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+                                        fprintf(stderr,
+                                                "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d op=%u/%u code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",
+                                                generic_rc,
+                                                op->index + 1,
+                                                cmd->dispatch_op_count,
+                                                dispatch->pipeline->shader->code_size,
+                                                dispatch->pipeline->shader->first_word,
+                                                dispatch->dispatch_x,
+                                                dispatch->dispatch_y,
+                                                dispatch->dispatch_z,
+                                                dispatch->push_constant_size);
+                                    }
+                                    return VK_ERROR_FEATURE_NOT_PRESENT;
+                                }
+                                dispatches++;
+                            }
+                            break;
+                        case PDOCKER_VK_COMMAND_BARRIER:
+                            break;
+                    }
+                }
+                if (trace_allocations()) {
+                    if (stats.op_count > 0) {
+                        fprintf(stderr,
+                                "pdocker-vulkan-icd: copy-submit summary ops=%zu alias_ops=%zu memmove_ops=%zu skipped_ops=%zu alias_bytes=%llu memmove_bytes=%llu skipped_bytes=%llu\n",
+                                stats.op_count,
+                                stats.alias_ops,
+                                stats.memmove_ops,
+                                stats.skipped_ops,
+                                (unsigned long long)stats.alias_bytes,
+                                (unsigned long long)stats.memmove_bytes,
+                                (unsigned long long)stats.skipped_bytes);
+                    }
+                    fprintf(stderr,
+                            "pdocker-vulkan-icd: queue-submit replayed ordered ops=%u dispatches=%u\n",
+                            cmd->command_op_count,
+                            dispatches);
+                }
+                continue;
+            }
             execute_recorded_copy_ops(cmd);
             if (!cmd->has_dispatch) {
                 if (trace_allocations()) {

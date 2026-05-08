@@ -36,6 +36,7 @@ probing.
 | `llama-gpu-compare-20260508-ngl1-no-dup-rewrite.json` | 1 | Duplicate descriptor rewrite disabled | 0.1027 | 0.28x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260508-ngl1-buffer-range-fix.json` | 1 | ICD clamps `VK_WHOLE_SIZE` to `VkBuffer` size | 0.1640 | 0.45x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260508-ngl1-dispatch-replay.json` | 1 | ICD replays recorded dispatch ops | 0.1695 | 0.47x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-ordered-command-buffer.json` | 1 | ICD replays copy/fill/update/barrier/dispatch in command order | 0.1628 | 0.45x | fail | `!`, `!`, `!!!!` |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -60,6 +61,9 @@ Two ICD correctness fixes were added on 2026-05-08:
 - Command buffers now record and replay each generic SPIR-V dispatch instead
   of retaining only the latest dispatch state. This is required for Vulkan
   command-buffer semantics, but the NGL=1 llama correctness probe still fails.
+- Command buffers now also replay copy/fill/update/barrier/dispatch operations
+  in recorded order. This removes another Vulkan ordering mismatch, but the
+  NGL=1 llama correctness probe still fails.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
@@ -72,8 +76,6 @@ against a hard-coded arithmetic answer.
 
 - Add differential CPU/no-offload vs GPU/offload correctness comparison for the
   same prompts and model path.
-- Trace command-buffer ordering around copy/fill/update/barrier/dispatch and
-  preserve that order instead of replaying all copy ops before all dispatches.
 - Add bounded binding checksums around the final projection dispatch and compare
   output buffer bytes against the no-offload control.
 - Keep performance claims blocked while
