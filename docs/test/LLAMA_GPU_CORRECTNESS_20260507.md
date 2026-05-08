@@ -24,6 +24,13 @@ adb port forwarding on exit, so the correctness probe initially saw
 `Connection refused`. The compare driver now restores the forward before
 probing.
 
+The driver also records an optional `cpu.correctness` report when the CPU
+baseline is actually run. The final artifact then includes
+`differential_correctness`, comparing CPU/no-offload and GPU/offload probe
+outputs by probe name. This makes the gate independent of whether a short
+arithmetic prompt is a strong language-model oracle: a GPU result must first
+match the same model's CPU/no-offload output for the same prompt.
+
 ## Results
 
 | Artifact | NGL | Variant | GPU tok/s | Speedup vs CPU baseline | Correctness | Probe outputs |
@@ -49,6 +56,7 @@ probing.
 | `llama-gpu-compare-20260508-ngl1-enable-storage8.json` | 1 | 8-bit storage feature explicitly enabled | 0.1706 | 0.47x | fail | `礼拜`, `羽毛`, `itolitol刊登刊登` |
 | `llama-gpu-compare-20260508-ngl1-disable-storage16.json` | 1 | 16-bit storage feature disabled | n/a | n/a | fail | model load crashed with `sig=11` |
 | `llama-gpu-compare-20260508-ngl1-push-layout.json` | 1 | Full pipeline-layout push-constant size preserved across the bridge | 0.1813 | 0.50x | fail | `+`, `细细`, empty |
+| `llama-gpu-compare-20260508-ngl1-differential-cpu-gpu.json` | 1 | Full CPU/no-offload vs GPU/offload differential correctness gate | 0.1949 | 0.15x | fail | CPU: `5`, `8`, empty; GPU: `+`, `细细`, empty |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -111,6 +119,10 @@ Two ICD correctness fixes were added on 2026-05-08:
   written by `vkCmdPushConstants`. The NGL=1 probe output changed from the
   prior collapse shape but still failed, so the remaining issue is deeper than
   push-constant range truncation alone.
+- The differential CPU/GPU gate confirms that the current NGL=1 failure is not
+  merely prompt ambiguity. On the same image and prompts, CPU/no-offload returns
+  `5` and `8` for the arithmetic probes while GPU/offload returns `+` and
+  `细细`. Performance claims remain blocked until this differential gate passes.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
@@ -121,10 +133,8 @@ against a hard-coded arithmetic answer.
 
 ## Next Actions
 
-- Add differential CPU/no-offload vs GPU/offload correctness comparison for the
-  same prompts and model path.
 - Add bounded binding checksums around the final projection dispatch and compare
-  output buffer bytes against the no-offload control.
+  output buffer bytes against the CPU/no-offload control.
 - Inspect the final projection shader itself. The current dump shows duplicate
   `Binding 0` storage-buffer variables with different struct views; descriptor
   rewrite and aliasing are present, but the remaining failure may be in

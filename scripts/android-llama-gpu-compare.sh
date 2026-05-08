@@ -512,6 +512,7 @@ DEVICE_PROJECT="$(run_as "cd $(remote_quote "$PROJECT") && pwd" | tr -d '\r')"
 DEVICE_MODEL_HOST="$(run_as "cd $(remote_quote "$PROJECT") && . ./.env >/dev/null 2>&1 && printf '%s' \"\${PDOCKER_MODEL_HOST:-$DEVICE_PROJECT/models}\"" | tr -d '\r')"
 DEVICE_WORKSPACE_HOST="$(run_as "cd $(remote_quote "$PROJECT") && . ./.env >/dev/null 2>&1 && printf '%s' \"\${PDOCKER_FAST_WORKSPACE_HOST:-$DEVICE_PROJECT/workspace}\"" | tr -d '\r')"
 CPU_JSON="$TMP/cpu.json"
+CPU_CORRECTNESS_JSON="$TMP/cpu-correctness.json"
 if [[ "$RUN_CPU" -eq 1 ]]; then
   echo "[pdocker llama compare] start CPU baseline"
   CURRENT_STAGE="CPU baseline"
@@ -525,6 +526,10 @@ if [[ "$RUN_CPU" -eq 1 ]]; then
     exit 1
   fi
   bench_http "cpu-baseline" "$CPU_JSON" >/dev/null
+  if [[ "$CORRECTNESS" != "0" ]]; then
+    operation_notify "running" "CPU baseline served; checking differential correctness baseline"
+    probe_http_correctness "cpu-baseline" "$CPU_CORRECTNESS_JSON" >/dev/null || true
+  fi
 else
   echo "[pdocker llama compare] reuse CPU baseline"
   CURRENT_STAGE="reuse CPU baseline"
@@ -579,14 +584,14 @@ fi
 container_state > "$GPU_STATE"
 container_logs > "$GPU_LOG"
 
-python3 - "$CPU_JSON" "$GPU_JSON" "$GPU_LOG" "$GPU_STATE" "$CORRECTNESS_JSON" "$OUT" "$gpu_served" "$GPU_LAYERS" "$GPU_CTX" "$PREDICT" "$REPEAT" "$WARMUP_DISCARD" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" <<'PY'
+python3 - "$CPU_JSON" "$CPU_CORRECTNESS_JSON" "$GPU_JSON" "$GPU_LOG" "$GPU_STATE" "$CORRECTNESS_JSON" "$OUT" "$gpu_served" "$GPU_LAYERS" "$GPU_CTX" "$PREDICT" "$REPEAT" "$WARMUP_DISCARD" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" <<'PY'
 import json
 import re
 import sys
 import time
 from pathlib import Path
 
-cpu_path, gpu_path, gpu_log_path, gpu_state_path, correctness_path, out_path, gpu_served_s, gpu_layers, gpu_ctx, predict, repeat, warmup_discard, trace_alloc, model_path, model_url = sys.argv[1:16]
+cpu_path, cpu_correctness_path, gpu_path, gpu_log_path, gpu_state_path, correctness_path, out_path, gpu_served_s, gpu_layers, gpu_ctx, predict, repeat, warmup_discard, trace_alloc, model_path, model_url = sys.argv[1:17]
 cpu = json.load(open(cpu_path, encoding="utf-8"))
 gpu = {}
 if Path(gpu_path).is_file() and Path(gpu_path).stat().st_size:
@@ -602,9 +607,48 @@ if Path(correctness_path).is_file() and Path(correctness_path).stat().st_size:
         correctness = json.load(open(correctness_path, encoding="utf-8"))
     except Exception:
         correctness = {}
+cpu_correctness = {}
+if Path(cpu_correctness_path).is_file() and Path(cpu_correctness_path).stat().st_size:
+    try:
+        cpu_correctness = json.load(open(cpu_correctness_path, encoding="utf-8"))
+    except Exception:
+        cpu_correctness = {}
 cpu_tps = float(cpu.get("summary", {}).get("predicted_tokens_per_second_mean") or 0.0)
 gpu_tps = float(gpu.get("summary", {}).get("predicted_tokens_per_second_mean") or 0.0)
 target_tps = cpu_tps * 10.0
+
+def probe_map(report):
+    return {
+        str(item.get("name")): str(item.get("content", ""))
+        for item in report.get("probes", [])
+        if isinstance(item, dict)
+    }
+
+cpu_probe_outputs = probe_map(cpu_correctness)
+gpu_probe_outputs = probe_map(correctness)
+shared_probe_names = sorted(set(cpu_probe_outputs) & set(gpu_probe_outputs))
+differential_probe_results = [
+    {
+        "name": name,
+        "cpu_content": cpu_probe_outputs[name],
+        "gpu_content": gpu_probe_outputs[name],
+        "matched": cpu_probe_outputs[name] == gpu_probe_outputs[name],
+    }
+    for name in shared_probe_names
+]
+differential_correctness = {
+    "enabled": bool(cpu_correctness and correctness),
+    "shared_probe_count": len(shared_probe_names),
+    "mismatch_count": sum(1 for item in differential_probe_results if not item["matched"]),
+    "summary": (
+        "pass"
+        if differential_probe_results and all(item["matched"] for item in differential_probe_results)
+        else "fail"
+        if differential_probe_results
+        else "not-run"
+    ),
+    "probes": differential_probe_results,
+}
 
 def json_string_field_seen(name, value):
     return re.search(rf'"{re.escape(name)}"\s*:\s*"{re.escape(value)}"', log) is not None
@@ -1030,6 +1074,7 @@ result = {
     "cpu": {
         "tokens_per_second": cpu_tps,
         "summary": cpu.get("summary", {}),
+        "correctness": cpu_correctness,
     },
     "gpu": {
         "tokens_per_second": gpu_tps,
@@ -1053,6 +1098,7 @@ result = {
         },
         "correctness": correctness,
     },
+    "differential_correctness": differential_correctness,
     "comparison": {
         "speedup": speedup,
         "target_tokens_per_second": target_tps,
