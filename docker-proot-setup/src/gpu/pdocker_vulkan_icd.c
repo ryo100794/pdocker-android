@@ -677,9 +677,15 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
     }
     if (binding_count == 0) return -EINVAL;
 
+    uint32_t push_size = op->push_constant_size;
+    if (op->pipeline && op->pipeline->layout &&
+        op->pipeline->layout->push_constant_size > push_size) {
+        push_size = op->pipeline->layout->push_constant_size;
+    }
+    if (push_size > PDOCKER_VK_MAX_PUSH_BYTES) return -E2BIG;
     char push_hex[PDOCKER_VK_MAX_PUSH_BYTES * 2 + 1];
-    hex_encode(op->push_constants, op->push_constant_size, push_hex, sizeof(push_hex));
-    const char *push_token = op->push_constant_size ? push_hex : "-";
+    hex_encode(op->push_constants, push_size, push_hex, sizeof(push_hex));
+    const char *push_token = push_size ? push_hex : "-";
     char entry_hex[PDOCKER_VK_MAX_ENTRY_NAME * 2 + 1];
     const char *entry_name = op->pipeline->entry_name[0] ? op->pipeline->entry_name : "main";
     hex_encode((const uint8_t *)entry_name, strlen(entry_name), entry_hex, sizeof(entry_hex));
@@ -696,7 +702,7 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
                      "VULKAN_DISPATCH_V2 %zu %zu %u %u %u %u %s %s %u %zu %s",
                      shader->code_size,
                      binding_count,
-                     op->push_constant_size,
+                     push_size,
                      op->dispatch_x,
                      op->dispatch_y ? op->dispatch_y : 1,
                      op->dispatch_z ? op->dispatch_z : 1,
@@ -2412,6 +2418,10 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
             op->dispatch_y = groupCountY;
             op->dispatch_z = groupCountZ;
             op->push_constant_size = cmd->push_constant_size;
+            if (op->pipeline && op->pipeline->layout &&
+                op->pipeline->layout->push_constant_size > op->push_constant_size) {
+                op->push_constant_size = op->pipeline->layout->push_constant_size;
+            }
             memcpy(op->push_constants, cmd->push_constants, sizeof(op->push_constants));
             PdockerVkCommandOp command_op;
             memset(&command_op, 0, sizeof(command_op));

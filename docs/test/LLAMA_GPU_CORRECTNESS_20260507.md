@@ -44,6 +44,11 @@ probing.
 | `llama-gpu-compare-20260508-ngl1-descriptor-semantics.json` | 1 | Descriptor array/copy/dynamic-offset hardening | 0.1628 | 0.45x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260508-ngl1-descriptor-trace.json` | 1 | Descriptor hardening with allocation trace | 0.1573 | 0.44x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260508-ngl1-workgroup-spec-guard.json` | 1 | Keep BuiltIn WorkgroupSize specialization subtree at default during materialization | 0.1353 | 0.37x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-no-copy-alias-real.json` | 1 | Copy-alias fast path disabled by default in the compare driver | 0.1117 | 0.31x | fail | `礼拜`, `羽毛`, `itolitol刊登刊登` |
+| `llama-gpu-compare-20260508-ngl1-disable-storage8.json` | 1 | 8-bit storage feature disabled | 0.1529 | 0.42x | fail | `wan`, `羽毛`, `itolitol Jing刊登` |
+| `llama-gpu-compare-20260508-ngl1-enable-storage8.json` | 1 | 8-bit storage feature explicitly enabled | 0.1706 | 0.47x | fail | `礼拜`, `羽毛`, `itolitol刊登刊登` |
+| `llama-gpu-compare-20260508-ngl1-disable-storage16.json` | 1 | 16-bit storage feature disabled | n/a | n/a | fail | model load crashed with `sig=11` |
+| `llama-gpu-compare-20260508-ngl1-push-layout.json` | 1 | Full pipeline-layout push-constant size preserved across the bridge | 0.1813 | 0.50x | fail | `+`, `细细`, empty |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -92,6 +97,20 @@ Two ICD correctness fixes were added on 2026-05-08:
   prevents an invalid mismatch between `gl_WorkGroupSize` and actual local
   invocation count. The NGL=1 probe still fails, so this was another real
   hardening fix but not the final output-collapse cause.
+- The compare driver no longer enables the copy-alias fast path by default.
+  Copy-aliasing remains available as an opt-in diagnostic/performance knob via
+  `PDOCKER_VULKAN_ALIAS_COPIES`, but correctness evidence showed that it changes
+  the output-collapse shape before it has been proven safe.
+- Storage feature probes showed that disabling 8-bit storage changes the
+  incorrect output but does not restore correctness. Disabling 16-bit storage
+  crashed during model load on this image, so this path is not a viable fallback
+  for the current llama.cpp Vulkan build.
+- The ICD now preserves the full push-constant size declared by the pipeline
+  layout when serializing a dispatch to the Android bridge. This avoids
+  reconstructing a narrower runner-side `VkPipelineLayout` from only the bytes
+  written by `vkCmdPushConstants`. The NGL=1 probe output changed from the
+  prior collapse shape but still failed, so the remaining issue is deeper than
+  push-constant range truncation alone.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
