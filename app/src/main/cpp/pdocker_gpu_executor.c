@@ -1741,6 +1741,47 @@ static VulkanPipelineCacheEntry *select_pipeline_cache_slot(VkDevice device) {
     return &g_vulkan_pipeline_cache[victim];
 }
 
+static uint64_t sample_memory_hash(const void *data, size_t size) {
+    if (!data || size == 0) return 0;
+    const unsigned char *bytes = (const unsigned char *)data;
+    uint64_t hash = 1469598103934665603ull;
+    size_t sample = size < 64 ? size : 64;
+    hash = fnv1a64_update(hash, bytes, sample);
+    if (size > 128) {
+        size_t middle = (size / 2) - (((size / 2) < 32) ? 0 : 32);
+        if (middle + sample > size) middle = size - sample;
+        hash = fnv1a64_update(hash, bytes + middle, sample);
+    }
+    if (size > 64) {
+        hash = fnv1a64_update(hash, bytes + size - sample, sample);
+    }
+    return hash;
+}
+
+static uint64_t sample_fd_hash(int fd, off_t offset, size_t size) {
+    if (fd < 0 || size == 0) return 0;
+    unsigned char buf[64];
+    uint64_t hash = 1469598103934665603ull;
+    size_t sample = size < sizeof(buf) ? size : sizeof(buf);
+    ssize_t r = pread(fd, buf, sample, offset);
+    if (r <= 0) return 0;
+    hash = fnv1a64_update(hash, buf, (size_t)r);
+    if (size > 128) {
+        off_t middle = offset + (off_t)(size / 2) - (off_t)(((size / 2) < 32) ? 0 : 32);
+        if (middle < offset) middle = offset;
+        if ((uint64_t)(middle - offset) + sample > size) {
+            middle = offset + (off_t)(size - sample);
+        }
+        r = pread(fd, buf, sample, middle);
+        if (r > 0) hash = fnv1a64_update(hash, buf, (size_t)r);
+    }
+    if (size > 64) {
+        r = pread(fd, buf, sample, offset + (off_t)(size - sample));
+        if (r > 0) hash = fnv1a64_update(hash, buf, (size_t)r);
+    }
+    return hash;
+}
+
 static void write_vulkan_binding_report(
         FILE *out,
         const VulkanDispatchBinding *bindings,
@@ -1758,23 +1799,33 @@ static void write_vulkan_binding_report(
         const size_t *dirty_probe_bytes,
         const double *dirty_probe_ms,
         const int *dirty_writeback_cached,
-        const size_t *dirty_writeback_bytes) {
+        const size_t *dirty_writeback_bytes,
+        const uint64_t *fd_before_hash,
+        const uint64_t *gpu_after_upload_hash,
+        const uint64_t *gpu_after_dispatch_hash,
+        const uint64_t *fd_after_hash,
+        const size_t *alias_rep) {
     fprintf(out, "\"binding_details\":[");
     for (size_t i = 0; i < binding_count; ++i) {
         fprintf(out,
                 "%s{\"index\":%zu,\"binding\":%u,\"offset\":%lld,"
-                "\"size\":%zu,\"active\":%s,\"readable\":%s,\"writable\":%s,"
+                "\"size\":%zu,\"alias_rep\":%zu,\"active\":%s,\"readable\":%s,\"writable\":%s,"
                 "\"resident\":%s,\"cache_hit\":%s,"
                 "\"mutable_reused\":%s,\"mutable_cache_hit\":%s,"
                 "\"upload_ms\":%.4f,\"download_ms\":%.4f,"
                 "\"dirty_probe_pages\":%zu,\"dirty_probe_bytes\":%zu,"
                 "\"dirty_probe_ms\":%.4f,\"dirty_writeback_cached\":%s,"
-                "\"dirty_writeback_bytes\":%zu}",
+                "\"dirty_writeback_bytes\":%zu,"
+                "\"fd_before_hash\":\"0x%016llx\","
+                "\"gpu_after_upload_hash\":\"0x%016llx\","
+                "\"gpu_after_dispatch_hash\":\"0x%016llx\","
+                "\"fd_after_hash\":\"0x%016llx\"}",
                 i ? "," : "",
                 i,
                 bindings[i].binding,
                 (long long)bindings[i].offset,
                 bindings[i].size,
+                alias_rep ? alias_rep[i] : i,
                 active && active[i] ? "true" : "false",
                 readable && readable[i] ? "true" : "false",
                 writable && writable[i] ? "true" : "false",
@@ -1788,7 +1839,11 @@ static void write_vulkan_binding_report(
                 dirty_probe_bytes ? dirty_probe_bytes[i] : (size_t)0,
                 dirty_probe_ms ? dirty_probe_ms[i] : 0.0,
                 dirty_writeback_cached && dirty_writeback_cached[i] ? "true" : "false",
-                dirty_writeback_bytes ? dirty_writeback_bytes[i] : (size_t)0);
+                dirty_writeback_bytes ? dirty_writeback_bytes[i] : (size_t)0,
+                (unsigned long long)(fd_before_hash ? fd_before_hash[i] : 0),
+                (unsigned long long)(gpu_after_upload_hash ? gpu_after_upload_hash[i] : 0),
+                (unsigned long long)(gpu_after_dispatch_hash ? gpu_after_dispatch_hash[i] : 0),
+                (unsigned long long)(fd_after_hash ? fd_after_hash[i] : 0));
     }
     fprintf(out, "]");
 }
@@ -2788,6 +2843,10 @@ static int run_vulkan_dispatch_fd(
     double binding_upload_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     double binding_download_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     double binding_dirty_probe_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint64_t binding_fd_before_hash[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint64_t binding_gpu_after_upload_hash[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint64_t binding_gpu_after_dispatch_hash[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint64_t binding_fd_after_hash[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     size_t binding_dirty_probe_pages[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     size_t binding_dirty_probe_bytes[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     int binding_dirty_writeback_cached[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
@@ -2838,6 +2897,14 @@ static int run_vulkan_dispatch_fd(
     uint8_t active_bindings[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     uint8_t binding_read_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     uint8_t binding_write_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint8_t binding_group_read_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    size_t binding_alias_rep[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    off_t binding_group_base[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    off_t binding_group_end[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    size_t binding_gpu_offset[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint8_t binding_group_span_seen[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    dev_t binding_fd_dev[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    ino_t binding_fd_ino[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
     memset(temp_buffers, 0, sizeof(temp_buffers));
     memset(vk_buffers, 0, sizeof(vk_buffers));
     memset(cache_hits, 0, sizeof(cache_hits));
@@ -2847,6 +2914,10 @@ static int run_vulkan_dispatch_fd(
     memset(binding_upload_ms, 0, sizeof(binding_upload_ms));
     memset(binding_download_ms, 0, sizeof(binding_download_ms));
     memset(binding_dirty_probe_ms, 0, sizeof(binding_dirty_probe_ms));
+    memset(binding_fd_before_hash, 0, sizeof(binding_fd_before_hash));
+    memset(binding_gpu_after_upload_hash, 0, sizeof(binding_gpu_after_upload_hash));
+    memset(binding_gpu_after_dispatch_hash, 0, sizeof(binding_gpu_after_dispatch_hash));
+    memset(binding_fd_after_hash, 0, sizeof(binding_fd_after_hash));
     memset(binding_dirty_probe_pages, 0, sizeof(binding_dirty_probe_pages));
     memset(binding_dirty_probe_bytes, 0, sizeof(binding_dirty_probe_bytes));
     memset(binding_dirty_writeback_cached, 0, sizeof(binding_dirty_writeback_cached));
@@ -2861,6 +2932,14 @@ static int run_vulkan_dispatch_fd(
     memset(active_bindings, 0, sizeof(active_bindings));
     memset(binding_read_needed, 0, sizeof(binding_read_needed));
     memset(binding_write_needed, 0, sizeof(binding_write_needed));
+    memset(binding_group_read_needed, 0, sizeof(binding_group_read_needed));
+    memset(binding_alias_rep, 0, sizeof(binding_alias_rep));
+    memset(binding_group_base, 0, sizeof(binding_group_base));
+    memset(binding_group_end, 0, sizeof(binding_group_end));
+    memset(binding_gpu_offset, 0, sizeof(binding_gpu_offset));
+    memset(binding_group_span_seen, 0, sizeof(binding_group_span_seen));
+    memset(binding_fd_dev, 0, sizeof(binding_fd_dev));
+    memset(binding_fd_ino, 0, sizeof(binding_fd_ino));
     if (!shader_code) return -21;
     if (read_fd_exact(shader_fd, shader_code, shader_size, 0) != 0) goto cleanup;
     if (env_truthy("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", 1)) {
@@ -2970,6 +3049,67 @@ static int run_vulkan_dispatch_fd(
         ret = 64;
         goto cleanup;
     }
+    for (size_t i = 0; i < binding_count; ++i) {
+        binding_alias_rep[i] = i;
+        binding_group_read_needed[i] = binding_read_needed[i];
+        binding_group_base[i] = bindings[i].offset;
+        binding_group_end[i] = bindings[i].offset + (off_t)bindings[i].size;
+        if (!active_bindings[i]) continue;
+        struct stat st;
+        if (fstat(buffer_fds[i], &st) == 0) {
+            binding_fd_dev[i] = st.st_dev;
+            binding_fd_ino[i] = st.st_ino;
+        }
+    }
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i] || !binding_fd_ino[i]) continue;
+        for (size_t j = 0; j < i; ++j) {
+            if (!active_bindings[j] || !binding_fd_ino[j]) continue;
+            const off_t i0 = bindings[i].offset;
+            const off_t i1 = bindings[i].offset + (off_t)bindings[i].size;
+            const off_t j0 = bindings[j].offset;
+            const off_t j1 = bindings[j].offset + (off_t)bindings[j].size;
+            if (binding_fd_dev[i] == binding_fd_dev[j] &&
+                binding_fd_ino[i] == binding_fd_ino[j] &&
+                i0 < j1 && j0 < i1) {
+                size_t old_rep = binding_alias_rep[i];
+                size_t new_rep = binding_alias_rep[j] < old_rep
+                    ? binding_alias_rep[j]
+                    : old_rep;
+                for (size_t k = 0; k < binding_count; ++k) {
+                    if (binding_alias_rep[k] == old_rep ||
+                        binding_alias_rep[k] == binding_alias_rep[j]) {
+                        binding_alias_rep[k] = new_rep;
+                    }
+                }
+                break;
+            }
+        }
+    }
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i]) continue;
+        size_t rep = binding_alias_rep[i];
+        if (rep >= binding_count) continue;
+        const off_t start = bindings[i].offset;
+        const off_t end = bindings[i].offset + (off_t)bindings[i].size;
+        if (!binding_group_span_seen[rep] || start < binding_group_base[rep]) {
+            binding_group_base[rep] = start;
+        }
+        if (!binding_group_span_seen[rep] || end > binding_group_end[rep]) {
+            binding_group_end[rep] = end;
+        }
+        binding_group_span_seen[rep] = 1;
+    }
+    for (size_t i = 0; i < binding_count; ++i) {
+        if (!active_bindings[i]) continue;
+        size_t rep = binding_alias_rep[i];
+        if (rep < binding_count && binding_read_needed[i]) {
+            binding_group_read_needed[rep] = 1;
+        }
+        if (rep < binding_count && bindings[i].offset >= binding_group_base[rep]) {
+            binding_gpu_offset[i] = (size_t)(bindings[i].offset - binding_group_base[rep]);
+        }
+    }
     const uint64_t spec_hash = pipeline_specialization_hash(
         specializations,
         specialization_count,
@@ -2982,13 +3122,37 @@ static int run_vulkan_dispatch_fd(
         fail_binding = (int)i;
         fail_stage = "create-dispatch-buffer";
         double binding_start = now_ms();
+        if (profile_response) {
+            binding_fd_before_hash[i] = sample_fd_hash(
+                buffer_fds[i], bindings[i].offset, bindings[i].size);
+        }
+        if (binding_alias_rep[i] != i && binding_alias_rep[i] < i &&
+            vk_buffers[binding_alias_rep[i]]) {
+            vk_buffers[i] = vk_buffers[binding_alias_rep[i]];
+            cache_hits[i] = cache_hits[binding_alias_rep[i]];
+            cache_resident[i] = cache_resident[binding_alias_rep[i]];
+            mutable_cache_hits[i] = mutable_cache_hits[binding_alias_rep[i]];
+            mutable_cache_reused[i] = mutable_cache_reused[binding_alias_rep[i]];
+            binding_upload_ms[i] = now_ms() - binding_start;
+            if (profile_response && vk_buffers[i]->map) {
+                binding_gpu_after_upload_hash[i] =
+                    sample_memory_hash((const unsigned char *)vk_buffers[i]->map + binding_gpu_offset[i],
+                                       bindings[i].size);
+            }
+            continue;
+        }
+        VulkanDispatchBinding group_binding = bindings[i];
+        if (binding_group_end[i] > binding_group_base[i]) {
+            group_binding.offset = binding_group_base[i];
+            group_binding.size = (size_t)(binding_group_end[i] - binding_group_base[i]);
+        }
         vk_buffers[i] = acquire_dispatch_buffer(
             rt->physical_device,
             rt->device,
             buffer_fds[i],
-            &bindings[i],
+            &group_binding,
             &temp_buffers[i],
-            binding_read_needed[i],
+            binding_group_read_needed[i],
             &cache_hits[i],
             &cache_resident[i],
             &mutable_cache_hits[i],
@@ -2997,6 +3161,11 @@ static int run_vulkan_dispatch_fd(
             mutable_cache_max_bytes);
         binding_upload_ms[i] = now_ms() - binding_start;
         if (!vk_buffers[i]) goto cleanup;
+        if (profile_response && vk_buffers[i]->map) {
+            binding_gpu_after_upload_hash[i] =
+                sample_memory_hash((const unsigned char *)vk_buffers[i]->map + binding_gpu_offset[i],
+                                   bindings[i].size);
+        }
         if ((dirty_probe_enabled || dirty_writeback_enabled) &&
             binding_write_needed[i] &&
             !binding_read_needed[i] &&
@@ -3148,7 +3317,7 @@ static int run_vulkan_dispatch_fd(
     for (size_t i = 0; i < binding_count; ++i) {
         if (!active_bindings[i]) continue;
         infos[write_count].buffer = vk_buffers[i]->buffer;
-        infos[write_count].offset = 0;
+        infos[write_count].offset = (VkDeviceSize)binding_gpu_offset[i];
         infos[write_count].range = (VkDeviceSize)bindings[i].size;
         writes[write_count].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[write_count].dstSet = descriptor_set;
@@ -3180,7 +3349,7 @@ static int run_vulkan_dispatch_fd(
             goto cleanup;
         }
         infos[write_count].buffer = vk_buffers[original_index]->buffer;
-        infos[write_count].offset = 0;
+        infos[write_count].offset = (VkDeviceSize)binding_gpu_offset[original_index];
         infos[write_count].range = (VkDeviceSize)bindings[original_index].size;
         writes[write_count].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[write_count].dstSet = descriptor_set;
@@ -3216,6 +3385,14 @@ static int run_vulkan_dispatch_fd(
     rc = vkWaitForFences(rt->device, 1, &fence, VK_TRUE, UINT64_MAX);
     if (rc != VK_SUCCESS) goto cleanup;
     double dispatch_ms = now_ms() - dispatch_start;
+    if (profile_response) {
+        for (size_t i = 0; i < binding_count; ++i) {
+            if (!active_bindings[i] || !vk_buffers[i] || !vk_buffers[i]->map) continue;
+            binding_gpu_after_dispatch_hash[i] =
+                sample_memory_hash((const unsigned char *)vk_buffers[i]->map + binding_gpu_offset[i],
+                                   bindings[i].size);
+        }
+    }
     double download_start = now_ms();
     for (size_t i = 0; i < binding_count; ++i) {
         if (!active_bindings[i]) continue;
@@ -3225,6 +3402,8 @@ static int run_vulkan_dispatch_fd(
         fail_binding = (int)i;
         double binding_start = now_ms();
         const int dirty_candidate =
+            binding_gpu_offset[i] == 0 &&
+            binding_alias_rep[i] == i &&
             !binding_read_needed[i] &&
             bindings[i].size >= dirty_probe_min_bytes &&
             vk_buffers[i]->map;
@@ -3299,10 +3478,20 @@ static int run_vulkan_dispatch_fd(
                 continue;
             }
         }
-        io_rc = write_fd_exact(buffer_fds[i], vk_buffers[i]->map, bindings[i].size, bindings[i].offset);
+        io_rc = write_fd_exact(buffer_fds[i],
+                               (const unsigned char *)vk_buffers[i]->map + binding_gpu_offset[i],
+                               bindings[i].size,
+                               bindings[i].offset);
         binding_dirty_writeback_bytes[i] = bindings[i].size;
         binding_download_ms[i] = now_ms() - binding_start;
         if (io_rc != 0) goto cleanup;
+    }
+    if (profile_response) {
+        for (size_t i = 0; i < binding_count; ++i) {
+            if (!active_bindings[i]) continue;
+            binding_fd_after_hash[i] = sample_fd_hash(
+                buffer_fds[i], bindings[i].offset, bindings[i].size);
+        }
     }
     fail_binding = -1;
     double download_ms = now_ms() - download_start;
@@ -3374,7 +3563,12 @@ static int run_vulkan_dispatch_fd(
                                     binding_dirty_probe_bytes,
                                     binding_dirty_probe_ms,
                                     binding_dirty_writeback_cached,
-                                    binding_dirty_writeback_bytes);
+                                    binding_dirty_writeback_bytes,
+                                    binding_fd_before_hash,
+                                    binding_gpu_after_upload_hash,
+                                    binding_gpu_after_dispatch_hash,
+                                    binding_fd_after_hash,
+                                    binding_alias_rep);
     }
     fprintf(json_out(), "}\n");
     fflush(json_out());
@@ -3485,7 +3679,12 @@ cleanup:
                                     binding_dirty_probe_bytes,
                                     binding_dirty_probe_ms,
                                     binding_dirty_writeback_cached,
-                                    binding_dirty_writeback_bytes);
+                                    binding_dirty_writeback_bytes,
+                                    binding_fd_before_hash,
+                                    binding_gpu_after_upload_hash,
+                                    binding_gpu_after_dispatch_hash,
+                                    binding_fd_after_hash,
+                                    binding_alias_rep);
         fprintf(json_out(), ",");
         write_spirv_feature_report(json_out(), &spirv_summary, rt);
         fprintf(json_out(), ",");

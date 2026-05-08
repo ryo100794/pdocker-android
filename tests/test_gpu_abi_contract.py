@@ -41,6 +41,7 @@ class GpuAbiContractTest(unittest.TestCase):
             '\\"binding\\":%u',
             '\\"offset\\":%lld',
             '\\"size\\":%zu',
+            '\\"alias_rep\\":%zu',
             '\\"active\\":%s',
             '\\"readable\\":%s',
             '\\"writable\\":%s',
@@ -55,6 +56,10 @@ class GpuAbiContractTest(unittest.TestCase):
             '\\"dirty_probe_ms\\":%.4f',
             '\\"dirty_writeback_cached\\":%s',
             '\\"dirty_writeback_bytes\\":%zu',
+            '\\"fd_before_hash\\":\\"0x%016llx\\"',
+            '\\"gpu_after_upload_hash\\":\\"0x%016llx\\"',
+            '\\"gpu_after_dispatch_hash\\":\\"0x%016llx\\"',
+            '\\"fd_after_hash\\":\\"0x%016llx\\"',
         ]:
             self.assertIn(field, source)
         self.assertGreaterEqual(source.count("write_vulkan_binding_report(json_out()"), 2)
@@ -62,6 +67,20 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("binding_download_ms[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
         self.assertIn("binding_dirty_probe_pages[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
         self.assertIn("binding_dirty_probe_bytes[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_fd_before_hash[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_gpu_after_dispatch_hash[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_alias_rep[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_group_read_needed[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_group_base[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_group_end[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_gpu_offset[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_group_span_seen[PDOCKER_GPU_MAX_VULKAN_BINDINGS]", source)
+        self.assertIn("binding_alias_rep[i] != i", source)
+        self.assertIn("i0 < j1 && j0 < i1", source)
+        self.assertIn("!binding_group_span_seen[rep] || start < binding_group_base[rep]", source)
+        self.assertIn("infos[write_count].offset = (VkDeviceSize)binding_gpu_offset[i];", source)
+        self.assertIn("sample_fd_hash(", source)
+        self.assertIn("sample_memory_hash(", source)
         self.assertIn("binding_upload_ms[i] = now_ms() - binding_start;", source)
         self.assertIn("binding_download_ms[i] = now_ms() - binding_start;", source)
 
@@ -207,6 +226,7 @@ class GpuAbiContractTest(unittest.TestCase):
             "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE",
             "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_MIN_BYTES",
             "PDOCKER_GPU_WRITEONLY_DIRTY_WRITEBACK",
+            "PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE",
         ]:
             self.assertIn(f'"{key}"', compare)
         self.assertIn("value = os.environ.get(key)", compare)

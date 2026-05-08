@@ -37,6 +37,10 @@ probing.
 | `llama-gpu-compare-20260508-ngl1-buffer-range-fix.json` | 1 | ICD clamps `VK_WHOLE_SIZE` to `VkBuffer` size | 0.1640 | 0.45x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260508-ngl1-dispatch-replay.json` | 1 | ICD replays recorded dispatch ops | 0.1695 | 0.47x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260508-ngl1-ordered-command-buffer.json` | 1 | ICD replays copy/fill/update/barrier/dispatch in command order | 0.1628 | 0.45x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-binding-hash-rerun.json` | 1 | Binding checksum diagnostics enabled | 0.1592 | 0.44x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-overlap-alias.json` | 1 | Overlapping descriptor ranges share one executor buffer | 0.1657 | 0.46x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-all-copy-alias.json` | 1 | ICD copy-alias resolution applies to all descriptor bindings | 0.1316 | 0.36x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-all-transfers.json` | 1 | Transfer skipping and caches disabled after alias fixes | 0.1335 | 0.37x | fail | `!`, `!`, `!!!!` |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -64,6 +68,17 @@ Two ICD correctness fixes were added on 2026-05-08:
 - Command buffers now also replay copy/fill/update/barrier/dispatch operations
   in recorded order. This removes another Vulkan ordering mismatch, but the
   NGL=1 llama correctness probe still fails.
+- Binding diagnostics now include bounded hashes before upload, after upload,
+  after dispatch, and after writeback. Those hashes showed descriptor bindings
+  that referenced overlapping regions of the same fd. The executor now coalesces
+  overlapping descriptor ranges into one backing Vulkan buffer and emits
+  `alias_rep` in the per-binding report. This preserves descriptor alias
+  semantics and reduces redundant upload/download work, but the llama output
+  collapse still reproduces.
+- The ICD now applies copy-alias resolution to every descriptor binding rather
+  than only binding 0, and its advertised storage-buffer descriptor limits now
+  match the bridge's implemented capacity. These are correctness hardening fixes;
+  they did not restore llama correctness in the NGL=1 probe.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
@@ -78,5 +93,8 @@ against a hard-coded arithmetic answer.
   same prompts and model path.
 - Add bounded binding checksums around the final projection dispatch and compare
   output buffer bytes against the no-offload control.
+- Inspect descriptor set/array semantics, dynamic storage-buffer descriptors,
+  and any descriptor-copy usage. These are now the highest-risk remaining Vulkan
+  semantic gaps after command ordering and descriptor aliasing.
 - Keep performance claims blocked while
   `gpu.correctness.summary.benchmark_claim_allowed` is false.

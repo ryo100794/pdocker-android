@@ -275,6 +275,7 @@ for key in [
     "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_MIN_BYTES",
     "PDOCKER_GPU_WRITEONLY_DIRTY_WRITEBACK",
     "PDOCKER_GPU_DISPATCH_PROFILE_LOG",
+    "PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE",
 ]:
     value = os.environ.get(key)
     if value is not None:

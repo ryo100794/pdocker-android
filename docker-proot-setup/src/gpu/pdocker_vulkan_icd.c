@@ -649,7 +649,7 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
         PdockerVkMemory *dispatch_memory = binding->buffer->memory;
         VkDeviceSize dispatch_offset = binding->buffer->memory_offset + binding->offset;
         bool alias_hit = false;
-        if (i == 0 && copy_alias_enabled()) {
+        if (copy_alias_enabled()) {
             alias_hit = resolve_copy_alias(binding->buffer, binding->offset, bytes,
                                            &dispatch_memory, &dispatch_offset);
         }
@@ -1071,8 +1071,8 @@ static void fill_physical_device_properties(VkPhysicalDeviceProperties *pPropert
     pProperties->limits.maxStorageBufferRange = max_buffer > UINT32_MAX ? UINT32_MAX : (uint32_t)max_buffer;
     pProperties->limits.maxMemoryAllocationCount = 4096;
     pProperties->limits.maxBoundDescriptorSets = 8;
-    pProperties->limits.maxPerStageDescriptorStorageBuffers = 64;
-    pProperties->limits.maxDescriptorSetStorageBuffers = 64;
+    pProperties->limits.maxPerStageDescriptorStorageBuffers = PDOCKER_VK_MAX_STORAGE_BUFFERS;
+    pProperties->limits.maxDescriptorSetStorageBuffers = PDOCKER_VK_MAX_STORAGE_BUFFERS;
     pProperties->limits.minStorageBufferOffsetAlignment = 16;
     pProperties->limits.minUniformBufferOffsetAlignment = 16;
     pProperties->limits.minMemoryMapAlignment = 64;
