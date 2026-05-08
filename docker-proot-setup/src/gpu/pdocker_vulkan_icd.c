@@ -63,6 +63,7 @@ typedef struct PdockerVkFence PdockerVkFence;
 #define PDOCKER_VK_MAX_SPECIALIZATION_BYTES 256
 #define PDOCKER_VK_REQUIREMENT_ALIGNMENT 16ull
 #define PDOCKER_VK_MAX_COPY_OPS 64
+#define PDOCKER_VK_MAX_DISPATCH_OPS 128
 #define PDOCKER_VK_MAX_COPY_ALIASES 128
 #define PDOCKER_VK_ALIAS_MIN_SOURCE_BYTES (64ull * 1024ull * 1024ull)
 #define PDOCKER_VK_MAX_GUARDED_MEMORIES 256
@@ -147,11 +148,23 @@ typedef struct {
 } PdockerVkCopyOp;
 
 typedef struct {
+    PdockerVkPipeline *pipeline;
+    PdockerVkDescriptorSet *set;
+    uint32_t dispatch_x;
+    uint32_t dispatch_y;
+    uint32_t dispatch_z;
+    uint8_t push_constants[PDOCKER_VK_MAX_PUSH_BYTES];
+    uint32_t push_constant_size;
+} PdockerVkDispatchOp;
+
+typedef struct {
     VK_LOADER_DATA loader;
     PdockerVkPipeline *pipeline;
     PdockerVkDescriptorSet *set;
     PdockerVkCopyOp copy_ops[PDOCKER_VK_MAX_COPY_OPS];
     uint32_t copy_op_count;
+    PdockerVkDispatchOp dispatch_ops[PDOCKER_VK_MAX_DISPATCH_OPS];
+    uint32_t dispatch_op_count;
     uint32_t dispatch_x;
     uint32_t dispatch_y;
     uint32_t dispatch_z;
@@ -565,9 +578,9 @@ static bool resolve_copy_alias(PdockerVkBuffer *buffer,
                                PdockerVkMemory **src_memory,
                                VkDeviceSize *src_offset);
 
-static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
-    if (!cmd || !cmd->pipeline || !cmd->pipeline->shader || !cmd->set) return -EINVAL;
-    PdockerVkShaderModule *shader = cmd->pipeline->shader;
+static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
+    if (!op || !op->pipeline || !op->pipeline->shader || !op->set) return -EINVAL;
+    PdockerVkShaderModule *shader = op->pipeline->shader;
     if (shader->code_fd < 0 || shader->code_size == 0) return -EINVAL;
 
     int fds[1 + PDOCKER_VK_MAX_STORAGE_BUFFERS];
@@ -577,7 +590,7 @@ static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
     size_t binding_count = 0;
     fds[0] = shader->code_fd;
     for (uint32_t i = 0; i < PDOCKER_VK_MAX_STORAGE_BUFFERS; ++i) {
-        PdockerVkDescriptorBinding *binding = &cmd->set->storage_buffers[i];
+        PdockerVkDescriptorBinding *binding = &op->set->storage_buffers[i];
         if (!binding->buffer || !binding->buffer->memory) continue;
         size_t bytes = descriptor_binding_size(binding);
         if (bytes == 0) continue;
@@ -607,37 +620,37 @@ static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
     if (binding_count == 0) return -EINVAL;
 
     char push_hex[PDOCKER_VK_MAX_PUSH_BYTES * 2 + 1];
-    hex_encode(cmd->push_constants, cmd->push_constant_size, push_hex, sizeof(push_hex));
-    const char *push_token = cmd->push_constant_size ? push_hex : "-";
+    hex_encode(op->push_constants, op->push_constant_size, push_hex, sizeof(push_hex));
+    const char *push_token = op->push_constant_size ? push_hex : "-";
     char entry_hex[PDOCKER_VK_MAX_ENTRY_NAME * 2 + 1];
-    const char *entry_name = cmd->pipeline->entry_name[0] ? cmd->pipeline->entry_name : "main";
+    const char *entry_name = op->pipeline->entry_name[0] ? op->pipeline->entry_name : "main";
     hex_encode((const uint8_t *)entry_name, strlen(entry_name), entry_hex, sizeof(entry_hex));
     char spec_hex[PDOCKER_VK_MAX_SPECIALIZATION_BYTES * 2 + 1];
-    hex_encode(cmd->pipeline->specialization_data,
-               cmd->pipeline->specialization_data_size,
+    hex_encode(op->pipeline->specialization_data,
+               op->pipeline->specialization_data_size,
                spec_hex,
                sizeof(spec_hex));
-    const char *spec_token = cmd->pipeline->specialization_data_size ? spec_hex : "-";
-    if (cmd->pipeline->specialization_too_large) return -E2BIG;
+    const char *spec_token = op->pipeline->specialization_data_size ? spec_hex : "-";
+    if (op->pipeline->specialization_too_large) return -E2BIG;
 
     char command[4096];
     int n = snprintf(command, sizeof(command),
                      "VULKAN_DISPATCH_V2 %zu %zu %u %u %u %u %s %s %u %zu %s",
                      shader->code_size,
                      binding_count,
-                     cmd->push_constant_size,
-                     cmd->dispatch_x,
-                     cmd->dispatch_y ? cmd->dispatch_y : 1,
-                     cmd->dispatch_z ? cmd->dispatch_z : 1,
+                     op->push_constant_size,
+                     op->dispatch_x,
+                     op->dispatch_y ? op->dispatch_y : 1,
+                     op->dispatch_z ? op->dispatch_z : 1,
                      push_token,
                      entry_hex[0] ? entry_hex : "-",
-                     cmd->pipeline->specialization_entry_count,
-                     cmd->pipeline->specialization_data_size,
+                     op->pipeline->specialization_entry_count,
+                     op->pipeline->specialization_data_size,
                      spec_token);
     if (n < 0 || (size_t)n >= sizeof(command)) return -ENAMETOOLONG;
     size_t off = (size_t)n;
-    for (uint32_t i = 0; i < cmd->pipeline->specialization_entry_count; ++i) {
-        const VkSpecializationMapEntry *entry = &cmd->pipeline->specialization_entries[i];
+    for (uint32_t i = 0; i < op->pipeline->specialization_entry_count; ++i) {
+        const VkSpecializationMapEntry *entry = &op->pipeline->specialization_entries[i];
         n = snprintf(command + off, sizeof(command) - off,
                      " %u %u %zu",
                      entry->constantID,
@@ -753,6 +766,20 @@ static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
     }
     close(socket_fd);
     return rc;
+}
+
+static int send_generic_vulkan_dispatch(PdockerVkCommandBuffer *cmd) {
+    if (!cmd) return -EINVAL;
+    PdockerVkDispatchOp op;
+    memset(&op, 0, sizeof(op));
+    op.pipeline = cmd->pipeline;
+    op.set = cmd->set;
+    op.dispatch_x = cmd->dispatch_x;
+    op.dispatch_y = cmd->dispatch_y;
+    op.dispatch_z = cmd->dispatch_z;
+    op.push_constant_size = cmd->push_constant_size;
+    memcpy(op.push_constants, cmd->push_constants, sizeof(op.push_constants));
+    return send_generic_vulkan_dispatch_op(&op);
 }
 
 static size_t buffer_available(const PdockerVkBuffer *buffer, VkDeviceSize offset) {
@@ -893,9 +920,19 @@ static void execute_recorded_copy_ops(PdockerVkCommandBuffer *cmd) {
 
 static size_t descriptor_binding_size(const PdockerVkDescriptorBinding *binding) {
     if (!binding || !binding->buffer) return 0;
-    size_t available = buffer_available(binding->buffer, binding->offset);
-    if (binding->range == VK_WHOLE_SIZE) return available;
-    return (size_t)binding->range < available ? (size_t)binding->range : available;
+    /*
+     * Vulkan descriptor ranges are scoped to the VkBuffer, not to the backing
+     * VkDeviceMemory allocation.  llama.cpp suballocates several VkBuffers
+     * from one large allocation; using buffer_available() here would expose the
+     * allocation tail for VK_WHOLE_SIZE and can hand adjacent suballocations to
+     * the Android executor.  That is silent data corruption, not just wasted IO.
+     */
+    if (binding->offset > binding->buffer->size) return 0;
+    size_t available_in_buffer = binding->buffer->size - (size_t)binding->offset;
+    if (binding->range == VK_WHOLE_SIZE) return available_in_buffer;
+    return (size_t)binding->range < available_in_buffer
+        ? (size_t)binding->range
+        : available_in_buffer;
 }
 
 static uint32_t pdocker_api_version(void) {
@@ -2123,6 +2160,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(
     cmd->pipeline = NULL;
     cmd->set = NULL;
     cmd->copy_op_count = 0;
+    cmd->dispatch_op_count = 0;
     cmd->dispatch_x = 0;
     cmd->dispatch_y = 0;
     cmd->dispatch_z = 0;
@@ -2185,6 +2223,20 @@ VKAPI_ATTR void VKAPI_CALL vkCmdDispatch(
         cmd->dispatch_y = groupCountY;
         cmd->dispatch_z = groupCountZ;
         cmd->has_dispatch = true;
+        if (cmd->dispatch_op_count < PDOCKER_VK_MAX_DISPATCH_OPS) {
+            PdockerVkDispatchOp *op = &cmd->dispatch_ops[cmd->dispatch_op_count++];
+            op->pipeline = cmd->pipeline;
+            op->set = cmd->set;
+            op->dispatch_x = groupCountX;
+            op->dispatch_y = groupCountY;
+            op->dispatch_z = groupCountZ;
+            op->push_constant_size = cmd->push_constant_size;
+            memcpy(op->push_constants, cmd->push_constants, sizeof(op->push_constants));
+        } else if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+            fprintf(stderr,
+                    "pdocker-vulkan-icd: dispatch command buffer full max=%u\n",
+                    PDOCKER_VK_MAX_DISPATCH_OPS);
+        }
     }
 }
 
@@ -2338,11 +2390,49 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
                 }
                 continue;
             }
-            if (cmd->pipeline && cmd->pipeline->shader && cmd->pipeline->shader->code_size > sizeof(uint32_t)) {
-                int generic_rc = send_generic_vulkan_dispatch(cmd);
-                if (generic_rc == 0) {
+            if (cmd->dispatch_op_count > 0) {
+                bool all_generic = true;
+                for (uint32_t op_index = 0; op_index < cmd->dispatch_op_count; ++op_index) {
+                    PdockerVkDispatchOp *op = &cmd->dispatch_ops[op_index];
+                    if (!op->pipeline || !op->pipeline->shader ||
+                        op->pipeline->shader->code_size <= sizeof(uint32_t)) {
+                        all_generic = false;
+                        break;
+                    }
+                }
+                if (all_generic) {
+                    for (uint32_t op_index = 0; op_index < cmd->dispatch_op_count; ++op_index) {
+                        PdockerVkDispatchOp *op = &cmd->dispatch_ops[op_index];
+                        int generic_rc = send_generic_vulkan_dispatch_op(op);
+                        if (generic_rc != 0) {
+                            if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
+                                fprintf(stderr,
+                                        "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d op=%u/%u code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",
+                                        generic_rc,
+                                        op_index + 1,
+                                        cmd->dispatch_op_count,
+                                        op->pipeline->shader->code_size,
+                                        op->pipeline->shader->first_word,
+                                        op->dispatch_x,
+                                        op->dispatch_y,
+                                        op->dispatch_z,
+                                        op->push_constant_size);
+                            }
+                            return VK_ERROR_FEATURE_NOT_PRESENT;
+                        }
+                    }
+                    if ((trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) &&
+                        cmd->dispatch_op_count > 1) {
+                        fprintf(stderr,
+                                "pdocker-vulkan-icd: queue-submit replayed dispatch ops=%u\n",
+                                cmd->dispatch_op_count);
+                    }
                     continue;
                 }
+            }
+            if (cmd->pipeline && cmd->pipeline->shader && cmd->pipeline->shader->code_size > sizeof(uint32_t)) {
+                int generic_rc = send_generic_vulkan_dispatch(cmd);
+                if (generic_rc == 0) continue;
                 if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                     fprintf(stderr,
                             "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",

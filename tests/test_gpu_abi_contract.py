@@ -125,6 +125,31 @@ class GpuAbiContractTest(unittest.TestCase):
         ]:
             self.assertIn(field, compare)
 
+    def test_vulkan_descriptor_range_is_scoped_to_vkbuffer_not_allocation(self):
+        source = VULKAN_ICD.read_text()
+        self.assertIn("descriptor ranges are scoped to the VkBuffer", source)
+        self.assertIn("binding->offset > binding->buffer->size", source)
+        self.assertIn("available_in_buffer = binding->buffer->size - (size_t)binding->offset", source)
+        self.assertIn("if (binding->range == VK_WHOLE_SIZE) return available_in_buffer;", source)
+        descriptor_size = source.split("static size_t descriptor_binding_size(const PdockerVkDescriptorBinding *binding) {", 1)[1].split("\n}", 1)[0]
+        self.assertNotIn("buffer_available(binding->buffer, binding->offset)", descriptor_size)
+
+    def test_vulkan_command_buffer_replays_all_recorded_dispatches(self):
+        source = VULKAN_ICD.read_text()
+        for marker in [
+            "PDOCKER_VK_MAX_DISPATCH_OPS",
+            "PdockerVkDispatchOp dispatch_ops[PDOCKER_VK_MAX_DISPATCH_OPS]",
+            "cmd->dispatch_op_count = 0;",
+            "PdockerVkDispatchOp *op = &cmd->dispatch_ops[cmd->dispatch_op_count++];",
+            "send_generic_vulkan_dispatch_op",
+            "for (uint32_t op_index = 0; op_index < cmd->dispatch_op_count; ++op_index)",
+            "queue-submit replayed dispatch ops=%u",
+        ]:
+            self.assertIn(marker, source)
+        submit_body = source.split("VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit", 1)[1].split("VKAPI_ATTR VkResult VKAPI_CALL vkWaitForFences", 1)[0]
+        self.assertIn("cmd->dispatch_op_count > 0", submit_body)
+        self.assertIn("send_generic_vulkan_dispatch_op(op)", submit_body)
+
     def test_vulkan_guarded_memory_profile_is_recorded(self):
         source = VULKAN_ICD.read_text()
         for marker in [

@@ -33,19 +33,33 @@ probing.
 | `llama-gpu-compare-20260507-ngl1-no-materialize.json` | 1 | SPIR-V specialization materialization disabled | 0.2858 | 0.79x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260507-ngl4-correctness-gate-rerun.json` | 4 | Default bridge settings | 0.1524 | 0.42x | fail | `!`, `!`, `!!!!` |
 | `llama-gpu-compare-20260507-ngl4-no-skip-correctness.json` | 4 | Descriptor transfer skipping disabled | 0.1574 | 0.44x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-no-dup-rewrite.json` | 1 | Duplicate descriptor rewrite disabled | 0.1027 | 0.28x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-buffer-range-fix.json` | 1 | ICD clamps `VK_WHOLE_SIZE` to `VkBuffer` size | 0.1640 | 0.45x | fail | `!`, `!`, `!!!!` |
+| `llama-gpu-compare-20260508-ngl1-dispatch-replay.json` | 1 | ICD replays recorded dispatch ops | 0.1695 | 0.47x | fail | `!`, `!`, `!!!!` |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
-incomplete.
+incomplete. The 2026-05-08 rerun completed and confirmed that duplicate
+descriptor rewrite is not sufficient to explain the failure.
 
 ## Interpretation
 
 The correctness failure is now reproducible and is not explained by adb
 forwarding. Disabling descriptor-transfer skipping did not restore correctness,
 and disabling SPIR-V specialization materialization did not restore
+correctness. Disabling duplicate descriptor rewrite also did not restore
 correctness. The NGL=1 result fails even though only the output layer is
 offloaded, which points at the generic Vulkan dispatch path for the final
 projection/logits path rather than at deeper repeating transformer layers.
+
+Two ICD correctness fixes were added on 2026-05-08:
+
+- `VK_WHOLE_SIZE` descriptor ranges are now clamped to `VkBuffer.size`, not to
+  the tail of the backing memory allocation. This removes a real suballocation
+  corruption hazard but did not by itself fix the llama output collapse.
+- Command buffers now record and replay each generic SPIR-V dispatch instead
+  of retaining only the latest dispatch state. This is required for Vulkan
+  command-buffer semantics, but the NGL=1 llama correctness probe still fails.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
@@ -58,9 +72,9 @@ against a hard-coded arithmetic answer.
 
 - Add differential CPU/no-offload vs GPU/offload correctness comparison for the
   same prompts and model path.
-- Re-run NGL=1 with duplicate descriptor rewrite disabled after adb reconnects.
-- If duplicate rewrite is not the cause, trace the final projection dispatch
-  with full binding details and compare output buffer bytes against the
-  no-offload control.
+- Trace command-buffer ordering around copy/fill/update/barrier/dispatch and
+  preserve that order instead of replaying all copy ops before all dispatches.
+- Add bounded binding checksums around the final projection dispatch and compare
+  output buffer bytes against the no-offload control.
 - Keep performance claims blocked while
   `gpu.correctness.summary.benchmark_claim_allowed` is false.
