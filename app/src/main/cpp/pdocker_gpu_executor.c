@@ -429,6 +429,19 @@ typedef struct {
     size_t size;
 } VulkanDispatchSpecialization;
 
+static uint64_t specialization_value_u64(
+        const uint8_t *specialization_data,
+        size_t specialization_data_size,
+        const VulkanDispatchSpecialization *specialization);
+
+static int specialization_value_for_id(
+        const VulkanDispatchSpecialization *specializations,
+        size_t specialization_count,
+        const uint8_t *specialization_data,
+        size_t specialization_data_size,
+        uint32_t constant_id,
+        uint64_t *out_value);
+
 typedef struct {
     uint32_t target_id;
     uint32_t original_binding;
@@ -820,6 +833,78 @@ static void write_spirv_feature_report(FILE *out, const SpirvTraceSummary *summa
     WRITE_MISMATCH("subgroup_arithmetic", missing_subgroup_arithmetic);
 #undef WRITE_MISMATCH
     fprintf(out, "]");
+}
+
+static void write_vulkan_specialization_report(
+        FILE *out,
+        const VulkanDispatchSpecialization *specializations,
+        size_t specialization_count,
+        const uint8_t *specialization_data,
+        size_t specialization_data_size) {
+    fprintf(out, "\"specialization_entries\":[");
+    for (size_t i = 0; i < specialization_count; ++i) {
+        uint64_t value = specialization_value_u64(
+            specialization_data,
+            specialization_data_size,
+            &specializations[i]);
+        fprintf(out,
+                "%s{\"constant_id\":%u,\"offset\":%u,\"size\":%zu,\"value_u64\":%llu}",
+                i ? "," : "",
+                specializations[i].constant_id,
+                specializations[i].offset,
+                specializations[i].size,
+                (unsigned long long)value);
+    }
+    fprintf(out, "]");
+}
+
+static void write_spirv_execution_report(
+        FILE *out,
+        const SpirvTraceSummary *summary,
+        const VulkanDispatchSpecialization *specializations,
+        size_t specialization_count,
+        const uint8_t *specialization_data,
+        size_t specialization_data_size,
+        size_t push_size) {
+    if (!out || !summary) return;
+    fprintf(out,
+            "\"push_bytes\":%zu,"
+            "\"spirv_hash\":\"0x%016llx\","
+            "\"spirv_valid\":%s,\"spirv_truncated\":%u,"
+            "\"spirv_local_size\":[%u,%u,%u],"
+            "\"spirv_local_size_id\":[%u,%u,%u],"
+            "\"spirv_local_size_resolved\":[",
+            push_size,
+            (unsigned long long)summary->hash,
+            summary->valid ? "true" : "false",
+            summary->truncated,
+            summary->local_size[0],
+            summary->local_size[1],
+            summary->local_size[2],
+            summary->local_size_id[0],
+            summary->local_size_id[1],
+            summary->local_size_id[2]);
+    for (uint32_t i = 0; i < 3; ++i) {
+        uint64_t value = summary->local_size[i];
+        if (summary->local_size_id[i]) {
+            uint64_t spec_value = 0;
+            if (specialization_value_for_id(specializations,
+                                            specialization_count,
+                                            specialization_data,
+                                            specialization_data_size,
+                                            summary->local_size_id[i],
+                                            &spec_value)) {
+                value = spec_value;
+            }
+        }
+        fprintf(out, "%s%llu", i ? "," : "", (unsigned long long)value);
+    }
+    fprintf(out, "],");
+    write_vulkan_specialization_report(out,
+                                       specializations,
+                                       specialization_count,
+                                       specialization_data,
+                                       specialization_data_size);
 }
 
 static void write_vulkan_limits_report(FILE *out, const VulkanRuntime *rt) {
@@ -3808,6 +3893,14 @@ static int run_vulkan_dispatch_fd(
         fprintf(json_out(), ",");
         write_spirv_feature_report(json_out(), &spirv_summary, &effective_rt);
         fprintf(json_out(), ",");
+        write_spirv_execution_report(json_out(),
+                                     &spirv_summary,
+                                     specializations,
+                                     specialization_count,
+                                     specialization_data,
+                                     specialization_data_size,
+                                     push_size);
+        fprintf(json_out(), ",");
         write_vulkan_descriptor_write_report(json_out(),
                                              descriptor_write_dst_bindings,
                                              descriptor_write_source_indices,
@@ -3861,6 +3954,14 @@ static int run_vulkan_dispatch_fd(
     if (profile_response) {
         fprintf(json_out(), ",");
         write_spirv_feature_report(json_out(), &spirv_summary, &effective_rt);
+        fprintf(json_out(), ",");
+        write_spirv_execution_report(json_out(),
+                                     &spirv_summary,
+                                     specializations,
+                                     specialization_count,
+                                     specialization_data,
+                                     specialization_data_size,
+                                     push_size);
         fprintf(json_out(), ",");
         write_vulkan_binding_report(json_out(), bindings, binding_count,
                                     active_bindings,

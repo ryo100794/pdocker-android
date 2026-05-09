@@ -63,6 +63,7 @@ match the same model's CPU/no-offload output for the same prompt.
 | `llama-gpu-compare-20260509-ngl1-dispatch-policy-disable-storage8.json` | 1 | Dispatch-scoped executor feature policy with storage8 disabled | 0.1479 | 0.11x | fail | `+`, `细细`, empty; final projection reports `storage8`/`int8` mismatch |
 | `llama-gpu-compare-20260509-ngl1-feature-mismatch-blocker.json` | 1 | Feature-mismatch classifier evidence; current service still injected `PDOCKER_VULKAN_DISABLE_8BIT_STORAGE=1` | 0.1441 | 0.11x | fail | blocked as `vulkan_feature_mismatch` for `int8`/`storage8` |
 | `llama-gpu-compare-20260509-ngl1-default-storage8-unmasked.json` | 1 | Rebuilt APK with default storage8/int8 feature state preserved | 0.1371 | 0.11x | fail | `+`, `细细`, empty; feature mismatch cleared |
+| `llama-gpu-compare-20260509-ngl1-execution-summary.json` | 1 | Compact success events now include SPIR-V hash, push size, local size, and specialization entries | 0.1599 | 0.12x | fail | final projection: hash `0x274f68a67dfef210`, local size `[1,1,1]`, specs `32,2,1` |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -164,6 +165,12 @@ Two ICD correctness fixes were added on 2026-05-08:
   reports `storage8`/`int8` as missing. The correctness failure still
   reproduces with the same output shape, so the active blocker has moved back
   from feature advertisement to final-projection data semantics.
+- Compact successful dispatch events now carry the same execution metadata that
+  failure events already had: SPIR-V hash, push-constant byte count, declared
+  and resolved local size, and specialization entries. The current final
+  projection dispatch is stable at shader hash `0x274f68a67dfef210`,
+  dispatch `[1187,1,64]`, push bytes `116`, local size `[1,1,1]`, and
+  specialization values `constant_id 0=32`, `1=2`, `2=1`.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
@@ -179,6 +186,9 @@ against a hard-coded arithmetic answer.
 - Keep the next blocker on descriptor/byte-level final-projection divergence
   rather than feature policy: storage8/int8 is now unmasked by default and the
   executor reports no feature mismatch for the latest NGL=1 run.
+- Use the stable final-projection shader hash and specialization tuple as the
+  key for the next byte-level probe, so future optimizations do not compare
+  different kernels by accident.
 - Inspect the final projection shader itself. The current dump shows duplicate
   `Binding 0` storage-buffer variables with different struct views; descriptor
   rewrite and aliasing are present, but the remaining failure may be in
