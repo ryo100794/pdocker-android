@@ -254,6 +254,21 @@ Pass criteria:
   descriptor-view/reduction split: verify the byte view and packed16 view
   produce identical per-lane inputs, then inspect whether the shared-memory
   reduction writes the same full sum that the sampled oracle computes.
+- The byte-view vs packed16-view Q6_K split has now been executed in
+  `llama-gpu-ngl1-q6k-packed16-view-20260509.json`. The packed16-view oracle
+  gives the same row-0 sum as the canonical byte view (`abs_delta=0`), while the
+  GPU output remains `6.83085108`. This means the Vulkan bridge should not add a
+  data-structure conversion for Q6_K blocks. The next split should stay at the
+  API/dispatch boundary: descriptor effective range/offset, buffer aliasing,
+  specialization-local-size execution, and shared-memory reduction.
+- The first 32-lane reduction split is recorded in
+  `llama-gpu-ngl1-q6k-partial-lanes-fixed-20260509.json`. Row 0's half-full
+  value (`6.93901168`) is close to but not equal to the GPU value
+  (`6.83085108`), and the sampled rows do not follow a stable half-reduction
+  pattern. Continue by expanding the oracle from sparse sampled rows to a small
+  contiguous row window, then compare GPU output indices against expected row
+  sums and half/subgroup sums to detect output-layout or workgroup-row mapping
+  mistakes.
 
 Fail criteria:
 

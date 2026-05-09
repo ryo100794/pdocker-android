@@ -80,6 +80,8 @@ match the same model's CPU/no-offload output for the same prompt.
 | `llama-gpu-ngl1-q6k-sample-oracle-no-dup-20260509-rerun.json` | 1 | Same sampled Q6_K oracle with duplicate descriptor rewrite disabled | n/a | 2.15x | fail | hash changes to `0x1bf751845c5dce75`; same 8/8 oracle mismatch |
 | `llama-gpu-ngl1-local-size-patch-oracle-20260509.json` | 1 | Patch literal `LocalSize 1` to specialization value `32` for WorkgroupSize-style shader | n/a | 2.37x | fail | patched hash `0x09c4622d92c6acb9`; local size `[32,1,1]`; same Q6_K oracle mismatch |
 | `llama-gpu-ngl1-q6k-decode-variant-20260509.json` | 1 | Q6_K decode-variant split for high bits, signed scales, and zero-point | n/a | 0.94x | fail | canonical full `13.878`; no-high `-1.309`; unsigned-scale `-10.048`; no-center `17.219`; GPU `6.831` |
+| `llama-gpu-ngl1-q6k-packed16-view-20260509.json` | 1 | CPU-side byte-view vs packed16-view Q6_K descriptor-view equivalence check | n/a | 2.30x | fail | packed16-view sum `13.8780234`; byte-view delta `0`; GPU still `6.831` |
+| `llama-gpu-ngl1-q6k-partial-lanes-fixed-20260509.json` | 1 | Q6_K 32-lane partial-sum diagnostic for reduction/output-layout split | n/a | 2.02x | fail | row0 lane sum `13.878`; first16 `8.507`; second16 `5.371`; half-full `6.939`; GPU `6.831` |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -254,6 +256,20 @@ Two ICD correctness fixes were added on 2026-05-08:
   `6.83085108`. None of these simple decode mistakes explains the GPU value;
   the next split should inspect descriptor-view aliasing and reduction/shared
   memory behavior rather than only signedness/zero-point mistakes.
+- Packed16-view diagnostics now mirror the llama Vulkan Q6_K helper's `uint16_t`
+  view against the same 210-byte block layout. The packed16-view sum is
+  `13.8780234` and the byte-view delta is `0`, so the bridge is not currently
+  failing because the Q6_K bytes need structural conversion between the
+  container and Android Vulkan sides. The remaining suspect is how those same
+  bytes are exposed and consumed at dispatch time: descriptor offset/range,
+  aliasing, specialization-lowered execution, or shared-memory reduction.
+- Partial-lane diagnostics now record all 32 row-0 lane sums for the active
+  Q6_K shader. The row-0 full sum is still `13.8780231`; `first16_sum` is
+  `8.50700955`, `second16_sum` is `5.37101381`, and the half-full value is
+  `6.93901168`, close but not equal to the GPU row-0 value `6.83085108`.
+  Other sampled rows do not follow a simple "half reduction" rule. This keeps
+  the focus on output row/workgroup mapping and shared-memory reduction
+  semantics, not a global divide-by-two mistake.
 - The compare driver now requests `completion_probabilities` with bounded
   `n_probs` during correctness probes. This records selected token ids and
   top-logprob lists for both CPU/no-offload and GPU/offload. The latest full
