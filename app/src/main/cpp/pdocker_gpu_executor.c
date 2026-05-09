@@ -2460,22 +2460,282 @@ static const char *cpu_oracle_kernel_hint(uint64_t spirv_hash) {
     return "unknown";
 }
 
+typedef struct {
+    int requested;
+    int candidate;
+    int executed;
+    int skipped;
+    char status[96];
+    char kernel_hint[64];
+    size_t compared_floats;
+    size_t mismatch_count;
+    double max_abs_error;
+    double max_rel_error;
+    uint64_t expected_hash;
+    uint64_t gpu_hash;
+    int input_output_overlap;
+} CpuOracleReport;
+
+static uint32_t load_le_u32(const uint8_t *bytes, size_t size, size_t index) {
+    size_t offset = index * sizeof(uint32_t);
+    if (!bytes || offset + sizeof(uint32_t) > size) return 0;
+    uint32_t value = 0;
+    memcpy(&value, bytes + offset, sizeof(value));
+    return value;
+}
+
+static float load_f32_at_index(const uint8_t *bytes, size_t size, size_t index, int *ok) {
+    size_t offset = index * sizeof(float);
+    float value = 0.0f;
+    if (!bytes || offset + sizeof(float) > size) {
+        if (ok) *ok = 0;
+        return value;
+    }
+    memcpy(&value, bytes + offset, sizeof(value));
+    if (ok) *ok = 1;
+    return value;
+}
+
+static void store_hash_f32(uint64_t *hash, float value) {
+    if (!hash) return;
+    *hash = fnv1a64_update(*hash, &value, sizeof(value));
+}
+
+static int is_power_of_two_u32(uint32_t value) {
+    return value != 0 && (value & (value - 1u)) == 0;
+}
+
+static uint32_t broadcast_index_u32(uint32_t index, uint32_t dim) {
+    if (dim == 0) return 0;
+    if (is_power_of_two_u32(dim)) return index & (dim - 1u);
+    return index % dim;
+}
+
+static void init_cpu_oracle_report(CpuOracleReport *report, int requested, uint64_t spirv_hash) {
+    if (!report) return;
+    memset(report, 0, sizeof(*report));
+    report->requested = requested ? 1 : 0;
+    report->candidate = cpu_oracle_known_small_llama_hash(spirv_hash) ? 1 : 0;
+    snprintf(report->kernel_hint, sizeof(report->kernel_hint), "%s",
+             cpu_oracle_kernel_hint(spirv_hash));
+    snprintf(report->status, sizeof(report->status), "%s",
+             requested
+                ? (report->candidate ? "scaffold-ready-needs-kernel-implementation"
+                                     : "unsupported-shader-hash")
+                : "not-requested");
+}
+
 static void write_cpu_oracle_report(
         FILE *out,
-        int requested,
-        uint64_t spirv_hash) {
-    const int candidate = cpu_oracle_known_small_llama_hash(spirv_hash);
+        const CpuOracleReport *report) {
+    CpuOracleReport empty;
+    if (!report) {
+        init_cpu_oracle_report(&empty, 0, 0);
+        report = &empty;
+    }
     fprintf(out,
             "\"cpu_oracle\":{\"requested\":%s,"
-            "\"candidate\":%s,\"executed\":false,"
+            "\"candidate\":%s,\"executed\":%s,\"skipped\":%s,"
             "\"status\":\"%s\",\"kernel_hint\":\"%s\","
+            "\"compared_floats\":%zu,\"mismatch_count\":%zu,"
+            "\"max_abs_error\":%.9g,\"max_rel_error\":%.9g,"
+            "\"expected_hash\":\"0x%016llx\",\"gpu_hash\":\"0x%016llx\","
+            "\"input_output_overlap\":%s,"
             "\"scope\":\"debug-only-spv-hash-gated\"}",
-            requested ? "true" : "false",
-            candidate ? "true" : "false",
-            requested
-                ? (candidate ? "scaffold-ready-needs-kernel-implementation" : "unsupported-shader-hash")
-                : "not-requested",
-            cpu_oracle_kernel_hint(spirv_hash));
+            report->requested ? "true" : "false",
+            report->candidate ? "true" : "false",
+            report->executed ? "true" : "false",
+            report->skipped ? "true" : "false",
+            report->status,
+            report->kernel_hint,
+            report->compared_floats,
+            report->mismatch_count,
+            report->max_abs_error,
+            report->max_rel_error,
+            (unsigned long long)report->expected_hash,
+            (unsigned long long)report->gpu_hash,
+            report->input_output_overlap ? "true" : "false");
+}
+
+static void run_cpu_oracle_small_f32_indexing(
+        CpuOracleReport *report,
+        uint64_t spirv_hash,
+        const int *buffer_fds,
+        const VulkanDispatchBinding *bindings,
+        size_t binding_count,
+        VulkanVectorBuffer * const *vk_buffers,
+        const size_t *binding_gpu_offset,
+        const size_t *binding_alias_rep,
+        const uint8_t *active,
+        const uint8_t *writable,
+        const uint8_t *push,
+        size_t push_size,
+        uint32_t gx,
+        uint32_t gy,
+        uint32_t gz) {
+    if (!report || !report->requested) return;
+    init_cpu_oracle_report(report, report->requested, spirv_hash);
+    if (spirv_hash != 0x7bf05c459ac87f2bull) {
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s",
+                 report->candidate ? "kernel-not-implemented-yet" : "unsupported-shader-hash");
+        return;
+    }
+    int idx0 = binding_index_for_number(bindings, binding_count, 0);
+    int idx1 = binding_index_for_number(bindings, binding_count, 1);
+    int idx2 = binding_index_for_number(bindings, binding_count, 2);
+    if (idx0 < 0 || idx1 < 0 || idx2 < 0 || !buffer_fds || !vk_buffers ||
+        !vk_buffers[idx2] || !vk_buffers[idx2]->map || !push || push_size < 26 * sizeof(uint32_t)) {
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "missing-oracle-inputs");
+        return;
+    }
+    const off_t src0_start = bindings[idx0].offset;
+    const off_t src0_end = bindings[idx0].offset + (off_t)bindings[idx0].size;
+    const off_t dst_start = bindings[idx2].offset;
+    const off_t dst_end = bindings[idx2].offset + (off_t)bindings[idx2].size;
+    report->input_output_overlap =
+        ((binding_alias_rep && binding_alias_rep[idx0] == binding_alias_rep[idx2]) ||
+         buffer_fds[idx0] == buffer_fds[idx2]) &&
+        src0_start < dst_end && dst_start < src0_end;
+    if (active && (!active[idx0] || !active[idx1] || !active[idx2])) {
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "inactive-oracle-binding");
+        return;
+    }
+    if (writable && !writable[idx2]) {
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "output-binding-not-writable");
+        return;
+    }
+    const size_t oracle_cap = 8u * 1024u * 1024u;
+    if (bindings[idx0].size > oracle_cap || bindings[idx1].size > oracle_cap ||
+        bindings[idx2].size > oracle_cap) {
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "binding-too-large-for-oracle");
+        return;
+    }
+    uint8_t *src0 = (uint8_t *)malloc(bindings[idx0].size);
+    uint8_t *src1 = (uint8_t *)malloc(bindings[idx1].size);
+    if (!src0 || !src1) {
+        free(src0);
+        free(src1);
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "oracle-oom");
+        return;
+    }
+    if (read_fd_exact(buffer_fds[idx0], src0, bindings[idx0].size, bindings[idx0].offset) != 0 ||
+        read_fd_exact(buffer_fds[idx1], src1, bindings[idx1].size, bindings[idx1].offset) != 0) {
+        free(src0);
+        free(src1);
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "oracle-read-failed");
+        return;
+    }
+    uint32_t pc[26];
+    for (size_t i = 0; i < 26; ++i) pc[i] = load_le_u32(push, push_size, i);
+    const uint32_t total = pc[0];
+    const uint32_t n0 = pc[1];
+    const uint32_t n1 = pc[2];
+    const uint32_t n2 = pc[3];
+    if (total == 0 || n0 == 0 || n1 == 0 || n2 == 0) {
+        free(src0);
+        free(src1);
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "invalid-push-shape");
+        return;
+    }
+    const uint64_t n10 = (uint64_t)n1 * (uint64_t)n0;
+    const uint64_t prod = (uint64_t)n2 * n10;
+    if (prod == 0 || prod > UINT32_MAX) {
+        free(src0);
+        free(src1);
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "unsupported-push-shape");
+        return;
+    }
+    report->expected_hash = 1469598103934665603ull;
+    report->gpu_hash = 1469598103934665603ull;
+    const uint64_t max_invocations = (uint64_t)(gx ? gx : 1u) * 256ull *
+                                     (uint64_t)(gy ? gy : 1u) *
+                                     (uint64_t)(gz ? gz : 1u);
+    const uint64_t max_iterations = max_invocations * 2ull;
+    if (max_iterations > 4ull * 1024ull * 1024ull) {
+        free(src0);
+        free(src1);
+        report->skipped = 1;
+        snprintf(report->status, sizeof(report->status), "%s", "dispatch-too-large-for-oracle");
+        return;
+    }
+    const uint8_t *gpu_dst_base = (const uint8_t *)vk_buffers[idx2]->map + binding_gpu_offset[idx2];
+    for (uint32_t z = 0; z < (gz ? gz : 1u); ++z) {
+        for (uint32_t y = 0; y < (gy ? gy : 1u); ++y) {
+            for (uint32_t wx = 0; wx < (gx ? gx : 1u); ++wx) {
+                for (uint32_t lx = 0; lx < 256u; ++lx) {
+                    uint64_t base_id = ((uint64_t)z * 262144ull) +
+                                       ((uint64_t)y * 512ull) +
+                                       ((uint64_t)wx * 256ull) + lx;
+                    for (uint32_t iter = 0; iter < 2u; ++iter) {
+                        uint64_t id64 = base_id + (uint64_t)iter * 256ull;
+                        if (id64 >= total) continue;
+                        uint32_t id = (uint32_t)id64;
+                        uint32_t i3 = id < prod ? 0u : (uint32_t)(id / prod);
+                        uint32_t rem0 = id - (uint32_t)((uint64_t)i3 * prod);
+                        uint32_t i2 = rem0 < n10 ? 0u : (uint32_t)(rem0 / n10);
+                        uint32_t rem1 = rem0 - (uint32_t)((uint64_t)i2 * n10);
+                        uint32_t i1 = rem1 / n0;
+                        uint32_t i0 = rem1 - i1 * n0;
+                        uint64_t dst_idx = (uint64_t)(pc[25] & 255u) +
+                                           (uint64_t)i3 * pc[24] +
+                                           (uint64_t)i2 * pc[23] +
+                                           (uint64_t)i1 * pc[22] +
+                                           (uint64_t)i0 * pc[21];
+                        uint64_t src0_idx = (uint64_t)(pc[25] >> 16u) +
+                                            (uint64_t)i3 * pc[8] +
+                                            (uint64_t)i2 * pc[7] +
+                                            (uint64_t)i1 * pc[6] +
+                                            (uint64_t)i0 * pc[5];
+                        uint32_t b3 = broadcast_index_u32(i3, pc[12]);
+                        uint32_t b2 = broadcast_index_u32(i2, pc[11]);
+                        uint32_t b1 = broadcast_index_u32(i1, pc[10]);
+                        uint32_t b0 = broadcast_index_u32(i0, pc[9]);
+                        uint64_t src1_idx = (uint64_t)((pc[25] >> 8u) & 255u) +
+                                            (uint64_t)b3 * pc[16] +
+                                            (uint64_t)b2 * pc[15] +
+                                            (uint64_t)b1 * pc[14] +
+                                            (uint64_t)b0 * pc[13];
+                        int ok0 = 0, ok1 = 0, ok2 = 0;
+                        float a = load_f32_at_index(src0, bindings[idx0].size, (size_t)src0_idx, &ok0);
+                        float b = load_f32_at_index(src1, bindings[idx1].size, (size_t)src1_idx, &ok1);
+                        float gpu = load_f32_at_index(gpu_dst_base, bindings[idx2].size, (size_t)dst_idx, &ok2);
+                        if (!ok0 || !ok1 || !ok2) {
+                            report->skipped = 1;
+                            snprintf(report->status, sizeof(report->status), "%s", "oracle-index-out-of-range");
+                            free(src0);
+                            free(src1);
+                            return;
+                        }
+                        float expected = a * b;
+                        store_hash_f32(&report->expected_hash, expected);
+                        store_hash_f32(&report->gpu_hash, gpu);
+                        double abs_error = fabs((double)expected - (double)gpu);
+                        double denom = fabs((double)expected);
+                        double rel_error = denom > 1e-30 ? abs_error / denom : abs_error;
+                        if (abs_error > report->max_abs_error) report->max_abs_error = abs_error;
+                        if (rel_error > report->max_rel_error) report->max_rel_error = rel_error;
+                        if (abs_error > 1e-5 && rel_error > 1e-4) report->mismatch_count++;
+                        report->compared_floats++;
+                    }
+                }
+            }
+        }
+    }
+    free(src0);
+    free(src1);
+    report->executed = 1;
+    report->skipped = 0;
+    snprintf(report->status, sizeof(report->status), "%s",
+             report->mismatch_count ? "mismatch" : "match");
 }
 
 static void write_vulkan_binding_compact_report(
@@ -3619,6 +3879,8 @@ static int run_vulkan_dispatch_fd(
         options && options->has_cpu_oracle
             ? options->cpu_oracle
             : env_truthy("PDOCKER_GPU_CPU_ORACLE", 0);
+    CpuOracleReport cpu_oracle_report;
+    init_cpu_oracle_report(&cpu_oracle_report, cpu_oracle_requested, 0);
     const int dirty_probe_enabled = options && options->has_dirty_probe
         ? options->dirty_probe
         : writeonly_dirty_probe_enabled();
@@ -4237,6 +4499,21 @@ static int run_vulkan_dispatch_fd(
                                    bindings[i].size);
         }
     }
+    run_cpu_oracle_small_f32_indexing(&cpu_oracle_report,
+                                      spirv_summary.hash,
+                                      buffer_fds,
+                                      bindings,
+                                      binding_count,
+                                      vk_buffers,
+                                      binding_gpu_offset,
+                                      binding_alias_rep,
+                                      active_bindings,
+                                      binding_write_needed,
+                                      push,
+                                      push_size,
+                                      gx,
+                                      gy,
+                                      gz);
     double download_start = now_ms();
     for (size_t i = 0; i < binding_count; ++i) {
         if (!active_bindings[i]) continue;
@@ -4436,9 +4713,7 @@ static int run_vulkan_dispatch_fd(
                                               bindings,
                                               binding_count);
         fprintf(json_out(), ",");
-        write_cpu_oracle_report(json_out(),
-                                cpu_oracle_requested,
-                                spirv_summary.hash);
+        write_cpu_oracle_report(json_out(), &cpu_oracle_report);
         fprintf(json_out(), "}\n");
     }
     fprintf(json_out(),
@@ -4544,9 +4819,7 @@ static int run_vulkan_dispatch_fd(
                                               bindings,
                                               binding_count);
         fprintf(json_out(), ",");
-        write_cpu_oracle_report(json_out(),
-                                cpu_oracle_requested,
-                                spirv_summary.hash);
+        write_cpu_oracle_report(json_out(), &cpu_oracle_report);
     }
     fprintf(json_out(), "}\n");
     fflush(json_out());

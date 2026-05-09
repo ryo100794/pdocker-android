@@ -400,3 +400,26 @@ The same run also records `spirv_binding_reflection`, showing shader-declared
 bindings, read/write access, and whether each binding was present at the API
 boundary. This is the guardrail against feeding the CPU oracle the same wrong
 API interpretation as the GPU path.
+
+## 2026-05-09 First Executing CPU Oracle
+
+The first hash-gated CPU oracle has been implemented for
+`0x7bf05c459ac87f2b` (`small-f32-indexing`).  It runs inside the Android GPU
+executor after the Vulkan fence is signalled and before container writeback, so
+it compares the exact Android Vulkan output against a CPU reconstruction using
+the captured push constants, descriptor ranges, and dispatch geometry.  The
+oracle is intentionally opt-in (`PDOCKER_GPU_CPU_ORACLE=1`) and remains
+diagnostic-only.
+
+| Artifact | Variant | Oracle result | Observation |
+|---|---|---|---|
+| `llama-gpu-cpu-oracle-exec-ngl0-20260509.json` | default overlap handling, `ngl=0`, `ctx=512`, `predict=4` | `small-f32-indexing`: executed, mismatch (`24,448 / 24,576` and `6,015 / 6,144`), `input_output_overlap=true` | The first small shader does not match the CPU oracle.  The captured event also shows binding 0 and binding 2 sharing the same underlying range, so the next split must distinguish a true arithmetic/indexing bug from in-place descriptor alias semantics. |
+| `llama-gpu-cpu-oracle-exec-no-overlap-ngl0-20260509.json` | overlap aliasing disabled | small oracle still mismatches before later queue-submit failure | Disabling overlap aliasing is not a safe global fix; it changes descriptor ownership but the run later fails in the generic SPIR-V path. |
+
+Current interpretation: the front blocker has moved from “does the CPU oracle
+request reach the executor?” to “why does the first f32 indexing shader diverge
+under the actual descriptor alias layout?”  The next work item is to add an
+alias-aware oracle mode: snapshot read-only descriptors before dispatch, emulate
+the shader against that snapshot, and separately report whether read/write
+descriptor overlap makes the shader order-dependent or undefined.  Only after
+that split should the RoPE/Yarn oracle be implemented.
