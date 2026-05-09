@@ -21,11 +21,13 @@ or closes.
   and measured CPU-vs-GPU comparison artifacts. Current slice: `VULKAN_DISPATCH_V2`
   carries the compute entry point and specialization constants across the
   container/APK bridge, serves the forced-GPU HTTP probe, and now exposes
-  bridge upload/copy overhead as a performance blocker. New correctness gate:
-  one forced Vulkan run failed deterministic first-token probes (`2+3=`), while
-  the latest 512 MiB-clamped NGL=4 run passes. The next bridge slice must keep
-  this correctness gate green while reducing dispatch/transfer overhead before
-  any speedup artifact can be promoted as valid inference.
+  bridge upload/copy overhead as a performance blocker. Current correctness
+  gate: NGL=0 default is green, SPIR-V materialization is opt-in, and the
+  `small-f32-indexing` oracles match for the zero-layer and first NGL=1 small
+  shader hashes. NGL=1 still fails required probes; next hashes to classify are
+  `0xac41e8033a67af4a`, `0xf2f988b94bd3e0dc`, and `0x274f68a67dfef210`.
+  Stage gates and compact-model handoff are maintained in
+  `docs/plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md`.
 - [next] [#5](https://github.com/ryo100794/pdocker-android/issues/5)
   Terminal `-it` interactive path: refactor the terminal stack according to
   `docs/design/TERMINAL_STREAM_ARCHITECTURE.md`. The UI must remain a generic

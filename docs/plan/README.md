@@ -14,6 +14,7 @@ which temporary accommodations must be replaced.
 |---|---|
 | [`STATUS.md`](STATUS.md) | Current implementation status summary |
 | [`TODO.md`](TODO.md) | Live unfinished-work ledger and temporary workaround tracker |
+| [`LLAMA_GPU_BRIDGE_NEXT_STEPS.md`](LLAMA_GPU_BRIDGE_NEXT_STEPS.md) | Active llama.cpp GPU bridge procedure, stage gates, and compact-model handoff |
 | [`RELEASE_NOTES_20260505.1.md`](RELEASE_NOTES_20260505.1.md) | Fixed build 20260505.1 release-note summary and remaining gates |
 | [`ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md) | GitHub Issue workflow and TODO/timeline synchronization |
 | [`REPLAN_2026-05-01.md`](REPLAN_2026-05-01.md) | Historical replan snapshot after UI/build/GPU steering |
@@ -23,6 +24,8 @@ which temporary accommodations must be replaced.
 - Use [`STATUS.md`](STATUS.md) for the current implementation summary.
 - Use [`TODO.md`](TODO.md) for active work, temporary accommodations, blockers,
   and acceptance checks.
+- Use [`LLAMA_GPU_BRIDGE_NEXT_STEPS.md`](LLAMA_GPU_BRIDGE_NEXT_STEPS.md) for
+  the current llama.cpp GPU bridge continuation plan and handoff instructions.
 - Use GitHub Issues as the primary tracker for actionable work that can be
   assigned, discussed, validated, and closed. Mirror only short issue-linked
   summaries into [`TODO.md`](TODO.md).
