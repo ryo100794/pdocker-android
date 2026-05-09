@@ -459,3 +459,16 @@ speedup was only `1.82x`.  That run introduced additional generic SPIR-V hashes
 (`0x11c0523df6c795b8`, `0xf2f988b94bd3e0dc`, `0x274f68a67dfef210`) beyond the
 zero-layer hashes.  The next correctness split should target those hashes before
 raising `n-gpu-layers`.
+
+`llama-gpu-ngl1-small-add-oracle-20260509.json` closes the first of those
+hashes.  `0x11c0523df6c795b8` is the same small indexing shader family, but it
+uses direct RHS indexing and an f32 add operation instead of the zero-layer
+broadcast multiply.  The CPU oracle now matches it exactly:
+
+| Hash | Oracle classification | Compared floats | Mismatches |
+|---|---|---:|---:|
+| `0x11c0523df6c795b8` | `small-f32-indexing` add/direct-RHS | `4096` | `0` |
+
+The `ngl=1` correctness failure therefore moves past the small indexing shader.
+The remaining front-blocker candidates are now `0xac41e8033a67af4a`
+(`rope-yarn`), `0xf2f988b94bd3e0dc`, and `0x274f68a67dfef210`.

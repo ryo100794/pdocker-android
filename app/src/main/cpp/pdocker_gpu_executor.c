@@ -2457,12 +2457,14 @@ static void write_spirv_binding_reflection_report(
 static int cpu_oracle_known_small_llama_hash(uint64_t spirv_hash) {
     return spirv_hash == 0x7bf05c459ac87f2bull ||
            spirv_hash == 0x11d5243c43b23a7bull ||
+           spirv_hash == 0x11c0523df6c795b8ull ||
            spirv_hash == 0xac41e8033a67af4aull;
 }
 
 static const char *cpu_oracle_kernel_hint(uint64_t spirv_hash) {
     if (spirv_hash == 0x7bf05c459ac87f2bull ||
-        spirv_hash == 0x11d5243c43b23a7bull) {
+        spirv_hash == 0x11d5243c43b23a7bull ||
+        spirv_hash == 0x11c0523df6c795b8ull) {
         return "small-f32-indexing";
     }
     if (spirv_hash == 0xac41e8033a67af4aull) {
@@ -2632,12 +2634,17 @@ static void run_cpu_oracle_small_f32_indexing(
     if (!report || !report->requested) return;
     init_cpu_oracle_report(report, report->requested, spirv_hash);
     if (spirv_hash != 0x7bf05c459ac87f2bull &&
-        spirv_hash != 0x11d5243c43b23a7bull) {
+        spirv_hash != 0x11d5243c43b23a7bull &&
+        spirv_hash != 0x11c0523df6c795b8ull) {
         report->skipped = 1;
         snprintf(report->status, sizeof(report->status), "%s",
                  report->candidate ? "kernel-not-implemented-yet" : "unsupported-shader-hash");
         return;
     }
+    const int use_direct_rhs_indexing =
+        spirv_hash == 0x11c0523df6c795b8ull;
+    const int use_add_op =
+        spirv_hash == 0x11c0523df6c795b8ull;
     int idx0 = binding_index_for_number(bindings, binding_count, 0);
     int idx1 = binding_index_for_number(bindings, binding_count, 1);
     int idx2 = binding_index_for_number(bindings, binding_count, 2);
@@ -2752,15 +2759,22 @@ static void run_cpu_oracle_small_f32_indexing(
                                             (uint64_t)i2 * pc[7] +
                                             (uint64_t)i1 * pc[6] +
                                             (uint64_t)i0 * pc[5];
-                        uint32_t b3 = broadcast_index_u32(i3, pc[12]);
-                        uint32_t b2 = broadcast_index_u32(i2, pc[11]);
-                        uint32_t b1 = broadcast_index_u32(i1, pc[10]);
-                        uint32_t b0 = broadcast_index_u32(i0, pc[9]);
-                        uint64_t src1_idx = (uint64_t)((pc[25] >> 8u) & 255u) +
-                                            (uint64_t)b3 * pc[16] +
-                                            (uint64_t)b2 * pc[15] +
-                                            (uint64_t)b1 * pc[14] +
-                                            (uint64_t)b0 * pc[13];
+                        uint64_t src1_idx = (uint64_t)((pc[25] >> 8u) & 255u);
+                        if (use_direct_rhs_indexing) {
+                            src1_idx += (uint64_t)i3 * pc[16] +
+                                        (uint64_t)i2 * pc[15] +
+                                        (uint64_t)i1 * pc[14] +
+                                        (uint64_t)i0 * pc[13];
+                        } else {
+                            uint32_t b3 = broadcast_index_u32(i3, pc[12]);
+                            uint32_t b2 = broadcast_index_u32(i2, pc[11]);
+                            uint32_t b1 = broadcast_index_u32(i1, pc[10]);
+                            uint32_t b0 = broadcast_index_u32(i0, pc[9]);
+                            src1_idx += (uint64_t)b3 * pc[16] +
+                                        (uint64_t)b2 * pc[15] +
+                                        (uint64_t)b1 * pc[14] +
+                                        (uint64_t)b0 * pc[13];
+                        }
                         int ok0 = 0, ok1 = 0, ok2 = 0;
                         float a = load_f32_at_index(src0, bindings[idx0].size, (size_t)src0_idx, &ok0);
                         float b = load_f32_at_index(src1, bindings[idx1].size, (size_t)src1_idx, &ok1);
@@ -2772,7 +2786,7 @@ static void run_cpu_oracle_small_f32_indexing(
                             free(src1);
                             return;
                         }
-                        float expected = a * b;
+                        float expected = use_add_op ? (a + b) : (a * b);
                         store_hash_f32(&report->expected_hash, expected);
                         store_hash_f32(&report->gpu_hash, gpu);
                         double abs_error = fabs((double)expected - (double)gpu);
