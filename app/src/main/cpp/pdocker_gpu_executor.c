@@ -3738,6 +3738,8 @@ static int run_vulkan_dispatch_fd(
                                             binding_fd_after_hash,
                                             binding_alias_rep);
         fprintf(json_out(), ",");
+        write_spirv_feature_report(json_out(), &spirv_summary, rt);
+        fprintf(json_out(), ",");
         write_vulkan_descriptor_write_report(json_out(),
                                              descriptor_write_dst_bindings,
                                              descriptor_write_source_indices,

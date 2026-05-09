@@ -59,6 +59,7 @@ match the same model's CPU/no-offload output for the same prompt.
 | `llama-gpu-compare-20260508-ngl1-differential-cpu-gpu.json` | 1 | Full CPU/no-offload vs GPU/offload differential correctness gate | 0.1949 | 0.15x | fail | CPU: `5`, `8`, empty; GPU: `+`, `细细`, empty |
 | `llama-gpu-compare-20260508-ngl1-no-dup-latest.json` | 1 | Duplicate descriptor rewrite disabled after push-layout fix | 0.1962 | 0.15x | fail | `礼拜`, `羽毛`, `itol Bjitol刊登` |
 | `llama-gpu-compare-20260508-ngl1-compact-summary.json` | 1 | Compact per-dispatch descriptor summary for the long final projection event | 0.1973 | 0.15x | fail | `+`, `细细`, empty |
+| `llama-gpu-compare-20260508-ngl1-alias-map-set-aware.json` | 1 | Set-aware duplicate descriptor rewrite with alias target-id evidence | 0.2358 | 0.18x | fail | `+`, `细细`, empty |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -135,6 +136,13 @@ Two ICD correctness fixes were added on 2026-05-08:
   `dispatch=[1187,1,64]`) with the 510 MiB model buffer at binding 0, the
   607 KiB logits/work buffer shared by bindings 2/3/4, and the duplicate binding
   rewrite that maps the second binding-0 SPIR-V variable to descriptor binding 5.
+- Duplicate descriptor rewrite is now descriptor-set aware. The latest NGL=1
+  evidence confirms that the final projection shader rewrites SPIR-V target id
+  `371` from descriptor set 0 binding 0 to descriptor binding 5, and the executor
+  writes binding 5 as an alias of the same 510 MiB model-buffer descriptor used
+  by binding 0. This hardens the compatibility layer, but correctness still
+  fails, so the next probes should focus on storage8/storage16 semantics and
+  final-projection input/output bytes rather than on cross-set binding confusion.
 
 The NGL=0 control also does not satisfy the arithmetic probe, so the absolute
 math prompt is not strong enough as the only correctness oracle. However, the
