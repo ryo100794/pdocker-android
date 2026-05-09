@@ -423,3 +423,28 @@ alias-aware oracle mode: snapshot read-only descriptors before dispatch, emulate
 the shader against that snapshot, and separately report whether read/write
 descriptor overlap makes the shader order-dependent or undefined.  Only after
 that split should the RoPE/Yarn oracle be implemented.
+
+### Specialization Materialization Split
+
+`llama-gpu-cpu-oracle-iter-diagnosis-ngl0-20260509.json` narrowed the
+`small-f32-indexing` mismatch further.  With SPIR-V specialization
+materialization enabled, the oracle showed:
+
+- `compared_iter0=12288`, `mismatch_iter0=12160`,
+- `compared_iter1=12288`, `mismatch_iter1=12288`,
+- all mismatches in this shader were zero-valued GPU results.
+
+The first 128 outputs matched, then the GPU behaved as if the broadcast
+specialization branch had not been taken.  Running the same route with
+`PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS=0` changed the shader
+hash to `0x11d5243c43b23a7b` and restored the required correctness probe:
+
+| Artifact | Materialization | Required correctness | Speedup vs CPU baseline | Blocker |
+|---|---:|---:|---:|---|
+| `llama-gpu-cpu-oracle-iter-diagnosis-ngl0-20260509.json` | enabled | fail | `2.47x` | specialization-materialized shader writes zeros outside the first broadcast block |
+| `llama-gpu-cpu-oracle-no-materialize-ngl0-20260509.json` | disabled | pass | `2.33x` | bridge upload/copy overhead |
+
+Because correctness beats this micro-optimization, executor-side SPIR-V
+specialization materialization is now opt-in.  The default path keeps Vulkan
+specialization info intact and lets the Android Vulkan driver consume the
+original SPIR-V.

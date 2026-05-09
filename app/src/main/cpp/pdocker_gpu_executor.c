@@ -91,6 +91,15 @@ typedef struct _cl_event *ocl_event;
 #define OCL_MEM_COPY_HOST_PTR (1u << 5)
 
 typedef struct {
+    uint64_t dst_index;
+    float expected;
+    float gpu;
+    float src0;
+    float src1;
+    double abs_error;
+} CpuOracleSample;
+
+typedef struct {
     void *lib;
     ocl_platform_id platform;
     ocl_device_id device;
@@ -2469,11 +2478,20 @@ typedef struct {
     char kernel_hint[64];
     size_t compared_floats;
     size_t mismatch_count;
+    size_t mismatch_iter0;
+    size_t mismatch_iter1;
+    size_t compared_iter0;
+    size_t compared_iter1;
+    size_t zero_gpu_mismatch_count;
     double max_abs_error;
     double max_rel_error;
     uint64_t expected_hash;
     uint64_t gpu_hash;
     int input_output_overlap;
+    int has_first_mismatch;
+    CpuOracleSample first_mismatch;
+    CpuOracleSample samples[8];
+    size_t sample_count;
 } CpuOracleReport;
 
 static uint32_t load_le_u32(const uint8_t *bytes, size_t size, size_t index) {
@@ -2538,10 +2556,13 @@ static void write_cpu_oracle_report(
             "\"candidate\":%s,\"executed\":%s,\"skipped\":%s,"
             "\"status\":\"%s\",\"kernel_hint\":\"%s\","
             "\"compared_floats\":%zu,\"mismatch_count\":%zu,"
+            "\"compared_iter0\":%zu,\"compared_iter1\":%zu,"
+            "\"mismatch_iter0\":%zu,\"mismatch_iter1\":%zu,"
+            "\"zero_gpu_mismatch_count\":%zu,"
             "\"max_abs_error\":%.9g,\"max_rel_error\":%.9g,"
             "\"expected_hash\":\"0x%016llx\",\"gpu_hash\":\"0x%016llx\","
             "\"input_output_overlap\":%s,"
-            "\"scope\":\"debug-only-spv-hash-gated\"}",
+            "\"scope\":\"debug-only-spv-hash-gated\"",
             report->requested ? "true" : "false",
             report->candidate ? "true" : "false",
             report->executed ? "true" : "false",
@@ -2550,11 +2571,44 @@ static void write_cpu_oracle_report(
             report->kernel_hint,
             report->compared_floats,
             report->mismatch_count,
+            report->compared_iter0,
+            report->compared_iter1,
+            report->mismatch_iter0,
+            report->mismatch_iter1,
+            report->zero_gpu_mismatch_count,
             report->max_abs_error,
             report->max_rel_error,
             (unsigned long long)report->expected_hash,
             (unsigned long long)report->gpu_hash,
             report->input_output_overlap ? "true" : "false");
+    if (report->has_first_mismatch) {
+        fprintf(out,
+                ",\"first_mismatch\":{\"dst_index\":%llu,"
+                "\"expected\":%.9g,\"gpu\":%.9g,"
+                "\"src0\":%.9g,\"src1\":%.9g,"
+                "\"abs_error\":%.9g}",
+                (unsigned long long)report->first_mismatch.dst_index,
+                report->first_mismatch.expected,
+                report->first_mismatch.gpu,
+                report->first_mismatch.src0,
+                report->first_mismatch.src1,
+                report->first_mismatch.abs_error);
+    }
+    fprintf(out, ",\"samples\":[");
+    for (size_t i = 0; i < report->sample_count; ++i) {
+        fprintf(out,
+                "%s{\"dst_index\":%llu,\"expected\":%.9g,"
+                "\"gpu\":%.9g,\"src0\":%.9g,\"src1\":%.9g,"
+                "\"abs_error\":%.9g}",
+                i ? "," : "",
+                (unsigned long long)report->samples[i].dst_index,
+                report->samples[i].expected,
+                report->samples[i].gpu,
+                report->samples[i].src0,
+                report->samples[i].src1,
+                report->samples[i].abs_error);
+    }
+    fprintf(out, "]}");
 }
 
 static void run_cpu_oracle_small_f32_indexing(
@@ -2719,11 +2773,44 @@ static void run_cpu_oracle_small_f32_indexing(
                         store_hash_f32(&report->expected_hash, expected);
                         store_hash_f32(&report->gpu_hash, gpu);
                         double abs_error = fabs((double)expected - (double)gpu);
+                        if (report->sample_count < sizeof(report->samples) / sizeof(report->samples[0])) {
+                            CpuOracleSample *sample = &report->samples[report->sample_count++];
+                            sample->dst_index = dst_idx;
+                            sample->expected = expected;
+                            sample->gpu = gpu;
+                            sample->src0 = a;
+                            sample->src1 = b;
+                            sample->abs_error = abs_error;
+                        }
                         double denom = fabs((double)expected);
                         double rel_error = denom > 1e-30 ? abs_error / denom : abs_error;
                         if (abs_error > report->max_abs_error) report->max_abs_error = abs_error;
                         if (rel_error > report->max_rel_error) report->max_rel_error = rel_error;
-                        if (abs_error > 1e-5 && rel_error > 1e-4) report->mismatch_count++;
+                        if (iter == 0) {
+                            report->compared_iter0++;
+                        } else {
+                            report->compared_iter1++;
+                        }
+                        if (abs_error > 1e-5 && rel_error > 1e-4) {
+                            if (!report->has_first_mismatch) {
+                                report->has_first_mismatch = 1;
+                                report->first_mismatch.dst_index = dst_idx;
+                                report->first_mismatch.expected = expected;
+                                report->first_mismatch.gpu = gpu;
+                                report->first_mismatch.src0 = a;
+                                report->first_mismatch.src1 = b;
+                                report->first_mismatch.abs_error = abs_error;
+                            }
+                            if (iter == 0) {
+                                report->mismatch_iter0++;
+                            } else {
+                                report->mismatch_iter1++;
+                            }
+                            if (gpu == 0.0f && expected != 0.0f) {
+                                report->zero_gpu_mismatch_count++;
+                            }
+                            report->mismatch_count++;
+                        }
                         report->compared_floats++;
                     }
                 }
@@ -3953,7 +4040,7 @@ static int run_vulkan_dispatch_fd(
     const int materialize_specialization_constants =
         options && options->has_materialize_specialization_constants
             ? options->materialize_specialization_constants
-            : env_truthy("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", 1);
+            : env_truthy("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", 0);
     const int disable_pipeline_optimization =
         options && options->has_disable_pipeline_optimization
             ? options->disable_pipeline_optimization

@@ -116,6 +116,7 @@ class GpuAbiContractTest(unittest.TestCase):
         source = GPU_EXECUTOR.read_text()
         self.assertIn("materialize_spirv_specialization_constants", source)
         self.assertIn("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", source)
+        self.assertIn('env_truthy("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", 0)', source)
         self.assertIn("vk_spec_ptr = specialization_materialized ? NULL : &vk_spec_info;", source)
         self.assertIn('\\"specialization_materialized\\":%s', source)
         self.assertIn("BuiltIn WorkgroupSize", source)
