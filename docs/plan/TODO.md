@@ -25,7 +25,9 @@ or closes.
   gate: NGL=0 default is green, SPIR-V materialization is opt-in, and the
   `small-f32-indexing`, `rope-yarn`, and `rms-norm` oracles match for the
   observed NGL=1 front-blocker hashes. NGL=1 still fails required probes; the
-  next primary blocker is `0x274f68a67dfef210`.
+  next primary blocker is `0x274f68a67dfef210`, now classified as a
+  `mul_mat_vec_q4_k`-like large quantized matvec requiring bounded alias/layout
+  diagnostics before any full oracle.
   Stage gates and compact-model handoff are maintained in
   `docs/plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md`.
 - [next] [#5](https://github.com/ryo100794/pdocker-android/issues/5)

@@ -125,7 +125,7 @@ Current `ngl=1` front-blocker candidates:
 |---|---|---|
 | `0xac41e8033a67af4a` | RoPE/Yarn | oracle matches in `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json` |
 | `0xf2f988b94bd3e0dc` | RMSNorm with optional multiply | oracle matches in `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json` |
-| `0x274f68a67dfef210` | large final-projection-like candidate | oracle not implemented |
+| `0x274f68a67dfef210` | `mul_mat_vec_q4_k`-like large quantized matvec / final projection | bounded oracle not implemented; metadata and read/write alias diagnostics required first |
 
 Procedure:
 
@@ -213,6 +213,10 @@ Procedure:
    - storage format clues from SPIR-V,
    - output binding sample hash before/after,
    - whether output and read-only bindings overlap.
+   The current shader dump matches llama.cpp's `mul_mat_vec_q4_k` family:
+   it declares multiple binding-0 views for the same quantized weight buffer,
+   uses storage8/storage16/int8 features, and specializes
+   `BLOCK_SIZE=32`, `NUM_ROWS=2`, `NUM_COLS=1`.
 3. Add a sample-window oracle only if a bounded subset can be proven correct.
 4. Compare the sampled output values with CPU/no-offload logits if available.
 

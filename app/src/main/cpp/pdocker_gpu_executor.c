@@ -2409,6 +2409,95 @@ static void write_vulkan_descriptor_alias_report(
     fprintf(out, "]");
 }
 
+static int ranges_overlap_off_size(
+        off_t a_offset,
+        size_t a_size,
+        off_t b_offset,
+        size_t b_size,
+        off_t *overlap_offset,
+        size_t *overlap_size) {
+    if (a_size == 0 || b_size == 0) return 0;
+    if (a_offset < 0 || b_offset < 0) return 0;
+    uint64_t a_start = (uint64_t)a_offset;
+    uint64_t b_start = (uint64_t)b_offset;
+    uint64_t a_end = a_start + (uint64_t)a_size;
+    uint64_t b_end = b_start + (uint64_t)b_size;
+    if (a_end < a_start || b_end < b_start) return 0;
+    if (a_end <= b_start || b_end <= a_start) return 0;
+    uint64_t start = a_start > b_start ? a_start : b_start;
+    uint64_t end = a_end < b_end ? a_end : b_end;
+    if (end <= start) return 0;
+    if (overlap_offset) *overlap_offset = (off_t)start;
+    if (overlap_size) *overlap_size = (size_t)(end - start);
+    return 1;
+}
+
+static void write_vulkan_rw_alias_hazard_report(
+        FILE *out,
+        const VulkanDispatchBinding *bindings,
+        size_t binding_count,
+        const uint8_t *active,
+        const uint8_t *readable,
+        const uint8_t *writable,
+        const size_t *alias_rep) {
+    size_t count = 0;
+    for (size_t w = 0; w < binding_count; ++w) {
+        if ((active && !active[w]) || !writable || !writable[w]) continue;
+        size_t w_rep = alias_rep ? alias_rep[w] : w;
+        for (size_t r = 0; r < binding_count; ++r) {
+            if (r == w) continue;
+            if ((active && !active[r]) || !readable || !readable[r]) continue;
+            size_t r_rep = alias_rep ? alias_rep[r] : r;
+            if (w_rep != r_rep) continue;
+            if (ranges_overlap_off_size(bindings[w].offset, bindings[w].size,
+                                        bindings[r].offset, bindings[r].size,
+                                        NULL, NULL)) {
+                count++;
+            }
+        }
+    }
+    fprintf(out, "\"rw_alias_hazards\":{\"count\":%zu,\"items\":[", count);
+    int first = 1;
+    for (size_t w = 0; w < binding_count; ++w) {
+        if ((active && !active[w]) || !writable || !writable[w]) continue;
+        size_t w_rep = alias_rep ? alias_rep[w] : w;
+        for (size_t r = 0; r < binding_count; ++r) {
+            if (r == w) continue;
+            if ((active && !active[r]) || !readable || !readable[r]) continue;
+            size_t r_rep = alias_rep ? alias_rep[r] : r;
+            if (w_rep != r_rep) continue;
+            off_t overlap_offset = 0;
+            size_t overlap_size = 0;
+            if (!ranges_overlap_off_size(bindings[w].offset, bindings[w].size,
+                                         bindings[r].offset, bindings[r].size,
+                                         &overlap_offset, &overlap_size)) {
+                continue;
+            }
+            fprintf(out,
+                    "%s{\"write_index\":%zu,\"write_binding\":%u,"
+                    "\"read_index\":%zu,\"read_binding\":%u,"
+                    "\"alias_rep\":%zu,\"write_offset\":%lld,"
+                    "\"write_size\":%zu,\"read_offset\":%lld,"
+                    "\"read_size\":%zu,\"overlap_offset\":%lld,"
+                    "\"overlap_size\":%zu}",
+                    first ? "" : ",",
+                    w,
+                    bindings[w].binding,
+                    r,
+                    bindings[r].binding,
+                    w_rep,
+                    (long long)bindings[w].offset,
+                    bindings[w].size,
+                    (long long)bindings[r].offset,
+                    bindings[r].size,
+                    (long long)overlap_offset,
+                    overlap_size);
+            first = 0;
+        }
+    }
+    fprintf(out, "]}");
+}
+
 static void write_spirv_binding_reflection_report(
         FILE *out,
         const uint8_t *shader_used_bindings,
@@ -2454,12 +2543,13 @@ static void write_spirv_binding_reflection_report(
     fprintf(out, "]");
 }
 
-static int cpu_oracle_known_small_llama_hash(uint64_t spirv_hash) {
+static int cpu_oracle_known_llama_hash(uint64_t spirv_hash) {
     return spirv_hash == 0x7bf05c459ac87f2bull ||
            spirv_hash == 0x11d5243c43b23a7bull ||
            spirv_hash == 0x11c0523df6c795b8ull ||
            spirv_hash == 0xac41e8033a67af4aull ||
-           spirv_hash == 0xf2f988b94bd3e0dcull;
+           spirv_hash == 0xf2f988b94bd3e0dcull ||
+           spirv_hash == 0x274f68a67dfef210ull;
 }
 
 static const char *cpu_oracle_kernel_hint(uint64_t spirv_hash) {
@@ -2473,6 +2563,9 @@ static const char *cpu_oracle_kernel_hint(uint64_t spirv_hash) {
     }
     if (spirv_hash == 0xf2f988b94bd3e0dcull) {
         return "rms-norm";
+    }
+    if (spirv_hash == 0x274f68a67dfef210ull) {
+        return "mul-mat-vec-q4-k-large";
     }
     return "unknown";
 }
@@ -2559,7 +2652,7 @@ static void init_cpu_oracle_report(CpuOracleReport *report, int requested, uint6
     if (!report) return;
     memset(report, 0, sizeof(*report));
     report->requested = requested ? 1 : 0;
-    report->candidate = cpu_oracle_known_small_llama_hash(spirv_hash) ? 1 : 0;
+    report->candidate = cpu_oracle_known_llama_hash(spirv_hash) ? 1 : 0;
     snprintf(report->kernel_hint, sizeof(report->kernel_hint), "%s",
              cpu_oracle_kernel_hint(spirv_hash));
     snprintf(report->status, sizeof(report->status), "%s",
@@ -5494,6 +5587,12 @@ static int run_vulkan_dispatch_fd(
                                              binding_aliases,
                                              binding_alias_count);
         fprintf(json_out(), ",");
+        write_vulkan_rw_alias_hazard_report(json_out(), bindings, binding_count,
+                                            active_bindings,
+                                            binding_read_needed,
+                                            binding_write_needed,
+                                            binding_alias_rep);
+        fprintf(json_out(), ",");
         write_spirv_binding_reflection_report(json_out(),
                                               shader_used_bindings,
                                               shader_binding_access,
@@ -5599,6 +5698,12 @@ static int run_vulkan_dispatch_fd(
         write_vulkan_descriptor_alias_report(json_out(),
                                              binding_aliases,
                                              binding_alias_count);
+        fprintf(json_out(), ",");
+        write_vulkan_rw_alias_hazard_report(json_out(), bindings, binding_count,
+                                            active_bindings,
+                                            binding_read_needed,
+                                            binding_write_needed,
+                                            binding_alias_rep);
         fprintf(json_out(), ",");
         write_spirv_binding_reflection_report(json_out(),
                                               shader_used_bindings,

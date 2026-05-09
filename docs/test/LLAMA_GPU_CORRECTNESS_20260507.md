@@ -74,6 +74,7 @@ match the same model's CPU/no-offload output for the same prompt.
 | `llama-gpu-bisection-upload-dispatch-20260509-ngl1.json` | 1 | Split read-only input upload from post-dispatch mutation | 0.0984 | 1.42x | fail | upload hash mismatches: 0; primary read-only dispatch mutations: 806 |
 | `llama-gpu-bisection-all-readwrite-forwarded-fixed-20260509-ngl1.json` | 1 | Verified `PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS=0` propagation; all active descriptors treated conservatively | 0.1722 | 2.49x | fail | env propagation: pass; primary read-only mutations: 0; output still `+`, `细细`, empty |
 | `llama-gpu-final-layout-all-readwrite-20260509-ngl1.json` | 1 | All-read/write conservative run with larger log capture | 0.1401 | 2.02x | fail | focus: `output_layout_or_shader_math`; upload/mutation checks clean |
+| `llama-gpu-ngl1-matvec-alias-diagnostics-20260509.json` | 1 | Q4_K matvec classification and read/write alias hazard diagnostics for `0x274f68a67dfef210` | n/a | 2.17x | fail | `cpu_oracle.kernel_hint=mul-mat-vec-q4-k-large`; `rw_alias_hazards.count=2` |
 
 `llama-gpu-compare-20260507-ngl1-no-dup-rewrite.json` is not included in the
 evidence table because adb went offline during that run, so the result is
@@ -203,6 +204,19 @@ Two ICD correctness fixes were added on 2026-05-08:
   `1.35967982`, `1.81122828`, `2.580235`, `-0.365148783`. The failure has
   therefore moved from "did the dispatch write anything?" to "are the logits
   numerically correct / interpreted with the expected layout?".
+- The current final-projection shader hash `0x274f68a67dfef210` has now been
+  classified against the dumped llama.cpp shader sources as a
+  `mul_mat_vec_q4_k`-like large quantized matvec. It uses the `block_q4_K`
+  weight layout, duplicate binding-0 views for packed 8/16/32-bit access, and
+  specialization values `BLOCK_SIZE=32`, `NUM_ROWS=2`, `NUM_COLS=1`. A full CPU
+  oracle would require the 510 MiB model range, so the next safe step is
+  bounded alias/layout diagnostics before any sampled Q4_K decode oracle.
+- Executor diagnostics now include an explicit `rw_alias_hazards` object so the
+  compact JSON shows when a writable descriptor overlaps readable descriptors
+  through the same bridge alias group. The observed `0x274f68a67dfef210`
+  dispatch intentionally or accidentally presents binding 2 as writable while
+  bindings 3 and 4 read the same 607 KiB range, so future runs can distinguish
+  a legitimate in-place/fuse pattern from a bridge aliasing error.
 - The compare driver now requests `completion_probabilities` with bounded
   `n_probs` during correctness probes. This records selected token ids and
   top-logprob lists for both CPU/no-offload and GPU/offload. The latest full
