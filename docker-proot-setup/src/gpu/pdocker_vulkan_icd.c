@@ -783,6 +783,25 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
             off += (size_t)n;
         }
     }
+    if (getenv("PDOCKER_GPU_RESIDENT_CACHE")) {
+        n = snprintf(command + off, sizeof(command) - off,
+                     " resident_cache=%u",
+                     env_truthy_default("PDOCKER_GPU_RESIDENT_CACHE", true) ? 1u : 0u);
+        if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+        off += (size_t)n;
+    }
+    const char *resident_cache_min = getenv("PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES");
+    if (resident_cache_min && resident_cache_min[0]) {
+        char *end = NULL;
+        unsigned long long parsed = strtoull(resident_cache_min, &end, 10);
+        if (end && *end == '\0') {
+            n = snprintf(command + off, sizeof(command) - off,
+                         " resident_cache_min=%llu",
+                         parsed);
+            if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+            off += (size_t)n;
+        }
+    }
     const char *dirty_probe_min = getenv("PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_MIN_BYTES");
     if (dirty_probe_min && dirty_probe_min[0]) {
         char *end = NULL;

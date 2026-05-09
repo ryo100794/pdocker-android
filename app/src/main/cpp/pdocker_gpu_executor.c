@@ -485,6 +485,10 @@ typedef struct {
     int writeonly_buffer_cache;
     int has_mutable_buffer_cache_max_bytes;
     size_t mutable_buffer_cache_max_bytes;
+    int has_resident_cache;
+    int resident_cache;
+    int has_resident_cache_min_bytes;
+    size_t resident_cache_min_bytes;
     int has_profile_response;
     int profile_response;
     int has_rewrite_duplicate_descriptors;
@@ -1143,7 +1147,10 @@ static VulkanRuntime effective_vulkan_runtime_for_dispatch(
     return effective;
 }
 
-static size_t resident_cache_threshold(void) {
+static size_t resident_cache_threshold(const VulkanDispatchOptions *options) {
+    if (options && options->has_resident_cache_min_bytes) {
+        return options->resident_cache_min_bytes;
+    }
     const char *value = getenv("PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES");
     if (value && value[0]) {
         char *end = NULL;
@@ -1161,8 +1168,14 @@ static int resident_cache_key(int fd, dev_t *dev, ino_t *ino) {
     return 0;
 }
 
-static int resident_cache_candidate(uint32_t binding, size_t size) {
-    if (!env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1)) return 0;
+static int resident_cache_candidate(
+        const VulkanDispatchOptions *options,
+        uint32_t binding,
+        size_t size) {
+    if (options && options->has_resident_cache && !options->resident_cache) return 0;
+    if (!options || !options->has_resident_cache) {
+        if (!env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1)) return 0;
+    }
     /*
      * Keep the first large storage binding resident by default. In llama.cpp's
      * Vulkan graphs this is the read-mostly model/weight side of the dispatch;
@@ -1170,7 +1183,7 @@ static int resident_cache_candidate(uint32_t binding, size_t size) {
      * upload/download path for correctness.
      */
     if (binding != 0) return 0;
-    return size >= resident_cache_threshold();
+    return size >= resident_cache_threshold(options);
 }
 
 static size_t mutable_buffer_cache_max_bytes(void) {
@@ -1325,6 +1338,31 @@ static int parse_vulkan_dispatch_option(VulkanDispatchOptions *options, const ch
         if (!end || *end != '\0') return -1;
         options->has_mutable_buffer_cache_max_bytes = 1;
         options->mutable_buffer_cache_max_bytes = (size_t)parsed;
+        return 0;
+    }
+    if (strncmp(token, "resident_cache=", 15) == 0) {
+        const char *value = token + 15;
+        if (strcmp(value, "1") == 0 || strcasecmp(value, "true") == 0 ||
+            strcasecmp(value, "yes") == 0 || strcasecmp(value, "on") == 0) {
+            options->has_resident_cache = 1;
+            options->resident_cache = 1;
+            return 0;
+        }
+        if (strcmp(value, "0") == 0 || strcasecmp(value, "false") == 0 ||
+            strcasecmp(value, "no") == 0 || strcasecmp(value, "off") == 0) {
+            options->has_resident_cache = 1;
+            options->resident_cache = 0;
+            return 0;
+        }
+        return -1;
+    }
+    if (strncmp(token, "resident_cache_min=", 19) == 0) {
+        const char *value = token + 19;
+        char *end = NULL;
+        unsigned long long parsed = strtoull(value, &end, 10);
+        if (!end || *end != '\0') return -1;
+        options->has_resident_cache_min_bytes = 1;
+        options->resident_cache_min_bytes = (size_t)parsed;
         return 0;
     }
     if (strncmp(token, "profile=", 8) == 0) {
@@ -1763,6 +1801,27 @@ static int materialize_spirv_specialization_constants(
             }
         }
         i += word_count;
+    }
+    int skip_changed = 1;
+    while (skip_changed) {
+        skip_changed = 0;
+        for (size_t i = 5; i < words;) {
+            uint32_t inst = code[i];
+            uint16_t word_count = (uint16_t)(inst >> 16);
+            uint16_t op = (uint16_t)(inst & 0xffffu);
+            if (word_count == 0 || i + word_count > words) break;
+            if (op == 52 && word_count >= 5 && code[i + 2] < bound &&
+                !skip_spec_materialization[code[i + 2]]) {
+                for (uint16_t j = 4; j < word_count; ++j) {
+                    if (code[i + j] < bound && skip_spec_materialization[code[i + j]]) {
+                        skip_spec_materialization[code[i + 2]] = 1;
+                        skip_changed = 1;
+                        break;
+                    }
+                }
+            }
+            i += word_count;
+        }
     }
 
     memcpy(out, code, 5 * sizeof(uint32_t));
@@ -2634,7 +2693,8 @@ static int cpu_oracle_known_llama_hash(uint64_t spirv_hash) {
            spirv_hash == 0xf2f988b94bd3e0dcull ||
            spirv_hash == 0x274f68a67dfef210ull ||
            spirv_hash == 0x1bf751845c5dce75ull ||
-           spirv_hash == 0x09c4622d92c6acb9ull;
+           spirv_hash == 0x09c4622d92c6acb9ull ||
+           spirv_hash == 0x498c69a047eb3b2full;
 }
 
 static const char *cpu_oracle_kernel_hint(uint64_t spirv_hash) {
@@ -2651,7 +2711,8 @@ static const char *cpu_oracle_kernel_hint(uint64_t spirv_hash) {
     }
     if (spirv_hash == 0x274f68a67dfef210ull ||
         spirv_hash == 0x1bf751845c5dce75ull ||
-        spirv_hash == 0x09c4622d92c6acb9ull) {
+        spirv_hash == 0x09c4622d92c6acb9ull ||
+        spirv_hash == 0x498c69a047eb3b2full) {
         return "mul-mat-vec-q6-k-large";
     }
     return "unknown";
@@ -4259,6 +4320,7 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
         VkDevice device,
         int fd,
         const VulkanDispatchBinding *binding,
+        const VulkanDispatchOptions *options,
         VulkanVectorBuffer *temporary,
         int initialize_from_fd,
         int *cache_hit,
@@ -4309,7 +4371,7 @@ static VulkanVectorBuffer *acquire_dispatch_buffer(
         }
         return temporary;
     }
-    if (resident_cache_candidate(binding->binding, binding->size)) {
+    if (resident_cache_candidate(options, binding->binding, binding->size)) {
         if (have_key) {
             VulkanResidentCacheEntry *entry = find_resident_cache_entry(
                 dev, ino, binding->offset, binding->size, binding->binding);
@@ -5643,6 +5705,7 @@ static int run_vulkan_dispatch_fd(
             rt->device,
             buffer_fds[i],
             &group_binding,
+            options,
             &temp_buffers[i],
             binding_group_read_needed[i],
             &cache_hits[i],
@@ -6013,7 +6076,8 @@ static int run_vulkan_dispatch_fd(
                                 gz);
     } else if (spirv_summary.hash == 0x274f68a67dfef210ull ||
                spirv_summary.hash == 0x1bf751845c5dce75ull ||
-               spirv_summary.hash == 0x09c4622d92c6acb9ull) {
+               spirv_summary.hash == 0x09c4622d92c6acb9ull ||
+               spirv_summary.hash == 0x498c69a047eb3b2full) {
         run_cpu_oracle_q6k_matvec_sample(&cpu_oracle_report,
                                          spirv_summary.hash,
                                          buffer_fds,
@@ -6305,7 +6369,8 @@ static int run_vulkan_dispatch_fd(
             pre_barrier_count,
             post_barrier_count,
             upload_ms, dispatch_ms, download_ms,
-            env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1) ? "true" : "false",
+            (!options->has_resident_cache || options->resident_cache) &&
+                env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1) ? "true" : "false",
             resident_count, hit_count, resident_bytes,
             env_truthy("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", 1) ? "true" : "false",
             PDOCKER_GPU_MUTABLE_BUFFER_CACHE_SLOTS,
