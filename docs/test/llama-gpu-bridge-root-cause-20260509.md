@@ -67,3 +67,34 @@ Next implementation direction:
 1. Keep the writeback mode as diagnostic-only and disabled by default.
 2. Build a Q6_K micro-dispatch suite to isolate the exact Vulkan primitive: storage8/16 load, local-size specialization, workgroup shared-memory reduction, or barrier semantics.
 3. If driver behavior remains incompatible, add a bridge-owned Q6_K safe kernel/fallback behind a hash-gated policy, without modifying llama.cpp.
+
+## Safe GPU Q6_K kernel result
+
+A bridge-owned Q6_K safe GPU kernel was added behind `PDOCKER_GPU_Q6K_SAFE_KERNEL=1`. This kernel is still a Vulkan compute dispatch, but it avoids the fragile llama.cpp Q6_K shader features that failed on this Android device:
+
+- no 8-bit storage buffer element loads,
+- no 16-bit storage buffer element loads,
+- no shared-memory reduction,
+- no duplicate Binding 0 packed16 view,
+- uses 32-bit storage loads plus explicit byte extraction.
+
+Evidence file:
+
+- `docs/test/llama-gpu-ngl1-q6k-safe-kernel-final-20260509.json`
+
+Result:
+
+| Metric | Result |
+| --- | --- |
+| GPU correctness | pass |
+| Required failures | 0 |
+| Q6_K safe events | 9 |
+| Q6_K oracle status | match |
+| Q6_K mismatch count | 0 |
+| Max sampled Q6_K abs error | about `3.3e-05` |
+| CPU-relative speedup | `1.992x` |
+| 10x target | not yet met |
+
+Conclusion:
+
+The established mitigation is no longer CPU oracle writeback. The working mitigation is a hash-gated bridge-owned Vulkan Q6_K safe kernel. It is correct on the sampled Q6_K rows and makes the llama correctness probe pass while remaining faster than the CPU baseline on this device. The remaining task is performance tuning: reduce upload/copy overhead and optimize the safe kernel toward the 10x target.
