@@ -267,6 +267,7 @@ for key in [
     "PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS",
     "PDOCKER_GPU_MUTABLE_BUFFER_CACHE_MAX_BYTES",
     "PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS",
+    "PDOCKER_GPU_DISABLE_OVERLAP_ALIASING",
     "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
     "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
     "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
@@ -882,6 +883,7 @@ config_expectations = [
     ("PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION", "disable_pipeline_optimization"),
     ("PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS", "skip_unused_descriptor_transfers"),
     ("PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS", "spirv_descriptor_access"),
+    ("PDOCKER_GPU_DISABLE_OVERLAP_ALIASING", "disable_overlap_aliasing"),
 ]
 config_checks = []
 for env_name, event_field in config_expectations:
@@ -1034,6 +1036,18 @@ descriptor_ranges = [
     int(m.group(1))
     for m in re.finditer(r"descriptor storage binding=[0-9]+ buffer_size=[0-9]+ offset=[0-9]+ range=([0-9]+)", log)
 ]
+descriptor_array_layouts = [
+    {
+        "binding": int(m.group(1)),
+        "count": int(m.group(2)),
+        "type": int(m.group(3)),
+        "flattened_capacity": int(m.group(4)),
+    }
+    for m in re.finditer(
+        r"descriptor array layout binding=([0-9]+) count=([0-9]+) type=([0-9]+) flattened_capacity=([0-9]+)",
+        log,
+    )
+]
 cpu_mapped_model_mib = [
     float(m.group(1))
     for m in re.finditer(r"CPU_Mapped model buffer size =\s+([0-9.]+) MiB", log)
@@ -1055,6 +1069,8 @@ chunking_pressure = {
     "model_cpu_mapped_exceeds_bridge_clamp": bool(model_cpu_mapped_bytes and model_cpu_mapped_bytes > bridge_max_buffer_bytes),
     "vulkan_model_buffer_mib": vulkan_model_mib[-1] if vulkan_model_mib else 0.0,
     "descriptor_range_max_bytes": max(descriptor_ranges) if descriptor_ranges else 0,
+    "descriptor_array_layout_seen": bool(descriptor_array_layouts),
+    "descriptor_array_layouts": descriptor_array_layouts[-16:],
 }
 advertised_limits = {
     "configured_clamps": {

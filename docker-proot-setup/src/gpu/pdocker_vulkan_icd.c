@@ -817,6 +817,13 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
         if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
         off += (size_t)n;
     }
+    if (getenv("PDOCKER_GPU_DISABLE_OVERLAP_ALIASING")) {
+        n = snprintf(command + off, sizeof(command) - off,
+                     " disable_overlap_aliasing=%u",
+                     env_truthy_default("PDOCKER_GPU_DISABLE_OVERLAP_ALIASING", false) ? 1u : 0u);
+        if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+        off += (size_t)n;
+    }
     if (getenv("PDOCKER_VULKAN_DISABLE_8BIT_STORAGE")) {
         n = snprintf(command + off, sizeof(command) - off,
                      " disable_storage8=%u",
@@ -867,9 +874,44 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
     if (sendmsg(socket_fd, &msg, 0) < 0) {
         rc = -errno;
     } else {
-        char line[4096];
+        /*
+         * Executor responses are normally tiny.  Keep the hot path allocation
+         * free, but allow large diagnostic JSON events without truncating the
+         * evidence we need for llama GPU bisection.
+         *
+         * Ownership policy:
+         * - stack_line is used for the common case.
+         * - heap_line is per-call/per-thread state, never shared globally.
+         * - growth is geometric and capped, so a malformed executor cannot
+         *   force unbounded allocation or an alloc/free storm.
+         * - the old heap block is freed only after the replacement is ready,
+         *   leaving line valid on ENOMEM.
+         */
+        const size_t max_response = 1024 * 1024;
+        char stack_line[16384];
+        size_t line_cap = sizeof(stack_line);
         size_t line_off = 0;
-        while (line_off + 1 < sizeof(line)) {
+        char *heap_line = NULL;
+        char *line = stack_line;
+        while (line_off + 1 < max_response) {
+            if (line_off + 1 >= line_cap) {
+                size_t next_cap = line_cap * 2;
+                if (next_cap < line_cap) {
+                    rc = -EOVERFLOW;
+                    break;
+                }
+                if (next_cap > max_response) next_cap = max_response;
+                char *next = (char *)malloc(next_cap);
+                if (!next) {
+                    rc = -ENOMEM;
+                    break;
+                }
+                memcpy(next, line, line_off);
+                free(heap_line);
+                heap_line = next;
+                line = heap_line;
+                line_cap = next_cap;
+            }
             char ch;
             ssize_t r = read(socket_fd, &ch, 1);
             if (r <= 0) break;
@@ -877,12 +919,14 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
             if (ch == '\n') break;
         }
         line[line_off] = '\0';
+        if (rc == 0 && line_off + 1 >= max_response) rc = -EMSGSIZE;
         if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG") ||
             env_truthy_default("PDOCKER_GPU_DISPATCH_PROFILE_LOG", false)) {
             fprintf(stderr, "pdocker-vulkan-icd: generic dispatch response: %s", line);
             if (line_off == 0 || line[line_off - 1] != '\n') fprintf(stderr, "\n");
         }
-        if (strstr(line, "\"valid\":true") == NULL) rc = -EIO;
+        if (rc == 0 && strstr(line, "\"valid\":true") == NULL) rc = -EIO;
+        free(heap_line);
     }
     close(socket_fd);
     return rc;
@@ -2021,7 +2065,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorSetLayout(
             binding->binding < PDOCKER_VK_MAX_STORAGE_BUFFERS) {
             layout->storage_binding_types[binding->binding] = binding->descriptorType;
             layout->storage_binding_counts[binding->binding] = binding->descriptorCount;
-            if (trace_allocations() && binding->descriptorCount > 1) {
+            if ((trace_allocations() ||
+                 env_truthy_default("PDOCKER_GPU_DISPATCH_PROFILE_LOG", false)) &&
+                binding->descriptorCount > 1) {
                 fprintf(stderr,
                         "pdocker-vulkan-icd: descriptor array layout binding=%u count=%u type=%u flattened_capacity=%u\n",
                         binding->binding,

@@ -268,6 +268,7 @@ class GpuAbiContractTest(unittest.TestCase):
             "disable_pipeline_optimization",
             "skip_unused_descriptor_transfers",
             "spirv_descriptor_access",
+            "disable_overlap_aliasing",
             "diagnostic_bisection",
             "binary-search fault isolation",
             "api_cpu_baseline",
@@ -290,6 +291,11 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn('\\"disable_pipeline_optimization\\":%s', source)
         self.assertIn('\\"skip_unused_descriptor_transfers\\":%s', source)
         self.assertIn('\\"spirv_descriptor_access\\":%s', source)
+        self.assertIn('\\"disable_overlap_aliasing\\":%s', source)
+        self.assertIn('\\"pre_barriers\\":%u,\\"post_barriers\\":%u', source)
+        self.assertIn("vkCmdPipelineBarrier(command_buffer,", source)
+        self.assertIn("VK_ACCESS_HOST_WRITE_BIT", source)
+        self.assertIn("VK_ACCESS_SHADER_WRITE_BIT", source)
         self.assertIn('\\"gpu_after_upload_hash\\":\\"0x%016llx\\"', source)
         self.assertIn("const int disable_pipeline_optimization =", source)
 
@@ -299,6 +305,7 @@ class GpuAbiContractTest(unittest.TestCase):
         for key in [
             "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION",
             "PDOCKER_GPU_MUTABLE_BUFFER_CACHE_MAX_BYTES",
+            "PDOCKER_GPU_DISABLE_OVERLAP_ALIASING",
             "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
             "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
             "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
@@ -328,6 +335,17 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("disable_pipeline_optimization=%u", icd)
         self.assertIn("skip_unused_descriptor_transfers=%u", icd)
         self.assertIn("use_spirv_descriptor_access=%u", icd)
+        self.assertIn("disable_overlap_aliasing=%u", icd)
+        self.assertIn("PDOCKER_GPU_DISPATCH_PROFILE_LOG", icd)
+        self.assertIn("const size_t max_response = 1024 * 1024", icd)
+        self.assertIn("char stack_line[16384]", icd)
+        self.assertIn("char *heap_line = NULL", icd)
+        self.assertIn("memcpy(next, line, line_off)", icd)
+        self.assertIn("free(heap_line)", icd)
+        self.assertIn("per-call/per-thread state, never shared globally", icd)
+        self.assertIn("growth is geometric and capped", icd)
+        self.assertIn("if (next_cap < line_cap)", icd)
+        self.assertIn("rc = -EOVERFLOW", icd)
         self.assertIn("disable_storage8=%u", icd)
         self.assertIn("disable_storage16=%u", icd)
         self.assertIn("disable_subgroup_arithmetic=%u", icd)
@@ -400,6 +418,8 @@ class GpuAbiContractTest(unittest.TestCase):
         compare = LLAMA_COMPARE.read_text()
         self.assertIn("PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1", compare)
         self.assertIn("PDOCKER_GPU_DISPATCH_PROFILE_LOG=1", compare)
+        self.assertIn("descriptor_array_layout_seen", compare)
+        self.assertIn("descriptor_array_layouts", compare)
         self.assertIn("PDOCKER_LLAMA_BENCH_WARMUP_DISCARD", compare)
         self.assertIn("gpu_summary_scope", compare)
         for field in [

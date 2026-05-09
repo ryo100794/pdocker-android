@@ -482,6 +482,8 @@ typedef struct {
     int skip_unused_descriptor_transfers;
     int has_use_spirv_descriptor_access;
     int use_spirv_descriptor_access;
+    int has_disable_overlap_aliasing;
+    int disable_overlap_aliasing;
     int disable_storage8;
     int disable_storage16;
     int disable_subgroup_arithmetic;
@@ -1384,6 +1386,22 @@ static int parse_vulkan_dispatch_option(VulkanDispatchOptions *options, const ch
             strcasecmp(value, "no") == 0 || strcasecmp(value, "off") == 0) {
             options->has_use_spirv_descriptor_access = 1;
             options->use_spirv_descriptor_access = 0;
+            return 0;
+        }
+        return -1;
+    }
+    if (strncmp(token, "disable_overlap_aliasing=", 25) == 0) {
+        const char *value = token + 25;
+        if (strcmp(value, "1") == 0 || strcasecmp(value, "true") == 0 ||
+            strcasecmp(value, "yes") == 0 || strcasecmp(value, "on") == 0) {
+            options->has_disable_overlap_aliasing = 1;
+            options->disable_overlap_aliasing = 1;
+            return 0;
+        }
+        if (strcmp(value, "0") == 0 || strcasecmp(value, "false") == 0 ||
+            strcasecmp(value, "no") == 0 || strcasecmp(value, "off") == 0) {
+            options->has_disable_overlap_aliasing = 1;
+            options->disable_overlap_aliasing = 0;
             return 0;
         }
         return -1;
@@ -3439,6 +3457,10 @@ static int run_vulkan_dispatch_fd(
         options && options->has_use_spirv_descriptor_access
             ? options->use_spirv_descriptor_access
             : env_truthy("PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS", 1);
+    const int disable_overlap_aliasing =
+        options && options->has_disable_overlap_aliasing
+            ? options->disable_overlap_aliasing
+            : env_truthy("PDOCKER_GPU_DISABLE_OVERLAP_ALIASING", 0);
     const int dirty_probe_enabled = options && options->has_dirty_probe
         ? options->dirty_probe
         : writeonly_dirty_probe_enabled();
@@ -3639,28 +3661,30 @@ static int run_vulkan_dispatch_fd(
             binding_fd_ino[i] = st.st_ino;
         }
     }
-    for (size_t i = 0; i < binding_count; ++i) {
-        if (!active_bindings[i] || !binding_fd_ino[i]) continue;
-        for (size_t j = 0; j < i; ++j) {
-            if (!active_bindings[j] || !binding_fd_ino[j]) continue;
-            const off_t i0 = bindings[i].offset;
-            const off_t i1 = bindings[i].offset + (off_t)bindings[i].size;
-            const off_t j0 = bindings[j].offset;
-            const off_t j1 = bindings[j].offset + (off_t)bindings[j].size;
-            if (binding_fd_dev[i] == binding_fd_dev[j] &&
-                binding_fd_ino[i] == binding_fd_ino[j] &&
-                i0 < j1 && j0 < i1) {
-                size_t old_rep = binding_alias_rep[i];
-                size_t new_rep = binding_alias_rep[j] < old_rep
-                    ? binding_alias_rep[j]
-                    : old_rep;
-                for (size_t k = 0; k < binding_count; ++k) {
-                    if (binding_alias_rep[k] == old_rep ||
-                        binding_alias_rep[k] == binding_alias_rep[j]) {
-                        binding_alias_rep[k] = new_rep;
+    if (!disable_overlap_aliasing) {
+        for (size_t i = 0; i < binding_count; ++i) {
+            if (!active_bindings[i] || !binding_fd_ino[i]) continue;
+            for (size_t j = 0; j < i; ++j) {
+                if (!active_bindings[j] || !binding_fd_ino[j]) continue;
+                const off_t i0 = bindings[i].offset;
+                const off_t i1 = bindings[i].offset + (off_t)bindings[i].size;
+                const off_t j0 = bindings[j].offset;
+                const off_t j1 = bindings[j].offset + (off_t)bindings[j].size;
+                if (binding_fd_dev[i] == binding_fd_dev[j] &&
+                    binding_fd_ino[i] == binding_fd_ino[j] &&
+                    i0 < j1 && j0 < i1) {
+                    size_t old_rep = binding_alias_rep[i];
+                    size_t new_rep = binding_alias_rep[j] < old_rep
+                        ? binding_alias_rep[j]
+                        : old_rep;
+                    for (size_t k = 0; k < binding_count; ++k) {
+                        if (binding_alias_rep[k] == old_rep ||
+                            binding_alias_rep[k] == binding_alias_rep[j]) {
+                            binding_alias_rep[k] = new_rep;
+                        }
                     }
+                    break;
                 }
-                break;
             }
         }
     }
@@ -3974,8 +3998,56 @@ static int run_vulkan_dispatch_fd(
     if (rc != VK_SUCCESS) { fail_stage = "begin-generic-command-buffer"; goto cleanup; }
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_layout, 0, 1, &descriptor_set, 0, NULL);
+    VkBufferMemoryBarrier pre_barriers[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint32_t pre_barrier_count = 0;
+    for (size_t i = 0; i < binding_count && pre_barrier_count < PDOCKER_GPU_MAX_VULKAN_BINDINGS; ++i) {
+        if (!active_bindings[i] || !vk_buffers[i] || !vk_buffers[i]->buffer) continue;
+        pre_barriers[pre_barrier_count++] = (VkBufferMemoryBarrier){
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = vk_buffers[i]->buffer,
+            .offset = (VkDeviceSize)binding_gpu_offset[i],
+            .size = (VkDeviceSize)bindings[i].size,
+        };
+    }
+    if (pre_barrier_count) {
+        vkCmdPipelineBarrier(command_buffer,
+                             VK_PIPELINE_STAGE_HOST_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             0,
+                             0, NULL,
+                             pre_barrier_count, pre_barriers,
+                             0, NULL);
+    }
     if (push_size) vkCmdPushConstants(command_buffer, pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, (uint32_t)push_size, push);
     vkCmdDispatch(command_buffer, gx ? gx : 1, gy ? gy : 1, gz ? gz : 1);
+    VkBufferMemoryBarrier post_barriers[PDOCKER_GPU_MAX_VULKAN_BINDINGS];
+    uint32_t post_barrier_count = 0;
+    for (size_t i = 0; i < binding_count && post_barrier_count < PDOCKER_GPU_MAX_VULKAN_BINDINGS; ++i) {
+        if (!active_bindings[i] || !binding_write_needed[i] || !vk_buffers[i] || !vk_buffers[i]->buffer) continue;
+        post_barriers[post_barrier_count++] = (VkBufferMemoryBarrier){
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = vk_buffers[i]->buffer,
+            .offset = (VkDeviceSize)binding_gpu_offset[i],
+            .size = (VkDeviceSize)bindings[i].size,
+        };
+    }
+    if (post_barrier_count) {
+        vkCmdPipelineBarrier(command_buffer,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT,
+                             0,
+                             0, NULL,
+                             post_barrier_count, post_barriers,
+                             0, NULL);
+    }
     rc = vkEndCommandBuffer(command_buffer);
     if (rc != VK_SUCCESS) { fail_stage = "end-generic-command-buffer"; goto cleanup; }
     VkFenceCreateInfo fci = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
@@ -4128,23 +4200,28 @@ static int run_vulkan_dispatch_fd(
                 "\"bindings\":%zu,\"dispatch\":[%u,%u,%u],"
                 "\"skip_unused_descriptor_transfers\":%s,"
                 "\"spirv_descriptor_access\":%s,"
+                "\"disable_overlap_aliasing\":%s,"
                 "\"descriptor_aliases\":%zu,\"duplicate_descriptor_rewrite\":%s,"
                 "\"materialize_specialization\":%s,"
                 "\"disable_pipeline_optimization\":%s,"
                 "\"specialization_materialized\":%s,"
                 "\"resident_bytes\":%zu,\"mutable_bytes\":%zu,"
+                "\"pre_barriers\":%u,\"post_barriers\":%u,"
                 "\"valid\":true,",
                 PDOCKER_GPU_COMMAND_API, PDOCKER_GPU_ABI_VERSION,
                 shader_size, entry_name, specialization_count, binding_count, gx, gy, gz,
                 skip_unused_descriptor_transfers ? "true" : "false",
                 use_spirv_descriptor_access ? "true" : "false",
+                disable_overlap_aliasing ? "true" : "false",
                 binding_alias_count,
                 rewrite_duplicate_descriptors ? "true" : "false",
                 materialize_specialization_constants ? "true" : "false",
                 disable_pipeline_optimization ? "true" : "false",
                 specialization_materialized ? "true" : "false",
                 resident_bytes,
-                mutable_bytes);
+                mutable_bytes,
+                pre_barrier_count,
+                post_barrier_count);
         write_vulkan_binding_compact_report(json_out(), bindings, binding_count,
                                             vk_buffers,
                                             binding_gpu_offset,
@@ -4190,11 +4267,13 @@ static int run_vulkan_dispatch_fd(
             "\"backend_cached\":%s,\"pipeline_cache\":{\"hit\":%s,\"entries\":%u},"
             "\"skip_unused_descriptor_transfers\":%s,"
             "\"spirv_descriptor_access\":%s,"
+            "\"disable_overlap_aliasing\":%s,"
             "\"descriptor_aliases\":%zu,\"duplicate_descriptor_rewrite\":%s,"
             "\"materialize_specialization\":%s,"
             "\"disable_pipeline_optimization\":%s,"
             "\"specialization_materialized\":%s,"
             "\"profile_response\":%s,"
+            "\"pre_barriers\":%u,\"post_barriers\":%u,"
             "\"upload_ms\":%.4f,\"dispatch_ms\":%.4f,\"download_ms\":%.4f,"
             "\"resident_cache\":{\"enabled\":%s,\"resident_bindings\":%zu,"
             "\"hits\":%zu,\"bytes\":%zu},"
@@ -4212,12 +4291,15 @@ static int run_vulkan_dispatch_fd(
             PDOCKER_GPU_PIPELINE_CACHE_SLOTS,
             skip_unused_descriptor_transfers ? "true" : "false",
             use_spirv_descriptor_access ? "true" : "false",
+            disable_overlap_aliasing ? "true" : "false",
             binding_alias_count,
             rewrite_duplicate_descriptors ? "true" : "false",
             materialize_specialization_constants ? "true" : "false",
             disable_pipeline_optimization ? "true" : "false",
             specialization_materialized ? "true" : "false",
             profile_response ? "true" : "false",
+            pre_barrier_count,
+            post_barrier_count,
             upload_ms, dispatch_ms, download_ms,
             env_truthy("PDOCKER_GPU_RESIDENT_CACHE", 1) ? "true" : "false",
             resident_count, hit_count, resident_bytes,

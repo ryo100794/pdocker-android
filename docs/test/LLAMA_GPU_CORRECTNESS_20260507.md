@@ -275,3 +275,28 @@ against a hard-coded arithmetic answer.
   visibility rather than in descriptor delivery.
 - Keep performance claims blocked while
   `gpu.correctness.summary.benchmark_claim_allowed` is false.
+
+## 2026-05-09 Follow-up: Response Capture and Descriptor/Barrier Splits
+
+The executor response reader in the Vulkan ICD was hardened after the final
+projection trace exceeded the old fixed 4 KiB response buffer.  The current
+reader is stack-first, grows geometrically only for large diagnostic JSON, has a
+1 MiB cap, and keeps the heap buffer local to the dispatch call.  This prevents
+diagnostic truncation without introducing shared mutable state in the ICD.
+
+Recent NGL=1 evidence keeps the same conclusion: GPU offload is real, but
+correctness is still blocked before sampling.
+
+| Artifact | Variant | Config propagation | Key observation |
+|---|---|---|---|
+| `llama-gpu-final-layout-full-response-stack-20260509-ngl1.json` | full final-projection response after stack-first capture | n/a | complete final-projection evidence captured; output remains `+`, `细细`, empty |
+| `llama-gpu-final-layout-no-dup-all-readwrite-20260509-ngl1.json` | duplicate descriptor rewrite disabled, conservative descriptor transfers | pass | duplicate rewrite is not the sole cause; output changes but remains wrong |
+| `llama-gpu-descriptor-array-probe-20260509-ngl1.json` | descriptor-array layout tracing enabled | pass | `descriptor_array_layout_seen=false` for this path |
+| `llama-gpu-no-specialize-no-dup-all-readwrite-20260509-ngl1.json` | specialization materialization disabled | pass | specialization materialization changes output shape but does not restore CPU parity |
+| `llama-gpu-no-overlap-no-specialize-20260509-ngl1.json` | overlap aliasing disabled | pass | overlap handling affects logits, but disabling it is not a fix |
+| `llama-gpu-barrier-no-overlap-20260509-ngl1.json` | explicit host/compute memory barriers added | pass | barriers are recorded, but correctness still fails in the no-overlap/no-specialize path |
+
+Current active branch: the upload path and simple environment propagation are
+now less likely.  The next split should stay around final projection numeric
+semantics: quantized storage interpretation, descriptor/push layout, and exact
+logit buffer layout against the CPU/no-offload control.
