@@ -68,6 +68,7 @@ typedef struct PdockerVkFence PdockerVkFence;
 #define PDOCKER_VK_MAX_COPY_ALIASES 128
 #define PDOCKER_VK_ALIAS_MIN_SOURCE_BYTES (64ull * 1024ull * 1024ull)
 #define PDOCKER_VK_MAX_GUARDED_MEMORIES 256
+#define PDOCKER_VULKAN_ICD_BUILD_MARKER "vulkan-icd-runtime-marker-20260510"
 #define PDOCKER_VK_GUARDED_DEFAULT_MIN_BYTES (64ull * 1024ull * 1024ull)
 
 struct PdockerVkMemory {
@@ -374,6 +375,14 @@ static VkDeviceSize pdocker_vulkan_host_heap_size(void) {
 
 static bool trace_allocations(void) {
     return getenv("PDOCKER_VULKAN_ICD_TRACE_ALLOC") != NULL;
+}
+
+static void trace_icd_runtime_failure(const char *stage, int rc) {
+    fprintf(stderr,
+            "pdocker-vulkan-icd: runtime_marker=%s stage=%s rc=%d\n",
+            PDOCKER_VULKAN_ICD_BUILD_MARKER,
+            stage ? stage : "unknown",
+            rc);
 }
 
 static bool copy_alias_enabled(void) {
@@ -768,6 +777,13 @@ static int send_generic_vulkan_dispatch_op(const PdockerVkDispatchOp *op) {
         n = snprintf(command + off, sizeof(command) - off,
                      " writeonly_cache=%u",
                      env_truthy_default("PDOCKER_GPU_WRITEONLY_BUFFER_CACHE", false) ? 1u : 0u);
+        if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
+        off += (size_t)n;
+    }
+    if (getenv("PDOCKER_GPU_MUTABLE_BUFFER_CACHE")) {
+        n = snprintf(command + off, sizeof(command) - off,
+                     " mutable_cache=%u",
+                     env_truthy_default("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", true) ? 1u : 0u);
         if (n < 0 || (size_t)n >= sizeof(command) - off) return -ENAMETOOLONG;
         off += (size_t)n;
     }
@@ -2796,10 +2812,12 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
                                 PdockerVkDispatchOp *dispatch = &cmd->dispatch_ops[op->index];
                                 if (!dispatch->pipeline || !dispatch->pipeline->shader ||
                                     dispatch->pipeline->shader->code_size <= sizeof(uint32_t)) {
+                                    trace_icd_runtime_failure("dispatch-missing-shader", VK_ERROR_FEATURE_NOT_PRESENT);
                                     return VK_ERROR_FEATURE_NOT_PRESENT;
                                 }
                                 int generic_rc = send_generic_vulkan_dispatch_op(dispatch);
                                 if (generic_rc != 0) {
+                                    trace_icd_runtime_failure("generic-dispatch-op", generic_rc);
                                     if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                                         fprintf(stderr,
                                                 "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d op=%u/%u code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",
@@ -2863,6 +2881,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
                         PdockerVkDispatchOp *op = &cmd->dispatch_ops[op_index];
                         int generic_rc = send_generic_vulkan_dispatch_op(op);
                         if (generic_rc != 0) {
+                            trace_icd_runtime_failure("generic-dispatch-list", generic_rc);
                             if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                                 fprintf(stderr,
                                         "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d op=%u/%u code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",
@@ -2891,6 +2910,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
             if (cmd->pipeline && cmd->pipeline->shader && cmd->pipeline->shader->code_size > sizeof(uint32_t)) {
                 int generic_rc = send_generic_vulkan_dispatch(cmd);
                 if (generic_rc == 0) continue;
+                trace_icd_runtime_failure("generic-dispatch-single", generic_rc);
                 if (trace_allocations() || getenv("PDOCKER_VULKAN_ICD_DEBUG")) {
                     fprintf(stderr,
                             "pdocker-vulkan-icd: generic SPIR-V dispatch failed rc=%d code_size=%zu first_word=0x%08x dispatch=%u,%u,%u push=%u\n",

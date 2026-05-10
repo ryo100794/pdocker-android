@@ -26,6 +26,9 @@ CPU_TPS_OVERRIDE="${PDOCKER_LLAMA_CPU_TPS:-}"
 TRACE_ALLOC="${PDOCKER_LLAMA_TRACE_ALLOC:-0}"
 CORRECTNESS="${PDOCKER_LLAMA_CORRECTNESS:-1}"
 LOG_TAIL_LINES="${PDOCKER_LLAMA_LOG_TAIL_LINES:-2000}"
+RESTART_APP_DAEMON="${PDOCKER_LLAMA_RESTART_APP_DAEMON:-1}"
+EXPECTED_GPU_EXECUTOR_MARKER="${PDOCKER_GPU_EXECUTOR_EXPECTED_MARKER:-gpu-executor-core-feature-chain-20260510}"
+EXPECTED_VULKAN_ICD_MARKER="${PDOCKER_VULKAN_ICD_EXPECTED_MARKER:-vulkan-icd-runtime-marker-20260510}"
 OP_ID="llama-gpu-compare-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 CURRENT_CONTAINER_ID=""
 
@@ -112,6 +115,20 @@ start_daemon_for_test() {
   "$ADB" shell am broadcast \
     -n "$PKG/$CLASS_PREFIX.PdockerdDebugReceiver" \
     -a "$ACTION_PREFIX.action.SMOKE_START" >/dev/null 2>&1 || true
+}
+
+restart_app_daemon_for_test() {
+  # Native executor binaries are loaded by the long-lived pdockerd process.  A
+  # reinstall alone can leave old executors alive, which makes GPU bridge tests
+  # appear to run new code while actually exercising stale code.  Kill only for
+  # this repeatable test route; normal UI operation is not changed.
+  if [[ "$RESTART_APP_DAEMON" != "1" ]]; then
+    return 0
+  fi
+  "$ADB" shell "run-as $PKG sh -c 'pkill -f pdocker-gpu-executor 2>/dev/null; pkill -f pdocker-media-executor 2>/dev/null; pkill -f pdockerd 2>/dev/null; true'" >/dev/null 2>&1 || true
+  "$ADB" shell am kill "$PKG" >/dev/null 2>&1 || true
+  sleep 1
+  start_daemon_for_test
 }
 
 operation_notify() {
@@ -246,6 +263,8 @@ env = [
     f"LLAMA_ARG_CTX={ctx}",
     f"LLAMA_ARG_PORT={port}",
     "LLAMA_LOG_FILE=/workspace/logs/llama-server.log",
+    f"PDOCKER_GPU_EXECUTOR_EXPECTED_MARKER={os.environ.get('PDOCKER_GPU_EXECUTOR_EXPECTED_MARKER', 'gpu-executor-core-feature-chain-20260510')}",
+    f"PDOCKER_VULKAN_ICD_EXPECTED_MARKER={os.environ.get('PDOCKER_VULKAN_ICD_EXPECTED_MARKER', 'vulkan-icd-runtime-marker-20260510')}",
 ]
 if model_url:
     env.append(f"LLAMA_MODEL_URL={model_url}")
@@ -282,6 +301,14 @@ for key in [
     "PDOCKER_GPU_WRITEONLY_DIRTY_WRITEBACK",
     "PDOCKER_GPU_DISPATCH_PROFILE_LOG",
     "PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE",
+    "PDOCKER_GPU_MUTABLE_BUFFER_CACHE",
+    "PDOCKER_GPU_VIRTUAL_MEMORY",
+    "PDOCKER_GPU_VIRTUAL_MEMORY_MIN_BYTES",
+    "PDOCKER_GPU_DISABLE_ANDROID_VULKAN",
+    "PDOCKER_GPU_DISABLE_ANDROID_OPENCL",
+    "PDOCKER_ANDROID_OPENCL_LIBRARY",
+    "PDOCKER_VULKAN_HEAP_BYTES",
+    "PDOCKER_VULKAN_ICD_DEBUG",
     "PDOCKER_VULKAN_ALIAS_COPIES",
     "PDOCKER_VULKAN_DISABLE_8BIT_STORAGE",
     "PDOCKER_VULKAN_DISABLE_16BIT_STORAGE",
@@ -537,6 +564,7 @@ print(json.dumps(summary, indent=2))
 PY
 }
 
+restart_app_daemon_for_test
 wait_for_engine
 DEVICE_PROJECT="$(run_as "cd $(remote_quote "$PROJECT") && pwd" | tr -d '\r')"
 DEVICE_MODEL_HOST="$(run_as "cd $(remote_quote "$PROJECT") && . ./.env >/dev/null 2>&1 && printf '%s' \"\${PDOCKER_MODEL_HOST:-$DEVICE_PROJECT/models}\"" | tr -d '\r')"
@@ -819,15 +847,26 @@ def extract_executor_json_events(text):
 def observed_event_values(events, field):
     values = []
     for event in events:
-        if isinstance(event, dict) and field in event:
-            values.append(event.get(field))
+        if not isinstance(event, dict):
+            continue
+        current = event
+        found = True
+        for part in field.split("."):
+            if isinstance(current, dict) and part in current:
+                current = current.get(part)
+            else:
+                found = False
+                break
+        if found:
+            values.append(current)
     return values
 
 def parse_android_feature_trace(text):
     m = re.search(
-        r"pdocker-gpu-executor: Android Vulkan features api=([0-9]+)\.([0-9]+) "
+        r"pdocker-gpu-executor: Android Vulkan features (?:build_marker=([^ ]+) )?api=([0-9]+)\.([0-9]+) .*?"
         r"shaderInt64=([0-9]+) "
         r"storage16=\{ssbo:([0-9]+),ubo_ssbo:([0-9]+),push:([0-9]+),io:([0-9]+)\} "
+        r"storage8=\{ssbo:([0-9]+),ubo_ssbo:([0-9]+),push:([0-9]+)\} "
         r"float16=([0-9]+) int8=([0-9]+) "
         r"subgroup=\{size:([0-9]+),stages:0x([0-9a-fA-F]+),ops:0x([0-9a-fA-F]+)\}",
         text,
@@ -835,20 +874,26 @@ def parse_android_feature_trace(text):
     if not m:
         return {}
     return {
-        "api_version": f"{m.group(1)}.{m.group(2)}",
-        "shader_int64": bool(int(m.group(3))),
+        "executor_build_marker": m.group(1) or "",
+        "api_version": f"{m.group(2)}.{m.group(3)}",
+        "shader_int64": bool(int(m.group(4))),
         "storage16": {
-            "ssbo": bool(int(m.group(4))),
-            "ubo_ssbo": bool(int(m.group(5))),
-            "push": bool(int(m.group(6))),
-            "io": bool(int(m.group(7))),
+            "ssbo": bool(int(m.group(5))),
+            "ubo_ssbo": bool(int(m.group(6))),
+            "push": bool(int(m.group(7))),
+            "io": bool(int(m.group(8))),
         },
-        "shader_float16": bool(int(m.group(8))),
-        "shader_int8": bool(int(m.group(9))),
+        "storage8": {
+            "ssbo": bool(int(m.group(9))),
+            "ubo_ssbo": bool(int(m.group(10))),
+            "push": bool(int(m.group(11))),
+        },
+        "shader_float16": bool(int(m.group(12))),
+        "shader_int8": bool(int(m.group(13))),
         "subgroup": {
-            "size": int(m.group(10)),
-            "stages": f"0x{int(m.group(11), 16):x}",
-            "ops": f"0x{int(m.group(12), 16):x}",
+            "size": int(m.group(14)),
+            "stages": f"0x{int(m.group(15), 16):x}",
+            "ops": f"0x{int(m.group(16), 16):x}",
         },
     }
 
@@ -890,6 +935,9 @@ config_expectations = [
     ("PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS", "spirv_descriptor_access"),
     ("PDOCKER_GPU_DISABLE_OVERLAP_ALIASING", "disable_overlap_aliasing"),
     ("PDOCKER_GPU_CPU_ORACLE", "cpu_oracle_requested"),
+    ("PDOCKER_GPU_Q6K_SAFE_KERNEL", "q6k_safe_kernel"),
+    ("PDOCKER_GPU_Q6K_ORACLE_WRITEBACK", "cpu_oracle.oracle_writeback"),
+    ("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", "mutable_buffer_cache.enabled"),
 ]
 config_checks = []
 for env_name, event_field in config_expectations:
@@ -899,6 +947,8 @@ for env_name, event_field in config_expectations:
         status = "not-requested"
     elif not observed:
         status = "missing-evidence"
+    elif env_name in {"PDOCKER_GPU_Q6K_SAFE_KERNEL", "PDOCKER_GPU_Q6K_ORACLE_WRITEBACK"} and expected in observed:
+        status = "pass"
     elif all(value == expected for value in observed):
         status = "pass"
     else:
@@ -913,6 +963,31 @@ for env_name, event_field in config_expectations:
 config_propagation = {
     "summary": "fail" if any(item["status"] in {"missing-evidence", "mismatch"} for item in config_checks) else "pass",
     "checks": config_checks,
+}
+expected_executor_marker = os.environ.get("PDOCKER_GPU_EXECUTOR_EXPECTED_MARKER", "gpu-executor-core-feature-chain-20260510")
+expected_icd_marker = os.environ.get("PDOCKER_VULKAN_ICD_EXPECTED_MARKER", "vulkan-icd-runtime-marker-20260510")
+observed_executor_markers = sorted({
+    str(e.get("executor_build_marker"))
+    for e in executor_events
+    if e.get("executor_build_marker")
+} | set(re.findall(r"build_marker=([^\s,}]+)", log)))
+observed_icd_markers = sorted(set(re.findall(r"runtime_marker=([^\s,}]+)", log)))
+runtime_freshness = {
+    "summary": (
+        "pass"
+        if (
+            (expected_executor_marker and expected_executor_marker in observed_executor_markers) or
+            (expected_icd_marker and expected_icd_marker in observed_icd_markers)
+        )
+        else "not-requested"
+        if not expected_executor_marker and not expected_icd_marker
+        else "fail"
+    ),
+    "expected_executor_marker": expected_executor_marker,
+    "expected_icd_marker": expected_icd_marker,
+    "observed_executor_markers": observed_executor_markers[-8:],
+    "observed_icd_markers": observed_icd_markers[-8:],
+    "executor_event_count": len(executor_events),
 }
 api_trace_binding_samples = []
 api_trace_missing = 0
@@ -1054,6 +1129,9 @@ elif pipeline_feature_blocker:
 elif generic_spirv_dispatch_blocker:
     blocker_class = "vulkan_generic_spirv_dispatch"
     blocker_detail = "generic SPIR-V dispatch reached submit-generic-dispatch / queue submit failure"
+elif runtime_freshness["summary"] == "fail":
+    blocker_class = "runtime_freshness_mismatch"
+    blocker_detail = "expected GPU executor build marker was not observed; test may be running stale native code or missing executor evidence"
 elif queue_submit_blocker:
     blocker_class = "vulkan_queue_submit_feature"
     blocker_detail = "llama.cpp submitted a Vulkan workload, but vkQueueSubmit failed with ErrorFeatureNotPresent before the executor trace boundary"
@@ -1537,6 +1615,7 @@ result = {
             "executor_backends": executor_backends,
             "executor_errors": executor_errors,
             "spirv_hashes": spirv_hashes[-4:],
+            "runtime_freshness": runtime_freshness,
             "config_propagation": config_propagation,
             "api_understanding": api_understanding,
             "diagnostic_bisection": diagnostic_bisection,

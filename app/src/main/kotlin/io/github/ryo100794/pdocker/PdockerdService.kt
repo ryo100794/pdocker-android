@@ -63,6 +63,14 @@ class PdockerdService : Service() {
         startInForeground()
         if (pdockerThread == null || !pdockerThread!!.isAlive) {
             startPdockerd()
+        } else {
+            // A dev reinstall or Android process trim can leave pdockerd alive
+            // while helper executors are gone.  Re-arm helpers on every start
+            // intent so GPU/media bridge tests cannot silently run with stale or
+            // missing sidecar processes.
+            val runtime = PdockerdRuntime.prepare(applicationContext)
+            startGpuExecutor(runtime)
+            startMediaExecutor(runtime)
         }
         return START_STICKY
     }
@@ -162,8 +170,20 @@ class PdockerdService : Service() {
         }, "pdockerd").also { it.start() }
     }
 
+    private fun killStaleSidecar(processName: String) {
+        runCatching {
+            ProcessBuilder("sh", "-c", "pkill -f '$processName' 2>/dev/null || true")
+                .redirectErrorStream(true)
+                .start()
+                .waitFor()
+        }.onFailure {
+            Log.d(TAG, "stale sidecar cleanup skipped for $processName", it)
+        }
+    }
+
     private fun startGpuExecutor(runtime: File) {
         if (gpuExecutorProcess?.isAlive == true) return
+        killStaleSidecar("pdocker-gpu-executor")
         val executor = File(runtime, "gpu/pdocker-gpu-executor")
         if (!executor.canExecute()) {
             Log.i(TAG, "GPU executor unavailable at $executor")
@@ -196,6 +216,7 @@ class PdockerdService : Service() {
 
     private fun startMediaExecutor(runtime: File) {
         if (mediaExecutorProcess?.isAlive == true) return
+        killStaleSidecar("pdocker-media-executor")
         val mediaDir = File(runtime, "media").apply { mkdirs() }
         writeMediaDescriptor(mediaDir)
         val executor = File(mediaDir, "pdocker-media-executor")

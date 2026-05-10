@@ -9,6 +9,7 @@ CONTAINER_HEADER = ROOT / "docker-proot-setup" / "src" / "gpu" / "pdocker_gpu_ab
 GPU_EXECUTOR = ROOT / "app" / "src" / "main" / "cpp" / "pdocker_gpu_executor.c"
 VULKAN_ICD = ROOT / "docker-proot-setup" / "src" / "gpu" / "pdocker_vulkan_icd.c"
 LLAMA_COMPARE = ROOT / "scripts" / "android-llama-gpu-compare.sh"
+PDOCKERD_SERVICE = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "PdockerdService.kt"
 
 
 def defines(path):
@@ -33,6 +34,9 @@ class GpuAbiContractTest(unittest.TestCase):
 
     def test_vulkan_dispatch_reports_binding_diagnostics(self):
         source = GPU_EXECUTOR.read_text()
+        self.assertIn("PDOCKER_GPU_EXECUTOR_BUILD_MARKER", source)
+        self.assertIn('\\"executor_build_marker\\":\\"%s\\"', source)
+        self.assertIn("build_marker=%s", source)
         self.assertIn('\\"binding_details\\":[', source)
         self.assertIn("profile_response", source)
         self.assertIn("PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE", source)
@@ -102,6 +106,42 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("sample_memory_hash(", source)
         self.assertIn("binding_upload_ms[i] = now_ms() - binding_start;", source)
         self.assertIn("binding_download_ms[i] = now_ms() - binding_start;", source)
+
+    def test_llama_gpu_compare_restarts_stale_daemon_and_checks_runtime_marker(self):
+        compare = LLAMA_COMPARE.read_text()
+        service = PDOCKERD_SERVICE.read_text()
+        self.assertIn("RESTART_APP_DAEMON", compare)
+        self.assertIn("restart_app_daemon_for_test", compare)
+        self.assertIn("pkill -f pdocker-gpu-executor", compare)
+        self.assertIn("EXPECTED_GPU_EXECUTOR_MARKER", compare)
+        self.assertIn("PDOCKER_GPU_EXECUTOR_EXPECTED_MARKER", compare)
+        self.assertIn("EXPECTED_VULKAN_ICD_MARKER", compare)
+        self.assertIn("PDOCKER_VULKAN_ICD_EXPECTED_MARKER", compare)
+        self.assertIn("observed_icd_markers", compare)
+        self.assertIn("runtime_freshness", compare)
+        self.assertIn("runtime_freshness_mismatch", compare)
+        self.assertIn("executor_build_marker", compare)
+        self.assertIn("runtime_marker", VULKAN_ICD.read_text())
+        self.assertIn("while helper executors are gone", service)
+        self.assertIn("killStaleSidecar", service)
+        self.assertIn("pkill -f '$processName'", service)
+        self.assertIn("startGpuExecutor(runtime)", service)
+        self.assertIn("startMediaExecutor(runtime)", service)
+
+    def test_llama_gpu_compare_tracks_critical_env_propagation(self):
+        compare = LLAMA_COMPARE.read_text()
+        for env_name, field_name in [
+            ("PDOCKER_GPU_CPU_ORACLE", "cpu_oracle_requested"),
+            ("PDOCKER_GPU_Q6K_SAFE_KERNEL", "q6k_safe_kernel"),
+            ("PDOCKER_GPU_Q6K_ORACLE_WRITEBACK", "cpu_oracle.oracle_writeback"),
+            ("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", "mutable_buffer_cache.enabled"),
+            ("PDOCKER_GPU_MATERIALIZE_SPIRV_SPECIALIZATION_CONSTANTS", "materialize_specialization"),
+            ("PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS", "spirv_descriptor_access"),
+        ]:
+            self.assertIn(env_name, compare)
+            self.assertIn(field_name, compare)
+        source = GPU_EXECUTOR.read_text()
+        self.assertIn('\\"mutable_buffer_cache\\":{\\"enabled\\":%s,\\"max_bytes\\":%zu}', source)
 
     def test_vulkan_duplicate_binding_rewrite_avoids_passed_bindings(self):
         source = GPU_EXECUTOR.read_text()
@@ -335,6 +375,14 @@ class GpuAbiContractTest(unittest.TestCase):
             "PDOCKER_GPU_WRITEONLY_DIRTY_PROBE_MIN_BYTES",
             "PDOCKER_GPU_WRITEONLY_DIRTY_WRITEBACK",
             "PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE",
+            "PDOCKER_GPU_MUTABLE_BUFFER_CACHE",
+            "PDOCKER_GPU_VIRTUAL_MEMORY",
+            "PDOCKER_GPU_VIRTUAL_MEMORY_MIN_BYTES",
+            "PDOCKER_GPU_DISABLE_ANDROID_VULKAN",
+            "PDOCKER_GPU_DISABLE_ANDROID_OPENCL",
+            "PDOCKER_ANDROID_OPENCL_LIBRARY",
+            "PDOCKER_VULKAN_HEAP_BYTES",
+            "PDOCKER_VULKAN_ICD_DEBUG",
         ]:
             self.assertIn(f'"{key}"', compare)
         self.assertIn("value = os.environ.get(key)", compare)
@@ -352,6 +400,7 @@ class GpuAbiContractTest(unittest.TestCase):
             self.assertIn(marker, source)
         icd = VULKAN_ICD.read_text()
         self.assertIn("rewrite_duplicate_descriptors=%u", icd)
+        self.assertIn("mutable_cache=%u", icd)
         self.assertIn("materialize_specialization=%u", icd)
         self.assertIn("disable_pipeline_optimization=%u", icd)
         self.assertIn("skip_unused_descriptor_transfers=%u", icd)
@@ -442,6 +491,28 @@ class GpuAbiContractTest(unittest.TestCase):
         compare = LLAMA_COMPARE.read_text()
         self.assertIn("PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1", compare)
         self.assertIn("PDOCKER_GPU_DISPATCH_PROFILE_LOG=1", compare)
+
+    def test_llama_gpu_compare_forwards_native_tuning_envs_by_default(self):
+        compare = LLAMA_COMPARE.read_text()
+        native_sources = GPU_EXECUTOR.read_text() + "\n" + VULKAN_ICD.read_text()
+        native_envs = set(re.findall(
+            r'getenv\("((?:PDOCKER_GPU|PDOCKER_VULKAN|PDOCKER_ANDROID)_[A-Z0-9_]+)"\)',
+            native_sources,
+        ))
+        native_envs |= set(re.findall(
+            r'env_truthy(?:_default)?\("((?:PDOCKER_GPU|PDOCKER_VULKAN|PDOCKER_ANDROID)_[A-Z0-9_]+)"',
+            native_sources,
+        ))
+        internal_only = {
+            "PDOCKER_GPU_QUEUE_SOCKET",
+            "PDOCKER_GPU_SHARED_DIR",
+        }
+        missing = sorted(
+            key for key in native_envs - internal_only
+            if f'"{key}"' not in compare and f"{key}=" not in compare
+        )
+        self.assertEqual([], missing)
+
         self.assertIn("descriptor_array_layout_seen", compare)
         self.assertIn("descriptor_array_layouts", compare)
         self.assertIn("ngl_zero_generic_spirv_dispatch", compare)
