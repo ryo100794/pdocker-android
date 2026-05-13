@@ -10,6 +10,11 @@ crash residue is not later treated as a valid image or layer.
 from __future__ import annotations
 
 import ast
+import json
+import shlex
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
 
@@ -18,6 +23,8 @@ PDOCKERD = ROOT / "docker-proot-setup/bin/pdockerd"
 ASSET_PDOCKERD = ROOT / "app/src/main/assets/pdockerd/pdockerd"
 TODO = ROOT / "docs/plan/TODO.md"
 COMPAT = ROOT / "docs/test/COMPATIBILITY.md"
+DEVICE_RUNNER = ROOT / "scripts/verify/runner/image_pull_crash_safety_device.py"
+DEVICE_SIDE_RUNNER = ROOT / "scripts/verify/runner/image-pull-crash-safety-device.sh"
 
 
 def fail(message: str) -> None:
@@ -92,6 +99,50 @@ def check_source(path: Path) -> None:
             "prune_build_artifacts(min_age_seconds=30, skip_active=True)" in main)
 
 
+def check_device_scenario_runner() -> None:
+    require("interrupted-pull device scenario runner exists", DEVICE_RUNNER.exists())
+    require("interrupted-pull device-side runner exists", DEVICE_SIDE_RUNNER.exists())
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "image-pull-crash-safety.json"
+        subprocess.run(
+            [sys.executable, str(DEVICE_RUNNER), "--adb", "__missing_adb_for_static_gate__", "--artifact", str(artifact)],
+            cwd=ROOT,
+            check=True,
+        )
+        data = json.loads(artifact.read_text())
+
+    require("device scenario artifact never fakes success without evidence",
+            data.get("status") == "planned-gap" and data.get("success") is False)
+    require("device scenario records schema version and id",
+            data.get("schema_version") == 1 and data.get("scenario_id") == "image.pull.interrupted-kill-restart")
+    require("device scenario points back to static plan gate",
+            data.get("plan_gate") == "python3 scripts/verify-image-pull-crash-safety.py")
+    require("device scenario records command plan",
+            isinstance(data.get("commands"), list) and len(data["commands"]) >= 8)
+    for command in data["commands"]:
+        tokens = shlex.split(command)
+        require(f"device scenario command is tokenizable: {command}", bool(tokens))
+        for token in tokens:
+            if token.startswith(("scripts/", "tests/", "docs/", "docker-proot-setup/")):
+                require(f"device scenario command path exists: {token}", (ROOT / token).exists())
+    required_evidence = {
+        "pull_log",
+        "daemon_log_before_kill",
+        "daemon_log_after_restart",
+        "store_listing_after_restart",
+        "image_inspect_after_restart",
+        "container_run_after_restart",
+    }
+    require("device scenario artifact schema records required evidence fields",
+            required_evidence <= set(data.get("artifact_schema", {}).get("evidence", {}).keys()))
+    negative = "\n".join(data.get("negative_expected_conditions", []))
+    require("device scenario records negative expected conditions",
+            all(term in negative for term in [".pull-", ".tmp-", "old tag", "inspect", "run"]))
+    cleanup = "\n".join(data.get("cleanup_policy", []))
+    require("device scenario records cleanup policy",
+            all(term in cleanup.lower() for term in ["collect", "unrelated", "success=false"]))
+
+
 def main() -> int:
     check_source(PDOCKERD)
     if ASSET_PDOCKERD.exists():
@@ -104,6 +155,7 @@ def main() -> int:
             "verify-image-pull-crash-safety.py" in todo)
     require("compatibility doc records remaining interrupted-pull device gap",
             "Interrupted-pull device kill" in compat)
+    check_device_scenario_runner()
     return 0
 
 

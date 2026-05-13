@@ -1,0 +1,168 @@
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+VERIFIER = ROOT / "scripts" / "verify-llama-gpu-artifact.py"
+
+
+def runtime_marker():
+    return {
+        "summary": "pass",
+        "expected_executor_marker": "gpu-executor-workgroup3d-20260513",
+        "observed_executor_markers": ["gpu-executor-workgroup3d-20260513"],
+        "observed_icd_markers": ["vulkan-icd-runtime-marker-20260510"],
+        "executor_event_count": 1,
+    }
+
+
+class LlamaGpuArtifactVerifierTest(unittest.TestCase):
+    def run_verifier(self, payload, *args):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "artifact.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            return subprocess.run(
+                [str(VERIFIER), str(path), *args],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+    def test_memory_blocker_is_structured_and_optionally_allowed(self):
+        payload = {
+            "error": "insufficient_memory",
+            "memory": {"mem_available_mb": 100, "swap_free_mb": 1},
+            "device_actions": ["wait"],
+        }
+        blocked = self.run_verifier(payload)
+        self.assertEqual(blocked.returncode, 20, blocked.stdout)
+        report = json.loads(blocked.stdout)
+        self.assertEqual(report["classification"], "insufficient_memory")
+        self.assertFalse(report["benchmark_claim_allowed"])
+        allowed = self.run_verifier(payload, "--allow-memory-blocker")
+        self.assertEqual(allowed.returncode, 0, allowed.stdout)
+
+    def test_readiness_false_blocks_gpu_run_claims(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "readiness": {
+                "ready": False,
+                "memory": {"mem_available_mb": 128, "swap_free_mb": 64},
+                "device_actions": ["wait for reclaim"],
+            },
+            "gpu": {"correctness": {"summary": {"correctness": "pass"}}},
+            "comparison": {"speedup": 3.0},
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 21, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "readiness-blocked")
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
+    def test_missing_executor_marker_blocks_compare_and_benchmark_claims(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": {
+                        "summary": "fail",
+                        "expected_executor_marker": "gpu-executor-workgroup3d-20260513",
+                        "observed_executor_markers": [],
+                        "observed_icd_markers": ["vulkan-icd-runtime-marker-20260510"],
+                    },
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "match",
+                    },
+                },
+                "correctness": {"summary": {"correctness": "pass"}},
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            "comparison": {"speedup": 2.0, "target_met": True},
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 34, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "executor-marker-not-observed")
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
+    def test_cpu_comparison_required_for_benchmark_claim(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "match",
+                    },
+                },
+                "correctness": {"summary": {"correctness": "pass"}},
+            },
+            "comparison": {"speedup": 2.0, "target_met": True},
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-workgroup-cleared-and-oracle-match")
+        self.assertTrue(report["correctness_claim_allowed"])
+        self.assertFalse(report["cpu_comparison_available"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
+        payload["cpu"] = {"tokens_per_second": 0.1}
+        with_cpu = self.run_verifier(payload)
+        self.assertEqual(with_cpu.returncode, 0, with_cpu.stdout)
+        self.assertTrue(json.loads(with_cpu.stdout)["benchmark_claim_allowed"])
+
+    def test_q6_workgroup_clear_can_pass_even_when_numeric_oracle_still_mismatches(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "mismatch",
+                        "q6_shader_like_64_abs_delta": 3.25,
+                    },
+                },
+                "correctness": {"summary": {"correctness": "fail"}},
+            },
+            "comparison": {"speedup": 0.5, "target_met": False},
+        }
+        clear = self.run_verifier(payload, "--require-q6-workgroup-clear")
+        self.assertEqual(clear.returncode, 0, clear.stdout)
+        report = json.loads(clear.stdout)
+        self.assertEqual(report["classification"], "q6-workgroup-cleared-but-oracle-mismatch")
+        exact = self.run_verifier(payload, "--require-q6-match")
+        self.assertEqual(exact.returncode, 30, exact.stdout)
+
+    def test_q6_workgroup_shape_blocker_fails_hard(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": True,
+                        "latest_status": "mismatch",
+                    },
+                },
+                "correctness": {"summary": {"correctness": "fail"}},
+            },
+            "comparison": {},
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 32, result.stdout)
+        self.assertIn("q6-workgroup-shape-blocker", result.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

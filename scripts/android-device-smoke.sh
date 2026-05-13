@@ -54,8 +54,8 @@ Modes:
   --gpu-bench   also run debug-only android-gpu-bench and verify artifacts
   --no-install  skip adb install; useful when the same debug APK is present
   --service-truth TARGET
-                planned acceptance entrypoint for future listener/container-ID
-                proof. Currently exits nonzero with a structured artifact.
+                collect planned-gap listener/container-ID truth evidence and
+                write files/pdocker/diagnostics/service-truth-latest.json.
   --runtime-teardown TARGET
                 planned acceptance entrypoint for future stop/process-tree
                 proof. Currently exits nonzero with a structured artifact.
@@ -85,18 +85,211 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-planned_gap_acceptance_entrypoint() {
-  local kind="$1"
-  local target="$2"
-  local artifact_name="$3"
-  echo "[pdocker smoke] $kind acceptance gate is still a planned gap for target=$target" >&2
-  run_as "mkdir -p files/pdocker/diagnostics && cat > files/pdocker/diagnostics/$artifact_name <<'JSON'
-{\"Status\":\"planned-gap\",\"Kind\":\"$kind\",\"Target\":\"$target\",\"Message\":\"Acceptance entrypoint exists, but device evidence collection is not implemented yet.\"}
-JSON" >/dev/null 2>&1 || true
-  echo "planned-gap artifact: files/pdocker/diagnostics/$artifact_name" >&2
-  exit 2
+service_truth_acceptance_entrypoint() {
+  local target="$1"
+  local remote_script="/data/local/tmp/pdocker-service-truth-smoke.sh"
+  local local_script
+  local_script="$(mktemp)"
+  cat > "$local_script" <<'REMOTE_SERVICE_TRUTH'
+#!/system/bin/sh
+set +e
+TARGET="${1:-default-workspace}"
+cd files || exit 1
+export PATH="$PWD/pdocker-runtime/docker-bin:$PATH"
+export DOCKER_CONFIG="$PWD/pdocker-runtime/docker-bin"
+export DOCKER_HOST="unix://$PWD/pdocker/pdockerd.sock"
+export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 BUILDKIT_PROGRESS=plain COMPOSE_PROGRESS=plain COMPOSE_MENU=false
+
+DIAG="pdocker/diagnostics/service-truth"
+LATEST="pdocker/diagnostics/service-truth-latest.json"
+rm -rf "$DIAG"
+mkdir -p "$DIAG"
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"
+SOCKET="pdocker/pdockerd.sock"
+
+json_string() {
+  printf '%s' "$1" | awk 'BEGIN{printf "\""}{gsub(/\\/,"\\\\"); gsub(/\"/,"\\\""); gsub(/\t/,"\\t"); if (NR>1) printf "\\n"; printf "%s",$0}END{printf "\""}'
 }
 
+record_cmd() {
+  label="$1"
+  shift
+  out="$DIAG/$label.out"
+  err="$DIAG/$label.err"
+  "$@" >"$out" 2>"$err"
+  rc=$?
+  printf '%s' "$rc" >"$DIAG/$label.rc"
+  return 0
+}
+
+http_get() {
+  label="$1"
+  path="$2"
+  { printf 'GET %s HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n' "$path"; } \
+    | nc -U -W 5 "$SOCKET" >"$DIAG/$label.http" 2>"$DIAG/$label.err"
+  rc=$?
+  printf '%s' "$rc" >"$DIAG/$label.rc"
+  sed -n '1s/\r$//p' "$DIAG/$label.http" >"$DIAG/$label.status" 2>/dev/null
+}
+
+snapshot_ps() {
+  label="$1"
+  (ps -A -o PID,PPID,USER,NAME,ARGS 2>/dev/null || ps -A -ef 2>/dev/null || ps 2>/dev/null) >"$DIAG/$label.txt" 2>"$DIAG/$label.err"
+}
+
+snapshot_state_json() {
+  label="$1"
+  out="$DIAG/$label.txt"
+  : >"$out"
+  find pdocker -name state.json -type f 2>/dev/null | sort | while IFS= read -r f; do
+    printf '\n--- %s ---\n' "$f" >>"$out"
+    cat "$f" >>"$out" 2>/dev/null
+    printf '\n' >>"$out"
+  done
+}
+
+snapshot_ui_inputs() {
+  cp pdocker/jobs.json "$DIAG/ui-jobs.json" 2>"$DIAG/ui-jobs.err" || : >"$DIAG/ui-jobs.missing"
+  : >"$DIAG/ui-project-files.txt"
+  find pdocker/projects -maxdepth 4 \( -name compose.yaml -o -name docker-compose.yml -o -name .smoke-cid -o -name 'pdocker-*.json' \) -type f 2>/dev/null | sort >"$DIAG/ui-project-files.txt"
+  : >"$DIAG/ui-project-snippets.txt"
+  while IFS= read -r f; do
+    printf '\n--- %s ---\n' "$f" >>"$DIAG/ui-project-snippets.txt"
+    sed -n '1,120p' "$f" >>"$DIAG/ui-project-snippets.txt" 2>/dev/null
+  done <"$DIAG/ui-project-files.txt"
+}
+
+collect_project_ports() {
+  : >"$DIAG/configured-ports.txt"
+  find pdocker/projects -maxdepth 4 \( -name compose.yaml -o -name docker-compose.yml \) -type f 2>/dev/null | sort | while IFS= read -r f; do
+    sed -n 's/.*\([0-9][0-9][0-9][0-9][0-9]*\):[0-9][0-9]*/\1/p' "$f" 2>/dev/null
+  done | sort -u >>"$DIAG/configured-ports.txt"
+  printf '18080\n18081\n' >>"$DIAG/configured-ports.txt"
+  sort -u "$DIAG/configured-ports.txt" -o "$DIAG/configured-ports.txt" 2>/dev/null || true
+}
+
+snapshot_listener_probe() {
+  : >"$DIAG/listener-probe.txt"
+  (cat /proc/net/tcp 2>/dev/null; cat /proc/net/tcp6 2>/dev/null) >"$DIAG/proc-net-tcp.txt" 2>"$DIAG/proc-net-tcp.err"
+  (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null || true) >"$DIAG/listeners-tool.txt" 2>"$DIAG/listeners-tool.err"
+  while IFS= read -r port; do
+    [ -n "$port" ] || continue
+    hex=$(printf '%04X' "$port" 2>/dev/null)
+    proc_matches=$(grep -i ":$hex" "$DIAG/proc-net-tcp.txt" 2>/dev/null | wc -l | tr -d ' ')
+    printf 'port=%s hex=%s proc_net_tcp_matches=%s\n' "$port" "$hex" "$proc_matches" >>"$DIAG/listener-probe.txt"
+    (echo | nc -w 2 127.0.0.1 "$port") >"$DIAG/listener-$port.out" 2>"$DIAG/listener-$port.err"
+    printf '%s' "$?" >"$DIAG/listener-$port.rc"
+  done <"$DIAG/configured-ports.txt"
+}
+
+http_get engine-containers-json '/containers/json?all=1'
+record_cmd engine-ps docker ps -a --no-trunc
+record_cmd engine-ps-running docker ps -q --no-trunc
+snapshot_ui_inputs
+collect_project_ports
+snapshot_ps process-table
+snapshot_state_json persisted-state-json
+snapshot_listener_probe
+
+: >"$DIAG/container-ids.txt"
+cat "$DIAG/engine-ps-running.out" 2>/dev/null | while IFS= read -r cid; do
+  [ -n "$cid" ] || continue
+  printf '%s\n' "$cid" >>"$DIAG/container-ids.txt"
+  safe=$(printf '%s' "$cid" | sed 's/[^0-9A-Za-z_.-]/_/g')
+  http_get "inspect-$safe" "/containers/$cid/json"
+  record_cmd "logs-$safe" docker logs --tail=200 "$cid"
+done
+
+ENGINE_PS_RC="$(cat "$DIAG/engine-ps.rc" 2>/dev/null)"
+ENGINE_HTTP_RC="$(cat "$DIAG/engine-containers-json.rc" 2>/dev/null)"
+ENGINE_STATUS="$(cat "$DIAG/engine-containers-json.status" 2>/dev/null)"
+CID_COUNT="$(wc -l <"$DIAG/container-ids.txt" 2>/dev/null | tr -d ' ')"
+PORTS="$(tr '\n' ' ' <"$DIAG/configured-ports.txt" 2>/dev/null | sed 's/[[:space:]]*$//')"
+
+cat > "$LATEST" <<JSON
+{
+  "SchemaVersion": 1,
+  "Kind": "service-truth",
+  "Status": "planned-gap",
+  "Success": false,
+  "Target": $(json_string "$TARGET"),
+  "StartedAt": $(json_string "$STARTED_AT"),
+  "CompletedAt": $(json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"),
+  "DeviceProofAttempted": true,
+  "TruthContract": {
+    "RequiredSameContainerId": ["UICard", "EngineApiContainersJson", "PersistedStateJson", "ProcessTable", "ListenerProbe", "ContainerLogs"],
+    "AcceptanceRule": "Success may become true only when every source names the same current Engine container ID for the service listener; configured ports, stale names, stale PIDs, previous logs, and background job success are insufficient."
+  },
+  "Observed": {
+    "EngineCliExitCode": $(json_string "$ENGINE_PS_RC"),
+    "EngineApiContainersStatus": $(json_string "$ENGINE_STATUS"),
+    "EngineApiContainersRc": $(json_string "$ENGINE_HTTP_RC"),
+    "RunningContainerIdCount": $(json_string "$CID_COUNT"),
+    "ConfiguredPorts": $(json_string "$PORTS")
+  },
+  "Sources": {
+    "UICard": {
+      "ContainerId": null,
+      "Proven": false,
+      "Artifacts": ["files/$DIAG/ui-jobs.json", "files/$DIAG/ui-project-files.txt", "files/$DIAG/ui-project-snippets.txt"],
+      "Gap": "The shell smoke can collect UI input files but cannot yet export the rendered UI card service-health container ID."
+    },
+    "EngineApiContainersJson": {
+      "ContainerId": null,
+      "Proven": false,
+      "Artifacts": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/engine-ps.out", "files/$DIAG/container-ids.txt"],
+      "Gap": "Engine candidates are captured, but the verifier does not yet select the service container and bind it to the UI card."
+    },
+    "PersistedStateJson": {
+      "ContainerId": null,
+      "Proven": false,
+      "Artifacts": ["files/$DIAG/persisted-state-json.txt"],
+      "Gap": "state.json snapshots are raw evidence until matched to the selected Engine container ID."
+    },
+    "ProcessTable": {
+      "ContainerId": null,
+      "Pid": null,
+      "Proven": false,
+      "Artifacts": ["files/$DIAG/process-table.txt"],
+      "Gap": "Process rows are captured, but no pid/container ownership map is proven for the selected Engine container ID."
+    },
+    "ListenerProbe": {
+      "ContainerId": null,
+      "Pid": null,
+      "Proven": false,
+      "Artifacts": ["files/$DIAG/configured-ports.txt", "files/$DIAG/listener-probe.txt", "files/$DIAG/proc-net-tcp.txt", "files/$DIAG/listeners-tool.txt"],
+      "Gap": "Listener presence/absence is captured, but listener socket ownership is not yet mapped to the selected container process tree."
+    },
+    "ContainerLogs": {
+      "ContainerId": null,
+      "Proven": false,
+      "Artifacts": ["files/$DIAG/logs-<container-id>.out"],
+      "Gap": "Logs are collected per running Engine container ID, but no current service log marker has been selected and bound to the UI card/listener."
+    }
+  },
+  "Evidence": {
+    "UICard": ["files/$DIAG/ui-jobs.json", "files/$DIAG/ui-project-snippets.txt"],
+    "EngineApiContainersJson": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/engine-ps.out", "files/$DIAG/container-ids.txt"],
+    "PersistedStateJson": ["files/$DIAG/persisted-state-json.txt"],
+    "ProcessTable": ["files/$DIAG/process-table.txt"],
+    "ListenerProbe": ["files/$DIAG/configured-ports.txt", "files/$DIAG/listener-probe.txt", "files/$DIAG/proc-net-tcp.txt", "files/$DIAG/listeners-tool.txt"],
+    "ContainerLogs": ["files/$DIAG/logs-<container-id>.out"]
+  },
+  "Unresolved": [
+    "Rendered UI card container ID is not exported by this smoke entrypoint.",
+    "Engine API, persisted state.json, process table, listener socket owner, and logs are not yet reduced to one same-container-ID proof.",
+    "Negative cases for configured-port-only, stale listener/PID, duplicate name, and previous-container logs remain unproven on device."
+  ]
+}
+JSON
+cat "$LATEST"
+exit 2
+REMOTE_SERVICE_TRUTH
+  run_adb push "$local_script" "$remote_script" >/dev/null
+  rm -f "$local_script"
+  run_adb shell chmod 755 "$remote_script" >/dev/null 2>&1 || true
+  run_as "sh $remote_script $(remote_quote "$target")"
+}
 runtime_teardown_acceptance_entrypoint() {
   local target="$1"
   local remote_script="/data/local/tmp/pdocker-runtime-teardown-smoke.sh"
@@ -435,7 +628,7 @@ wait_for_socket
 stage_test_cli
 
 if [[ -n "$SERVICE_TRUTH_TARGET" ]]; then
-  planned_gap_acceptance_entrypoint "service-truth" "$SERVICE_TRUTH_TARGET" "service-truth-latest.json"
+  service_truth_acceptance_entrypoint "$SERVICE_TRUTH_TARGET"
 fi
 if [[ -n "$RUNTIME_TEARDOWN_TARGET" ]]; then
   runtime_teardown_acceptance_entrypoint "$RUNTIME_TEARDOWN_TARGET"

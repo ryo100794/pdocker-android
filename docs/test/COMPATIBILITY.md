@@ -134,6 +134,33 @@ multi-step RUN/COPY/RUN Dockerfile build, and `docker compose up -d --build` /
 `compose ps` / `compose down`. The full backend regression remains the slow
 suite and should be recorded separately when it is run to completion.
 
+## Image pull crash safety
+
+Host static gate:
+
+```sh
+python3 scripts/verify-image-pull-crash-safety.py
+```
+
+Interrupted-pull device kill/restart evidence remains a planned gap; it must
+not be marked passed unless a real Android device artifact records daemon kill,
+restart recovery, store inspection, and post-restart image/container probes.
+The executable ledger/driver is:
+
+```sh
+python3 scripts/verify/runner/image_pull_crash_safety_device.py \
+  --artifact docs/test/image-pull-crash-safety-latest.json
+```
+
+When ADB is absent, the driver writes `status=planned-gap` and
+`success=false` rather than faking success. The artifact schema includes the
+scenario id, device identity, command plan, evidence paths, negative expected
+conditions, and cleanup policy. Negative conditions include accepting `.pull-*`
+image stages, accepting `.tmp-*` layer directories, losing the old tag backup,
+or allowing `inspect`/`run` from a never-atomically-published interrupted pull.
+Cleanup must collect logs/listings first and remove only scenario-owned tags,
+containers, and artifacts, leaving unrelated worker data untouched.
+
 ## Current compatibility matrix
 
 | Area | Current status | Notes |
@@ -196,7 +223,17 @@ Known gaps:
   `python3 scripts/verify-service-truth-plan.py`; implementation evidence must
   be recorded as `docs/test/service-truth-latest.json` and show the same Engine
   container ID across the UI card, `/containers/json`, persisted `state.json`,
-  process table, listener probe, and logs.
+  process table, listener probe, and logs.  The device entrypoint
+  `scripts/android-device-smoke.sh --service-truth <target>` now writes the
+  planned-gap artifact `files/pdocker/diagnostics/service-truth-latest.json`
+  plus raw files under `files/pdocker/diagnostics/service-truth/`.  Its schema
+  is intentionally non-passing (`Status: planned-gap`, `Success: false`) until
+  a rendered UI card container ID, Engine API container ID, state.json ID,
+  process-tree owner, listener socket owner, and current container log marker
+  are all reduced to one `RequiredSameContainerId` proof.  The artifact records
+  UI input files, `/containers/json`, `docker ps`, state snapshots, process
+  table, configured/listening ports, per-container logs, and explicit
+  unresolved gaps so a device run cannot be mistaken for fake success.
 - Runtime teardown is not yet a compatibility gate: stop/kill/rm must prove
   process-tree and executor cleanup rather than trusting an HTTP 204 response.
   `scripts/android-device-smoke.sh --runtime-teardown <target>` now writes the

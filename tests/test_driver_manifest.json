@@ -29,6 +29,16 @@
           "argv": ["python3", "scripts/verify-build-profile.py"]
         },
         {
+          "id": "verify-service-truth-plan",
+          "argv": ["python3", "scripts/verify-service-truth-plan.py"],
+          "artifacts": ["docs/test/service-truth-latest.json", "docs/test/runtime-teardown-latest.json"]
+        },
+        {
+          "id": "verify-image-pull-crash-safety",
+          "argv": ["python3", "scripts/verify-image-pull-crash-safety.py"],
+          "artifacts": ["docs/test/image-pull-crash-safety-latest.json"]
+        },
+        {
           "id": "verify-project-library",
           "argv": ["python3", "scripts/verify-project-library.py"]
         },

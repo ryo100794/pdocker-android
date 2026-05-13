@@ -57,9 +57,12 @@ The current fixed verification record is
 
 The generated compatibility audit records `69` PASS and `0` FAIL entries, and
 APK payload checks confirm the product APK omits upstream Docker CLI/Compose,
-PRoot, proot-loader, and talloc. The open blockers for calling a broader
-release green are the host backend regression lane and the literal
-test-density gate.
+PRoot, proot-loader, and talloc. This is still a development preview rather
+than a broad stable release: the current release-readiness gate is tracked in
+[`docs/plan/RELEASE_READINESS.md`](docs/plan/RELEASE_READINESS.md), including
+P0 blockers for service-health truth, runtime stop cleanup, image/COW crash
+safety, OOM/LMK recovery, modern-runtime capability truth, and build/test
+checkpoint truth.
 
 ## Why It Is Different
 
@@ -92,8 +95,9 @@ pdocker treats that as the design challenge rather than hiding it.
 | Licensing | External payloads are audited; PRoot/talloc/proot-loader are not part of the default product APK |
 
 See [`docs/plan/STATUS.md`](docs/plan/STATUS.md) for the detailed
-implementation snapshot and [`docs/plan/TODO.md`](docs/plan/TODO.md) for the
-live task board.
+implementation snapshot, [`docs/plan/TODO.md`](docs/plan/TODO.md) for the live
+task board, and [`docs/plan/RELEASE_READINESS.md`](docs/plan/RELEASE_READINESS.md)
+for the release checklist and current blocker summary.
 
 For a GitHub-friendly view of the current demo surface, template library,
 compatibility counters, and TODO-linked timeline, see the generated
@@ -117,9 +121,10 @@ The most important current limits are also explicit:
   current claims are device-tested snapshots, not universal Android guarantees.
 - Docker bridge networking is represented as metadata plus host-port behavior,
   not a real Linux bridge namespace.
-- GPU acceleration is under active bridge work; llama.cpp reaches Vulkan
-  offload paths and host/container bridge probes have artifacts, but current
-  llama.cpp runs still report incomplete layer offload.
+- GPU acceleration is under active bridge work. llama.cpp CPU/no-offload runs
+  have device evidence, and Vulkan offload paths produce diagnostic artifacts,
+  but llama.cpp GPU inference is unfinished: `ngl>=1` correctness remains
+  blocked and must not be presented as working acceleration.
 - Media devices are exposed through an Android API proxy contract, not raw
   `/dev/video*` or `/dev/snd/*` passthrough.
 

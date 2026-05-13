@@ -9,6 +9,13 @@ local.properties
 __pycache__/
 *.py[cod]
 .coverage*
+tmp/
+docs/test/device-logs/
+docs/test/llama-gpu-*.json
+docs/test/llama-cpu-gpu-compare-*.json
+docs/test/apk-memory-pager-*-latest.json
+*.spv
+*.spvasm
 *.jks
 *.keystore
 *.p12

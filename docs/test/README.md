@@ -13,6 +13,7 @@ run it, and where the latest result is stored.
 | Document | Scope |
 |---|---|
 | [`COMPATIBILITY.md`](COMPATIBILITY.md) | Docker API, data exchange, protocol, APK payload, and UI compatibility coverage |
+| [`CI_GATE_LEDGER.md`](CI_GATE_LEDGER.md) | P0/P1 service truth, teardown, image-pull, OOM/LMK, terminal `-it`, and llama GPU gate classification |
 | [`TEST_DESIGN_STANDARD.md`](TEST_DESIGN_STANDARD.md) | Minimum test design criteria and the automated gate that enforces them |
 | [`SCENARIOS.md`](SCENARIOS.md) | Feature-level scenario ledger and combined test runner |
 | [`compat-audit-latest.md`](compat-audit-latest.md) | Latest recorded compatibility audit result |
@@ -34,6 +35,8 @@ run it, and where the latest result is stored.
   immutable copy under `docs/test/runs/<run-id>/manifest.json`.
 - Use [`COMPATIBILITY.md`](COMPATIBILITY.md) as the canonical repeatable
   compatibility procedure and matrix.
+- Use [`CI_GATE_LEDGER.md`](CI_GATE_LEDGER.md) as the compact P0/P1 gate
+  classification table for planned gaps, lightweight gates, and device gates.
 - Use [`SCENARIOS.md`](SCENARIOS.md) and `tests/feature_scenarios.json` as the
   feature-level test ledger.
 - Use [`TEST_DESIGN_STANDARD.md`](TEST_DESIGN_STANDARD.md) and
