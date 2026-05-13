@@ -23,7 +23,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 |---|---:|
 | Project-library templates | 6 |
 | TODO done entries | 52 |
-| TODO doing entries | 12 |
+| TODO doing entries | 13 |
 | TODO next entries | 39 |
 | Compatibility audit PASS | 69 |
 | Compatibility audit FAIL | 0 |
@@ -43,6 +43,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 
 | State | Item |
 |---|---|
+| doing | Cross-project incomplete implementation audit: `docs/plan/INCOMPLETE_IMPLEMENTATION_AUDIT_20260513.md` now tracks unfinished, partial, temporary, or insufficiently verified work across... |
 | doing | [#4](https://github.com/ryo100794/pdocker-android/issues/4) llama GPU bridge ABI: keep llama.cpp unmodified while expanding the pdocker Vulkan/OpenCL bridge from device discovery and... |
 | next | [#5](https://github.com/ryo100794/pdocker-android/issues/5) Terminal `-it` interactive path: refactor the terminal stack according to `docs/design/TERMINAL_STREAM_ARCHITECTURE.md`. The UI... |
 | next | [#6](https://github.com/ryo100794/pdocker-android/issues/6) Real listener service health: probe the actual device listener for default workspace `18080` and llama `18081`, correlate it with... |
@@ -52,7 +53,6 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 | next | [#7](https://github.com/ryo100794/pdocker-android/issues/7) Android storage metrics verification: add device smoke/manual coverage that layer, image-view, container-private, total, and... |
 | next | [#8](https://github.com/ryo100794/pdocker-android/issues/8) Reproducible release/F-Droid readiness: turn the local build wrapper into a broader pinned CI/release process with source-built... |
 | next | [#9](https://github.com/ryo100794/pdocker-android/issues/9) First public release candidate gate: define and satisfy the minimum GitHub Release criteria for a build that is honest... |
-| doing | Image pull UI must not hard-code `ubuntu:22.04`. It now needs a searchable selection dialog that combines local image refs, Compose `image:` refs, Dockerfile `FROM` refs, common defaults... |
 
 ## Timeline
 
