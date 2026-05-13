@@ -31,6 +31,27 @@ REQUIRED_METRICS = {
     "layer_lookup",
 }
 
+REQUIRED_RECOVERY_CASES = {
+    "copy_up.before_rename",
+    "copy_up.truncate_before_rename",
+    "metadata.chmod_before_rename",
+    "whiteout.before_publish",
+    "rename.before_publish",
+    "archive_put.stage_failure",
+    "hardlink_metadata.corrupt_rebuild",
+    "low_space.copy_up_enospc",
+}
+
+REQUIRED_RECOVERY_CHECKS = {
+    "copy_up_fail_closed",
+    "truncate_fail_closed",
+    "metadata_fail_closed",
+    "whiteout_fail_closed",
+    "rename_fail_closed",
+    "archive_put_fail_closed",
+    "low_space_fail_closed",
+}
+
 
 def run(argv: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -79,10 +100,26 @@ def validate_recovery_artifact(path: Path) -> dict:
     require(data.get("Kind") == "cow-overlay-recovery", "recovery kind mismatch")
     require(data.get("Status") == "pass", "recovery status must be pass")
     checks = data.get("Checks", {})
+    for check in sorted(REQUIRED_RECOVERY_CHECKS):
+        require(checks.get(check) == "pass", f"{check} must pass")
     require(checks.get("hardlink_ring_corruption_rebuild") == "pass", "hardlink ring rebuild must pass")
     require(checks.get("kill_at_step_external_harness") == "planned-gap", "kill-at-step must remain planned-gap")
+    case_results = data.get("CaseResults")
+    require(isinstance(case_results, list) and case_results, "recovery CaseResults missing")
+    case_ids = {case.get("Id") for case in case_results}
+    missing = REQUIRED_RECOVERY_CASES - case_ids
+    require(not missing, f"recovery cases missing: {sorted(missing)}")
+    for case in case_results:
+        cid = case.get("Id", "<missing>")
+        require(case.get("Status") == "pass", f"{cid} must pass")
+        require(case.get("Fault"), f"{cid} fault description missing")
+        require(case.get("ExpectedRecovery"), f"{cid} expected recovery missing")
+        require(case.get("Evidence"), f"{cid} evidence missing")
+    negative = data.get("NegativeCases")
+    require(isinstance(negative, list) and len(negative) >= len(REQUIRED_RECOVERY_CASES), "negative cases missing")
+    require({case.get("Id") for case in negative} >= REQUIRED_RECOVERY_CASES, "negative cases must cover required recovery cases")
     cases = data.get("KillAtStepPlannedCases")
-    require(isinstance(cases, list) and len(cases) >= 3, "kill-at-step planned cases missing")
+    require(isinstance(cases, list) and len(cases) >= 5, "kill-at-step planned cases missing")
     require(all(case.get("Status") == "planned-gap" for case in cases), "planned cases cannot be success")
     return data
 
@@ -100,6 +137,10 @@ def static_contract() -> None:
     require("cow-overlay-bench" in bench_text, "bench artifact kind missing")
     require("COW_TEST_JSON" in recovery_text, "recovery JSON output env missing")
     require("hardlink_ring_corruption_rebuild" in recovery_text, "hardlink ring recovery check missing")
+    require("CaseResults" in recovery_text, "recovery case results missing")
+    require("NegativeCases" in recovery_text, "recovery negative cases missing")
+    for case_id in sorted(REQUIRED_RECOVERY_CASES):
+        require(case_id in recovery_text, f"recovery script lacks case {case_id}")
     require("KillAtStepPlannedCases" in recovery_text, "kill-at-step planned cases missing")
 
 

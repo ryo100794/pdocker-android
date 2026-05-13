@@ -287,18 +287,137 @@ extract_state_ids_and_compare() {
     done
   done
   match=false
-  [ -n "$selected_id" ] && awk -F '\t' -v id="$selected_id" 'index(id,$2)==1 || index($2,id)==1 { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/state-container-ids.tsv" 2>/dev/null && match=true
+  [ -n "$selected_id" ] && awk -F '\t' -v id="$selected_id" '$2 == id { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/state-container-ids.tsv" 2>/dev/null && match=true
   printf '{\n  "SelectedEngineContainerId": %s,\n  "AnyStateIdMatchesSelected": %s,\n  "Matches": [\n' "$( [ -n "$selected_id" ] && json_string "$selected_id" || printf null )" "$(json_bool "$match")" >"$DIAG/state-id-comparison.json"
   first=1
   while IFS='	' read -r path sid; do
     [ -n "$sid" ] || continue
     row_match=false
-    if [ -n "$selected_id" ]; then case "$selected_id" in "$sid"*) row_match=true ;; esac; case "$sid" in "$selected_id"*) row_match=true ;; esac; fi
+    if [ -n "$selected_id" ] && [ "$sid" = "$selected_id" ]; then row_match=true; fi
     [ "$first" = 1 ] || printf ',\n' >>"$DIAG/state-id-comparison.json"
     first=0
     printf '    {"Path":%s,"StateContainerId":%s,"MatchesSelected":%s}' "$(json_string "$path")" "$(json_string "$sid")" "$(json_bool "$row_match")" >>"$DIAG/state-id-comparison.json"
   done <"$DIAG/state-container-ids.tsv"
   printf '\n  ]\n}\n' >>"$DIAG/state-id-comparison.json"
+}
+
+source_container_id_json() {
+  cid="$1"
+  [ -n "$cid" ] && json_string "$cid" || printf null
+}
+
+selected_in_docker_ps() {
+  selected_id="$1"
+  [ -n "$selected_id" ] || return 1
+  awk -F '\t' -v id="$selected_id" '$1 == id { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/engine-candidates.tsv" 2>/dev/null
+}
+
+selected_in_engine_api() {
+  selected_id="$1"
+  [ -n "$selected_id" ] || return 1
+  grep -Fq "\"Id\":\"$selected_id\"" "$DIAG/engine-containers-json.http" 2>/dev/null
+}
+
+inspect_pid_from_file() {
+  grep -ao '"Pid"[[:space:]]*:[[:space:]]*[0-9][0-9]*' "$1" 2>/dev/null \
+    | head -n 1 \
+    | sed 's/.*://; s/[^0-9]//g'
+}
+
+process_has_pid() {
+  pid="$1"
+  [ -n "$pid" ] && [ "$pid" != 0 ] || return 1
+  grep -Eq "(^|[[:space:]])$pid([[:space:]]|$)" "$DIAG/process-table.txt" 2>/dev/null
+}
+
+collect_listener_owner_evidence() {
+  selected_id="$1"
+  selected_pid="$2"
+  : >"$DIAG/listener-owner-map.tsv"
+  : >"$DIAG/listener-owner-map.json"
+  printf '{\n  "SelectedEngineContainerId": %s,\n  "SelectedInspectPid": %s,\n  "Ports": [\n' \
+    "$(source_container_id_json "$selected_id")" "$(json_number_or_null "$selected_pid")" >"$DIAG/listener-owner-map.json"
+  first=1
+  while IFS= read -r port; do
+    [ -n "$port" ] || continue
+    hex=$(printf '%04X' "$port" 2>/dev/null)
+    # /proc/net/tcp columns include local_address in column 2 and inode in column 10.
+    inodes=$(awk -v h=":$hex" 'tolower($2) ~ tolower(h) { print $10 }' "$DIAG/proc-net-tcp.txt" 2>/dev/null | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+    owners=""
+    for inode in $inodes; do
+      [ -n "$inode" ] || continue
+      for fd in /proc/[0-9]*/fd/*; do
+        link=$(readlink "$fd" 2>/dev/null) || continue
+        [ "$link" = "socket:[$inode]" ] || continue
+        pid=$(printf '%s' "$fd" | sed 's#^/proc/\([0-9][0-9]*\)/fd/.*#\1#')
+        owners="$owners $pid"
+        printf '%s\t%s\t%s\n' "$port" "$inode" "$pid" >>"$DIAG/listener-owner-map.tsv"
+      done
+    done
+    owners=$(printf '%s' "$owners" | tr ' ' '\n' | sed '/^$/d' | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+    selected_pid_owns=false
+    for owner in $owners; do [ "$owner" = "$selected_pid" ] && selected_pid_owns=true; done
+    [ "$first" = 1 ] || printf ',\n' >>"$DIAG/listener-owner-map.json"
+    first=0
+    printf '    {"Port":%s,"Hex":%s,"SocketInodes":%s,"OwnerPids":%s,"SelectedPidOwnsListener":%s,"Artifacts":[%s,%s,%s]}' \
+      "$(json_number_or_null "$port")" "$(json_string "$hex")" "$(json_string "$inodes")" "$(json_string "$owners")" "$(json_bool "$selected_pid_owns")" \
+      "$(json_string "files/$DIAG/proc-net-tcp.txt")" "$(json_string "files/$DIAG/listener-owner-map.tsv")" "$(json_string "files/$DIAG/process-table.txt")" >>"$DIAG/listener-owner-map.json"
+  done <"$DIAG/configured-ports.txt"
+  printf '\n  ]\n}\n' >>"$DIAG/listener-owner-map.json"
+}
+
+write_same_id_source_summary() {
+  selected_id="$1"
+  ui_cid="$2"
+  ui_state="$3"
+  state_match="$4"
+  selected_pid="$5"
+  docker_ps_present=false; selected_in_docker_ps "$selected_id" && docker_ps_present=true
+  engine_api_present=false; selected_in_engine_api "$selected_id" && engine_api_present=true
+  process_pid_present=false; process_has_pid "$selected_pid" && process_pid_present=true
+  listener_pid_present=false; [ -n "$selected_pid" ] && awk -F '\t' -v pid="$selected_pid" '$3 == pid { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/listener-owner-map.tsv" 2>/dev/null && listener_pid_present=true
+  logs_present=false; [ -n "$selected_id" ] && [ -s "$DIAG/logs-selected.out" ] && logs_present=true
+  same_id=false
+  mismatched=""
+  missing=""
+  [ -n "$ui_cid" ] || missing="$missing UICard"
+  [ -n "$selected_id" ] || missing="$missing DockerPs EngineApiContainersJson"
+  [ "$docker_ps_present" = true ] || missing="$missing DockerPs"
+  [ "$engine_api_present" = true ] || missing="$missing EngineApiContainersJson"
+  [ "$state_match" = true ] || missing="$missing PersistedStateJson"
+  [ "$process_pid_present" = true ] || missing="$missing ProcessTable"
+  [ "$listener_pid_present" = true ] || missing="$missing ListenerProbe"
+  [ "$logs_present" = true ] || missing="$missing ContainerLogs"
+  if [ -n "$selected_id" ] && [ -n "$ui_cid" ] && [ "$ui_cid" != "$selected_id" ]; then mismatched="$mismatched UICard"; fi
+  [ -n "$selected_id" ] && [ "$ui_cid" = "$selected_id" ] && [ "$ui_state" = current ] && [ "$docker_ps_present" = true ] && [ "$engine_api_present" = true ] && [ "$state_match" = true ] && [ "$process_pid_present" = true ] && [ "$listener_pid_present" = true ] && [ "$logs_present" = true ] && same_id=true
+  cat >"$DIAG/same-id-source-summary.json" <<JSON
+{
+  "SelectedEngineContainerId": $(source_container_id_json "$selected_id"),
+  "SameEngineContainerIdIfPromoted": $(json_bool "$same_id"),
+  "Note": "Diagnostic aggregation only: top-level Status remains planned-gap and Success remains false until the device gate is promoted intentionally.",
+  "SourceIds": {
+    "UICard": $(source_container_id_json "$ui_cid"),
+    "DockerPs": $( [ "$docker_ps_present" = true ] && source_container_id_json "$selected_id" || printf null ),
+    "EngineApiContainersJson": $( [ "$engine_api_present" = true ] && source_container_id_json "$selected_id" || printf null ),
+    "PersistedStateJson": $( [ "$state_match" = true ] && source_container_id_json "$selected_id" || printf null ),
+    "ProcessTable": $( [ "$process_pid_present" = true ] && source_container_id_json "$selected_id" || printf null ),
+    "ListenerProbe": $( [ "$listener_pid_present" = true ] && source_container_id_json "$selected_id" || printf null ),
+    "ContainerLogs": $( [ "$logs_present" = true ] && source_container_id_json "$selected_id" || printf null )
+  },
+  "MissingSourcesText": $(json_string "$missing"),
+  "MismatchedSourcesText": $(json_string "$mismatched"),
+  "Artifacts": [
+    "files/$DIAG/ui-rendered-service-truth-latest.json",
+    "files/$DIAG/engine-candidates.json",
+    "files/$DIAG/engine-ps.out",
+    "files/$DIAG/engine-containers-json.http",
+    "files/$DIAG/state-id-comparison.json",
+    "files/$DIAG/process-table.txt",
+    "files/$DIAG/listener-owner-map.json",
+    "files/$DIAG/logs-selected.out"
+  ]
+}
+JSON
 }
 
 http_get engine-containers-json '/containers/json?all=1'
@@ -312,6 +431,16 @@ snapshot_listener_probe
 collect_engine_candidates
 SELECTED_ENGINE_CID="$(cat "$DIAG/engine-candidate-selected.txt" 2>/dev/null)"
 extract_state_ids_and_compare "$SELECTED_ENGINE_CID"
+SELECTED_SAFE="$(printf '%s' "$SELECTED_ENGINE_CID" | sed 's/[^0-9A-Za-z_.-]/_/g')"
+if [ -n "$SELECTED_ENGINE_CID" ]; then
+  http_get "inspect-selected" "/containers/$SELECTED_ENGINE_CID/json"
+  record_cmd "docker-inspect-selected" docker inspect "$SELECTED_ENGINE_CID"
+else
+  : >"$DIAG/inspect-selected.http"; printf '1' >"$DIAG/inspect-selected.rc"
+  : >"$DIAG/docker-inspect-selected.out"; printf '1' >"$DIAG/docker-inspect-selected.rc"
+fi
+SELECTED_INSPECT_PID="$(inspect_pid_from_file "$DIAG/inspect-selected.http")"
+collect_listener_owner_evidence "$SELECTED_ENGINE_CID" "$SELECTED_INSPECT_PID"
 
 : >"$DIAG/container-ids.txt"
 cat "$DIAG/engine-ps-running.out" 2>/dev/null | while IFS= read -r cid; do
@@ -321,6 +450,11 @@ cat "$DIAG/engine-ps-running.out" 2>/dev/null | while IFS= read -r cid; do
   http_get "inspect-$safe" "/containers/$cid/json"
   record_cmd "logs-$safe" docker logs --tail=200 "$cid"
 done
+if [ -n "$SELECTED_ENGINE_CID" ]; then
+  record_cmd "logs-selected" docker logs --tail=200 "$SELECTED_ENGINE_CID"
+else
+  : >"$DIAG/logs-selected.out"; printf '1' >"$DIAG/logs-selected.rc"
+fi
 
 ENGINE_PS_RC="$(cat "$DIAG/engine-ps.rc" 2>/dev/null)"
 ENGINE_HTTP_RC="$(cat "$DIAG/engine-containers-json.rc" 2>/dev/null)"
@@ -336,6 +470,12 @@ UI_CARD_SOURCE="$(sed -n 's/.*"ContainerIdSource"[[:space:]]*:[[:space:]]*"\([^"
 UI_CARD_STATE="$(sed -n 's/.*"TruthState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
 UI_CARD_PROVEN=false
 [ "$UI_CARD_STATE" = current ] && [ -n "$UI_CARD_CID" ] && UI_CARD_PROVEN=true
+DOCKER_PS_PROVEN=false; selected_in_docker_ps "$SELECTED_ENGINE_CID" && DOCKER_PS_PROVEN=true
+ENGINE_API_PROVEN=false; selected_in_engine_api "$SELECTED_ENGINE_CID" && ENGINE_API_PROVEN=true
+PROCESS_PROVEN=false; process_has_pid "$SELECTED_INSPECT_PID" && PROCESS_PROVEN=true
+LISTENER_PROVEN=false; [ -n "$SELECTED_INSPECT_PID" ] && awk -F '\t' -v pid="$SELECTED_INSPECT_PID" '$3 == pid { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/listener-owner-map.tsv" 2>/dev/null && LISTENER_PROVEN=true
+LOGS_PROVEN=false; [ -n "$SELECTED_ENGINE_CID" ] && [ -s "$DIAG/logs-selected.out" ] && LOGS_PROVEN=true
+write_same_id_source_summary "$SELECTED_ENGINE_CID" "$UI_CARD_CID" "$UI_CARD_STATE" "$STATE_MATCH" "$SELECTED_INSPECT_PID"
 
 cat > "$LATEST" <<JSON
 {
@@ -348,8 +488,15 @@ cat > "$LATEST" <<JSON
   "CompletedAt": $(json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"),
   "DeviceProofAttempted": true,
   "TruthContract": {
-    "RequiredSameContainerId": ["UICard", "EngineApiContainersJson", "PersistedStateJson", "ProcessTable", "ListenerProbe", "ContainerLogs"],
+    "RequiredSameContainerId": ["UICard", "DockerPs", "EngineApiContainersJson", "PersistedStateJson", "ProcessTable", "ListenerProbe", "ContainerLogs"],
     "AcceptanceRule": "Success may become true only when every source names the same current Engine container ID for the service listener; configured ports, stale names, stale PIDs, previous logs, and background job success are insufficient."
+  },
+  "Proof": {
+    "EngineContainerId": $( [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+    "SameEngineContainerId": false,
+    "AggregationArtifact": "files/$DIAG/same-id-source-summary.json",
+    "MismatchedSources": [],
+    "MissingSources": ["planned device proof gap; see files/$DIAG/same-id-source-summary.json"]
   },
   "Observed": {
     "EngineCliExitCode": $(json_string "$ENGINE_PS_RC"),
@@ -384,49 +531,57 @@ cat > "$LATEST" <<JSON
       "Artifacts": ["$UI_RENDERED_EXPORT", "files/$DIAG/ui-jobs.json", "files/$DIAG/ui-project-files.txt", "files/$DIAG/ui-project-snippets.txt"],
       "Gap": "Rendered UI card export is collected when the app has rendered it, but success remains false until UI/Engine/state/process/listener/log sources agree on the same current Engine container ID."
     },
+    "DockerPs": {
+      "ContainerId": $( [ "$DOCKER_PS_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+      "Proven": $(json_bool "$DOCKER_PS_PROVEN"),
+      "Artifacts": ["files/$DIAG/engine-ps.out", "files/$DIAG/engine-ps-running.out", "files/$DIAG/engine-candidates.tsv", "files/$DIAG/engine-candidates.json"],
+      "Gap": "docker ps evidence is reduced to the selected exact Engine container ID, but top-level success remains false until all sources agree and the gate is promoted."
+    },
     "EngineApiContainersJson": {
-      "ContainerId": $( [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+      "ContainerId": $( [ "$ENGINE_API_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
       "CandidateSelected": $(json_bool "$( [ -n "$SELECTED_ENGINE_CID" ] && echo true || echo false )"),
-      "Proven": false,
-      "Artifacts": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/engine-ps.out", "files/$DIAG/container-ids.txt", "files/$DIAG/engine-candidates.json"],
-      "Gap": "Engine candidate selection from labels/names is machine-readable, but it is not acceptance until bound to the UI card."
+      "Proven": $(json_bool "$ENGINE_API_PROVEN"),
+      "Artifacts": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/inspect-selected.http", "files/$DIAG/docker-inspect-selected.out", "files/$DIAG/container-ids.txt", "files/$DIAG/engine-candidates.json"],
+      "Gap": "Engine API evidence is reduced to the selected exact Engine container ID, but it is not acceptance until UI/state/process/listener/log sources agree."
     },
     "PersistedStateJson": {
       "ContainerId": $( [ "$STATE_MATCH" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
       "MatchesSelectedEngineContainerId": $(json_bool "$STATE_MATCH"),
-      "Proven": false,
+      "Proven": $(json_bool "$STATE_MATCH"),
       "Artifacts": ["files/$DIAG/persisted-state-json.txt", "files/$DIAG/state-id-comparison.json", "files/$DIAG/state-container-ids.tsv"],
       "Gap": "state.json ID comparison is machine-readable, but still not a same-source acceptance proof without UI/process/listener/log agreement."
     },
     "ProcessTable": {
-      "ContainerId": null,
-      "Pid": null,
-      "Proven": false,
-      "Artifacts": ["files/$DIAG/process-table.txt"],
-      "Gap": "Process rows are captured, but no pid/container ownership map is proven for the selected Engine container ID."
+      "ContainerId": $( [ "$PROCESS_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+      "Pid": $(json_number_or_null "$SELECTED_INSPECT_PID"),
+      "Proven": $(json_bool "$PROCESS_PROVEN"),
+      "Artifacts": ["files/$DIAG/process-table.txt", "files/$DIAG/inspect-selected.http", "files/$DIAG/docker-inspect-selected.out"],
+      "Gap": "Selected inspect PID is searched in the process table, but top-level success remains false until all seven sources agree."
     },
     "ListenerProbe": {
-      "ContainerId": null,
-      "Pid": null,
-      "Proven": false,
-      "Artifacts": ["files/$DIAG/configured-ports.txt", "files/$DIAG/listener-probe.json", "files/$DIAG/listener-probe.txt", "files/$DIAG/proc-net-tcp.txt", "files/$DIAG/listeners-tool.txt"],
+      "ContainerId": $( [ "$LISTENER_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+      "Pid": $(json_number_or_null "$SELECTED_INSPECT_PID"),
+      "Proven": $(json_bool "$LISTENER_PROVEN"),
+      "Artifacts": ["files/$DIAG/configured-ports.txt", "files/$DIAG/listener-probe.json", "files/$DIAG/listener-owner-map.json", "files/$DIAG/listener-owner-map.tsv", "files/$DIAG/listener-probe.txt", "files/$DIAG/proc-net-tcp.txt", "files/$DIAG/listeners-tool.txt"],
       "ProcNetTcpMatchedPorts": $(json_string "$LISTENER_PROC_MATCH_PORTS"),
-      "Gap": "Listener port and /proc/net/tcp evidence is machine-readable, but listener socket ownership is not yet mapped to the selected container process tree."
+      "Gap": "Listener port, /proc/net/tcp socket inode, and best-effort PID ownership evidence are collected for the selected container PID, but top-level success remains false until promoted."
     },
     "ContainerLogs": {
-      "ContainerId": null,
-      "Proven": false,
-      "Artifacts": ["files/$DIAG/logs-<container-id>.out"],
-      "Gap": "Logs are collected per running Engine container ID, but no current service log marker has been selected and bound to the UI card/listener."
+      "ContainerId": $( [ "$LOGS_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+      "Proven": $(json_bool "$LOGS_PROVEN"),
+      "Artifacts": ["files/$DIAG/logs-selected.out", "files/$DIAG/logs-<container-id>.out"],
+      "Gap": "Logs are collected for the selected Engine container ID, but no current service log marker has been bound to the UI card/listener."
     }
   },
   "Evidence": {
     "UICard": ["$UI_RENDERED_EXPORT", "files/$DIAG/ui-jobs.json", "files/$DIAG/ui-project-snippets.txt"],
-    "EngineApiContainersJson": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/engine-ps.out", "files/$DIAG/container-ids.txt", "files/$DIAG/engine-candidates.json"],
+    "DockerPs": ["files/$DIAG/engine-ps.out", "files/$DIAG/engine-ps-running.out", "files/$DIAG/engine-candidates.tsv", "files/$DIAG/engine-candidates.json"],
+    "EngineApiContainersJson": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/inspect-selected.http", "files/$DIAG/docker-inspect-selected.out", "files/$DIAG/container-ids.txt", "files/$DIAG/engine-candidates.json"],
     "PersistedStateJson": ["files/$DIAG/persisted-state-json.txt", "files/$DIAG/state-id-comparison.json"],
-    "ProcessTable": ["files/$DIAG/process-table.txt"],
-    "ListenerProbe": ["files/$DIAG/configured-ports.txt", "files/$DIAG/listener-probe.json", "files/$DIAG/listener-probe.txt", "files/$DIAG/proc-net-tcp.txt", "files/$DIAG/listeners-tool.txt"],
-    "ContainerLogs": ["files/$DIAG/logs-<container-id>.out"]
+    "ProcessTable": ["files/$DIAG/process-table.txt", "files/$DIAG/inspect-selected.http", "files/$DIAG/docker-inspect-selected.out"],
+    "ListenerProbe": ["files/$DIAG/configured-ports.txt", "files/$DIAG/listener-probe.json", "files/$DIAG/listener-owner-map.json", "files/$DIAG/listener-owner-map.tsv", "files/$DIAG/listener-probe.txt", "files/$DIAG/proc-net-tcp.txt", "files/$DIAG/listeners-tool.txt"],
+    "ContainerLogs": ["files/$DIAG/logs-selected.out", "files/$DIAG/logs-<container-id>.out"],
+    "SameIdAggregation": ["files/$DIAG/same-id-source-summary.json"]
   },
   "Unresolved": [
     "Rendered UI card container ID is exported as unknown/stale/current when the app has rendered files/pdocker/diagnostics/ui-rendered-service-truth-latest.json; missing or stale UI export is not success.",
@@ -574,41 +729,135 @@ JSON
 write_same_id_evidence() {
   label="$1"
   cid="$2"
-  create_out="$3"
-  inspect_before="$4"
-  inspect_after="$5"
-  inspect_after_rm="$6"
-  process_after="$7"
-  listener_after="$8"
-  residue_after="$9"
-  logs_after="${10}"
+  operation="$3"
+  create_out="$4"
+  inspect_before="$5"
+  inspect_after="$6"
+  inspect_after_rm="$7"
+  process_before="$8"
+  process_after_start="$9"
+  process_after_operation="${10}"
+  process_after_rm="${11}"
+  listener_before="${12}"
+  listener_after_start="${13}"
+  listener_after_operation="${14}"
+  listener_after_rm="${15}"
+  residue_before="${16}"
+  residue_after_start="${17}"
+  residue_after_operation="${18}"
+  residue_after_rm="${19}"
+  state_before="${20}"
+  state_after_start="${21}"
+  state_after_operation="${22}"
+  state_after_rm="${23}"
+  stale_pid_after_operation="${24}"
+  stale_pid_after_rm="${25}"
+  logs_before="${26}"
+  logs_after="${27}"
+  case "$operation" in
+    stop-rm) lifecycle_op="stop"; lifecycle_rm="rm-stopped" ;;
+    kill-rm) lifecycle_op="kill"; lifecycle_rm="rm-killed" ;;
+    *) lifecycle_op="$operation"; lifecycle_rm="rm" ;;
+  esac
   cat >"$DIAG/$label.json" <<JSON
 {
+  "SchemaVersion": 2,
+  "Kind": "same-container-id-teardown-proof",
   "ContainerId": $(json_string "$cid"),
+  "Operation": $(json_string "$operation"),
+  "Status": "planned-gap",
+  "Success": false,
   "RequiredSameContainerId": [
     "EngineCreateOutput",
     "EngineInspectBefore",
     "EngineInspectAfterOperation",
     "EngineInspectAfterRemove",
-    "ProcessTree",
-    "ListenerAbsence",
+    "ProcessTreeBeforeAfter",
+    "ListenerAbsenceBeforeAfter",
     "StalePidAbsence",
-    "GpuMediaExecutorResidue",
+    "GpuMediaExecutorResidueBeforeAfter",
+    "PersistedStateJsonBeforeAfter",
+    "LifecycleLogs",
     "ContainerLogs"
   ],
+  "BeforeAfterEvidence": {
+    "EngineInspect": {
+      "Before": $(json_string "files/$inspect_before"),
+      "AfterOperation": $(json_string "files/$inspect_after"),
+      "AfterRemove": $(json_string "files/$inspect_after_rm")
+    },
+    "ProcessTree": {
+      "Before": $(json_string "files/$process_before"),
+      "AfterStart": $(json_string "files/$process_after_start"),
+      "AfterOperation": $(json_string "files/$process_after_operation"),
+      "AfterRemove": $(json_string "files/$process_after_rm")
+    },
+    "ListenerAbsence": {
+      "Before": $(json_string "files/$listener_before"),
+      "AfterStart": $(json_string "files/$listener_after_start"),
+      "AfterOperation": $(json_string "files/$listener_after_operation"),
+      "AfterRemove": $(json_string "files/$listener_after_rm")
+    },
+    "GpuMediaExecutorResidue": {
+      "Before": $(json_string "files/$residue_before"),
+      "AfterStart": $(json_string "files/$residue_after_start"),
+      "AfterOperation": $(json_string "files/$residue_after_operation"),
+      "AfterRemove": $(json_string "files/$residue_after_rm")
+    },
+    "PersistedStateJson": {
+      "Before": $(json_string "files/$state_before"),
+      "AfterStart": $(json_string "files/$state_after_start"),
+      "AfterOperation": $(json_string "files/$state_after_operation"),
+      "AfterRemove": $(json_string "files/$state_after_rm")
+    },
+    "StalePid": {
+      "AfterOperation": $(json_string "files/$stale_pid_after_operation"),
+      "AfterRemove": $(json_string "files/$stale_pid_after_rm")
+    },
+    "ContainerLogs": {
+      "BeforeOperation": $(json_string "files/$logs_before"),
+      "AfterOperation": $(json_string "files/$logs_after")
+    },
+    "LifecycleLogs": {
+      "OperationOut": $(json_string "files/$DIAG/$lifecycle_op.out"),
+      "OperationErr": $(json_string "files/$DIAG/$lifecycle_op.err"),
+      "RemoveOut": $(json_string "files/$DIAG/$lifecycle_rm.out"),
+      "RemoveErr": $(json_string "files/$DIAG/$lifecycle_rm.err")
+    }
+  },
   "Evidence": {
     "EngineCreateOutput": $(json_string "files/$create_out"),
     "EngineInspectBefore": $(json_string "files/$inspect_before"),
     "EngineInspectAfterOperation": $(json_string "files/$inspect_after"),
     "EngineInspectAfterRemove": $(json_string "files/$inspect_after_rm"),
-    "ProcessTree": $(json_string "files/$process_after"),
-    "ListenerAbsence": $(json_string "files/$listener_after"),
-    "GpuMediaExecutorResidue": $(json_string "files/$residue_after"),
-    "ContainerLogs": $(json_string "files/$logs_after")
+    "ProcessTreeBeforeAfter": [$(json_string "files/$process_before"), $(json_string "files/$process_after_start"), $(json_string "files/$process_after_operation"), $(json_string "files/$process_after_rm")],
+    "ListenerAbsenceBeforeAfter": [$(json_string "files/$listener_before"), $(json_string "files/$listener_after_start"), $(json_string "files/$listener_after_operation"), $(json_string "files/$listener_after_rm")],
+    "GpuMediaExecutorResidueBeforeAfter": [$(json_string "files/$residue_before"), $(json_string "files/$residue_after_start"), $(json_string "files/$residue_after_operation"), $(json_string "files/$residue_after_rm")],
+    "PersistedStateJsonBeforeAfter": [$(json_string "files/$state_before"), $(json_string "files/$state_after_start"), $(json_string "files/$state_after_operation"), $(json_string "files/$state_after_rm")],
+    "StalePidAbsence": [$(json_string "files/$stale_pid_after_operation"), $(json_string "files/$stale_pid_after_rm")],
+    "LifecycleLogs": [$(json_string "files/$DIAG/$lifecycle_op.out"), $(json_string "files/$DIAG/$lifecycle_op.err"), $(json_string "files/$DIAG/$lifecycle_rm.out"), $(json_string "files/$DIAG/$lifecycle_rm.err")],
+    "ContainerLogs": [$(json_string "files/$logs_before"), $(json_string "files/$logs_after")]
   },
+  "AcceptanceRule": "A device verifier may only pass this artifact when every before/after evidence source is tied to this exact Engine container ID and proves no surviving process tree, listener, stale PID, GPU/media executor residue, stale state reference, or misleading previous log remains after removal.",
+  "Contract": "Same-container-ID teardown proof is collected, but this scaffold must remain non-passing until the device verifier proves process tree, listeners, stale PID references, GPU/media executor residue, persisted state, Engine inspect, and logs all agree for this exact container ID."
+}
+JSON
+}
+
+write_negative_case_evidence() {
+  label="$1"
+  rejected_signal="$2"
+  reason="$3"
+  cat >"$DIAG/$label.json" <<JSON
+{
+  "SchemaVersion": 1,
+  "Kind": "runtime-teardown-negative-case",
   "Status": "planned-gap",
   "Success": false,
-  "Contract": "Same-container-ID teardown proof is collected, but this scaffold must remain non-passing until the device verifier proves process tree, listeners, stale PID references, GPU/media executor residue, Engine inspect, and logs all agree for this exact container ID."
+  "ExpectedAccepted": false,
+  "RejectedSignal": $(json_string "$rejected_signal"),
+  "Reason": $(json_string "$reason"),
+  "RequiredProof": "same Engine container ID plus before/after process tree, listener absence, stale PID absence, GPU/media executor residue, persisted state, Engine inspect, lifecycle logs, and container logs"
 }
 JSON
 }
@@ -642,8 +891,8 @@ snapshot_ps process-after-rm-stopped
 snapshot_listeners listeners-after-rm-stopped
 snapshot_executor_residue executor-residue-after-rm-stopped
 write_pid_evidence stop-stale-pid-after-rm "$STOP_CID" "$DIAG/stop-inspect-after-rm.http" "$DIAG/process-after-rm-stopped.txt"
-write_same_id_evidence same-container-id-stop-rm "$STOP_CID" "$DIAG/create-stop.out" "$DIAG/stop-inspect-before.http" "$DIAG/stop-inspect-after.http" "$DIAG/stop-inspect-after-rm.http" "$DIAG/process-after-rm-stopped.txt" "$DIAG/listeners-after-rm-stopped.txt" "$DIAG/executor-residue-after-rm-stopped.txt" "$DIAG/logs-stop-after.out"
 snapshot_state_json persisted-state-after-rm-stopped
+write_same_id_evidence same-container-id-stop-rm "$STOP_CID" "stop-rm" "$DIAG/create-stop.out" "$DIAG/stop-inspect-before.http" "$DIAG/stop-inspect-after.http" "$DIAG/stop-inspect-after-rm.http" "$DIAG/process-before.txt" "$DIAG/process-after-stop-start.txt" "$DIAG/process-after-stop.txt" "$DIAG/process-after-rm-stopped.txt" "$DIAG/listeners-before.txt" "$DIAG/listeners-after-stop-start.txt" "$DIAG/listeners-after-stop.txt" "$DIAG/listeners-after-rm-stopped.txt" "$DIAG/executor-residue-before.txt" "$DIAG/executor-residue-after-stop-start.txt" "$DIAG/executor-residue-after-stop.txt" "$DIAG/executor-residue-after-rm-stopped.txt" "$DIAG/persisted-state-before.txt" "$DIAG/persisted-state-after-stop-start.txt" "$DIAG/persisted-state-after-stop.txt" "$DIAG/persisted-state-after-rm-stopped.txt" "$DIAG/stop-stale-pid-after-stop.json" "$DIAG/stop-stale-pid-after-rm.json" "$DIAG/logs-stop-before.out" "$DIAG/logs-stop-after.out"
 
 record_cmd create-kill docker create --name "$KILL_NAME" "$IMAGE" sh -lc 'while true; do sleep 30; done'
 KILL_CID="$(container_id_from_out "$DIAG/create-kill.out")"
@@ -668,9 +917,18 @@ snapshot_ps process-after-rm-killed
 snapshot_listeners listeners-after-rm-killed
 snapshot_executor_residue executor-residue-after-rm-killed
 write_pid_evidence kill-stale-pid-after-rm "$KILL_CID" "$DIAG/kill-inspect-after-rm.http" "$DIAG/process-after-rm-killed.txt"
-write_same_id_evidence same-container-id-kill-rm "$KILL_CID" "$DIAG/create-kill.out" "$DIAG/kill-inspect-before.http" "$DIAG/kill-inspect-after.http" "$DIAG/kill-inspect-after-rm.http" "$DIAG/process-after-rm-killed.txt" "$DIAG/listeners-after-rm-killed.txt" "$DIAG/executor-residue-after-rm-killed.txt" "$DIAG/logs-kill-after.out"
 snapshot_state_json persisted-state-after-rm-killed
+write_same_id_evidence same-container-id-kill-rm "$KILL_CID" "kill-rm" "$DIAG/create-kill.out" "$DIAG/kill-inspect-before.http" "$DIAG/kill-inspect-after.http" "$DIAG/kill-inspect-after-rm.http" "$DIAG/process-before.txt" "$DIAG/process-after-kill-start.txt" "$DIAG/process-after-kill.txt" "$DIAG/process-after-rm-killed.txt" "$DIAG/listeners-before.txt" "$DIAG/listeners-after-kill-start.txt" "$DIAG/listeners-after-kill.txt" "$DIAG/listeners-after-rm-killed.txt" "$DIAG/executor-residue-before.txt" "$DIAG/executor-residue-after-kill-start.txt" "$DIAG/executor-residue-after-kill.txt" "$DIAG/executor-residue-after-rm-killed.txt" "$DIAG/persisted-state-before.txt" "$DIAG/persisted-state-after-kill-start.txt" "$DIAG/persisted-state-after-kill.txt" "$DIAG/persisted-state-after-rm-killed.txt" "$DIAG/kill-stale-pid-after-kill.json" "$DIAG/kill-stale-pid-after-rm.json" "$DIAG/logs-kill-before.out" "$DIAG/logs-kill-after.out"
 http_get engine-containers-after '/containers/json?all=1'
+
+write_negative_case_evidence negative-http-204-only "HTTP 204 or Engine API acknowledgement alone" "Reject API acknowledgement without same-container-ID before/after process tree, listener, stale PID, GPU executor, state, and log proof."
+write_negative_case_evidence negative-cli-exit-zero-only "CLI exit 0 alone" "Reject successful docker stop/kill/rm command output without matching Engine inspect and absence evidence for the same container ID."
+write_negative_case_evidence negative-name-only "matching container name without same Engine container ID" "Reject name or label matches that cannot be tied to the exact Engine container ID created by this teardown probe."
+write_negative_case_evidence negative-stale-state-json "stale state.json still names a removed container" "Reject persisted state that still references the container after rm unless the verifier proves it is stale and absent from live runtime evidence."
+write_negative_case_evidence negative-listener-only "listener absence without process-tree and stale-PID proof" "Reject clean /proc/net/tcp, ss, or netstat snapshots when process tree, stale PID, GPU executor residue, state, and logs are not proven for the same container ID."
+write_negative_case_evidence negative-process-only "clean process table without Engine inspect and logs" "Reject process-table absence that is not tied to Engine inspect, lifecycle logs, container logs, listener absence, and persisted state for the same container ID."
+write_negative_case_evidence negative-previous-container-logs "previous-container logs or reused names" "Reject logs from an earlier container, duplicate name, or reused project unless log evidence is bound to this exact Engine container ID."
+write_negative_case_evidence negative-wrong-container-id "mixed evidence from a different container ID" "Reject any before/after proof set where Engine create, inspect, process, listener, stale PID, GPU executor, state, or logs name different container IDs."
 
 # Keep the compatibility evidence above immutable, then clean up any test
 # residue best-effort so this planned-gap probe does not poison later smokes.
@@ -727,16 +985,55 @@ cat > "$LATEST" <<JSON
     "LifecycleLogs": ["files/$DIAG/stop.out", "files/$DIAG/stop.err", "files/$DIAG/kill.out", "files/$DIAG/kill.err", "files/$DIAG/rm-stopped.out", "files/$DIAG/rm-stopped.err", "files/$DIAG/rm-killed.out", "files/$DIAG/rm-killed.err", "files/$DIAG/cleanup-leftovers.out", "files/$DIAG/cleanup-leftovers.err"],
     "ContainerLogs": ["files/$DIAG/logs-stop-before.out", "files/$DIAG/logs-stop-after.out", "files/$DIAG/logs-kill-before.out", "files/$DIAG/logs-kill-after.out"]
   },
+  "TeardownProofSchema": {
+    "Name": "same-container-id-teardown-artifact",
+    "Version": 2,
+    "SuccessInvariant": "Success remains false until a device verifier proves every before/after artifact for one exact Engine container ID.",
+    "PerContainerArtifacts": ["files/$DIAG/same-container-id-stop-rm.json", "files/$DIAG/same-container-id-kill-rm.json"]
+  },
+  "SameContainerIdTeardownArtifacts": {
+    "StopRm": {
+      "ContainerId": $(json_string "$STOP_CID"),
+      "Artifact": "files/$DIAG/same-container-id-stop-rm.json",
+      "Operation": "stop-rm"
+    },
+    "KillRm": {
+      "ContainerId": $(json_string "$KILL_CID"),
+      "Artifact": "files/$DIAG/same-container-id-kill-rm.json",
+      "Operation": "kill-rm"
+    }
+  },
+  "BeforeAfterEvidenceRequired": [
+    "Engine inspect before/after operation/after remove for the same Engine container ID",
+    "Process tree before/start/after operation/after remove for the same Engine container ID",
+    "Listener absence from /proc/net/tcp, /proc/net/tcp6, ss -ltnp, and netstat -ltnp before/after",
+    "Stale PID absence from inspect State.Pid and post-operation process tables",
+    "GPU/media executor residue before/start/after operation/after remove",
+    "Persisted state.json before/start/after operation/after remove",
+    "Lifecycle logs and container logs bound to the same Engine container ID"
+  ],
+  "NegativeCases": {
+    "Http204Only": "files/$DIAG/negative-http-204-only.json",
+    "CliExitZeroOnly": "files/$DIAG/negative-cli-exit-zero-only.json",
+    "NameOnly": "files/$DIAG/negative-name-only.json",
+    "StaleStateJson": "files/$DIAG/negative-stale-state-json.json",
+    "ListenerOnly": "files/$DIAG/negative-listener-only.json",
+    "ProcessOnly": "files/$DIAG/negative-process-only.json",
+    "PreviousContainerLogs": "files/$DIAG/negative-previous-container-logs.json",
+    "WrongContainerId": "files/$DIAG/negative-wrong-container-id.json"
+  },
   "RequiredSameContainerId": [
     "EngineCreateOutput",
     "EngineInspect",
-    "ProcessTree",
-    "ListenerAbsence",
+    "ProcessTreeBeforeAfter",
+    "ListenerAbsenceBeforeAfter",
     "StalePidAbsence",
-    "GpuMediaExecutorResidue",
+    "GpuMediaExecutorResidueBeforeAfter",
+    "PersistedStateJsonBeforeAfter",
+    "LifecycleLogs",
     "ContainerLogs"
   ],
-  "TruthContract": "stop/kill/rm remains non-passing with no fake success until every teardown evidence source proves absence for the same Engine container ID; HTTP 204, CLI exit 0, stale state.json, or configured name alone is never sufficient.",
+  "TruthContract": "stop/kill/rm remains non-passing with no fake success until every teardown evidence source proves absence for the same Engine container ID; HTTP 204, CLI exit 0, stale state.json, configured name, listener absence alone, clean process table alone, previous logs, duplicate names, or mixed container IDs are never sufficient.",
   "Unresolved": [
     "HTTP/CLI acknowledgement is recorded but not accepted as proof of teardown.",
     "The smoke does not yet map every observed process back to the Engine container ID/process tree.",

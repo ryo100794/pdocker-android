@@ -22,32 +22,52 @@ The benchmark artifact includes one metric row per round for:
 - `copy_up`
 - `layer_lookup`
 
-Each metric records:
+Each metric records operation count, total nanoseconds, average nanoseconds per
+operation, p50/p95/p99 nanoseconds, and metric-specific metadata.  The
+`copy_up` metric is both a performance measurement and a correctness check: it
+mutates hardlinked upper files while `libcow` is loaded and fails if the lower
+payload changes or the upper remains hardlinked.
 
-- operation count;
-- total nanoseconds;
-- average nanoseconds per operation;
-- p50/p95/p99 nanoseconds;
-- metric-specific metadata.
+## Recovery artifact schema
 
-The `copy_up` metric is both a performance measurement and a correctness
-check.  It mutates hardlinked upper files while `libcow` is loaded and fails the
-artifact if the lower payload changes or the upper remains hardlinked.
+`test_cow.sh` writes `cow-overlay-recovery-latest.json` after local correctness
+checks pass.  The artifact has:
+
+- `Checks`: summary pass/planned-gap statuses.
+- `CaseResults`: executable fail-closed cases, each with `Id`, `Operation`,
+  `Fault`, `ExpectedRecovery`, `Status`, and `Evidence`.
+- `NegativeCases`: the same injected-fault cases, making explicit that these
+  are negative paths where mutation must not continue after the fault.
+- `KillAtStepPlannedCases`: deterministic process-kill checkpoints that remain
+  `planned-gap` until a device/process-control harness exists.
+
+Required executable case ids are:
+
+- `copy_up.before_rename`
+- `copy_up.truncate_before_rename`
+- `metadata.chmod_before_rename`
+- `whiteout.before_publish`
+- `rename.before_publish`
+- `archive_put.stage_failure`
+- `hardlink_metadata.corrupt_rebuild`
+- `low_space.copy_up_enospc`
 
 ## Recovery coverage
 
-`test_cow.sh` writes `cow-overlay-recovery-latest.json` after local correctness
-checks pass.  The artifact records:
+The executable host-local gate now records fail-closed evidence for:
 
-- copy-up failure fail-closed behavior;
-- truncate failure fail-closed behavior;
-- metadata mutation failure fail-closed behavior;
+- copy-up write/truncate failures injected before rename publication;
+- hardlink metadata mutation failure for `chmod`;
+- whiteout marker creation failure before marker publication;
+- rename/replace staging failure before destination publication;
+- archive PUT stage failure before live upperdir publication;
+- simulated low-space/`ENOSPC` during temp payload write;
 - corrupt hardlink ring metadata rebuild from the payload tree.
 
 The hardlink ring metadata is treated as a rebuildable accelerator only.  The
 payload tree remains the source of truth.  If the accelerator is corrupt or
-stale after OOM, LMK, ENOSPC, or partial writes, startup repair must be able to
-discard it and rebuild from the payload tree.
+stale after OOM, LMK, ENOSPC, or partial writes, startup repair must discard it
+and rebuild from the payload tree.
 
 ## Planned external kill-at-step cases
 
@@ -57,11 +77,14 @@ Those cases are recorded as `planned-gap`, never as success:
 - copy-up temp payload write;
 - copy-up rename publication;
 - whiteout creation;
+- archive PUT stage publication;
+- rename destination publication;
 - hardlink ring metadata write.
 
 These cases require a device or process-control harness that can terminate the
 runtime at deterministic mutation checkpoints, restart it, and verify that no
-partial upper, whiteout, metadata, or cache state is trusted as complete.
+partial upper, whiteout, metadata, archive stage, rename stage, or cache state is
+trusted as complete.
 
 ## Commands
 

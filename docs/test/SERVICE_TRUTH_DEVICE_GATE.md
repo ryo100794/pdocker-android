@@ -136,3 +136,33 @@ The current runner is therefore expected to be a useful diagnostic collector and
 a failing gate: real-device-required work remains represented as
 `planned-gap`/`Success: false`, while host tests enforce that fake success cannot
 be introduced silently.
+
+## Current diagnostic collection detail
+
+`--service-truth` now writes an additional aggregation artifact at
+`files/pdocker/diagnostics/service-truth/same-id-source-summary.json`.  It is
+still diagnostic-only: even if a real device happens to populate every source,
+the top-level artifact remains `Status: planned-gap`, `Success: false`, and exits
+nonzero until this contract is deliberately promoted.
+
+The diagnostic collector attempts to reduce each source to the selected exact
+Engine container ID as follows:
+
+- UI card: copies `ui-rendered-service-truth-latest.json` and records
+  `EngineContainerId`, `ContainerIdSource`, and `TruthState`.
+- Docker ps: records `engine-ps.out`, `engine-ps-running.out`,
+  `engine-candidates.tsv`, and `engine-candidates.json`; the selected row must
+  be an exact ID match, not a prefix match.
+- Engine API: records `/containers/json?all=1`, `inspect-selected.http`, and
+  `docker-inspect-selected.out` for the selected ID.
+- Persisted state: records every discovered `state.json` and
+  `state-id-comparison.json`; matches are exact selected-ID matches only.
+- Process table: extracts the selected container inspect PID and searches it in
+  `process-table.txt`.
+- Listener: records `/proc/net/tcp`, `listener-probe.json`, and the best-effort
+  socket-inode-to-PID map `listener-owner-map.json` / `.tsv`.
+- Logs: records per-running-container logs and `logs-selected.out` for the
+  selected Engine container ID.
+
+These artifacts make device failures actionable, but they are not a pass signal
+while the gate is a planned gap.

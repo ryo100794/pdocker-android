@@ -122,6 +122,16 @@ def check_device_scenario_runner() -> None:
             isinstance(data.get("commands"), list) and len(data["commands"]) >= 8)
     require("device scenario records concrete phases",
             data.get("phases") == ["prepare-residue", "kill-daemon", "restart-and-probe", "cleanup"])
+    live = data.get("live_pull_interruption") or {}
+    require("device scenario records gated timed live-pull interruption phase",
+            live.get("phase") == "timed-live-pull-interruption"
+            and live.get("status") == "planned-gap"
+            and live.get("success") is False
+            and live.get("runnable") is False)
+    require("device scenario requires explicit safe live-pull fixture flags",
+            {"--execute-live-pull-interruption", "--live-fixture-owned"} <= set(live.get("required_cli") or [])
+            and any("--live-image" in item and "scenario-owned" in item for item in (live.get("required_cli") or []))
+            and "scenario-owned" in "\n".join(live.get("safety_contract") or []))
     coverage = data.get("coverage") or {}
     require("device scenario separates synthetic recovery from live network-pull coverage",
             coverage.get("live_interrupted_network_pull") is False
@@ -159,7 +169,9 @@ def check_device_scenario_runner() -> None:
             all(term in cleanup.lower() for term in ["collect", "unrelated", "success=false"]))
     remaining = "\n".join(data.get("remaining_gap", []))
     require("device scenario records remaining live-pull gap",
-            "Live registry pull interruption" in remaining)
+            "Live registry pull interruption" in remaining
+            and "--execute-live-pull-interruption" in remaining
+            and "scenario-owned" in remaining)
 
     side = DEVICE_SIDE_RUNNER.read_text()
     require("device-side runner prepares scenario-owned pull/old/tmp residues",
@@ -184,6 +196,8 @@ def check_device_scenario_runner() -> None:
     doc = DEVICE_GATE_DOC.read_text()
     require("device gate doc records concrete phases and remaining gap",
             all(term in doc for term in ["prepare-residue", "kill-daemon", "restart-and-probe", "cleanup", "remaining gap"]))
+    require("device gate doc records opt-in live-pull safety gate",
+            all(term in doc for term in ["timed-live-pull-interruption", "--execute-live-pull-interruption", "--live-image", "--live-fixture-owned", "scenario-owned"]))
 
 
 def main() -> int:

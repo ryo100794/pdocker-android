@@ -230,6 +230,229 @@ buffers, not improving normal performance.
   removal.
 - Treat storage exhaustion as a hard failure with clear UI diagnostics.
 
+
+## Implementation-Ready Contract: Managed Anonymous Pager v1
+
+This section is the pre-C/C++ implementation contract.  Any implementation that
+claims `pdocker.memory-pager.managed.v1` support must satisfy these rules before
+it can be enabled for a real container.
+
+### Managed region table
+
+The direct executor owns a per-tracee managed region table.  The table is the
+only authority for deciding whether a fault is a pager fault.
+
+Required columns per region:
+
+- `region_id`: stable monotonically increasing id unique within the tracee.
+- `tracee_pid` and optional `container_id`/`operation_id` for diagnostics.
+- `base`, `length`, `end`, `page_size`, and `page_count`; `base` and `length`
+  must be page-aligned and `end` must be overflow-checked.
+- `original_prot`, `resident_prot`, `fault_prot`, `mmap_flags`, and the denied
+  reason if the original mapping cannot be represented safely.
+- `backing_fd`, `backing_path`, `backing_offset`, `backing_bytes`, and
+  `storage_reserved_bytes` under app-private storage.
+- `resident_pages`, `resident_bytes`, `resident_limit_pages`, and eviction
+  policy state (`clock_hand` or LRU generation).
+- Per-page metadata: `state`, `dirty`, `write_observed`, `backing_valid`,
+  `last_fault_seq`, `last_evict_seq`, and in-flight pin count.
+
+Table invariants:
+
+1. Registered ranges must not overlap another managed region in the same tracee.
+2. A fault address is first untagged, then page-aligned, then looked up in this
+   table.  No table match means the original signal is delivered unchanged.
+3. The table must be updated before the tracee can observe a pointer to a
+   managed mapping; otherwise fail closed and return the original syscall result
+   or `ENOMEM` as appropriate.
+4. `munmap` or tracee exit must remove the region, close/unlink its backing file,
+   and persist a final diagnostic summary before cleanup.
+
+### Page state model
+
+Each managed page has exactly one primary `page_state`:
+
+- `clean`: backing storage contains the authoritative bytes and the tracee page
+  is either read-only resident or evicted.
+- `dirty`: the tracee has write permission or a write fault was observed since
+  the last writeback; backing storage is stale until page-out completes.
+- `evicted`: the tracee VMA exists but the page is inaccessible
+  (`PROT_NONE`) and must fault before use.  `backing_valid=true` is required
+  unless this is a never-touched zero page.
+- `resident`: the tracee page is accessible.  `resident` is combined with clean
+  or dirty in diagnostics as `resident_clean` or `resident_dirty`, but the
+  implementation must still expose the four contract words `clean`, `dirty`,
+  `evicted`, and `resident`.
+
+Allowed transitions:
+
+- `evicted -> resident_clean` on read fault after page-in from backing or zero
+  fill for a never-touched page.
+- `resident_clean -> resident_dirty` on first write fault or conservative
+  write-enable decision.
+- `resident_dirty -> evicted` only after successful writeback and `mprotect` to
+  `PROT_NONE`.
+- `resident_clean -> evicted` after `mprotect(PROT_NONE)` and optional
+  `madvise(MADV_DONTNEED)`.
+- Any I/O, permission, or metadata error during transition must leave the page
+  in the last known safe state or fail closed by killing/denying only the
+  managed operation with diagnostics; it must not silently expose stale bytes.
+
+### Fault handling path
+
+The ptrace SIGSEGV path is the default v1 path when `userfaultfd` is blocked.
+For each signal-delivery stop:
+
+1. Verify `sig == SIGSEGV` and fetch `siginfo` with `PTRACE_GETSIGINFO`.
+2. Untag and page-align `siginfo.si_addr`.
+3. Look up the page in the managed region table.
+4. If no managed page matches, deliver the original `SIGSEGV` unchanged,
+   including existing application handler semantics.
+5. If a managed page matches, stop or otherwise serialize the tracee threads so
+   no other thread can mutate the same page while it is being resolved.
+6. For missing/read faults, ensure capacity under `resident_limit_pages`, evict
+   candidate pages if needed, mprotect the exact faulting page to read-only,
+   load bytes from backing storage or zero-fill, and resume the original
+   instruction without delivering `SIGSEGV`.
+7. For write faults on resident clean pages, mark dirty and upgrade the exact page to writable.  The implementation may use conservative dirty tracking,
+   but diagnostics must say so.
+8. Record counters and latency for every handled fault.  A handled fault must be
+   attributable to `region_id` and `page_index`.
+
+`userfaultfd` may replace steps 1-7 only on devices where the APK process can
+open/register it.  The same managed region table, page state model, diagnostics,
+and fail-closed rules still apply.
+
+### mmap, mprotect, sigaction, and munmap constraints
+
+`mmap` interception may manage only opt-in, private anonymous, page-aligned,
+large mappings.  Required constraints:
+
+- `PDOCKER_MEMORY_PAGER=managed` or `PDOCKER_DIRECT_MEMORY_PAGER=managed` must
+  be present.  Docker/Compose memory limit keys are budgets only and must not
+  silently enable the pager.
+- The request must be `MAP_PRIVATE | MAP_ANONYMOUS`, non-executable, non-shared,
+  not a stack, not a signal stack, not loader/libc internal state, and not known
+  GPU/shared/device memory.
+- The request size must be at or above the large allocation opt-in threshold
+  (`PDOCKER_DIRECT_MEMORY_PAGER_MIN_REGION_BYTES`) and at or below the maximum
+  managed region cap (`PDOCKER_DIRECT_MEMORY_PAGER_MAX_REGION`).
+- The tracee receives a reserved VMA for the same address range.  The initial
+  protection is `PROT_NONE` unless the implementation can prove a stricter
+  equivalent.
+
+`mprotect` constraints:
+
+- Changes fully inside a managed region update desired protection metadata but
+  may not bypass page-state enforcement.
+- `PROT_EXEC` on a managed page is denied with `ENOMEM`/`EACCES`-style
+  diagnostics and the region is marked unsupported.
+- Partial page changes are rounded to page boundaries for metadata and must be
+  reflected in the original syscall result.
+
+`sigaction` constraints:
+
+- Application `SIGSEGV` handlers are allowed.  pdocker may suppress only faults
+  that match a registered managed page.  Non-managed faults and pager-internal
+  fatal faults must be delivered according to normal Linux signal semantics.
+- The pager must not install a process-global handler that steals unrelated
+  faults from application code.  If an in-process shim handler is used later, it
+  must chain or restore user handlers for non-managed addresses.
+
+`munmap` constraints:
+
+- Full unmap removes the region after flushing dirty pages and writing a final
+  summary.
+- Partial unmap either splits the region with fresh non-overlapping table rows
+  or fails closed; stale page metadata for unmapped addresses is forbidden.
+- Unmap cleanup must unlink backing files separately from retained diagnostic
+  artifacts.
+
+### Dirty precision
+
+Dirty tracking precision must be explicit in every artifact:
+
+- `dirty_precision=write_fault_precise`: clean pages are restored read-only;
+  first write faults and marks only that page dirty.
+- `dirty_precision=conservative_page`: a page is marked dirty when it is made
+  writable even if no later write is proven.
+- `dirty_precision=region_conservative`: all pages in a region may be written
+  back after any write-enable event.
+
+The initial transparent ptrace implementation may use `conservative_page`, but
+it must never claim write-fault precision unless read-only restoration and first
+write fault handling are active.  Dirty writeback counters must distinguish
+`dirty_pages_observed` from `dirty_pages_written`.
+
+### Large allocation opt-in
+
+The pager is not a general malloc replacement.  Large allocation opt-in requires
+both a feature opt-in and a size/shape match:
+
+- Feature opt-in: `PDOCKER_MEMORY_PAGER=managed`,
+  `PDOCKER_DIRECT_MEMORY_PAGER=managed`, or Compose label
+  `io.pdocker.memory-pager=managed`.
+- Workload opt-in for user-visible mode: `io.pdocker.large-workload=enabled` or
+  `PDOCKER_LARGE_WORKLOAD=1` when exposed through the UI.
+- Size opt-in: request bytes must be at least
+  `PDOCKER_DIRECT_MEMORY_PAGER_MIN_REGION_BYTES`; default recommendation is
+  64 MiB until device benchmarks justify another value.
+- Exclusions always win over opt-in: executable, shared, stack, signal-stack,
+  file-backed, GPU/device, and unknown ownership mappings are not managed.
+
+### LMK/ENOMEM classification
+
+Memory outcomes must be classified with stable strings:
+
+- `allocation_denied_enomem`: pdocker guard or pager admission rejected the
+  request before mapping; expected syscall result is `ENOMEM` or unchanged `brk`.
+- `pager_storage_exhausted`: backing file reservation/write failed because
+  app-private storage is low; fail closed and do not continue with unbacked
+  dirty pages.
+- `pager_fault_unhandled`: a managed fault could not be resolved; deliver or
+  synthesize a fatal signal with diagnostics rather than resume unsafely.
+- `lmk_suspected`: process disappeared or tracer observed exit 137/SIGKILL and
+  recent memory samples support low-memory pressure.
+- `not_lmk_suspected`: explicit user stop, normal exit, guard ENOMEM, storage
+  exhaustion, unsupported mapping, or unrelated crash explains the outcome.
+- `unknown`: evidence is insufficient; UI must not invent LMK certainty.
+
+### UI telemetry fields
+
+The UI/debug pane must consume a summary with these fields without needing ADB:
+
+- `schema=pdocker.memory-pager.telemetry.v1`, `operation_id`, `container_id`,
+  `tracee_pid`, `phase`, and `pager_enabled`.
+- `managed_region_count`, `reserved_bytes`, `resident_bytes`, `resident_pages`,
+  `resident_limit_pages`, `backing_bytes`, `storage_free_bytes`.
+- `page_ins`, `page_outs`, `dirty_page_outs`, `faults_handled`,
+  `faults_delivered`, `fault_latency_avg_us`, `fault_latency_max_us`.
+- `dirty_precision`, `dirty_pages_observed`, `dirty_pages_written`.
+- `last_fault_region_id`, `last_fault_page_index`, `last_fault_address`,
+  `last_fault_action`, and `last_error`.
+- `last_large_allocation` with syscall, requested bytes, accepted/denied,
+  result errno, threshold, and classification.
+- `memory_pressure` with MemAvailable, SwapFree, RSS/PSS or `pss_unavailable`.
+- `classification` using the LMK/ENOMEM strings above, plus `classifier_reason`.
+- `ui_live_state_allowed=false` unless a fresh engine snapshot and pid liveness
+  agree with the persisted state.
+
+### Fail-closed behavior
+
+Fail closed means correctness and diagnosability beat progress:
+
+- If admission, table registration, backing allocation, page-in, page-out,
+  permission change, thread serialization, or diagnostic write fails, the pager
+  must disable the affected managed region or operation rather than continue
+  with unknown page contents.
+- Unsupported mapping shapes must pass through unmanaged or return `ENOMEM`;
+  they must not be partially managed.
+- If diagnostics cannot be persisted, the UI must show `unknown`/`not enabled`
+  rather than `running` or `lmk_suspected`.
+- Fail-closed paths must emit a structured abnormal event with `case_id`,
+  classification, errno/signal, region id when known, and artifact path when
+  available.
+
 ## OOM/LMK Diagnostics Contract
 
 The pager must also make low-memory failures diagnosable without ADB, root, or

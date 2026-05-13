@@ -40,6 +40,13 @@ class ImagePullCrashSafetyVerifierTest(unittest.TestCase):
         self.assertIn("artifact_schema", data)
         self.assertEqual(data["phases"], ["prepare-residue", "kill-daemon", "restart-and-probe", "cleanup"])
         self.assertFalse(data["coverage"]["live_interrupted_network_pull"])
+        self.assertEqual(data["live_pull_interruption"]["phase"], "timed-live-pull-interruption")
+        self.assertEqual(data["live_pull_interruption"]["status"], "planned-gap")
+        self.assertFalse(data["live_pull_interruption"]["success"])
+        self.assertFalse(data["live_pull_interruption"]["runnable"])
+        self.assertIn("--execute-live-pull-interruption", data["live_pull_interruption"]["required_cli"])
+        self.assertIn("--live-fixture-owned", data["live_pull_interruption"]["required_cli"])
+        self.assertTrue(any("--live-image" in item for item in data["live_pull_interruption"]["required_cli"]))
         self.assertIn("remaining_gap", data)
         self.assertIn("negative_expected_conditions", data)
         self.assertIn("cleanup_policy", data)
@@ -74,6 +81,46 @@ class ImagePullCrashSafetyVerifierTest(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertEqual(data["phase_results"], [])
         self.assertIsNone(data["assertions"]["old_tag_restored"])
+
+    def test_live_pull_interruption_opt_in_stays_planned_gap_until_device_phase_exists(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact = Path(tmp) / "artifact.json"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(RUNNER),
+                    "--adb",
+                    "__missing_adb_for_unit_test__",
+                    "--artifact",
+                    str(artifact),
+                    "--execute-live-pull-interruption",
+                    "--live-image",
+                    "127.0.0.1:5000/pdocker-crash-safety-fixture:test",
+                    "--live-fixture-owned",
+                    "--live-interrupt-after-seconds",
+                    "1.5",
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+            )
+            data = json.loads(artifact.read_text())
+
+        self.assertIn("status=planned-gap", result.stdout)
+        self.assertEqual(data["status"], "planned-gap")
+        self.assertFalse(data["success"])
+        self.assertFalse(data["coverage"]["live_interrupted_network_pull"])
+        live = data["live_pull_interruption"]
+        self.assertTrue(live["requested"])
+        self.assertEqual(live["live_image"], "127.0.0.1:5000/pdocker-crash-safety-fixture:test")
+        self.assertTrue(live["fixture_owned_or_isolated"])
+        self.assertEqual(live["interrupt_after_seconds"], 1.5)
+        self.assertFalse(live["runnable"])
+        self.assertFalse(live["success"])
+        self.assertEqual(live["status"], "planned-gap")
+        self.assertIn("device-side timed live pull interruption phase is not implemented", live["blocked_reason"])
 
     def test_device_side_runner_is_scenario_scoped(self):
         text = DEVICE_RUNNER.read_text()

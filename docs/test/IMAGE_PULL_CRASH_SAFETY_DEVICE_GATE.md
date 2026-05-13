@@ -91,11 +91,56 @@ The top-level artifact points at:
 - `inspect-never.raw`
 - daemon process captures before kill and after restart
 
+## Timed live-pull interruption design gate
+
+The live registry interruption lane is represented in the JSON artifact as
+`live_pull_interruption.phase = timed-live-pull-interruption`, but it is a
+planned gap in this safe-prep change. It must not run by default because killing
+a pull against a user-owned image or shared tag can leave destructive residue.
+
+Minimum opt-in CLI for a future implementation:
+
+```sh
+python3 scripts/verify/runner/image_pull_crash_safety_device.py \
+  --serial <adb-serial> \
+  --package io.github.ryo100794.pdocker.compat \
+  --artifact docs/test/image-pull-crash-safety-latest.json \
+  --execute-live-pull-interruption \
+  --live-image <scenario-owned-or-isolated-fixture-ref> \
+  --live-fixture-owned \
+  --live-interrupt-after-seconds 3 \
+  --live-timeout-seconds 120
+```
+
+Safety gates:
+
+- `--execute-live-pull-interruption` is required; without it, the artifact stays
+  `success=false` / `status=planned-gap` for live-pull coverage.
+- `--live-image` must be a scenario-owned reference or an isolated disposable
+  registry fixture, never a user image or broad mutable tag.
+- `--live-fixture-owned` is the operator acknowledgement that the fixture is safe
+  to interrupt and clean.
+- Until the device-side live phase exists, even the fully opted-in invocation
+  remains `success=false`, `coverage.live_interrupted_network_pull=false`, and
+  `live_pull_interruption.status=planned-gap`.
+
+Planned phase steps for `timed-live-pull-interruption`:
+
+1. Start a timed Engine API `/images/create` pull for `--live-image`.
+2. Sleep for `--live-interrupt-after-seconds` while transfer is active.
+3. Kill only `pdockerd` mid-transfer.
+4. Restart the daemon and wait for the socket.
+5. Assert partial image stages/layers are pruned and the interrupted ref is not
+   accidentally published.
+6. Cleanup only scenario-token-owned tags, stages, layer residue, and isolated
+   fixture artifacts.
+
 ## Remaining gap
 
 The current lane intentionally avoids killing a live registry download by
 default. The remaining gap is a timed live-pull interruption test that starts an
 actual `/images/create` request, kills the daemon while the pull is in progress,
-and proves the same post-restart conditions. That future lane must still use a
-scenario-owned reference or an isolated registry fixture; it must not overwrite
-user images or clean broad stores.
+and proves the same post-restart conditions. That future lane requires
+`--execute-live-pull-interruption`, `--live-image`, and `--live-fixture-owned`,
+and must still use a scenario-owned reference or an isolated registry fixture;
+it must not overwrite user images or clean broad stores.

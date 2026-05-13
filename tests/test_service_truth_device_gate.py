@@ -93,6 +93,11 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
             "process-table",
             "/proc/net/tcp",
             "logs-<container-id>.out",
+            "same-id-source-summary.json",
+            "listener-owner-map.json",
+            "inspect-selected.http",
+            "logs-selected.out",
+            "exact ID match",
             "prefix-only matches are not enough",
             "unknown",
             "stale",
@@ -147,10 +152,19 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
         self.assertIn("docker ps -q --no-trunc", body)
         for source in [s for s in REQUIRED_SOURCES if s != "DockerPs"]:
             self.assertIn(source, body)
+        self.assertIn('"DockerPs"', body)
+        self.assertIn('"SameEngineContainerId": false', body)
+        self.assertIn("$2 == id", body)
+        self.assertNotIn("index(id,$2)==1", body)
         for term in [
             "engine-candidates.json",
             "state-id-comparison.json",
             "listener-probe.json",
+            "listener-owner-map.json",
+            "same-id-source-summary.json",
+            "inspect-selected.http",
+            "docker-inspect-selected.out",
+            "logs-selected.out",
             "ui-rendered-service-truth-latest.json",
             "/proc/net/tcp",
             "missing or stale UI export is not success",

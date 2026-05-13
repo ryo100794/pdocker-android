@@ -108,9 +108,8 @@
       "expected_exit_code": null,
       "evidence_source": "docs/test/direct-runtime-stress-latest.json",
       "reproduction_command": "bash scripts/container-direct-probe.sh --memory-guard",
-      "gap_reason": "The direct memory-guard contract is covered by fast static/unit tests; a runnable container probe still needs a prepared rootfs artifact before this abnormal replay can be mandatory.",
-      "retention": "Keep long-run artifacts outside the fast lane and attach them to the build set.",
-      "gap_reason": "The heavy container memory-guard probe is designed but not safe for every host-only fast run."
+      "gap_reason": "The heavy container memory-guard probe is designed but not safe for every host-only fast run.",
+      "retention": "Keep long-run artifacts outside the fast lane and attach them to the build set."
     },
     {
       "id": "abnormal.runtime.oom-or-lmk-down",
@@ -183,6 +182,51 @@
       "reproduction_command": "python3 scripts/verify-abnormal-events.py",
       "retention": "Keep latest artifact in docs/test and preserve release-candidate artifacts with the build set.",
       "gap_reason": "A dedicated network negative corpus is not implemented yet."
+    },
+    {
+      "id": "abnormal.runtime.memory-pager-storage-exhausted",
+      "category": "runtime",
+      "severity": "blocker",
+      "surface": "direct-runtime",
+      "status": "planned-gap",
+      "trigger": "A managed pager page-in/page-out or admission path cannot reserve or write app-private backing storage",
+      "expected_signal": "The operation fails closed with classification pager_storage_exhausted, keeps stale UI state disabled, and persists a bounded diagnostic artifact when possible",
+      "failure_oracle": "The APK memory pager contract test fails if storage exhaustion is not documented as fail-closed or if UI telemetry lacks classification and storage fields.",
+      "expected_exit_code": null,
+      "evidence_source": "docs/test/apk-memory-pager-managed-latest.json",
+      "reproduction_command": "bash scripts/android-memory-pager-managed-poc.sh --storage-pressure",
+      "retention": "Keep the latest managed pager artifact and final memory diagnostic summary; pager backing files may be deleted after summary retention.",
+      "gap_reason": "The storage-pressure device replay is designed but the C/C++ pager implementation is not part of this contract-only slice."
+    },
+    {
+      "id": "abnormal.runtime.memory-pager-unhandled-fault",
+      "category": "runtime",
+      "severity": "blocker",
+      "surface": "direct-runtime",
+      "status": "planned-gap",
+      "trigger": "A SIGSEGV or userfault event cannot be matched to a valid managed region table entry or cannot be resolved safely",
+      "expected_signal": "Non-managed SIGSEGV is delivered unchanged; managed-but-unresolved faults fail closed with classification pager_fault_unhandled and region/page diagnostics when known",
+      "failure_oracle": "The host contract test fails if the docs allow suppressing unrelated SIGSEGV or resuming after an unresolved managed fault.",
+      "expected_exit_code": null,
+      "evidence_source": "docs/test/apk-memory-pager-transparent-latest.json",
+      "reproduction_command": "bash scripts/android-memory-pager-transparent-poc.sh --fault-contract",
+      "retention": "Keep the latest transparent pager artifact and bounded diagnostic summary for release-candidate test sets.",
+      "gap_reason": "The negative fault replay needs the implementation; this slice defines the fail-closed contract only."
+    },
+    {
+      "id": "abnormal.runtime.memory-pager-allocation-denied-enomem",
+      "category": "runtime",
+      "severity": "error",
+      "surface": "direct-runtime",
+      "status": "planned-gap",
+      "trigger": "A large anonymous allocation opts into the pager but violates size caps, mapping constraints, executable/shared/stack/GPU exclusions, or region-table admission checks",
+      "expected_signal": "The request passes through unmanaged when safe or is denied with ENOMEM-style diagnostics classified as allocation_denied_enomem; Docker memory keys alone never enable the pager",
+      "failure_oracle": "The APK memory pager contract test fails if large allocation opt-in, mmap/mprotect/sigaction/munmap constraints, or fail-closed ENOMEM classification are missing.",
+      "expected_exit_code": null,
+      "evidence_source": "docs/test/apk-memory-pager-transparent-latest.json",
+      "reproduction_command": "bash scripts/android-memory-pager-transparent-poc.sh --admission-negative",
+      "retention": "Keep latest artifact in docs/test and preserve release-candidate artifacts with the build set.",
+      "gap_reason": "Admission-negative device replay is planned after the transparent pager implementation; static contract coverage is mandatory now."
     },
     {
       "id": "abnormal.test-design.literal-token-gate",

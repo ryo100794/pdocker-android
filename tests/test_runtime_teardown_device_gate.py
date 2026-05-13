@@ -40,6 +40,7 @@ class RuntimeTeardownDeviceGateTest(unittest.TestCase):
             "snapshot_ps",
             "snapshot_listeners",
             "snapshot_executor_residue",
+            "snapshot_state_json",
             "write_pid_evidence",
             "write_same_id_evidence",
             "EngineApiContainersJson",
@@ -75,6 +76,24 @@ class RuntimeTeardownDeviceGateTest(unittest.TestCase):
         ]:
             self.assertIn(required, self.body)
 
+    def test_runtime_teardown_same_container_artifact_schema_is_explicit(self):
+        for required in [
+            '"Name": "same-container-id-teardown-artifact"',
+            '"Kind": "same-container-id-teardown-proof"',
+            '"SchemaVersion": 2',
+            '"SameContainerIdTeardownArtifacts"',
+            '"BeforeAfterEvidence"',
+            '"ProcessTreeBeforeAfter"',
+            '"ListenerAbsenceBeforeAfter"',
+            '"GpuMediaExecutorResidueBeforeAfter"',
+            '"PersistedStateJsonBeforeAfter"',
+            '"AfterStart"',
+            '"AfterOperation"',
+            '"AfterRemove"',
+            '"SuccessInvariant"',
+        ]:
+            self.assertIn(required, self.body)
+
     def test_runtime_teardown_collects_listener_and_executor_absence_evidence(self):
         for required in [
             "/proc/net/tcp",
@@ -82,14 +101,43 @@ class RuntimeTeardownDeviceGateTest(unittest.TestCase):
             "ss -ltnp",
             "netstat -ltnp",
             "listeners-before.txt",
+            "listeners-after-stop-start.txt",
             "listeners-after-stop.txt",
             "listeners-after-rm-stopped.txt",
+            "listeners-after-kill-start.txt",
             "listeners-after-kill.txt",
             "listeners-after-rm-killed.txt",
             "executor-residue-before.txt",
+            "executor-residue-after-stop-start.txt",
             "executor-residue-after-rm-stopped.txt",
+            "executor-residue-after-kill-start.txt",
             "executor-residue-after-rm-killed.txt",
             "pdocker.*(gpu|media|camera|audio|vulkan|executor)",
+        ]:
+            self.assertIn(required, self.body)
+
+    def test_runtime_teardown_negative_cases_are_host_detectable(self):
+        for required in [
+            "write_negative_case_evidence",
+            '"Kind": "runtime-teardown-negative-case"',
+            '"ExpectedAccepted": false',
+            '"NegativeCases"',
+            "negative-http-204-only.json",
+            "negative-cli-exit-zero-only.json",
+            "negative-name-only.json",
+            "negative-stale-state-json.json",
+            "negative-listener-only.json",
+            "negative-process-only.json",
+            "negative-previous-container-logs.json",
+            "negative-wrong-container-id.json",
+            "HTTP 204 or Engine API acknowledgement alone",
+            "CLI exit 0 alone",
+            "matching container name without same Engine container ID",
+            "stale state.json still names a removed container",
+            "listener absence without process-tree and stale-PID proof",
+            "clean process table without Engine inspect and logs",
+            "previous-container logs or reused names",
+            "mixed evidence from a different container ID",
         ]:
             self.assertIn(required, self.body)
 
@@ -97,6 +145,8 @@ class RuntimeTeardownDeviceGateTest(unittest.TestCase):
         doc = DOC.read_text()
         for required in [
             "runtime-teardown-latest.json",
+            "same-container-id-teardown-artifact",
+            "same-container-id-teardown-proof",
             "Status: planned-gap",
             "Success: false",
             "same Engine container ID",
@@ -108,6 +158,8 @@ class RuntimeTeardownDeviceGateTest(unittest.TestCase):
             "container logs",
             "HTTP 204",
             "CLI exit 0",
+            "negative-http-204-only.json",
+            "negative-wrong-container-id.json",
             "not sufficient",
         ]:
             self.assertIn(required, doc)

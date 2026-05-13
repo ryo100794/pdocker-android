@@ -70,7 +70,24 @@ class CowOverlayBenchRecoveryTests(unittest.TestCase):
             self.assertIn("open_close", metric_names)
             self.assertIn("layer_lookup", metric_names)
             self.assertEqual(recovery["Checks"]["hardlink_ring_corruption_rebuild"], "pass")
+            self.assertEqual(recovery["Checks"]["whiteout_fail_closed"], "pass")
+            self.assertEqual(recovery["Checks"]["rename_fail_closed"], "pass")
+            self.assertEqual(recovery["Checks"]["archive_put_fail_closed"], "pass")
+            self.assertEqual(recovery["Checks"]["low_space_fail_closed"], "pass")
             self.assertEqual(recovery["Checks"]["kill_at_step_external_harness"], "planned-gap")
+            case_ids = {case["Id"] for case in recovery["CaseResults"]}
+            for required in {
+                "copy_up.before_rename",
+                "metadata.chmod_before_rename",
+                "whiteout.before_publish",
+                "rename.before_publish",
+                "archive_put.stage_failure",
+                "hardlink_metadata.corrupt_rebuild",
+                "low_space.copy_up_enospc",
+            }:
+                self.assertIn(required, case_ids)
+            negative_ids = {case["Id"] for case in recovery["NegativeCases"]}
+            self.assertGreaterEqual(negative_ids, case_ids)
 
 
 if __name__ == "__main__":

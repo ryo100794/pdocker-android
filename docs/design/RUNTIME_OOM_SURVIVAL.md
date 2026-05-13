@@ -93,6 +93,32 @@ The pager is appropriate for selected large anonymous buffers. It is not a
 general allocator replacement. It must not page executable text, stacks, libc
 internal mappings, GPU command rings, or mappings that pdocker did not reserve.
 
+Implementation-ready contract summary:
+
+- The direct executor must maintain a managed region table keyed by tracee pid,
+  region id, page-aligned base/end, backing file, resident limit, and per-page
+  state.  A fault is a pager event only when the untagged, page-aligned fault
+  address matches this table.
+- Page state must be visible as `clean`, `dirty`, `evicted`, and `resident`
+  (reported as `resident_clean`/`resident_dirty` when both dimensions matter).
+- The v1 fault path is ptrace `SIGSEGV`: fetch `PTRACE_GETSIGINFO`, validate the
+  fault address against the table, suppress only managed faults, page in or
+  write-enable the exact page, and deliver all non-managed `SIGSEGV` signals
+  unchanged.
+- `mmap` management is limited to explicit opt-in large
+  `MAP_PRIVATE|MAP_ANONYMOUS` non-executable mappings.  `mprotect` may not add
+  `PROT_EXEC` to managed pages, `sigaction` handlers must keep normal semantics
+  for non-managed faults, and `munmap` must flush/split/remove region metadata
+  without leaving stale table entries.
+- Dirty precision must be declared as `write_fault_precise`,
+  `conservative_page`, or `region_conservative`; the first transparent slice may
+  use `conservative_page` but must not claim write-fault precision.
+- Fail-closed behavior is mandatory: unsupported shapes pass through unmanaged or
+  return `ENOMEM`; storage exhaustion, unresolved managed faults, backing I/O
+  errors, or diagnostic persistence failures must classify the operation instead
+  of resuming with unknown page contents.
+
+
 ### 3b. Large Workload Mode
 
 Large Workload Mode is the "make it run even when it is too big" path. It is

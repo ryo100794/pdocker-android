@@ -45,10 +45,14 @@ ARTIFACT_SCHEMA: dict[str, Any] = {
         "fingerprint": "string|null",
     },
     "inputs": {
-        "image": "registry reference used by the future live-pull lane",
+        "image": "registry reference used by the synthetic residue lane",
         "package": "Android package id",
         "token": "scenario-owned suffix used for all device paths",
         "device_out_dir": "device artifact directory",
+        "live_image": "scenario-owned registry reference or isolated fixture for timed live interruption|null",
+        "live_fixture_owned": "boolean operator assertion that live_image is safe to interrupt",
+        "live_interrupt_after_seconds": "delay before daemon kill in the future timed live-pull phase",
+        "live_timeout_seconds": "maximum duration for the future live-pull phase",
     },
     "coverage": {
         "residue_recovery": "boolean",
@@ -57,6 +61,7 @@ ARTIFACT_SCHEMA: dict[str, Any] = {
         "live_interrupted_network_pull": "boolean",
     },
     "phases": ["prepare-residue", "kill-daemon", "restart-and-probe", "cleanup"],
+    "live_pull_interruption": "gated timed live registry pull interruption plan and status",
     "phase_results": "per-phase return code/stdout/stderr summary",
     "evidence": {
         "device_evidence_dir": "local pulled evidence directory|null",
@@ -107,10 +112,12 @@ CLEANUP_POLICY = [
 
 REMAINING_GAP = [
     "Live registry pull interruption is not killed mid-download by default; this runner currently injects scenario-owned residue and proves restart recovery.",
+    "Timed live-pull interruption requires --execute-live-pull-interruption plus a scenario-owned --live-image and --live-fixture-owned acknowledgement before any future implementation may run.",
     "Container run is not attempted for the never-published tag because create would auto-pull a missing public reference; inspect/listing rejection is the safe negative probe.",
 ]
 
 PHASES = ["prepare-residue", "kill-daemon", "restart-and-probe", "cleanup"]
+LIVE_PULL_PHASE = "timed-live-pull-interruption"
 
 
 def utc_now() -> str:
@@ -125,7 +132,17 @@ def host_command(adb: str, serial: str | None, *args: str) -> str:
     return shlex.join(base)
 
 
-def scenario_commands(adb: str, serial: str | None, package: str, image: str, artifact: Path, device_out: str, token: str) -> list[str]:
+def scenario_commands(
+    adb: str,
+    serial: str | None,
+    package: str,
+    image: str,
+    artifact: Path,
+    device_out: str,
+    token: str,
+    live_image: str | None = None,
+    live_fixture_owned: bool = False,
+) -> list[str]:
     device_runner = "/data/local/tmp/pdocker-image-pull-crash-safety.sh"
     commands = [
         shlex.join(["python3", "scripts/verify-image-pull-crash-safety.py"]),
@@ -137,6 +154,16 @@ def scenario_commands(adb: str, serial: str | None, package: str, image: str, ar
     for phase in PHASES:
         commands.append(host_command(adb, serial, "shell", "sh", device_runner, "--package", package, "--image", image, "--token", token, "--out-dir", device_out, "--phase", phase))
     commands.append(host_command(adb, serial, "pull", device_out, str(artifact.parent / "image-pull-crash-safety-device")))
+    live_cmd = [
+        "python3",
+        "scripts/verify/runner/image_pull_crash_safety_device.py",
+        "--execute-live-pull-interruption",
+        "--live-image",
+        live_image or "<scenario-owned-or-isolated-fixture-ref>",
+    ]
+    if live_fixture_owned:
+        live_cmd.append("--live-fixture-owned")
+    commands.append(shlex.join(live_cmd))
     return commands
 
 
@@ -324,10 +351,74 @@ def execute_device(args: argparse.Namespace, artifact_path: Path, token: str) ->
     return "passed", True, {"assertions": assertions, "evidence": evidence}, notes, phase_results
 
 
+
+def live_pull_interruption_plan(args: argparse.Namespace) -> tuple[dict[str, Any], list[str]]:
+    """Return metadata for the intentionally gated timed live-pull lane.
+
+    This is design scaffolding only.  It must not start a registry pull until a
+    later device-side implementation exists and the caller opts in with a
+    scenario-owned reference or isolated registry fixture.
+    """
+    missing: list[str] = []
+    if not args.execute_live_pull_interruption:
+        missing.append("--execute-live-pull-interruption")
+    if not args.live_image:
+        missing.append("--live-image")
+    if not args.live_fixture_owned:
+        missing.append("--live-fixture-owned")
+
+    notes: list[str] = []
+    if missing:
+        notes.append(
+            "Timed live registry pull interruption is planned but not runnable: missing "
+            + ", ".join(missing)
+            + "."
+        )
+    else:
+        notes.append(
+            "Timed live registry pull interruption was explicitly requested with a scenario-owned/isolated fixture, "
+            "but remains a planned gap until a device-side live phase can safely issue /images/create and kill pdockerd mid-transfer."
+        )
+
+    plan = {
+        "phase": LIVE_PULL_PHASE,
+        "requested": bool(args.execute_live_pull_interruption),
+        "runnable": False,
+        "success": False,
+        "status": "planned-gap",
+        "live_image": args.live_image,
+        "fixture_owned_or_isolated": bool(args.live_fixture_owned),
+        "interrupt_after_seconds": args.live_interrupt_after_seconds,
+        "timeout_seconds": args.live_timeout_seconds,
+        "required_cli": [
+            "--execute-live-pull-interruption",
+            "--live-image <scenario-owned-or-isolated-fixture-ref>",
+            "--live-fixture-owned",
+        ],
+        "safety_contract": [
+            "Do not run against user images or shared mutable tags.",
+            "Use a scenario-owned registry reference or an isolated disposable registry fixture.",
+            "Capture pull stdout/stderr, daemon process evidence, post-restart store listings, and negative inspect probes before cleanup.",
+            "Cleanup may remove only scenario-token-owned tags, stages, layer residues, and fixture artifacts.",
+        ],
+        "planned_steps": [
+            "start timed /images/create for live_image",
+            "sleep interrupt_after_seconds",
+            "kill pdockerd while transfer is active",
+            "restart daemon and wait for socket",
+            "assert partial tag/layer residue is pruned and never published",
+            "cleanup only scenario-owned fixture paths",
+        ],
+        "blocked_reason": "device-side timed live pull interruption phase is not implemented in this safe-prep change",
+    }
+    return plan, notes
+
 def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
     artifact_path = Path(args.artifact).resolve()
     token = safe_token(args.token)
     device, notes = detect_device(args.adb, args.serial)
+    live_plan, live_notes = live_pull_interruption_plan(args)
+    notes.extend(live_notes)
     status = "planned-gap"
     success = False
     phase_results: list[dict[str, Any]] = []
@@ -381,6 +472,10 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "package": args.package,
             "token": token,
             "device_out_dir": args.device_out_dir,
+            "live_image": args.live_image,
+            "live_fixture_owned": bool(args.live_fixture_owned),
+            "live_interrupt_after_seconds": args.live_interrupt_after_seconds,
+            "live_timeout_seconds": args.live_timeout_seconds,
         },
         "coverage": {
             "residue_recovery": success,
@@ -389,8 +484,19 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
             "live_interrupted_network_pull": False,
         },
         "phases": PHASES,
+        "live_pull_interruption": live_plan,
         "phase_results": phase_results,
-        "commands": scenario_commands(args.adb, args.serial, args.package, args.image, artifact_path, args.device_out_dir, token),
+        "commands": scenario_commands(
+            args.adb,
+            args.serial,
+            args.package,
+            args.image,
+            artifact_path,
+            args.device_out_dir,
+            token,
+            args.live_image,
+            bool(args.live_fixture_owned),
+        ),
         "artifact_schema": ARTIFACT_SCHEMA,
         "evidence": evidence,
         "assertions": assertions,
@@ -410,7 +516,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--image", default="busybox:latest", help="future live-pull image; synthetic lane does not pull it")
     parser.add_argument("--device-out-dir", default=DEFAULT_DEVICE_OUT, help="device-side evidence directory")
     parser.add_argument("--token", default=None, help="scenario-owned token for deterministic tests")
-    parser.add_argument("--execute-device", action="store_true", help="run concrete device kill/restart phases; never fakes success")
+    parser.add_argument("--execute-device", action="store_true", help="run concrete synthetic-residue device kill/restart phases; never fakes success")
+    parser.add_argument("--execute-live-pull-interruption", action="store_true", help="request the future timed live registry pull interruption lane; remains planned-gap until safe device-side implementation exists")
+    parser.add_argument("--live-image", default=None, help="scenario-owned registry ref or isolated fixture ref required for timed live-pull interruption")
+    parser.add_argument("--live-fixture-owned", action="store_true", help="acknowledge --live-image is scenario-owned or isolated and safe to interrupt/cleanup")
+    parser.add_argument("--live-interrupt-after-seconds", type=float, default=3.0, help="planned delay before killing pdockerd during future live pull")
+    parser.add_argument("--live-timeout-seconds", type=int, default=120, help="planned timeout for future live pull interruption phase")
     parser.add_argument("--print-schema", action="store_true", help="print the artifact schema and exit")
     return parser.parse_args(argv)
 

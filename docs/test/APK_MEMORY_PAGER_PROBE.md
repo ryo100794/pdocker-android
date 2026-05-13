@@ -133,6 +133,59 @@ adb shell 'run-as io.github.ryo100794.pdocker.compat sh -lc \
 Pending on the next connected device after installing an APK built from the
 commit that contains `--pdocker-memory-pager-transparent-poc`.
 
+## Managed Pager Contract Probe Expectations
+
+Until the C/C++ implementation is complete, host static tests treat this section
+as the executable contract for the next device probe.  A compliant probe artifact
+must prove or explicitly fail closed for these fields:
+
+- `schema`: `pdocker.apk-memory-pager.contract.v1`
+- `managed_region_table`: at least one row with `region_id`, `tracee_pid`,
+  `base`, `end`, `page_size`, `page_count`, `backing_path`,
+  `resident_limit_pages`, and non-overlap validation.
+- `page_states`: counters or samples for `clean`, `dirty`, `evicted`, and
+  `resident` pages, including `resident_clean` and `resident_dirty` when the
+  page is accessible.
+- `fault_handling_path`: `ptrace_sigsegv` or `userfaultfd`, with handled and delivered counts; ptrace runs must include `PTRACE_GETSIGINFO`, untagged
+  `si_addr`, exact page `mprotect`, page-in source, and original-instruction
+  resume result.
+- `syscall_constraints`: decisions for `mmap`, `mprotect`, `sigaction`, and
+  `munmap`; unsupported executable/shared/stack/signal-stack/file-backed/GPU
+  mappings must be reported as pass-through or denied, not partially managed.
+- `dirty_precision`: one of `write_fault_precise`, `conservative_page`, or
+  `region_conservative`, plus `dirty_pages_observed` and
+  `dirty_pages_written`.
+- `large_allocation_opt_in`: feature opt-in source, threshold bytes, requested
+  bytes, accepted/denied result, and exclusion reason when unmanaged.
+- `classification`: one of `allocation_denied_enomem`,
+  `pager_storage_exhausted`, `pager_fault_unhandled`, `lmk_suspected`,
+  `not_lmk_suspected`, or `unknown`.
+- `ui_telemetry`: `schema=pdocker.memory-pager.telemetry.v1`,
+  `managed_region_count`, `reserved_bytes`, `resident_bytes`, `backing_bytes`, `page_ins`, `page_outs`,
+  `dirty_page_outs`, `fault_latency_avg_us`, `fault_latency_max_us`,
+  `storage_free_bytes`, `last_large_allocation`, `memory_pressure`,
+  `classifier_reason`, and `ui_live_state_allowed`.
+- `fail_closed`: boolean plus reason.  It must be true for storage exhaustion,
+  unresolved managed faults, unsupported mapping shapes, stale table metadata,
+  or missing diagnostic persistence.
+
+Acceptance criteria for the future managed contract probe:
+
+1. A read fault transitions an `evicted` page to `resident_clean` and records a
+   page-in.
+2. A write-enable path transitions a page to `dirty` and the artifact states the
+   dirty precision used.
+3. Eviction of a dirty page writes backing storage before returning to
+   `PROT_NONE`; eviction of a clean page does not count as dirty writeback.
+4. A non-managed `SIGSEGV` is delivered to the tracee/application handler and is
+   not counted as a pager fault.
+5. Partial `munmap` either splits table rows or fails closed; no stale row may
+   continue covering unmapped addresses.
+6. Low storage or backing I/O failure classifies as `pager_storage_exhausted` and
+   does not resume with unbacked dirty data.
+7. UI truth remains stale-safe: `ui_live_state_allowed` is false unless fresh
+   engine state and pid liveness agree.
+
 ## Planned OOM/LMK Diagnostics Artifact Probe
 
 Planned gap: no current device probe writes the complete runtime

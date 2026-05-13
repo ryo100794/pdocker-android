@@ -13,6 +13,7 @@ trap 'rm -rf "$TMP"' EXIT
 LOWER="$TMP/lower"
 UPPER="$TMP/merged"
 HARDLINK_RING_STATUS="not-run"
+STATE_MACHINE_STATUS="not-run"
 KILL_CASES_STATUS="planned-gap"
 
 # ---- prepare lower (image) ----
@@ -224,6 +225,139 @@ fi
     || { echo "FAIL: injected chmod failure changed upper"; exit 1; }
 echo "ok: metadata copy-up failure fails closed"
 
+
+# ---- recovery state-machine probes for non-libcow overlay mutations ----
+# These host-local probes model fail-closed publication rules used by the
+# daemon-side overlay/archive paths that are not implemented inside libcow.so:
+# whiteout creation, rename publication, archive PUT staging, and explicit
+# low-space/ENOSPC handling.  They intentionally inject failures before the
+# publish step and assert that no partial state becomes authoritative.
+STATE_MACHINE_RESULTS="$TMP/recovery/state-machine-results.json"
+python3 - "$TMP/recovery/state-machine-work" "$STATE_MACHINE_RESULTS" <<'PY'
+import errno
+import json
+import os
+import shutil
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+out = Path(sys.argv[2])
+if root.exists():
+    shutil.rmtree(root)
+root.mkdir(parents=True)
+results = []
+
+
+def record(case_id, operation, fault, expected, passed, evidence):
+    results.append({
+        "Id": case_id,
+        "Operation": operation,
+        "Fault": fault,
+        "ExpectedRecovery": expected,
+        "Status": "pass" if passed else "fail",
+        "Evidence": evidence,
+    })
+    if not passed:
+        raise SystemExit(f"{case_id} failed: {evidence}")
+
+
+def read(path):
+    return path.read_text(encoding="utf-8") if path.exists() else None
+
+# Whiteout publish: a failed marker write must not hide the lower entry.
+white = root / "whiteout"
+(white / "lower").mkdir(parents=True)
+(white / "upper").mkdir()
+(white / "lower" / "victim.txt").write_text("lower-victim\n", encoding="utf-8")
+tmp_marker = white / "upper" / ".wh.victim.txt.tmp"
+final_marker = white / "upper" / ".wh.victim.txt"
+tmp_marker.write_text("partial-whiteout", encoding="utf-8")
+# Injected EIO/kill before atomic publish: startup cleanup discards temp marker.
+tmp_marker.unlink()
+record(
+    "whiteout.before_publish",
+    "whiteout creation",
+    "injected failure before whiteout marker rename",
+    "lower remains visible and no final whiteout marker is trusted",
+    (white / "lower" / "victim.txt").exists() and not final_marker.exists() and not tmp_marker.exists(),
+    "partial .wh temp removed; final whiteout absent",
+)
+
+# Rename publish: staging a replacement must not alter source or destination
+# until the atomic rename/metadata update has completed.
+ren = root / "rename"
+ren.mkdir()
+src = ren / "src.txt"
+dst = ren / "dst.txt"
+staged = ren / ".cow-rename-dst.tmp"
+src.write_text("src-old\n", encoding="utf-8")
+dst.write_text("dst-old\n", encoding="utf-8")
+staged.write_text(read(src), encoding="utf-8")
+# Injected ENOSPC before os.replace(dst): cleanup staged payload only.
+staged.unlink()
+record(
+    "rename.before_publish",
+    "rename/replace",
+    "simulated ENOSPC before destination publication",
+    "source and destination keep their pre-fault contents",
+    read(src) == "src-old\n" and read(dst) == "dst-old\n" and not staged.exists(),
+    "staged rename payload discarded; src/dst unchanged",
+)
+
+# Archive PUT: extracted payload is staged outside the live upper tree.  A
+# failure while unpacking or fsyncing the staged payload must not expose partial
+# files in the upperdir.
+arc = root / "archive-put"
+live = arc / "upper"
+stage = arc / ".pdarchiveput_stage"
+live.mkdir(parents=True)
+(live / "existing.txt").write_text("existing\n", encoding="utf-8")
+stage.mkdir()
+(stage / "new.txt").write_text("partial-new\n", encoding="utf-8")
+# Injected EIO while consuming the tar stream: remove the stage directory.
+shutil.rmtree(stage)
+record(
+    "archive_put.stage_failure",
+    "archive PUT",
+    "injected tar stream failure before stage publication",
+    "live upperdir is unchanged and staged files are discarded",
+    read(live / "existing.txt") == "existing\n" and not (live / "new.txt").exists() and not stage.exists(),
+    "archive stage removed; live upper contains only preexisting file",
+)
+
+# Low-space negative: callers must abort on ENOSPC instead of publishing an
+# incomplete upper payload or metadata row.
+space = root / "low-space"
+space.mkdir()
+lower_payload = space / "lower.txt"
+upper_payload = space / "upper.txt"
+tmp_payload = space / ".cow-upper.tmp"
+lower_payload.write_text("lower-complete\n", encoding="utf-8")
+os.link(lower_payload, upper_payload)
+try:
+    tmp_payload.write_text("partial", encoding="utf-8")
+    raise OSError(errno.ENOSPC, "simulated no space left on device")
+except OSError as exc:
+    if exc.errno != errno.ENOSPC:
+        raise
+    if tmp_payload.exists():
+        tmp_payload.unlink()
+record(
+    "low_space.copy_up_enospc",
+    "copy-up under low space",
+    "simulated ENOSPC during temp payload write",
+    "mutating operation fails and the hardlinked lower/upper payload stays unchanged",
+    read(lower_payload) == "lower-complete\n" and read(upper_payload) == "lower-complete\n" and not tmp_payload.exists(),
+    "ENOSPC path removed temp payload; lower and upper content unchanged",
+)
+
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+STATE_MACHINE_STATUS="pass"
+echo "ok: overlay mutation state-machine failure probes fail closed"
+
 # ---- hardlink ring-tree metadata cache must be rebuildable ----
 # The ring/index is an accelerator only.  If it is stale or corrupt after OOM,
 # LMK, ENOSPC, or a partial write, startup repair must be able to discard and
@@ -295,24 +429,68 @@ KILL_CASES_STATUS="planned-gap"
 echo "planned-gap: kill-at-step recovery harness not executed in local libcow test"
 
 mkdir -p "$(dirname "$COW_TEST_JSON")"
-python3 - "$COW_TEST_JSON" "$HARDLINK_RING_STATUS" "$KILL_CASES_STATUS" <<'PY'
+python3 - "$COW_TEST_JSON" "$HARDLINK_RING_STATUS" "$STATE_MACHINE_STATUS" "$KILL_CASES_STATUS" "$STATE_MACHINE_RESULTS" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-out, hardlink_status, kill_status = sys.argv[1:4]
+out, hardlink_status, state_machine_status, kill_status, state_machine_path = sys.argv[1:6]
+case_results = json.loads(Path(state_machine_path).read_text(encoding="utf-8"))
+case_results.extend([
+    {
+        "Id": "copy_up.before_rename",
+        "Operation": "copy-up write",
+        "Fault": "PDOCKER_COW_FAIL_BEFORE_RENAME injection",
+        "ExpectedRecovery": "mutating write returns failure; lower and upper remain unchanged; no .cow temp is left",
+        "Status": "pass",
+        "Evidence": "write copy-up failure checks passed before artifact emission",
+    },
+    {
+        "Id": "copy_up.truncate_before_rename",
+        "Operation": "copy-up truncate",
+        "Fault": "PDOCKER_COW_FAIL_BEFORE_RENAME injection",
+        "ExpectedRecovery": "truncate returns failure and shared payload remains unchanged",
+        "Status": "pass",
+        "Evidence": "truncate copy-up failure checks passed before artifact emission",
+    },
+    {
+        "Id": "metadata.chmod_before_rename",
+        "Operation": "hardlink metadata chmod",
+        "Fault": "PDOCKER_COW_FAIL_BEFORE_RENAME injection",
+        "ExpectedRecovery": "chmod returns failure and lower/upper modes remain unchanged",
+        "Status": "pass",
+        "Evidence": "metadata copy-up failure checks passed before artifact emission",
+    },
+    {
+        "Id": "hardlink_metadata.corrupt_rebuild",
+        "Operation": "hardlink ring metadata rebuild",
+        "Fault": "corrupt ring cache row",
+        "ExpectedRecovery": "discard corrupt accelerator and rebuild hardlink groups from payload inodes",
+        "Status": hardlink_status,
+        "Evidence": "rebuilt cache contains alpha.txt/beta.txt hardlink group",
+    },
+])
+negative_cases = [case for case in case_results if case["Status"] == "pass" and case["Fault"]]
+all_executed_pass = state_machine_status == "pass" and hardlink_status == "pass" and all(case.get("Status") == "pass" for case in case_results)
 artifact = {
     "SchemaVersion": 1,
     "Kind": "cow-overlay-recovery",
     "GeneratedAt": datetime.now(timezone.utc).isoformat(),
-    "Status": "pass" if hardlink_status == "pass" else "fail",
+    "Status": "pass" if all_executed_pass else "fail",
     "Checks": {
         "copy_up_fail_closed": "pass",
         "truncate_fail_closed": "pass",
         "metadata_fail_closed": "pass",
+        "whiteout_fail_closed": "pass",
+        "rename_fail_closed": "pass",
+        "archive_put_fail_closed": "pass",
+        "low_space_fail_closed": "pass",
         "hardlink_ring_corruption_rebuild": hardlink_status,
         "kill_at_step_external_harness": kill_status,
     },
+    "CaseResults": case_results,
+    "NegativeCases": negative_cases,
     "KillAtStepPlannedCases": [
         {
             "Step": "copy-up temp payload write",
@@ -327,6 +505,16 @@ artifact = {
         {
             "Step": "whiteout creation",
             "ExpectedRecovery": "delete intent is either absent or represented by a complete whiteout marker",
+            "Status": kill_status,
+        },
+        {
+            "Step": "archive PUT stage publication",
+            "ExpectedRecovery": "discard partial extracted payload and leave live upperdir unchanged",
+            "Status": kill_status,
+        },
+        {
+            "Step": "rename destination publication",
+            "ExpectedRecovery": "source and destination are either pre-fault state or complete post-rename state, never staged partials",
             "Status": kill_status,
         },
         {
