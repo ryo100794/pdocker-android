@@ -8,6 +8,7 @@ MAIN = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" 
 BRIDGE = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "Bridge.kt"
 XTERM = ROOT / "app" / "src" / "main" / "assets" / "xterm" / "index.html"
 ANDROID_SMOKE = ROOT / "scripts" / "android-device-smoke.sh"
+DEVICE_GATE_DOC = ROOT / "docs" / "test" / "TERMINAL_EXEC_IT_DEVICE_GATE.md"
 
 
 def _shell_function_body(source: str, name: str) -> str:
@@ -151,8 +152,10 @@ class TerminalExecItContractTest(unittest.TestCase):
     def test_device_smoke_runs_ui_it_selftest_only_with_real_container_and_collects_artifacts(self):
         self.assertIn("ACTION_PREFIX.action.SMOKE_UI_IT_SELFTEST", self.android_smoke)
         self.assertIn("PDOCKER_UI_IT_SELFTEST_CONTAINER", self.android_smoke)
+        self.assertIn("PDOCKER_UI_IT_SELFTEST_REQUIRE_CONTAINER", self.android_smoke)
         self.assertIn("PDOCKER_SMOKE_ARTIFACT_DIR", self.android_smoke)
         self.assertIn("collect_ui_it_selftest_artifacts", self.android_smoke)
+        self.assertIn("validate_ui_it_selftest_artifact", self.android_smoke)
         self.assertIn("files/pdocker/diagnostics/ui-it-selftest-latest.json", self.android_smoke)
         self.assertIn("engine-exec-input-latest.jsonl", self.android_smoke)
         self.assertIn('run_adb exec-out run-as "$PKG" cat "$device_path"', self.android_smoke)
@@ -160,20 +163,59 @@ class TerminalExecItContractTest(unittest.TestCase):
         body = _shell_function_body(self.android_smoke, "ui_engine_exec_it_selftest")
         self.assertIn('if [[ -z "$container_ref" ]]', body)
         self.assertIn('write_ui_it_selftest_skip_artifact "no container id was available', body)
+        self.assertIn('if [[ "$require_container" == "1" ]]', body)
+        self.assertIn('planned-skip is non-passing evidence', body)
+        self.assertIn('return 1', body)
         self.assertIn('return 0', body)
         self.assertIn('--es container "$container_ref"', body)
         self.assertIn('collect_ui_it_selftest_artifacts', body)
         self.assertIn('grep -q \'\\"Success\\": true\'', body)
+        self.assertIn('validate_ui_it_selftest_artifact "$require_container"', body)
 
         skip_body = _shell_function_body(self.android_smoke, "write_ui_it_selftest_skip_artifact")
         self.assertIn('"Status": "planned-skip"', skip_body)
         self.assertIn('"Success": false', skip_body)
         self.assertIn('"DeviceProofAttempted": false', skip_body)
+        self.assertIn('"HardGateRequired": $hard_gate_json', skip_body)
+        self.assertIn('"RequiredEvidence"', skip_body)
+        self.assertIn('"Enter": false', skip_body)
+        self.assertIn('"CtrlC": false', skip_body)
+        self.assertIn('"ArrowHistory": false', skip_body)
+        self.assertIn('"Top": false', skip_body)
+        self.assertIn('"TopQuit": false', skip_body)
+        self.assertIn('"Resize": false', skip_body)
         self.assertIn('fake success', skip_body)
 
-        self.assertIn('ui_engine_exec_it_selftest "$PDOCKER_UI_IT_SELFTEST_CONTAINER"', self.android_smoke)
-        self.assertIn('ui_engine_exec_it_selftest "$CID"', self.android_smoke)
-        self.assertIn('ui_engine_exec_it_selftest ""', self.android_smoke)
+        validate_body = _shell_function_body(self.android_smoke, "validate_ui_it_selftest_artifact")
+        self.assertIn('status == "planned-skip"', validate_body)
+        self.assertIn("hard gate requires a real container; planned-skip is not a pass", validate_body)
+        self.assertIn('"enter-single-submit"', validate_body)
+        self.assertIn('"ctrl-c-interrupts-without-literal-c"', validate_body)
+        self.assertIn('"arrow-up-reaches-readline-history"', validate_body)
+        self.assertIn('"top-starts-on-tty"', validate_body)
+        self.assertIn('"q-quits-top"', validate_body)
+        self.assertIn('"resize-route-is-observable"', validate_body)
+
+        self.assertIn('ui_engine_exec_it_selftest "$PDOCKER_UI_IT_SELFTEST_CONTAINER" "${PDOCKER_UI_IT_SELFTEST_REQUIRE_CONTAINER:-1}"', self.android_smoke)
+        self.assertIn('ui_engine_exec_it_selftest "$CID" 1', self.android_smoke)
+        self.assertIn('ui_engine_exec_it_selftest "" "${PDOCKER_UI_IT_SELFTEST_REQUIRE_CONTAINER:-0}"', self.android_smoke)
+        self.assertNotIn('ui_engine_exec_it_selftest "$CID"\n', self.android_smoke)
+
+    def test_terminal_exec_it_device_gate_doc_records_artifact_contract(self):
+        doc = DEVICE_GATE_DOC.read_text()
+        for required in [
+            "planned-skip is evidence, not success",
+            "HardGateRequired",
+            "enter-single-submit",
+            "ctrl-c-interrupts-without-literal-c",
+            "arrow-up-reaches-readline-history",
+            "top-starts-on-tty",
+            "q-quits-top",
+            "resize-route-is-observable",
+            "ui-it-selftest-latest.json",
+            "engine-exec-input-latest.jsonl",
+        ]:
+            self.assertIn(required, doc)
 
     def test_resize_contract_supports_full_screen_programs(self):
         self.assertIn("private val lastTerminalSize", self.bridge)

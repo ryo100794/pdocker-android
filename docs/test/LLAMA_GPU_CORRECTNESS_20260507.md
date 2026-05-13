@@ -837,3 +837,45 @@ Next pass condition: on the next `ngl=1` strict run, the JSON event for
 `spirv_local_size_consistent:true`, and either `cpu_oracle_status:"match"` or a
 new mismatch whose `q6_shader_like_64_abs_delta` rules out the collapsed
 workgroup-shape hypothesis.
+
+### GPU Bridge Documentation/Test Synchronization (2026-05-13)
+
+This synchronization pass did not change llama.cpp, Dockerfiles, the model, the
+prompt probes, native C, or the Android runtime.  It only tightened the
+documentation and host regression tests around the current evidence.
+
+RoPE/Yarn oracle is evidence-backed:
+
+- hash: `0xac41e8033a67af4a`
+- artifact: `docs/test/llama-gpu-ngl1-rope-yarn-oracle-20260509.json`
+- `cpu_oracle.kernel_hint`: `rope-yarn`
+- `executed`: `true`
+- `status`: `match`
+- `compared_floats`: `4096`
+- `mismatch_count`: `0`
+
+The RoPE/Yarn stage is therefore closed as a regression-protected baseline, not
+as the current active blocker.  The active blocker remains Q6_K strict
+passthrough / workgroup / Android device-execution semantics for
+`0x274f68a67dfef210`.  Any future performance claim must still be blocked until
+that path has passing correctness evidence and the device memory-readiness gate
+allows a heavy compare run to start.
+
+Environment propagation parity is now explicitly documented and guarded by
+`tests.test_gpu_abi_contract`:
+
+- UI/compose runtime defaults must keep production-safe Vulkan/Q6_K settings in
+  `_gpu_env(state)` so a normal compose launch does not silently differ from
+  the scripted compare route for core limits and Q6_K toggles.
+- The compare script may additionally forward diagnostic knobs such as
+  `PDOCKER_GPU_CPU_ORACLE`, `PDOCKER_GPU_STRICT_PASSTHROUGH`,
+  `PDOCKER_GPU_STRICT_DEVICE_LOCAL_STAGING`,
+  `PDOCKER_GPU_LEGALIZE_WORKGROUP_SIZE_FROM_SPEC`,
+  `PDOCKER_GPU_RETRY_MATERIALIZE_SPECIALIZATION`,
+  `PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS`,
+  `PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS`,
+  `PDOCKER_VULKAN_DISABLE_16BIT_STORAGE`, and
+  `PDOCKER_VULKAN_SUBGROUP_SIZE`.
+- If one of those diagnostic knobs becomes required for ordinary correctness,
+  it must be promoted into `_gpu_env(state)` rather than remaining only in the
+  ad-hoc compare script.

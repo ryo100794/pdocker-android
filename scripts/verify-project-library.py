@@ -85,7 +85,8 @@ def check_llama_gpu_compare_contract(compare_script: str) -> None:
             fail(f"compare script main path must not require Docker CLI token {token!r}")
     engine_api_checks = {
         "creates containers through Engine API": "/containers/create" in compare_script and "engine_body POST" in compare_script,
-        "starts containers through Engine API": "/start" in compare_script and "engine_request POST" in compare_script,
+        "starts containers through Engine API": "/start" in compare_script
+        and ("engine_request POST" in compare_script or "engine_request_with_host_timeout" in compare_script),
         "removes containers through Engine API": "DELETE" in compare_script and "/containers/" in compare_script,
         "reads logs through Engine API": "/logs?stdout=1&stderr=1" in compare_script and "decode_engine_logs" in compare_script,
         "uses pdockerd Unix socket directly": "toybox nc -U pdocker/pdockerd.sock" in compare_script,

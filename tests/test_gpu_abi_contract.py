@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -11,6 +12,9 @@ VULKAN_ICD = ROOT / "docker-proot-setup" / "src" / "gpu" / "pdocker_vulkan_icd.c
 LLAMA_COMPARE = ROOT / "scripts" / "android-llama-gpu-compare.sh"
 PDOCKERD = ROOT / "docker-proot-setup" / "bin" / "pdockerd"
 PDOCKERD_SERVICE = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "PdockerdService.kt"
+LLAMA_GPU_NEXT_STEPS = ROOT / "docs" / "plan" / "LLAMA_GPU_BRIDGE_NEXT_STEPS.md"
+LLAMA_GPU_CORRECTNESS = ROOT / "docs" / "test" / "LLAMA_GPU_CORRECTNESS_20260507.md"
+ROPE_YARN_ARTIFACT = ROOT / "docs" / "test" / "llama-gpu-ngl1-rope-yarn-oracle-20260509.json"
 
 
 def defines(path):
@@ -195,6 +199,59 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("fused-rms-rope-oracle-pending", source)
         self.assertIn("0x4f37d4d51dd83526ull", source)
         self.assertIn("0x53c67d2aebf48739ull", source)
+
+    def test_rope_yarn_oracle_is_hash_gated_and_evidence_backed(self):
+        source = GPU_EXECUTOR.read_text()
+        self.assertIn("0xac41e8033a67af4aull", source)
+        self.assertIn("cpu_oracle_known_llama_hash", source)
+        self.assertIn('return "rope-yarn";', source)
+        self.assertIn("static void run_cpu_oracle_rope_yarn", source)
+        self.assertIn("init_cpu_oracle_report(report, report->requested, 0xac41e8033a67af4aull);", source)
+        self.assertIn("rope_yarn_ramp(corr_low, corr_high", source)
+        self.assertIn("push_size < 27 * sizeof(uint32_t)", source)
+        self.assertIn("report->executed = 1;", source)
+        self.assertIn('report->mismatch_count ? "mismatch" : "match"', source)
+        self.assertIn("if (spirv_summary.hash == 0xac41e8033a67af4aull) {", source)
+        self.assertIn("run_cpu_oracle_rope_yarn(&cpu_oracle_report", source)
+        for report_field in [
+            '\\"kernel_hint\\":\\"%s\\"',
+            '\\"executed\\":%s',
+            '\\"compared_floats\\":%zu',
+            '\\"mismatch_count\\":%zu',
+            '\\"first_mismatch\\":{\\"dst_index\\":%llu',
+            '\\"samples\\":[',
+        ]:
+            self.assertIn(report_field, source)
+
+        artifact = json.loads(ROPE_YARN_ARTIFACT.read_text())
+        cpu_oracles = []
+
+        def collect(obj):
+            if isinstance(obj, dict):
+                oracle = obj.get("cpu_oracle")
+                if isinstance(oracle, dict) and oracle.get("kernel_hint") == "rope-yarn":
+                    cpu_oracles.append(oracle)
+                for value in obj.values():
+                    collect(value)
+            elif isinstance(obj, list):
+                for value in obj:
+                    collect(value)
+
+        collect(artifact)
+        self.assertTrue(cpu_oracles, "RoPE/Yarn evidence artifact must contain a rope-yarn oracle event")
+        matched = [oracle for oracle in cpu_oracles if oracle.get("executed") is True and oracle.get("status") == "match"]
+        self.assertTrue(matched, "RoPE/Yarn oracle must have executed match evidence")
+        self.assertGreater(matched[0].get("compared_floats", 0), 0)
+        self.assertEqual(0, matched[0].get("mismatch_count"))
+
+        next_steps = LLAMA_GPU_NEXT_STEPS.read_text()
+        correctness = LLAMA_GPU_CORRECTNESS.read_text()
+        self.assertIn("Stage 3: RoPE/Yarn oracle for `0xac41e8033a67af4a` (completed)", next_steps)
+        self.assertIn("docs/test/llama-gpu-ngl1-rope-yarn-oracle-20260509.json", next_steps)
+        self.assertIn("0x274f68a67dfef210", next_steps)
+        self.assertIn("Q6_K strict passthrough", next_steps)
+        self.assertIn("memory readiness", next_steps)
+        self.assertIn("RoPE/Yarn oracle is evidence-backed", correctness)
 
     def test_vulkan_specialization_constants_can_be_materialized(self):
         source = GPU_EXECUTOR.read_text()
@@ -700,6 +757,47 @@ class GpuAbiContractTest(unittest.TestCase):
             "top_dirty_probe_bindings",
         ]:
             self.assertIn(field, compare)
+
+    def test_gpu_env_propagation_parity_is_documented_and_guarded(self):
+        compare = LLAMA_COMPARE.read_text()
+        pdockerd = PDOCKERD.read_text()
+        next_steps = LLAMA_GPU_NEXT_STEPS.read_text()
+        correctness = LLAMA_GPU_CORRECTNESS.read_text()
+
+        ui_compose_runtime_keys = [
+            "PDOCKER_VULKAN_DISABLE_8BIT_STORAGE",
+            "PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS",
+            "PDOCKER_GPU_RESIDENT_CACHE",
+            "PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES",
+            "PDOCKER_GPU_Q6K_ORACLE_WRITEBACK",
+            "PDOCKER_GPU_Q6K_SAFE_KERNEL",
+            "PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION",
+            "PDOCKER_VULKAN_HEAP_BYTES",
+            "PDOCKER_VULKAN_MAX_BUFFER_BYTES",
+            "GGML_VK_FORCE_MAX_BUFFER_SIZE",
+            "GGML_VK_FORCE_MAX_ALLOCATION_SIZE",
+            "GGML_VK_SUBALLOCATION_BLOCK_SIZE",
+        ]
+        for key in ui_compose_runtime_keys:
+            self.assertIn(f'"{key}": os.environ.get', pdockerd)
+            self.assertIn(key, compare)
+
+        diagnostic_keys = [
+            "PDOCKER_GPU_CPU_ORACLE",
+            "PDOCKER_GPU_STRICT_PASSTHROUGH",
+            "PDOCKER_GPU_STRICT_DEVICE_LOCAL_STAGING",
+            "PDOCKER_GPU_LEGALIZE_WORKGROUP_SIZE_FROM_SPEC",
+            "PDOCKER_GPU_RETRY_MATERIALIZE_SPECIALIZATION",
+            "PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS",
+            "PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS",
+            "PDOCKER_VULKAN_DISABLE_16BIT_STORAGE",
+            "PDOCKER_VULKAN_SUBGROUP_SIZE",
+        ]
+        for key in diagnostic_keys:
+            self.assertIn(key, compare)
+            self.assertIn(key, next_steps)
+        self.assertIn("UI/compose runtime defaults and compare-only diagnostics", next_steps)
+        self.assertIn("Environment propagation parity", correctness)
 
 
 if __name__ == "__main__":

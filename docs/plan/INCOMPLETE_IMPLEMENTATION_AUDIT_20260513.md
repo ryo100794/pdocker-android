@@ -30,9 +30,9 @@ mistaken for product behavior.
 
 | Area | Evidence | Current incomplete state | User impact | Next action |
 | --- | --- | --- | --- | --- |
-| llama GPU correctness | `docs/plan/TODO.md`, `docs/test/LLAMA_GPU_CORRECTNESS_20260507.md` | NGL=1 still fails required probes; Q6_K-like hash `0x274f68a67dfef210` remains the main blocker; NGL=2 pipeline creation is not correctness. | GPU acceleration cannot be claimed; prompts can return wrong tokens. | Keep llama.cpp unchanged; add/verify Q6_K oracle, descriptor/local-size evidence, and correctness gate before any performance claim. |
-| Service health truth | `docs/plan/TODO.md`, `tests/feature_scenarios.json` | 18080/18081 health still needs actual listener proof tied to the current Engine container ID and logs. | UI can show running/healthy while service is unreachable or stale. | Implement device gate: UI card, Engine API, persisted state, process table, listener probe, and logs must agree on one container ID. |
+| Service truth same-container-ID | `docs/plan/TODO.md`, `tests/feature_scenarios.json`, `docs/test/CI_GATE_LEDGER.md` | UI cards, `docker ps`, Engine API, persisted state, process table, listener probes, and logs still need a hard same-ID gate. Persisted state and completed jobs remain hints only. | UI can show running/healthy while the service is unreachable, stale, or from a different process. | Implement device gate: UI rendered card, Engine API, persisted state, process table, listener probe, and logs must agree on one current Engine container ID. |
 | Runtime stop/process cleanup | `docs/plan/TODO.md`, `tests/feature_scenarios.json` | HTTP 204 stop can still lack proof that direct children and GPU executor are gone. | Orphaned processes, stale Up state, freezes, and resource leaks. | Add stop/kill device smoke with process-tree, executor, logs, and duplicate-name cleanup evidence. |
+| llama GPU Q6_K and env propagation | `docs/plan/TODO.md`, `docs/plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md`, `docs/test/LLAMA_GPU_CORRECTNESS_20260507.md` | NGL=1 still fails required probes; Q6_K-like hash `0x274f68a67dfef210` remains the main blocker; compare-script GPU environment can diverge from pdockerd/UI/compose defaults. | GPU acceleration cannot be claimed; prompts can return wrong tokens; a result can look path-dependent rather than reproducible. | Keep llama.cpp unchanged; add/verify Q6_K oracle or pass-through evidence, descriptor/local-size evidence, synchronized GPU diagnostic env propagation, and correctness gate before any performance claim. |
 | Image pull crash safety | `docs/plan/TODO.md` | Atomic `.pull-*`, `.tmp-*`, `.old-*` recovery and interrupted-pull device scenario are not closed. | Partial images/layers may later be treated as valid. | Add startup recovery verifier and kill-in-pull device test. |
 | COW/overlay mutation safety | `docs/design/COW_OVERLAY_STORAGE.md` | No storage-wide journal/fail-closed verifier for copy-up, whiteout, archive PUT, metadata updates, low-space, and kill-at-each-step cases. | Layer/upperdir metadata can become inconsistent after crash/OOM. | Add fault-injection verifier and startup repair/check for overlay metadata. |
 | OOM/LMK survival | `tests/abnormal_event_cases.json`, `tests/feature_scenarios.json` | Telemetry ring and LMK replay classifier are designed but not executable. | Android may kill backend while UI survives with stale state. | Implement structured memory/OOM events, LMK suspected classification, and replayable device test. |
@@ -45,10 +45,11 @@ mistaken for product behavior.
 | --- | --- | --- | --- | --- |
 | Active port mapping | `pdockerd`, `TODO.md`, `tests/feature_scenarios.json` | Published ports are recorded as planned/inactive metadata; no active proxy/rewrite proof. | `-p`/Compose ports can look Docker-like while unreachable. | Keep inactive wording; implement localhost proxy or syscall rewrite plus conflict tests. |
 | Network model | `pdockerd`, `docs/test/COMPATIBILITY.md` | Host-network stub only; bridge IP, DNS server, iptables, and real isolation are absent. | Compose service DNS/network behavior is limited. | Explicit driver capability matrix; add unsupported-mode negative corpus. |
-| Terminal `-it` | `TODO.md`, `STATUS.md` | Terminal architecture refactor remains open; session types are not fully separated. | exec/attach/local PTY/log panes regress easily. | Implement design from `TERMINAL_STREAM_ARCHITECTURE.md` with UI + Engine exec smoke. |
+| Terminal `-it` hard gate | `TODO.md`, `STATUS.md`, `TERMINAL_STREAM_ARCHITECTURE.md` | Terminal architecture refactor remains open; session types are not fully separated; skipped/static checks can still miss real UI regressions. | exec/attach/local PTY/log panes regress easily; Enter, Ctrl-C, cursor keys, `top`, resize, or IME behavior can break again. | Implement design from `TERMINAL_STREAM_ARCHITECTURE.md` with a real-container UI hard gate for Enter, Ctrl-C, cursor keys, `top`, `q`, resize, and IME behavior. |
+| VS Code workspace health gate | `TODO.md`, project library docs, device smoke plans | Default workspace static/template checks exist, but compose/build/run, code-server listener proof, extension evidence, and UI same-ID proof are not one hard device gate. | The IDE card can look Up while browser access, extensions, or container truth are broken. | Add default-workspace device gate covering build/run, `18080` listener, HTTP reachability, extension list, `docker ps`, and UI rendered-card same-ID evidence. |
 | Compose parser | `MainActivity.kt`, input grammar ledgers | Hand-written subset parser; full Compose/YAML grammar and upstream differential validation are planned gaps. | Valid Compose files can be partly ignored or misread. | Delegate to daemon parser or add real parser/golden differential corpus. |
 | Build context tar | `DockerEngineClient.kt` | Minimal tar writer handles regular files only; directory/symlink/mode/PAX/long-path behavior is incomplete. | External Dockerfiles can fail or lose metadata. | Add tar compatibility corpus and implement missing tar features. |
-| SAF/Documents Phase 2 | `TODO.md`, `pdockerd`, `tests/feature_scenarios.json` | Delete, rename, conflict quarantine, and Unix metadata emulation are not complete. | Documents sync can misrepresent completion or lose conflict intent. | Separate accepted vs completed states; add mediator completion artifacts and conflict tests. |
+| SAF direct output and Documents Phase 2 | `TODO.md`, `pdockerd`, `tests/feature_scenarios.json`, `SAF_UNIXFS_METADATA_SIDECAR.md` | Direct SAF-backed `/documents` writes, delete, rename, conflict quarantine, fallback recording, and Unix metadata emulation are not complete. | Documents sync can misrepresent completion, write only to app-private storage, or lose conflict intent. | Add direct-write SAF artifact, sidecar metadata proof, fallback record, mediator completion artifacts, and conflict tests. |
 | Memory pager productization | `APK_MEMORY_PAGER.md`, `pdocker_direct_exec.c` | PoC exists, but managed-region tables, dirty precision, multi-thread/signal guardrails, and latency stress tests are incomplete. | Large-workload memory mode is not safe to enable broadly. | Keep opt-in; add synthetic fault-latency/stress/guardrail tests before container opt-in. |
 | Memory-layer UI | `MainActivity.kt`, strings, tests | Overview graph exists, but live pdockerd telemetry, stale-artifact age, per-container memory, and full string localization are incomplete. | UI can mix live `/proc` with stale self-test artifacts. | Add artifact metadata display, pdockerd telemetry API, and per-container breakdown. |
 | GPU bridge protocol | `GPU_COMPAT.md`, `pdocker_gpu_executor.c`, Vulkan/OpenCL ICDs | Temporary socket transport, hash-specific or safe-kernel paths, limited OpenCL vector-add coverage, incomplete fence/error protocol. | GPU compatibility remains narrow and hard to generalize. | Move toward persistent command ring, operation classification, and explicit unsupported traces. |
@@ -82,19 +83,25 @@ mistaken for product behavior.
 
 ## Immediate Delegation Plan
 
-1. **P0-A: service truth and runtime stop**
-   - Implement listener/container-ID proof and process-tree teardown evidence.
-   - Good for one worker because it spans Engine state, process table, and UI cards.
-2. **P0-B: image pull and COW crash safety**
-   - Implement atomic recovery tests and storage mutation fault injection.
-   - Good for one worker with filesystem-only ownership.
-3. **P0-C: llama GPU correctness**
-   - Continue Q6_K blocker without touching llama.cpp/Dockerfile/model/prompt.
-   - Keep local to the GPU stream or assign a specialized worker only to artifact analysis.
-4. **P1-A: terminal and Compose parser**
-   - Split terminal session-type refactor from Compose grammar work.
-5. **P1-B: memory pager/UI productization**
-   - Add artifact age/source, pdockerd memory telemetry API, and per-container memory breakdown.
+1. **P0-A: service truth same-container-ID**
+   - Implement listener/container-ID proof across UI card, Engine API,
+     persisted state, process table, listener probe, and logs.
+2. **P0-B: runtime teardown**
+   - Implement process-tree, GPU executor, listener, stale PID, and
+     duplicate-name teardown evidence.
+3. **P0-C: llama GPU Q6_K/env propagation**
+   - Continue Q6_K blocker without touching llama.cpp/Dockerfile/model/prompt,
+     and synchronize GPU diagnostic env propagation across launch paths.
+4. **P0-D: image pull crash safety**
+   - Implement atomic recovery tests and interrupted-pull device kill/restart.
+5. **P0-E: COW/overlay mutation safety**
+   - Implement storage mutation fault injection and startup repair/check.
+6. **P1-A: terminal hard gate**
+   - Split terminal session types and require real UI container evidence.
+7. **P1-B: VS Code health gate**
+   - Add default workspace compose/build/run and code-server health artifact.
+8. **P1-C: SAF direct output**
+   - Add SAF-backed direct-write and UnixFS sidecar evidence.
 
 ## Management Rule
 

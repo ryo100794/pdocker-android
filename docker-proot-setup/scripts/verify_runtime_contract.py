@@ -1121,8 +1121,8 @@ def test_gpu_shim_contract() -> None:
             fail(f"pdocker Vulkan bridge must preserve the runtime 8-bit storage feature by default: {env!r}")
         if env.get("PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS") != "1":
             fail(f"pdocker Vulkan bridge must alias duplicate shader descriptor bindings: {env!r}")
-        if env.get("PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION") != "1":
-            fail(f"pdocker Vulkan bridge must default away from fragile Android pipeline optimization: {env!r}")
+        if env.get("PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION") != "0":
+            fail(f"pdocker Vulkan bridge must default to the measured pipeline optimization path: {env!r}")
         if env.get("PDOCKER_VULKAN_MAX_BUFFER_BYTES") != "2147483648":
             fail(f"pdocker Vulkan max buffer default must avoid 512MiB pinned-memory rejection: {env!r}")
         if env.get("GGML_VK_SUBALLOCATION_BLOCK_SIZE") != "268435456":

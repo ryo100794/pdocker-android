@@ -118,6 +118,17 @@
         }
       ]
     },
+    "android-dev-workspace": {
+      "description": "Device route: UI-triggered default dev-workspace compose up with running-container, listener, extension, and UI service-truth evidence.",
+      "requires": ["adb", "installed-debug-apk"],
+      "commands": [
+        {
+          "id": "android-dev-workspace-compose-smoke",
+          "argv": ["bash", "scripts/android-dev-workspace-compose-smoke.sh"],
+          "artifacts": ["docs/test/dev-workspace-compose-latest.json"]
+        }
+      ]
+    },
     "android-blas-cmake-build": {
       "description": "Device build route for apt-installed OpenBLAS visibility across Dockerfile RUN layers and standard CMake FindBLAS.",
       "requires": ["adb", "installed-debug-apk"],

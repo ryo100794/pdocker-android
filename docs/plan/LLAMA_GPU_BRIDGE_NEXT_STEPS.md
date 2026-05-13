@@ -1,10 +1,12 @@
 # llama.cpp GPU Bridge Next Steps
 
-Snapshot date: 2026-05-09.
+Snapshot date: 2026-05-13.
 
 This document is the handoff plan for continuing the llama.cpp GPU bridge work
 with a smaller or faster coding model.  It assumes the repository is on or
-after commit `352e780` and that llama.cpp itself remains unmodified.
+after commit `9cccc81` for the GPU workgroup diagnostics lane, plus any later
+non-GPU service-truth or terminal commits, and that llama.cpp itself remains
+unmodified.
 
 ## Current Ground Truth
 
@@ -21,11 +23,15 @@ Confirmed facts:
 | unsafe SPIR-V materialization | Disabled by default | commit `02619fd` |
 | zero-layer small multiply shader | CPU oracle matches default non-materialized hash | `0x11d5243c43b23a7b`, `mismatch_count=0` |
 | `ngl=1` small add shader | CPU oracle matches | `0x11c0523df6c795b8`, `mismatch_count=0` |
-| `ngl=1` model result | Still incorrect | `docs/test/llama-gpu-ngl1-small-add-oracle-20260509.json` |
-| current performance | About `2.1x` to `2.5x` vs reused CPU baseline for short probes | compare artifacts above |
+| `ngl=1` RoPE/Yarn shader | CPU oracle executes and matches | `0xac41e8033a67af4a`, `docs/test/llama-gpu-ngl1-rope-yarn-oracle-20260509.json` |
+| `ngl=1` RMSNorm shader | CPU oracle executes and matches | `0xf2f988b94bd3e0dc`, `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json` |
+| `ngl=1` Q6_K/final-projection shader | Sampled oracle executes and mismatches | `0x274f68a67dfef210`, Q6_K strict passthrough/workgroup/device-execution semantics |
+| current device readiness | Heavy compare is memory-gated | readiness requires sufficient `MemAvailable` and `SwapFree` before starting llama |
 
-Do not claim GPU inference correctness for `ngl>=1` yet.  Correctness is still
-blocked after the small indexing shader family.
+Do not claim GPU inference correctness or performance for `ngl>=1` from served
+HTTP alone.  Correctness is currently blocked at the Q6_K / final-projection
+path, and the current device lane must also pass memory readiness before a heavy
+compare is allowed to start.
 
 ## Non-Negotiable Rules
 
@@ -123,7 +129,7 @@ Current `ngl=1` front-blocker candidates:
 
 | Hash | Current classification | Current status |
 |---|---|---|
-| `0xac41e8033a67af4a` | RoPE/Yarn | oracle matches in `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json` |
+| `0xac41e8033a67af4a` | RoPE/Yarn | completed; oracle matches in `docs/test/llama-gpu-ngl1-rope-yarn-oracle-20260509.json` |
 | `0xf2f988b94bd3e0dc` | RMSNorm with optional multiply | oracle matches in `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json` |
 | `0x274f68a67dfef210` | `mul_mat_vec_q6_k`-like large quantized matvec / final projection | sampled Q6_K oracle executes and currently mismatches |
 
@@ -160,12 +166,12 @@ Fail criteria:
 - The oracle reads or writes large buffers without a cap.
 - The oracle mutates container buffers; oracle code must remain diagnostic-only.
 
-### Stage 3: RoPE/Yarn oracle for `0xac41e8033a67af4a`
+### Stage 3: RoPE/Yarn oracle for `0xac41e8033a67af4a` (completed)
 
-Purpose: clear the remaining small, deterministic transform before attacking
+Purpose: clear the small, deterministic RoPE/Yarn transform before attacking
 large final-projection/matmul-like work.
 
-Procedure:
+Completed procedure:
 
 1. Use the existing dumped SPIR-V assembly for the hash.
 2. Implement a hash-gated CPU oracle only for the exact observed descriptor and
@@ -175,22 +181,26 @@ Procedure:
 4. Compare after Vulkan fence and before writeback, same as existing CPU
    oracles.
 
-Pass criteria:
+Evidence-backed pass criteria:
 
 - `cpu_oracle.kernel_hint == "rope-yarn"`.
 - `executed == true`.
 - `compared_floats > 0`.
-- `mismatch_count == 0` if the Vulkan result is correct.
-- If mismatching, first mismatch includes source sample, expected, GPU value,
-  and absolute error.
+- `mismatch_count == 0`.
+- `docs/test/llama-gpu-ngl1-rope-yarn-oracle-20260509.json` records
+  `compared_floats=4096` and `status=match`.
+- If this ever regresses, the first mismatch must include source sample,
+  expected value, GPU value, and absolute error.
 
-Fail criteria:
+Regression fail criteria:
 
 - The oracle assumes a different binding order than `spirv_binding_reflection`
   reports.
 - The oracle's push constant interpretation is not checked against SPIR-V
   access.
 - The run omits `PDOCKER_GPU_CPU_ORACLE=1` but is used as oracle evidence.
+- The hash disappears from `cpu_oracle_known_llama_hash()` or no longer maps to
+  `kernel_hint == "rope-yarn"`.
 
 ### Stage 4: Large candidate split for `0x274f68a67dfef210`
 
@@ -203,6 +213,13 @@ Both `0xac41e8033a67af4a` (`rope-yarn`) and `0xf2f988b94bd3e0dc`
 `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json`.  The model-level
 correctness probe still fails, so `0x274f68a67dfef210` is now the next primary
 blocker.
+
+Current blocker statement: keep Q6_K strict passthrough as the fidelity
+baseline.  The next fix must explain the sampled mismatch for
+`0x274f68a67dfef210` without changing llama.cpp, the Dockerfile, the model, or
+the prompts.  Prioritize workgroup shape, descriptor-view identity, Android
+Vulkan device-execution semantics, and memory-readiness gating before any
+performance claim.
 
 Procedure:
 
@@ -295,6 +312,39 @@ Fail criteria:
 - Hiding a mismatch by lowering `n_predict`, changing prompt probes, or
   rebuilding llama.cpp.
 
+## UI/compose runtime defaults and compare-only diagnostics
+
+Environment propagation has caused repeated false trails, so the current rule
+is explicit rather than implicit:
+
+- UI/compose runtime defaults in `docker-proot-setup/bin/pdockerd` must carry
+  production-safe Vulkan limits and Q6_K toggles that containers need at normal
+  startup, including `PDOCKER_VULKAN_DISABLE_8BIT_STORAGE`,
+  `PDOCKER_GPU_REWRITE_DUPLICATE_DESCRIPTOR_BINDINGS`,
+  `PDOCKER_GPU_RESIDENT_CACHE`, `PDOCKER_GPU_RESIDENT_CACHE_MIN_BYTES`,
+  `PDOCKER_GPU_Q6K_ORACLE_WRITEBACK`, `PDOCKER_GPU_Q6K_SAFE_KERNEL`,
+  `PDOCKER_GPU_DISABLE_PIPELINE_OPTIMIZATION`,
+  `PDOCKER_VULKAN_HEAP_BYTES`, `PDOCKER_VULKAN_MAX_BUFFER_BYTES`,
+  `GGML_VK_FORCE_MAX_BUFFER_SIZE`, `GGML_VK_FORCE_MAX_ALLOCATION_SIZE`, and
+  `GGML_VK_SUBALLOCATION_BLOCK_SIZE`.
+- The compare driver must additionally forward diagnostic knobs that are too
+  experimental or noisy to force into all UI/compose launches:
+  `PDOCKER_GPU_CPU_ORACLE`, `PDOCKER_GPU_STRICT_PASSTHROUGH`,
+  `PDOCKER_GPU_STRICT_DEVICE_LOCAL_STAGING`,
+  `PDOCKER_GPU_LEGALIZE_WORKGROUP_SIZE_FROM_SPEC`,
+  `PDOCKER_GPU_RETRY_MATERIALIZE_SPECIALIZATION`,
+  `PDOCKER_GPU_SKIP_UNUSED_DESCRIPTOR_TRANSFERS`,
+  `PDOCKER_GPU_USE_SPIRV_DESCRIPTOR_ACCESS`,
+  `PDOCKER_VULKAN_DISABLE_16BIT_STORAGE`, and
+  `PDOCKER_VULKAN_SUBGROUP_SIZE`.
+- Promotion rule: once a diagnostic knob becomes required for ordinary
+  correctness, promote it into `_gpu_env(state)` and keep the compare driver
+  forwarding it.  Do not leave correctness-critical behavior only in the
+  ad-hoc compare script.
+- Regression guard: `tests.test_gpu_abi_contract` checks both the
+  UI/compose runtime defaults and the compare-only diagnostic list so future
+  edits cannot silently drop one side of the bridge.
+
 ### Stage 5: Correctness gate for `ngl=1`
 
 Purpose: make one real offloaded layer safe before increasing GPU layer count.
@@ -381,11 +431,12 @@ Spark should not:
 Suggested first Spark task:
 
 ```text
-Implement and validate a bounded CPU oracle/classifier for
-0xac41e8033a67af4a (RoPE/Yarn).  Do not modify llama.cpp.  Keep the oracle
-hash-gated, diagnostic-only, and memory capped.  Acceptance: a new ngl=1
-artifact records executed oracle evidence for this hash, and the result is
-documented in LLAMA_GPU_CORRECTNESS_20260507.md.
+Continue the Q6_K strict-passthrough blocker for 0x274f68a67dfef210.  Do not
+modify llama.cpp, Dockerfiles, the model, or prompt probes.  Acceptance:
+the next device artifact either shows the sampled Q6_K oracle matching with
+spirv_local_size_resolved [32,2,1] and memory readiness passed, or records a
+new precise blocker class at the descriptor-view, workgroup, device-execution,
+or writeback boundary.
 ```
 
 If Spark gets lost, it should run:

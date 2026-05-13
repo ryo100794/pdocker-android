@@ -1,6 +1,6 @@
 # pdocker TODO ledger
 
-Snapshot date: 2026-05-06.
+Snapshot date: 2026-05-13.
 
 This is the working TODO list for unfinished items and deliberate temporary
 accommodations. Keep this file current whenever a workaround is added so it
@@ -11,6 +11,42 @@ does not become product behavior by accident.
 This board is the operating task list. Keep the detailed sections below as the
 source of context, but update this board first when work starts, gets blocked,
 or closes.
+
+### Audit Synchronization 2026-05-13
+
+The May 13 multi-agent audits promoted the following order as the current
+planning ledger truth.  Keep this order when assigning agents, updating GitHub
+issues, and deciding which planned gaps become hard gates.
+
+1. **Service truth same-container-ID** `[P0 doing]`: UI cards,
+   `docker ps`, Engine `/containers/json`, persisted state, process table,
+   listener probes, and logs must prove the same current Engine container ID.
+   Persisted `state.json`, Compose metadata, names, completed jobs, and port
+   declarations are hints only.
+2. **Runtime teardown** `[P0 next]`: stop/kill must prove direct children,
+   GPU executor helpers, listeners, logs, and stale PIDs are gone before the
+   UI or API reports stopped.
+3. **llama GPU Q6_K and environment propagation** `[P0 doing]`: continue the
+   Q6_K blocker without touching llama.cpp, Dockerfiles, models, or prompts.
+   The compare script, pdockerd defaults, UI/compose path, and artifact
+   verifier must use an audited GPU diagnostic environment so device results do
+   not diverge by launch path.
+4. **Image-pull crash safety** `[P0 doing]`: partial pulls, `.pull-*`,
+   `.tmp-*`, `.old-*`, interrupted layer extraction, tag publish, and startup
+   recovery must be tested with an actual kill/restart device artifact.
+5. **COW/overlay mutation safety** `[P0 next]`: copy-up, whiteout, rename,
+   archive PUT, hardlink metadata, low-space, and kill-at-step scenarios need
+   fail-closed mutation tests plus startup repair/check evidence.
+6. **Terminal hard gate** `[P1 next]`: `exec -it` is not closed until an actual
+   UI-driven container terminal passes Enter, Ctrl-C, cursor keys, `top`, `q`,
+   resize, and IME regression checks. Static or skipped self-tests are not
+   enough.
+7. **VS Code health gate** `[P1 next]`: default workspace success requires
+   compose/build/run, `pdocker-dev` current Engine state, port `18080` listener,
+   code-server reachability, extension evidence, and UI card truth agreement.
+8. **SAF direct output** `[P1 next]`: `/documents` must be a SAF-backed UnixFS
+   exchange layer with sidecar metadata and direct-write evidence; app-private
+   fallback is allowed only when explicitly recorded.
 
 ### Next Queue Generated 2026-05-04
 
@@ -46,7 +82,10 @@ or closes.
   evidence, and the compare runner refuses llama GPU starts when Android swap
   headroom is unsafe. `scripts/verify-llama-gpu-artifact.py` classifies memory
   blockers, Q6 workgroup-clear evidence, and remaining Q6 numeric mismatches so
-  device results are not interpreted ad hoc. Device-side validation steps are maintained in
+  device results are not interpreted ad hoc. Environment propagation is now a
+  first-class blocker: diagnostic flags used by the compare script, pdockerd
+  defaults, UI/compose launches, and artifact verification must remain
+  synchronized before a GPU result can be compared. Device-side validation steps are maintained in
   `docs/test/LLAMA_GPU_DEVICE_RUNBOOK_20260513.md`.
   Stage gates and compact-model handoff are maintained in
   `docs/plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md`.
@@ -154,9 +193,14 @@ stable checkpoint.
   ID/PID, but project cards, `docker ps`, and service health have regressed in
   this area before. Acceptance: UI card, `/containers/json?all=1`, persisted
   `state.json`, process table, listener probe for `18080`, and job log all
-  agree on the same Engine container ID after compose up. Static acceptance-plan
-  guard: `python3 scripts/verify-service-truth-plan.py`; future evidence:
-  `docs/test/service-truth-latest.json`.
+  agree on the same Engine container ID after compose up. The default
+  workspace health gate also requires code-server reachability on `18080`,
+  extension evidence for the bundled IDE stack, and a UI card whose rendered
+  container ID source is Engine API current state rather than stale persisted
+  metadata. Static acceptance-plan guard:
+  `python3 scripts/verify-service-truth-plan.py`; future evidence:
+  `docs/test/service-truth-latest.json` and a default-workspace health
+  artifact.
 - [next] RUN changed-path/snapshot performance. `RUN chmod +x
   /usr/local/bin/pdocker-*` is functionally correct but still triggers an
   expensive broad snapshot in the default workspace build. Acceptance: profile

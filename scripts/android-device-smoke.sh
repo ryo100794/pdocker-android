@@ -58,6 +58,10 @@ Environment:
                     smoke project is created. When empty/no container is
                     available, a planned-skip artifact is written with
                     Success=false.
+  PDOCKER_UI_IT_SELFTEST_REQUIRE_CONTAINER
+                    when set to 1, an empty UI exec-it self-test container is
+                    a hard-gate failure. Planned-skip artifacts remain useful
+                    evidence but are never accepted as a passing required gate.
 
 Modes:
   --quick       only install/start pdockerd and run docker version
@@ -722,10 +726,16 @@ json_escape_host() {
 
 write_ui_it_selftest_skip_artifact() {
   local reason="$1"
-  local tmp now escaped_reason
+  local hard_gate_required="${2:-0}"
+  local tmp now escaped_reason hard_gate_json
   tmp="$(mktemp)"
   now="$(date +%s000 2>/dev/null || printf '0')"
   escaped_reason="$(json_escape_host "$reason")"
+  if [[ "$hard_gate_required" == "1" ]]; then
+    hard_gate_json=true
+  else
+    hard_gate_json=false
+  fi
   cat >"$tmp" <<JSON
 {
   "Name": "ui-engine-exec-it",
@@ -734,6 +744,23 @@ write_ui_it_selftest_skip_artifact() {
   "Reason": "$escaped_reason",
   "DeviceProofAttempted": false,
   "RequiredContainerId": true,
+  "HardGateRequired": $hard_gate_json,
+  "Evidence": {
+    "Enter": false,
+    "CtrlC": false,
+    "ArrowHistory": false,
+    "Top": false,
+    "TopQuit": false,
+    "Resize": false
+  },
+  "RequiredEvidence": [
+    "enter-single-submit",
+    "ctrl-c-interrupts-without-literal-c",
+    "arrow-up-reaches-readline-history",
+    "top-starts-on-tty",
+    "q-quits-top",
+    "resize-route-is-observable"
+  ],
   "Contract": "ACTION_PREFIX.action.SMOKE_UI_IT_SELFTEST must only pass after a real requested/running Engine container is exercised; skip artifacts are non-success and must not be treated as fake success.",
   "StartedAtMs": $now,
   "CompletedAtMs": $now
@@ -745,11 +772,67 @@ JSON
   collect_ui_it_selftest_artifacts
 }
 
+validate_ui_it_selftest_artifact() {
+  local require_container="$1"
+  local dest_dir
+  dest_dir="$(smoke_artifact_dir)"
+  python3 - "$dest_dir/ui-it-selftest-latest.json" "$dest_dir/engine-exec-input-latest.jsonl" "$require_container" <<'PY'
+import json
+import pathlib
+import sys
+
+artifact_path = pathlib.Path(sys.argv[1])
+input_path = pathlib.Path(sys.argv[2])
+require_container = sys.argv[3] == "1"
+
+if not artifact_path.is_file():
+    raise SystemExit(f"missing UI exec-it artifact: {artifact_path}")
+
+artifact = json.loads(artifact_path.read_text())
+status = artifact.get("Status", "")
+success = artifact.get("Success") is True
+
+if status == "planned-skip":
+    if require_container:
+        raise SystemExit("UI exec-it hard gate requires a real container; planned-skip is not a pass")
+    raise SystemExit(0)
+
+if require_container and not artifact.get("Container"):
+    raise SystemExit("UI exec-it hard gate artifact is missing Container")
+
+if not success:
+    raise SystemExit(f"UI exec-it self-test failed: {artifact.get('Error', artifact)}")
+
+tail = artifact.get("OutputTail", "")
+diagnostics = ""
+if input_path.is_file():
+    diagnostics = input_path.read_text(errors="replace")
+diagnostics += "\n" + artifact.get("EngineExecDiagnostics", "")
+
+checks = {
+    "enter-single-submit": "pdocker-ui-it-ok" in tail,
+    "ctrl-c-interrupts-without-literal-c": "pdocker-ui-it-ctrlc-ok" in tail and "sleep 15c" not in tail,
+    "arrow-up-reaches-readline-history": tail.count("pdocker-ui-it-arrow-seed") >= 2 and "\\e[A" not in tail,
+    "top-starts-on-tty": "pdocker-ui-it-top-ok" in tail,
+    "q-quits-top": "pdocker-ui-it-topq-ok" in tail,
+    "resize-route-is-observable": ("/resize?h=" in diagnostics) or ('"event":"resize-failed"' in diagnostics) or ('"event": "resize-failed"' in diagnostics) or ("stream-started" in diagnostics),
+}
+missing = [name for name, ok in checks.items() if not ok]
+if missing:
+    raise SystemExit("UI exec-it evidence missing: " + ", ".join(missing))
+PY
+}
+
 ui_engine_exec_it_selftest() {
   local container_ref="$1"
+  local require_container="${2:-0}"
   if [[ -z "$container_ref" ]]; then
     echo "[pdocker smoke] ui self-test engine exec -it planned-skip: no container id"
-    write_ui_it_selftest_skip_artifact "no container id was available for UI exec-it self-test"
+    write_ui_it_selftest_skip_artifact "no container id was available for UI exec-it self-test" "$require_container"
+    if [[ "$require_container" == "1" ]]; then
+      echo "UI exec -it hard gate requires a real container; planned-skip is non-passing evidence" >&2
+      return 1
+    fi
     return 0
   fi
   echo "[pdocker smoke] ui self-test engine exec -it container=$container_ref"
@@ -764,12 +847,13 @@ ui_engine_exec_it_selftest() {
       run_as "cat files/pdocker/diagnostics/ui-it-selftest-latest.json"
       collect_ui_it_selftest_artifacts
       run_as "grep -q '\"Success\": true' files/pdocker/diagnostics/ui-it-selftest-latest.json"
+      validate_ui_it_selftest_artifact "$require_container"
       return 0
     fi
     sleep 1
   done
   echo "UI exec -it self-test did not produce diagnostics" >&2
-  write_ui_it_selftest_skip_artifact "ACTION_SMOKE_UI_IT_SELFTEST did not produce diagnostics before timeout"
+  write_ui_it_selftest_skip_artifact "ACTION_SMOKE_UI_IT_SELFTEST did not produce diagnostics before timeout" "$require_container"
   return 1
 }
 
@@ -880,9 +964,9 @@ if [[ "$GPU_BENCH" -eq 1 ]]; then
 fi
 
 if [[ -n "${PDOCKER_UI_IT_SELFTEST_CONTAINER:-}" ]]; then
-  ui_engine_exec_it_selftest "$PDOCKER_UI_IT_SELFTEST_CONTAINER"
+  ui_engine_exec_it_selftest "$PDOCKER_UI_IT_SELFTEST_CONTAINER" "${PDOCKER_UI_IT_SELFTEST_REQUIRE_CONTAINER:-1}"
 elif [[ "$MODE" == "quick" ]]; then
-  ui_engine_exec_it_selftest ""
+  ui_engine_exec_it_selftest "" "${PDOCKER_UI_IT_SELFTEST_REQUIRE_CONTAINER:-0}"
 fi
 
 if [[ "$MODE" == "quick" ]]; then
@@ -920,7 +1004,7 @@ echo "[pdocker smoke] docker ps filters"
 docker_cmd "FILTERED=\$(docker ps -a --filter name=device-smoke-app-1 -q) && test -n \"\$FILTERED\" && case \"$CID\" in \"\$FILTERED\"*) true ;; *) case \"\$FILTERED\" in \"$CID\"*) true ;; *) echo \"filter mismatch expected=$CID actual=\$FILTERED\"; false ;; esac ;; esac && test -z \"\$(docker ps -a --filter name=pdocker-smoke-filter-miss -q)\""
 echo "[pdocker smoke] engine exec -it"
 engine_exec_it_smoke "$CID"
-ui_engine_exec_it_selftest "$CID"
+ui_engine_exec_it_selftest "$CID" 1
 docker_cmd "cd pdocker/projects/$PROJECT && docker compose down"
 
 echo "[pdocker smoke] checking UI-visible job state path"
