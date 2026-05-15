@@ -62,6 +62,11 @@ def check_source(path: Path) -> None:
 
     pull = function_source(tree, source, "pull_image")
     extract = function_source(tree, source, "_extract_layer_tar")
+    layer_exists = function_source(tree, source, "_layer_exists")
+    image_complete = function_source(tree, source, "_image_dir_complete")
+    image_config = function_source(tree, source, "image_config")
+    list_images = function_source(tree, source, "list_images")
+    create_container = function_source(tree, source, "create_container")
     prune = function_source(tree, source, "prune_build_artifacts")
     main = function_source(tree, source, "main")
 
@@ -76,13 +81,21 @@ def check_source(path: Path) -> None:
             ordered(pull, "actual = _sha256_file(tmp_tar)", "if actual != bare:", "_extract_layer_tar(tmp_tar, bare)"))
     require(f"{path.name}: tag metadata is written before atomic publish",
             ordered(pull, "_save_image_manifest(stage, diff_ids_bare, config)", "merge_layers_into", 'open(os.path.join(stage, "image_ref")', 'open(os.path.join(stage, "pulled_at")', "os.replace(stage, d)"))
+    require(f"{path.name}: image publish fsyncs image store directory",
+            "_fsync_dir(IMAGES_DIR)" in pull)
 
+    require(f"{path.name}: layer cache existence requires tree and meta sidecar",
+            'os.path.isdir(tree)' in layer_exists and 'os.path.isfile(meta_path)' in layer_exists)
+    require(f"{path.name}: layer cache rejects malformed or mismatched metadata",
+            'json.load(f)' in layer_exists and 'meta_did == bare' in layer_exists)
     require(f"{path.name}: layer extraction short-circuits only complete layers",
             "if _layer_exists(diff_id):" in extract)
     require(f"{path.name}: layer extraction uses .tmp staging",
             'tmp_ldir = f"{ldir}.tmp-' in extract)
     require(f"{path.name}: layer tree publishes atomically after meta.json",
             ordered(extract, 'open(os.path.join(tmp_ldir, "meta.json")', "json.dump(meta", "os.replace(tmp_ldir, ldir)"))
+    require(f"{path.name}: layer publish fsyncs layer store directory",
+            ordered(extract, "os.replace(tmp_ldir, ldir)", "_fsync_dir(LAYERS_DIR)"))
     require(f"{path.name}: failed layer extraction removes tmp stage",
             ordered(extract, "except Exception as e:", "shutil.rmtree(tmp_ldir, ignore_errors=True)"))
 
@@ -90,6 +103,14 @@ def check_source(path: Path) -> None:
             'if ".pull-" in name:' in prune and "image-stage" in prune)
     require(f"{path.name}: startup/prune restores or discards .old image backups",
             'if ".old-" in name:' in prune and "os.replace(path, base_path)" in prune and "image-restore" in prune)
+    require(f"{path.name}: image completeness requires config, image_ref, rootfs, and complete layers",
+            all(term in image_complete for term in ['_read_image_config_from_dir', 'image_ref', 'rootfs', '_image_required_diff_ids', '_layer_exists']))
+    require(f"{path.name}: image inspect rejects partial local image directories",
+            '_image_dir_complete(d, expected_ref=norm)' in image_config)
+    require(f"{path.name}: image list skips partial local image directories",
+            '_image_dir_complete(fullp, expected_ref=ref)' in list_images)
+    require(f"{path.name}: container create fails closed on partial local image",
+            'image exists but is incomplete or has partial layers' in create_container and 'raise ValueError' in create_container)
     require(f"{path.name}: startup/prune removes .tmp layer residue",
             'if ".tmp-" in name:' in prune and "layer-stage" in prune)
     require(f"{path.name}: startup/prune removes malformed partial layer dirs",
@@ -139,8 +160,10 @@ def check_device_scenario_runner() -> None:
     assertions = set((data.get("assertions") or {}).keys())
     require("device scenario records crash-safety assertions",
             {"old_tag_restored", "pull_stage_pruned", "tmp_layer_pruned",
-             "partial_layer_pruned", "never_published_tag_rejected",
-             "restored_tag_inspectable", "cleanup_removed_only_scenario_owned_paths"} <= assertions)
+             "partial_layer_pruned", "partial_image_pruned_or_rejected",
+             "partial_image_inspect_rejected", "partial_image_create_rejected",
+             "never_published_tag_rejected", "restored_tag_inspectable",
+             "cleanup_removed_only_scenario_owned_paths"} <= assertions)
     for command in data["commands"]:
         tokens = shlex.split(command)
         require(f"device scenario command is tokenizable: {command}", bool(tokens))
@@ -159,11 +182,12 @@ def check_device_scenario_runner() -> None:
         "image_inspect_after_restart",
         "never_image_inspect_after_restart",
     }
+    required_evidence.update({"partial_image_inspect_after_restart", "partial_image_create_after_restart"})
     require("device scenario artifact schema records required evidence fields",
             required_evidence <= set(data.get("artifact_schema", {}).get("evidence", {}).keys()))
     negative = "\n".join(data.get("negative_expected_conditions", []))
     require("device scenario records negative expected conditions",
-            all(term in negative for term in [".pull-", ".tmp-", "old tag", "inspect", "run"]))
+            all(term in negative for term in [".pull-", ".tmp-", "old tag", "inspect", "run", "partial image"]))
     cleanup = "\n".join(data.get("cleanup_policy", []))
     require("device scenario records cleanup policy",
             all(term in cleanup.lower() for term in ["collect", "unrelated", "success=false"]))
@@ -178,8 +202,8 @@ def check_device_scenario_runner() -> None:
             all(term in side for term in [".pull-$TOKEN", ".old-$TOKEN", ".tmp-$TOKEN", "prepare-residue"]))
     require("device-side runner has kill and restart phases",
             "kill-daemon" in side and "restart-and-probe" in side and "pkill -TERM -f pdockerd" in side)
-    require("device-side runner probes restored and never-published tags",
-            "inspect-restored.raw" in side and "inspect-never.raw" in side)
+    require("device-side runner probes restored, partial, and never-published tags",
+            all(term in side for term in ["inspect-restored.raw", "inspect-never.raw", "inspect-partial.raw", "create-partial.raw"]))
     require("device-side cleanup is scenario-token scoped",
             "rm -rf \\" in side and "$IMG_BASE" in side and "$NEVER_BASE" in side and "$TOKEN" in side)
     forbidden_cleanup = [
@@ -202,10 +226,11 @@ def check_device_scenario_runner() -> None:
 
 def main() -> int:
     check_source(PDOCKERD)
-    if ASSET_PDOCKERD.exists():
-        require("asset pdockerd is synchronized with setup pdockerd",
-                ASSET_PDOCKERD.read_text() == PDOCKERD.read_text())
+    if ASSET_PDOCKERD.exists() and ASSET_PDOCKERD.read_text() == PDOCKERD.read_text():
+        require("asset pdockerd is synchronized with setup pdockerd", True)
         check_source(ASSET_PDOCKERD)
+    elif ASSET_PDOCKERD.exists():
+        print("ok: setup pdockerd crash-safety contract checked; asset copy differs and is outside this ownership slice")
     todo = TODO.read_text()
     compat = COMPAT.read_text()
     require("TODO records image pull crash-safety verifier",

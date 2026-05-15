@@ -38,7 +38,7 @@ class BuildPruneTest(unittest.TestCase):
             stale_id = "b" * 64
             layer_tree = Path(mod.LAYERS_DIR) / layer_id / "tree"
             layer_tree.mkdir(parents=True)
-            (layer_tree.parent / "meta.json").write_text(json.dumps({"size": 0}))
+            (layer_tree.parent / "meta.json").write_text(json.dumps({"size": 0, "diff_id": layer_id}))
             cache_dir = Path(mod.BUILD_CACHE_DIR)
             cache_dir.mkdir(parents=True, exist_ok=True)
             (cache_dir / "valid.json").write_text(json.dumps({"diff_id": f"sha256:{layer_id}"}))

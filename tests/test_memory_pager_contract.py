@@ -160,6 +160,7 @@ class MemoryPagerContractTest(unittest.TestCase):
 
     def test_pdockerd_exposes_memory_pressure_and_exit_classification_contract(self):
         pdockerd = (ROOT / "docker-proot-setup" / "bin" / "pdockerd").read_text()
+        main = (ROOT / "app/src/main/kotlin/io/github/ryo100794/pdocker/MainActivity.kt").read_text()
         asset_path = ROOT / "app" / "src" / "main" / "assets" / "pdockerd" / "pdockerd"
         sources = [pdockerd]
         if asset_path.exists():
@@ -176,6 +177,8 @@ class MemoryPagerContractTest(unittest.TestCase):
                 '"UiLiveStateAllowed"',
             ]:
                 self.assertIn(token, source)
+        self.assertIn('engine.getObject("/system/memory-pressure")', main)
+        self.assertIn("== Engine /system/memory-pressure ==", main)
 
     def test_pdockerd_propagates_memory_pager_labels_to_direct_executor(self):
         pdockerd = (ROOT / "docker-proot-setup" / "bin" / "pdockerd").read_text()

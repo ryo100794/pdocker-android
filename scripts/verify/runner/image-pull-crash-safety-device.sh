@@ -25,8 +25,11 @@ TOKEN="$(printf '%s' "${TOKEN:-manual-$$}" | sed 's/[^A-Za-z0-9_.-]/-/g' | cut -
 [ -n "$TOKEN" ] || TOKEN="manual-$$"
 SCENARIO_TAG="pdocker-crash-safety-probe:$TOKEN"
 NEVER_TAG="pdocker-crash-safety-never:$TOKEN"
+PARTIAL_TAG="pdocker-crash-safety-partial:$TOKEN"
+PARTIAL_CONTAINER="pdocker-crash-safety-partial-$TOKEN"
 IMG_BASE="docker.io_library_pdocker-crash-safety-probe_$TOKEN"
 NEVER_BASE="docker.io_library_pdocker-crash-safety-never_$TOKEN"
+PARTIAL_BASE="docker.io_library_pdocker-crash-safety-partial_$TOKEN"
 TMP_LAYER="1111111111111111111111111111111111111111111111111111111111111111"
 PARTIAL_LAYER="2222222222222222222222222222222222222222222222222222222222222222"
 CLASS_PREFIX=io.github.ryo100794.pdocker
@@ -37,6 +40,10 @@ mkdir -p "$OUT_DIR"
 
 json_bool() {
   if [ "$1" = "0" ]; then printf false; else printf true; fi
+}
+
+json_rc_success() {
+  if [ "$1" = "0" ]; then printf true; else printf false; fi
 }
 
 run_as_app() {
@@ -52,8 +59,11 @@ write_context() {
   "token": "$TOKEN",
   "scenario_tag": "$SCENARIO_TAG",
   "never_tag": "$NEVER_TAG",
+  "partial_tag": "$PARTIAL_TAG",
+  "partial_container": "$PARTIAL_CONTAINER",
   "image_base": "$IMG_BASE",
   "never_base": "$NEVER_BASE",
+  "partial_base": "$PARTIAL_BASE",
   "tmp_layer": "$TMP_LAYER",
   "partial_layer": "$PARTIAL_LAYER"
 }
@@ -74,6 +84,15 @@ engine_get() {
   local path="$1"
   local dest="$2"
   run_as_app "cd files && { printf 'GET $path HTTP/1.1\r\nHost: pdocker\r\nConnection: close\r\n\r\n'; } | toybox nc -U -W 8 pdocker/pdockerd.sock" > "$OUT_DIR/$dest" 2> "$OUT_DIR/$dest.err" || true
+}
+
+engine_post_json() {
+  local path="$1"
+  local body="$2"
+  local dest="$3"
+  local len
+  len=$(printf '%s' "$body" | wc -c | tr -d ' ')
+  run_as_app "cd files && { printf 'POST $path HTTP/1.1\r\nHost: pdocker\r\nContent-Type: application/json\r\nContent-Length: $len\r\nConnection: close\r\n\r\n%s' '$body'; } | toybox nc -U -W 8 pdocker/pdockerd.sock" > "$OUT_DIR/$dest" 2> "$OUT_DIR/$dest.err" || true
 }
 
 http_status() {
@@ -105,8 +124,12 @@ cleanup_paths() {
     pdocker/images/$NEVER_BASE \
     pdocker/images/$NEVER_BASE.pull-$TOKEN \
     pdocker/images/$NEVER_BASE.old-$TOKEN \
+    pdocker/images/$PARTIAL_BASE \
+    pdocker/images/$PARTIAL_BASE.pull-$TOKEN \
+    pdocker/images/$PARTIAL_BASE.old-$TOKEN \
     pdocker/layers/$TMP_LAYER.tmp-$TOKEN \
     pdocker/layers/$PARTIAL_LAYER" >/dev/null 2>&1 || return 1
+  run_as_app "cd files && for c in pdocker/containers/*; do [ -f \"\$c/state.json\" ] || continue; grep -q '$PARTIAL_CONTAINER' \"\$c/state.json\" 2>/dev/null && rm -rf \"\$c\"; done" >/dev/null 2>&1 || true
   return 0
 }
 
@@ -122,6 +145,10 @@ phase_prepare() {
     printf '#!/bin/sh\nexit 0\n' > pdocker/images/$IMG_BASE.old-$TOKEN/rootfs/bin/true && chmod 755 pdocker/images/$IMG_BASE.old-$TOKEN/rootfs/bin/true && \
     mkdir -p pdocker/images/$IMG_BASE.pull-$TOKEN/rootfs/partial && printf 'partial replacement stage\n' > pdocker/images/$IMG_BASE.pull-$TOKEN/rootfs/partial/file && \
     mkdir -p pdocker/images/$NEVER_BASE.pull-$TOKEN/rootfs/partial && printf 'never published stage\n' > pdocker/images/$NEVER_BASE.pull-$TOKEN/rootfs/partial/file && \
+    mkdir -p pdocker/images/$PARTIAL_BASE/rootfs/partial && printf 'partial image with incomplete layer\n' > pdocker/images/$PARTIAL_BASE/rootfs/partial/file && \
+    printf '{\"architecture\":\"arm64\",\"os\":\"linux\",\"rootfs\":{\"type\":\"layers\",\"diff_ids\":[\"sha256:$PARTIAL_LAYER\"]},\"config\":{\"Cmd\":[\"/bin/true\"]}}\n' > pdocker/images/$PARTIAL_BASE/config.json && \
+    printf '{\"schemaVersion\":2,\"layers\":[{\"digest\":\"sha256:$PARTIAL_LAYER\",\"diff_id\":\"sha256:$PARTIAL_LAYER\"}],\"config_ref\":\"config.json\"}\n' > pdocker/images/$PARTIAL_BASE/manifest.json && \
+    printf 'docker.io/library/pdocker-crash-safety-partial:$TOKEN' > pdocker/images/$PARTIAL_BASE/image_ref && printf '2026-05-13T00:00:00Z' > pdocker/images/$PARTIAL_BASE/pulled_at && \
     mkdir -p pdocker/layers/$TMP_LAYER.tmp-$TOKEN/tree && printf 'tmp layer residue\n' > pdocker/layers/$TMP_LAYER.tmp-$TOKEN/tree/file && \
     mkdir -p pdocker/layers/$PARTIAL_LAYER && printf '{\"diff_id\":\"sha256:$PARTIAL_LAYER\",\"size\":1}\n' > pdocker/layers/$PARTIAL_LAYER/meta.json"
   store_listing store-before-kill.txt
@@ -133,6 +160,7 @@ phase_prepare() {
     "files/pdocker/images/$IMG_BASE.old-$TOKEN",
     "files/pdocker/images/$IMG_BASE.pull-$TOKEN",
     "files/pdocker/images/$NEVER_BASE.pull-$TOKEN",
+    "files/pdocker/images/$PARTIAL_BASE",
     "files/pdocker/layers/$TMP_LAYER.tmp-$TOKEN",
     "files/pdocker/layers/$PARTIAL_LAYER"
   ]
@@ -164,27 +192,37 @@ phase_restart_probe() {
   ps_capture ps-after-restart.txt
   engine_get "/images/$SCENARIO_TAG/json" inspect-restored.raw
   engine_get "/images/$NEVER_TAG/json" inspect-never.raw
+  engine_get "/images/$PARTIAL_TAG/json" inspect-partial.raw
+  engine_post_json "/containers/create?name=$PARTIAL_CONTAINER" "{\"Image\":\"$PARTIAL_TAG\",\"Cmd\":[\"/bin/true\"]}" create-partial.raw
 
-  run_as_app "test -d files/pdocker/images/$IMG_BASE" >/dev/null 2>&1; old_rc=$?
-  run_as_app "test -d files/pdocker/images/$IMG_BASE.pull-$TOKEN || test -d files/pdocker/images/$NEVER_BASE.pull-$TOKEN" >/dev/null 2>&1; pull_rc=$?
-  run_as_app "test -d files/pdocker/layers/$TMP_LAYER.tmp-$TOKEN" >/dev/null 2>&1; tmp_rc=$?
-  run_as_app "test -e files/pdocker/layers/$PARTIAL_LAYER" >/dev/null 2>&1; partial_rc=$?
-  run_as_app "test -e files/pdocker/images/$NEVER_BASE" >/dev/null 2>&1; never_rc=$?
+  if run_as_app "test -d files/pdocker/images/$IMG_BASE" >/dev/null 2>&1; then old_rc=0; else old_rc=1; fi
+  if run_as_app "test -d files/pdocker/images/$IMG_BASE.pull-$TOKEN || test -d files/pdocker/images/$NEVER_BASE.pull-$TOKEN" >/dev/null 2>&1; then pull_rc=0; else pull_rc=1; fi
+  if run_as_app "test -d files/pdocker/layers/$TMP_LAYER.tmp-$TOKEN" >/dev/null 2>&1; then tmp_rc=0; else tmp_rc=1; fi
+  if run_as_app "test -e files/pdocker/layers/$PARTIAL_LAYER" >/dev/null 2>&1; then partial_rc=0; else partial_rc=1; fi
+  if run_as_app "test -e files/pdocker/images/$NEVER_BASE" >/dev/null 2>&1; then never_rc=0; else never_rc=1; fi
+  if run_as_app "test -d files/pdocker/images/$PARTIAL_BASE" >/dev/null 2>&1; then partial_image_rc=0; else partial_image_rc=1; fi
   restored_status="$(http_status inspect-restored.raw)"
   never_status="$(http_status inspect-never.raw)"
+  partial_status="$(http_status inspect-partial.raw)"
+  partial_create_status="$(http_status create-partial.raw)"
 
   cat > "$OUT_DIR/restart-summary.json" <<EOF
 {
   "phase": "restart-and-probe",
   "success": true,
   "daemon_restarted": $(json_bool "$daemon_restarted"),
-  "old_tag_restored": $(json_bool "$old_rc"),
-  "pull_stage_pruned": $(json_bool "$pull_rc"),
-  "tmp_layer_pruned": $(json_bool "$tmp_rc"),
-  "partial_layer_pruned": $(json_bool "$partial_rc"),
-  "never_published_tag_rejected": $(json_bool "$never_rc"),
+  "old_tag_restored": $(json_rc_success "$old_rc"),
+  "pull_stage_pruned": $( [ "$pull_rc" != "0" ] && echo true || echo false ),
+  "tmp_layer_pruned": $( [ "$tmp_rc" != "0" ] && echo true || echo false ),
+  "partial_layer_pruned": $( [ "$partial_rc" != "0" ] && echo true || echo false ),
+  "partial_image_pruned_or_rejected": $( [ "$partial_image_rc" != "0" ] || [ "$partial_status" != "200" ] && echo true || echo false ),
+  "partial_image_inspect_rejected": $( [ "$partial_status" != "200" ] && echo true || echo false ),
+  "partial_image_create_rejected": $( [ "$partial_create_status" != "201" ] && echo true || echo false ),
+  "never_published_tag_rejected": $( [ "$never_rc" != "0" ] && echo true || echo false ),
   "restored_tag_inspectable": $( [ "$restored_status" = "200" ] && echo true || echo false ),
   "never_image_inspect_status": "$never_status",
+  "partial_image_inspect_status": "$partial_status",
+  "partial_image_create_status": "$partial_create_status",
   "restored_image_inspect_status": "$restored_status",
   "live_interrupted_network_pull": false
 }
@@ -192,9 +230,9 @@ EOF
 }
 
 phase_cleanup() {
-  before="$(run_as_app "cd files && { find pdocker/images -maxdepth 1 -type d -name '*$TOKEN*'; find pdocker/layers -maxdepth 1 -type d -name '*$TOKEN*'; } 2>/dev/null | wc -l" | tr -d '\r ' || true)"
-  cleanup_paths; cleanup_rc=$?
-  after="$(run_as_app "cd files && { find pdocker/images -maxdepth 1 -type d -name '*$TOKEN*'; find pdocker/layers -maxdepth 1 -type d -name '*$TOKEN*'; } 2>/dev/null | wc -l" | tr -d '\r ' || true)"
+  before="$(run_as_app "cd files && { find pdocker/images -maxdepth 1 -type d -name '*$TOKEN*'; find pdocker/layers -maxdepth 1 -type d -name '*$TOKEN*'; find pdocker/containers -maxdepth 1 -type d -name '*$TOKEN*'; } 2>/dev/null | wc -l" | tr -d '\r ' || true)"
+  if cleanup_paths; then cleanup_rc=0; else cleanup_rc=$?; fi
+  after="$(run_as_app "cd files && { find pdocker/images -maxdepth 1 -type d -name '*$TOKEN*'; find pdocker/layers -maxdepth 1 -type d -name '*$TOKEN*'; find pdocker/containers -maxdepth 1 -type d -name '*$TOKEN*'; } 2>/dev/null | wc -l" | tr -d '\r ' || true)"
   cat > "$OUT_DIR/cleanup-summary.json" <<EOF
 {
   "phase": "cleanup",

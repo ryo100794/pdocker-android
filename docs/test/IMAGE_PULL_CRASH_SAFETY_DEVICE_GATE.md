@@ -37,6 +37,9 @@ the resulting store through the Engine API.
    - Create a partial layer stage as `.tmp-$TOKEN`.
    - Create a malformed content-address-looking layer directory without a
      complete `tree/`.
+   - Create a scenario-owned partial local image that references that incomplete
+     layer so inspect/create can prove fail-closed behavior without auto-pulling
+     a missing public reference.
    - Capture the image/layer store listing before daemon kill.
 
 2. `kill-daemon`
@@ -49,7 +52,10 @@ the resulting store through the Engine API.
    - Wait for `files/pdocker/pdockerd.sock`.
    - Let daemon startup recovery prune `.pull-*`, `.tmp-*`, and malformed
      layers, and restore `.old-*` only when the base tag is absent.
-   - Probe the restored tag and the never-published tag through Engine API.
+   - Probe the restored tag, never-published tag, and partial local image
+     through Engine API.
+   - Attempt container create for the existing scenario-owned partial image and
+     require a non-201 response.
 
 4. `cleanup`
    - Remove only paths containing the scenario token and known scenario names.
@@ -65,6 +71,9 @@ The top-level artifact records these booleans:
 - `tmp_layer_pruned`
 - `partial_layer_pruned`
 - `never_published_tag_rejected`
+- `partial_image_pruned_or_rejected`
+- `partial_image_inspect_rejected`
+- `partial_image_create_rejected`
 - `restored_tag_inspectable`
 - `daemon_restarted`
 - `cleanup_removed_only_scenario_owned_paths`
@@ -89,6 +98,8 @@ The top-level artifact points at:
 - `store-after-restart.txt`
 - `inspect-restored.raw`
 - `inspect-never.raw`
+- `inspect-partial.raw`
+- `create-partial.raw`
 - daemon process captures before kill and after restart
 
 ## Timed live-pull interruption design gate

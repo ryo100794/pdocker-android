@@ -2260,6 +2260,15 @@ class MainActivity : AppCompatActivity() {
         appendLine("package=$packageName uid=${applicationInfo.uid}")
         appendLine("time=${System.currentTimeMillis()}")
         appendLine()
+        appendLine("== Engine /system/memory-pressure ==")
+        appendLine(
+            runCatching {
+                engine.getObject("/system/memory-pressure").toString(2)
+            }.getOrElse { err ->
+                "unavailable: ${err.message ?: err.javaClass.simpleName}"
+            },
+        )
+        appendLine()
         appendLine("== /proc/meminfo ==")
         appendLine(readSmallProcFile(File("/proc/meminfo"), 80).ifBlank { "unavailable" })
         appendLine("== pdocker processes ==")

@@ -3933,6 +3933,29 @@ static void write_cpu_oracle_report(
     fprintf(out, "]}");
 }
 
+static int cpu_oracle_status_is_unsupported(const char *status) {
+    if (!status || !status[0]) return 0;
+    return strncmp(status, "unsupported", 11) == 0 ||
+           strstr(status, "not-implemented") != NULL ||
+           strstr(status, "oracle-pending") != NULL;
+}
+
+static int cpu_oracle_required_fail_closed(const CpuOracleReport *report) {
+    if (!report || !report->requested || !report->candidate) return 0;
+    /*
+     * A requested oracle is correctness evidence, not a best-effort log line.
+     * Known llama shader candidates whose oracle path is explicitly pending or
+     * unsupported must fail this dispatch instead of producing a valid:true
+     * event that can be mistaken for GPU correctness/performance evidence.
+     *
+     * Deliberately do not fail generic run caps (for example q4k-oracle-run-cap)
+     * here: those are bounded sampling policy choices, not unsupported shader
+     * semantics.  Pending fused RMS/RoPE and unsupported Q4/Q6 layouts do fail
+     * closed with the full cpu_oracle artifact attached.
+     */
+    return cpu_oracle_status_is_unsupported(report->status);
+}
+
 
 static float rope_yarn_ramp(float low, float high, uint32_t i0) {
     float y = (float)(i0 / 2u) - low;
@@ -6677,6 +6700,7 @@ static int run_vulkan_dispatch_fd(
     const char *fail_stage = "start";
     VkResult rc = VK_SUCCESS;
     int ret = -21;
+    int oracle_fail_closed = 0;
     int io_rc = 0;
     int fail_binding = -1;
     uint32_t max_binding = 0;
@@ -7979,6 +8003,13 @@ static int run_vulkan_dispatch_fd(
                                           gy,
                                           gz);
     }
+    if (cpu_oracle_required_fail_closed(&cpu_oracle_report)) {
+        oracle_fail_closed = 1;
+        fail_stage = "cpu-oracle-required";
+        rc = VK_ERROR_FEATURE_NOT_PRESENT;
+        ret = 76;
+        goto cleanup;
+    }
     double download_start = now_ms();
     for (size_t i = 0; i < binding_count; ++i) {
         if (!active_bindings[i]) continue;
@@ -8484,6 +8515,7 @@ cleanup:
                 "\"specialization_materialized\":%s,"
                 "\"q4k_targeted_specialization_materialized\":%s,"
                 "\"q4k_safe_kernel\":%s,"
+                "\"oracle_fail_closed\":%s,"
                 "\"strict_passthrough\":%s,"
                 "\"requested_feature_mask\":\"0x%016llx\","
                 "\"requested_feature_mask_present\":%s,"
@@ -8510,6 +8542,7 @@ cleanup:
                 specialization_materialized ? "true" : "false",
                 q4k_targeted_specialization_materialized ? "true" : "false",
                 q4k_safe_kernel_used ? "true" : "false",
+                oracle_fail_closed ? "true" : "false",
                 strict_passthrough ? "true" : "false",
                 (unsigned long long)(options ? options->requested_feature_mask : 0),
                 (options && options->has_requested_feature_mask) ? "true" : "false",
@@ -8581,6 +8614,10 @@ cleanup:
         write_spirv_feature_report(json_out(), &spirv_summary, &effective_rt);
         fprintf(json_out(), ",");
         write_vulkan_limits_report(json_out(), rt);
+        if (cpu_oracle_requested || oracle_fail_closed) {
+            fprintf(json_out(), ",");
+            write_cpu_oracle_report(json_out(), &cpu_oracle_report);
+        }
         fprintf(json_out(),
                 ",\"android_vulkan_features\":{"
                 "\"shaderInt64\":%u,"

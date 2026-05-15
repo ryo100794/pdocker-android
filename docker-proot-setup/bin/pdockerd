@@ -1657,12 +1657,29 @@ def _layer_tree(diff_id):
 
 
 def _layer_exists(diff_id):
-    ldir = _layer_dir(diff_id)
-    # Older images and some contract tests may have a valid content-addressed
-    # tree without a sidecar meta.json.  Treat the tree as authoritative for
-    # cache reuse and let _layer_size() fall back to zero when metadata is
-    # absent; otherwise a harmless missing size record forces a RUN re-exec.
-    return os.path.isdir(os.path.join(ldir, "tree"))
+    """Return True only for a fully published content-addressed layer.
+
+    Interrupted extraction writes to ``<diff_id>.tmp-*`` and publishes with a
+    final rename only after both ``tree/`` and ``meta.json`` are complete.  Do
+    not treat a bare tree, malformed metadata, or a mismatched sidecar as cache:
+    those shapes are crash residue and must be re-pulled/rebuilt, not reused by
+    image inspect/run paths.
+    """
+    bare = str(diff_id or "").split(":", 1)[-1]
+    if not re.fullmatch(r"[A-Fa-f0-9]{64}", bare or ""):
+        return False
+    ldir = _layer_dir(bare)
+    tree = os.path.join(ldir, "tree")
+    meta_path = os.path.join(ldir, "meta.json")
+    if not os.path.isdir(tree) or not os.path.isfile(meta_path):
+        return False
+    try:
+        with open(meta_path) as f:
+            meta = json.load(f) or {}
+    except (OSError, json.JSONDecodeError, TypeError):
+        return False
+    meta_did = str(meta.get("diff_id") or "").split(":", 1)[-1]
+    return meta_did == bare
 
 
 def _layer_size(diff_id):
@@ -1771,6 +1788,19 @@ def _mkparent(path):
         os.makedirs(d, exist_ok=True)
 
 
+def _fsync_dir(path):
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
 def _context_path(context_dir, rel):
     base = os.path.realpath(context_dir)
     path = os.path.realpath(os.path.join(context_dir, str(rel).lstrip("/")))
@@ -1840,6 +1870,7 @@ def _extract_layer_tar(tar_path, diff_id):
         with open(os.path.join(tmp_ldir, "meta.json"), "w") as f:
             json.dump(meta, f)
         os.replace(tmp_ldir, ldir)
+        _fsync_dir(LAYERS_DIR)
     except Exception as e:
         shutil.rmtree(tmp_ldir, ignore_errors=True)
         if link_mode != "hard":
@@ -3586,12 +3617,69 @@ def image_dir(name):
     return os.path.join(IMAGES_DIR, image_to_path(name))
 
 
-def image_config(name):
-    p = os.path.join(image_dir(name), "config.json")
-    if os.path.exists(p):
+def _read_image_config_from_dir(img_dir):
+    p = os.path.join(img_dir, "config.json")
+    if not os.path.isfile(p):
+        return None
+    try:
         with open(p) as f:
-            return json.load(f)
-    return None
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    return cfg if isinstance(cfg, dict) else None
+
+
+def _image_required_diff_ids(img_dir, cfg):
+    diff_ids = []
+    for did in _load_image_manifest(img_dir):
+        bare = str(did or "").split(":", 1)[-1]
+        if bare and bare not in diff_ids:
+            diff_ids.append(bare)
+    for did in ((cfg.get("rootfs") or {}).get("diff_ids") or []):
+        bare = str(did or "").split(":", 1)[-1]
+        if bare and bare not in diff_ids:
+            diff_ids.append(bare)
+    return diff_ids
+
+
+def _image_dir_complete(img_dir, expected_ref=None):
+    """True only for an atomically published, runnable image directory.
+
+    A tag is visible to inspect/list/run only after pull/load/build writes the
+    config, reference, rootfs, and every referenced layer.  This prevents a
+    crashed pull or interrupted cache extraction from turning a partial base
+    directory into a valid image merely because ``config.json`` exists.
+    """
+    if not os.path.isdir(img_dir):
+        return False
+    name = os.path.basename(img_dir)
+    if ".pull-" in name or ".old-" in name:
+        return False
+    cfg = _read_image_config_from_dir(img_dir)
+    if cfg is None:
+        return False
+    ref_path = os.path.join(img_dir, "image_ref")
+    try:
+        with open(ref_path) as f:
+            stored_ref = f.read().strip()
+    except OSError:
+        return False
+    if not stored_ref or (expected_ref and stored_ref != expected_ref):
+        return False
+    if not os.path.isdir(os.path.join(img_dir, "rootfs")):
+        return False
+    for did in _image_required_diff_ids(img_dir, cfg):
+        if not _layer_exists(did):
+            return False
+    return True
+
+
+def image_config(name):
+    norm = normalize_image(name)
+    d = image_dir(norm)
+    if not _image_dir_complete(d, expected_ref=norm):
+        return None
+    return _read_image_config_from_dir(d)
 
 
 def image_id(name):
@@ -3718,7 +3806,9 @@ def pull_image(name, platform=None):
 
         if os.path.exists(d):
             os.replace(d, backup)
+            _fsync_dir(IMAGES_DIR)
         os.replace(stage, d)
+        _fsync_dir(IMAGES_DIR)
     except Exception:
         if os.path.exists(backup) and not os.path.exists(d):
             os.replace(backup, d)
@@ -4028,6 +4118,8 @@ def list_images():
             continue
         with open(ref_file) as f:
             ref = f.read().strip()
+        if not _image_dir_complete(fullp, expected_ref=ref):
+            continue
         cfg = image_config(ref) or {}
         storage_row = by_ref.get(ref, {})
         size = int(storage_row.get("VirtualSize", 0) or 0)
@@ -4271,8 +4363,14 @@ def create_container(config, name=None):
     image = config.get("Image", "")
     norm_img = normalize_image(image)
 
-    # Auto-pull if missing
-    if not os.path.exists(os.path.join(image_dir(norm_img), "rootfs")):
+    # Auto-pull if missing, but fail closed for a local tag directory that
+    # exists without a complete config/rootfs/layer set.  A crashed pull must
+    # not be treated as runnable and must not silently mask residue by pulling
+    # over a partial local image during docker run/create.
+    img_dir = image_dir(norm_img)
+    if os.path.exists(img_dir) and not _image_dir_complete(img_dir, expected_ref=norm_img):
+        raise ValueError(f"image exists but is incomplete or has partial layers: {image}")
+    if not _image_dir_complete(img_dir, expected_ref=norm_img):
         pull_image(image)
 
     cdir = os.path.join(CONTAINERS_DIR, cid)
@@ -5636,6 +5734,7 @@ def prune_build_artifacts(min_age_seconds=0, skip_active=True):
                         removed.append(f"image-backup:{name}")
                 except OSError as exc:
                     log(f"image pull recovery {name} error: {exc}")
+                continue
     if os.path.isdir(LAYERS_DIR):
         for name in os.listdir(LAYERS_DIR):
             path = os.path.join(LAYERS_DIR, name)

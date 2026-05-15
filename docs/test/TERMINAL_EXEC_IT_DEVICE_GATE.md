@@ -96,5 +96,10 @@ private test-only Engine endpoint. Required reproductions are:
 - The terminal surface must not contain Docker command strings, container IDs,
   Engine endpoints such as `/containers/{id}/exec` or `/exec/{id}/start`, PTY
   implementation names, artifact validators, or device-smoke policy.
-- Docker exec/PTY semantics belong to the session/API layer. A static host test
-  must fail if those tokens move into `app/src/main/assets/xterm/index.html`.
+- Docker exec/PTY semantics belong to the session/API layer. `EngineExecSession`
+  is the named owner for Engine exec create/start hijack, raw stdin, resize, and
+  diagnostic writes; the bridge delegates to that session instead of duplicating
+  Engine endpoint handling.
+- A static host test must fail if Docker/Engine routing tokens move into
+  `app/src/main/assets/xterm/index.html`, and must also prove the Engine exec
+  path is centralized in the named session helper.

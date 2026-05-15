@@ -377,6 +377,13 @@ is explicit rather than implicit:
   `unsupported-gpu-work-accepted` and block correctness and benchmark claims.
   This keeps unsupported kernels/layouts from being hidden by served HTTP,
   speedup, or unrelated Q6_K summary fields.
+- Executor-side fail-closed oracle gate: when `PDOCKER_GPU_CPU_ORACLE=1` is
+  requested for a known llama shader candidate, pending or unsupported oracle
+  statuses now stop the generic Vulkan dispatch with
+  `stage=cpu-oracle-required`, `oracle_fail_closed=true`, `valid=false`, and
+  an attached `cpu_oracle` report.  This specifically prevents the known
+  fused RMS/RoPE pending path (`fused-rms-rope-oracle-pending`) and unsupported
+  Q4/Q6 layouts from being recorded as `valid=true` bridge work.
 
 ### Stage 5: Correctness gate for `ngl=1`
 

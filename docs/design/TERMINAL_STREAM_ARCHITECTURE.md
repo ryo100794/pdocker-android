@@ -18,16 +18,20 @@ implementation points that must be refactored.
 | Area | Current file | Current responsibility |
 |---|---|---|
 | Terminal surface | `app/src/main/assets/xterm/index.html` | xterm.js rendering, soft-key palette, selection/copy, pinch zoom, IME handling, input forwarding, resize forwarding |
-| Android bridge | `app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt` | WebView JavaScript bridge, local PTY child, Engine exec creation, hijacked Engine stream, clipboard, diagnostics |
+| Android bridge | `app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt` | WebView JavaScript bridge, local PTY child, clipboard, and delegation to selected session helpers |
+| Engine exec session | `app/src/main/kotlin/io/github/ryo100794/pdocker/EngineExecSession.kt` | Engine exec creation, hijacked raw TTY stream, stdin, resize route, and Engine exec diagnostics |
 | Local PTY helper | `app/src/main/kotlin/io/github/ryo100794/pdocker/PtyNative.kt`, `app/src/main/cpp/pty.c` | APK-local pseudo terminal process for diagnostic shells |
 | Engine API | `app/src/main/assets/pdockerd/pdockerd` | Docker-compatible `/containers/{id}/exec`, `/exec/{id}/start`, attach, multiplex/raw stream, backend process launch |
 | Direct executor TTY support | `app/src/main/cpp/pdocker_direct_exec.c` | Container path mediation, `/dev/tty` and process-group handling for the direct executor |
 | UI launch points | `app/src/main/kotlin/io/github/ryo100794/pdocker/MainActivity.kt` | Creates terminal tabs and currently selects special commands for container terminals, job logs, daemon logs, and self-tests |
 
-The design problem is that `Bridge.kt` currently contains both terminal
-transport plumbing and Docker Engine `exec -it` policy. That makes it too easy
-to fix one session type by changing the generic terminal surface or by adding a
-private route that does not match Docker semantics.
+The design problem was that `Bridge.kt` contained both terminal transport
+plumbing and Docker Engine `exec -it` policy. The current slice introduces an
+`EngineExecSession` helper so create/start/hijack/input/resize diagnostics have
+a named owner outside the WebView bridge. `Bridge.kt` still has local PTY launch
+and command-prefix selection, so the split is not complete, but Engine exec
+routing is now centralized in a session-layer file instead of being duplicated
+in the generic terminal surface or bridge.
 
 ## Architectural Rule
 
@@ -200,7 +204,9 @@ telemetry.
 1. Introduce `TerminalDescriptor`, `TerminalSession`, and `TerminalSessionHost`
    in Kotlin.
 2. Move Engine exec creation and hijack handling out of `Bridge.kt` into
-   `EngineExecSession`.
+   `EngineExecSession`. Status: initial helper introduced; it owns exec create,
+   start hijack, raw stdin writes, resize requests, and diagnostics while
+   `Bridge.kt` delegates to it.
 3. Move local PTY launch out of `Bridge.kt` into `LocalPtySession` and label it
    as diagnostic-only in UI.
 4. Keep `xterm/index.html` session-neutral: it can normalize terminal input and
@@ -329,8 +335,11 @@ can be tested without starting a container.
 
 ## Current Status
 
-As of this snapshot, the design is not fully implemented. `Bridge.kt` still
-bundles local PTY and Engine exec transports, and `MainActivity.kt` still opens
-some terminal sessions through command-like routing. The immediate work is to
-move those responsibilities into explicit session classes before further
-terminal bug fixes are marked complete.
+As of this snapshot, the design is partially implemented. `EngineExecSession.kt`
+owns the Engine exec transport contract, including Docker-compatible create,
+start/hijack, raw stdin, resize, and diagnostics. `Bridge.kt` is still the
+WebView JavaScript bridge and still owns the local diagnostic PTY path, while
+`MainActivity.kt` still opens Engine exec terminals through command-like routing.
+The next slices should introduce explicit `TerminalSession` construction at the
+launch sites and move the remaining local PTY transport into its own session
+class before further terminal bug fixes are marked complete.

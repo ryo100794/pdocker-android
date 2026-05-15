@@ -73,6 +73,8 @@ ARTIFACT_SCHEMA: dict[str, Any] = {
         "store_listing_after_restart": "path|null",
         "image_inspect_after_restart": "path|null",
         "never_image_inspect_after_restart": "path|null",
+        "partial_image_inspect_after_restart": "path|null",
+        "partial_image_create_after_restart": "path|null",
         "daemon_log_before_kill": "path|null",
         "daemon_log_after_restart": "path|null",
         "container_run_after_restart": "path|null",
@@ -82,6 +84,9 @@ ARTIFACT_SCHEMA: dict[str, Any] = {
         "pull_stage_pruned": "boolean|null",
         "tmp_layer_pruned": "boolean|null",
         "partial_layer_pruned": "boolean|null",
+        "partial_image_pruned_or_rejected": "boolean|null",
+        "partial_image_inspect_rejected": "boolean|null",
+        "partial_image_create_rejected": "boolean|null",
         "never_published_tag_rejected": "boolean|null",
         "restored_tag_inspectable": "boolean|null",
         "cleanup_removed_only_scenario_owned_paths": "boolean|null",
@@ -98,7 +103,8 @@ NEGATIVE_EXPECTED_CONDITIONS = [
     "missing tree/ for a malformed partial layer is treated as reusable cache",
     "old tag backup is lost when replacement pull is killed before publish",
     "docker image inspect succeeds for a never-published interrupted tag",
-    "docker run succeeds from a tag whose pull was killed before atomic publish",
+    "partial image directory with incomplete layers is inspectable after restart",
+    "docker run/create succeeds from a partial image or layer cache entry after restart",
     "cleanup deletes unrelated images, layers, containers, app data, or other workers' files",
 ]
 
@@ -113,7 +119,7 @@ CLEANUP_POLICY = [
 REMAINING_GAP = [
     "Live registry pull interruption is not killed mid-download by default; this runner currently injects scenario-owned residue and proves restart recovery.",
     "Timed live-pull interruption requires --execute-live-pull-interruption plus a scenario-owned --live-image and --live-fixture-owned acknowledgement before any future implementation may run.",
-    "Container run is not attempted for the never-published tag because create would auto-pull a missing public reference; inspect/listing rejection is the safe negative probe.",
+    "Container run/create is attempted only for an existing scenario-owned partial local tag so missing public references are not auto-pulled.",
 ]
 
 PHASES = ["prepare-residue", "kill-daemon", "restart-and-probe", "cleanup"]
@@ -295,6 +301,9 @@ def evaluate_device_evidence(local_dir: Path) -> tuple[dict[str, bool | None], l
         "pull_stage_pruned": restart.get("pull_stage_pruned"),
         "tmp_layer_pruned": restart.get("tmp_layer_pruned"),
         "partial_layer_pruned": restart.get("partial_layer_pruned"),
+        "partial_image_pruned_or_rejected": restart.get("partial_image_pruned_or_rejected"),
+        "partial_image_inspect_rejected": restart.get("partial_image_inspect_rejected"),
+        "partial_image_create_rejected": restart.get("partial_image_create_rejected"),
         "never_published_tag_rejected": restart.get("never_published_tag_rejected"),
         "restored_tag_inspectable": restart.get("restored_tag_inspectable"),
         "daemon_restarted": restart.get("daemon_restarted"),
@@ -311,9 +320,11 @@ def evaluate_device_evidence(local_dir: Path) -> tuple[dict[str, bool | None], l
         "store_listing_after_restart": relative_or_none(local_dir / "store-after-restart.txt"),
         "image_inspect_after_restart": relative_or_none(local_dir / "inspect-restored.raw"),
         "never_image_inspect_after_restart": relative_or_none(local_dir / "inspect-never.raw"),
+        "partial_image_inspect_after_restart": relative_or_none(local_dir / "inspect-partial.raw"),
+        "partial_image_create_after_restart": relative_or_none(local_dir / "create-partial.raw"),
         "daemon_log_before_kill": relative_or_none(local_dir / "ps-before-kill.txt"),
         "daemon_log_after_restart": relative_or_none(local_dir / "ps-after-restart.txt"),
-        "container_run_after_restart": None,
+        "container_run_after_restart": relative_or_none(local_dir / "create-partial.raw"),
     }
     return assertions, failures, evidence
 
@@ -427,6 +438,9 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "pull_stage_pruned": None,
         "tmp_layer_pruned": None,
         "partial_layer_pruned": None,
+        "partial_image_pruned_or_rejected": None,
+        "partial_image_inspect_rejected": None,
+        "partial_image_create_rejected": None,
         "never_published_tag_rejected": None,
         "restored_tag_inspectable": None,
         "daemon_restarted": None,
@@ -442,6 +456,8 @@ def build_artifact(args: argparse.Namespace) -> dict[str, Any]:
         "store_listing_after_restart": None,
         "image_inspect_after_restart": None,
         "never_image_inspect_after_restart": None,
+        "partial_image_inspect_after_restart": None,
+        "partial_image_create_after_restart": None,
         "daemon_log_before_kill": None,
         "daemon_log_after_restart": None,
         "container_run_after_restart": None,

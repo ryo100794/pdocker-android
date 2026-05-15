@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "MainActivity.kt"
 BRIDGE = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "Bridge.kt"
+ENGINE_EXEC_SESSION = ROOT / "app" / "src" / "main" / "kotlin" / "io" / "github" / "ryo100794" / "pdocker" / "EngineExecSession.kt"
 XTERM = ROOT / "app" / "src" / "main" / "assets" / "xterm" / "index.html"
 ANDROID_SMOKE = ROOT / "scripts" / "android-device-smoke.sh"
 DEVICE_GATE_DOC = ROOT / "docs" / "test" / "TERMINAL_EXEC_IT_DEVICE_GATE.md"
@@ -35,6 +36,7 @@ class TerminalExecItContractTest(unittest.TestCase):
     def setUp(self):
         self.main = MAIN.read_text()
         self.bridge = BRIDGE.read_text()
+        self.engine_exec_session = ENGINE_EXEC_SESSION.read_text()
         self.xterm = XTERM.read_text()
         self.android_smoke = ANDROID_SMOKE.read_text()
 
@@ -54,7 +56,7 @@ class TerminalExecItContractTest(unittest.TestCase):
         self.assertNotIn("docker exec", command_body)
 
     def test_engine_exec_create_and_start_are_tty_stdin_raw_stream_contract(self):
-        create_body = _method_body(self.bridge, "private fun createEngineExec")
+        create_body = _method_body(self.engine_exec_session, "private fun createEngineExec")
         for required in [
             '.put("AttachStdin", true)',
             '.put("AttachStdout", true)',
@@ -70,19 +72,24 @@ class TerminalExecItContractTest(unittest.TestCase):
         self.assertIn("/containers/${DockerEngineClient.encodePath(containerId)}/exec", create_body)
         self.assertNotIn("docker exec", create_body)
 
-        start_body = _method_body(self.bridge, "private fun startEngineExecStream")
+        start_body = _method_body(self.engine_exec_session, "private fun startEngineExecStream")
         self.assertIn('.put("Tty", true)', start_body)
         self.assertIn('append("Connection: Upgrade\\r\\n")', start_body)
         self.assertIn('append("Upgrade: tcp\\r\\n")', start_body)
         self.assertIn('append("POST /exec/$execId/start HTTP/1.1\\r\\n")', start_body)
         self.assertIn('head.startsWith("HTTP/1.1 101")', start_body)
 
-        input_body = _method_body(self.bridge, "fun input")
-        self.assertRegex(input_body, r"socket\.outputStream\.write\(bytes\)")
-        self.assertRegex(input_body, r"socket\.outputStream\.flush\(\)")
-        self.assertNotIn("readLine", input_body)
-        self.assertNotIn("+ \"\\n\"", input_body)
-        self.assertNotIn("+ \"\\r\"", input_body)
+        write_body = _method_body(self.engine_exec_session, "fun write")
+        self.assertRegex(write_body, r"socket\.outputStream\.write\(bytes\)")
+        self.assertRegex(write_body, r"socket\.outputStream\.flush\(\)")
+        self.assertNotIn("readLine", write_body)
+        self.assertNotIn("+ \"\\n\"", write_body)
+        self.assertNotIn("+ \"\\r\"", write_body)
+
+        bridge_input = _method_body(self.bridge, "fun input")
+        self.assertIn("engineExecSession.get()?.let", bridge_input)
+        self.assertIn("session.write(bytes)", bridge_input)
+        self.assertNotIn("socket.outputStream", bridge_input)
 
     def test_terminal_keyboard_sends_control_bytes_and_escape_sequences_not_text(self):
         for button in [
@@ -241,6 +248,34 @@ class TerminalExecItContractTest(unittest.TestCase):
         self.assertIn('stream-started only proves the exec stream was opened', validate_body)
 
 
+    def test_engine_exec_path_is_centralized_in_named_session(self):
+        self.assertIn("class EngineExecSession", self.engine_exec_session)
+        bridge_start = _method_body(self.bridge, "private fun startEngineExec")
+        self.assertIn("EngineExecSession(", bridge_start)
+        self.assertIn("session.start(containerId)", bridge_start)
+        self.assertIn("engineExecSession", self.bridge)
+        for forbidden in [
+            "/containers/${DockerEngineClient.encodePath(containerId)}/exec",
+            'append("POST /exec/$execId/start HTTP/1.1\\r\\n")',
+            "LocalSocket",
+            "recordEngineExecInput",
+            "engineExecInputDiagnosticsFile",
+        ]:
+            self.assertNotIn(forbidden, self.bridge)
+            self.assertIn(forbidden, self.engine_exec_session)
+
+        for required in [
+            "fun start(containerId: String): Boolean",
+            "fun write(bytes: ByteArray)",
+            "fun resize(rows: Int, cols: Int)",
+            "fun close()",
+            "private fun createEngineExec",
+            "private fun startEngineExecStream",
+            "private fun resizeEngineExecSync",
+            "private fun recordEngineExecEvent",
+        ]:
+            self.assertIn(required, self.engine_exec_session)
+
     def test_terminal_surface_stays_session_neutral_static_boundary(self):
         # xterm/index.html is the generic terminal surface. It may talk to the
         # bridge using byte-oriented UI verbs, but Docker/Engine/PTY semantics
@@ -315,9 +350,12 @@ class TerminalExecItContractTest(unittest.TestCase):
         self.assertIn("private val lastTerminalSize", self.bridge)
         resize_body = _method_body(self.bridge, "fun resize")
         self.assertIn("lastTerminalSize.set(rows to cols)", resize_body)
-        self.assertIn("resizeEngineExecAsync(execId, rows, cols)", resize_body)
+        self.assertIn("engineExecSession.get()?.let", resize_body)
         self.assertIn("PtyNative.resize(fd, rows, cols)", resize_body)
-        resize_sync = _method_body(self.bridge, "private fun resizeEngineExecSync")
+        bridge_resize = _method_body(self.bridge, "fun resize")
+        self.assertIn("session.resize(rows, cols)", bridge_resize)
+        self.assertNotIn("/resize?h=", bridge_resize)
+        resize_sync = _method_body(self.engine_exec_session, "private fun resizeEngineExecSync")
         self.assertIn('val path = "/exec/${DockerEngineClient.encodePath(execId)}/resize?h=$rows&w=$cols"', resize_sync)
         self.assertIn('recordEngineExecEvent("resize", execId = execId, status = response.status, body = path)', resize_sync)
         self.assertIn('recordEngineExecEvent("resize-failed", execId = execId, body = path, error = it.message.orEmpty())', resize_sync)

@@ -217,6 +217,19 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("0x4f37d4d51dd83526ull", source)
         self.assertIn("0x53c67d2aebf48739ull", source)
 
+    def test_required_pending_or_unsupported_oracles_fail_closed(self):
+        source = GPU_EXECUTOR.read_text()
+        self.assertIn("cpu_oracle_status_is_unsupported", source)
+        self.assertIn("cpu_oracle_required_fail_closed", source)
+        self.assertIn('strstr(status, "oracle-pending")', source)
+        self.assertIn('strstr(status, "not-implemented")', source)
+        self.assertIn('strncmp(status, "unsupported", 11) == 0', source)
+        self.assertIn("fail_stage = \"cpu-oracle-required\";", source)
+        self.assertIn("rc = VK_ERROR_FEATURE_NOT_PRESENT;", source)
+        self.assertIn("ret = 76;", source)
+        self.assertIn('\\"oracle_fail_closed\\":%s', source)
+        self.assertIn("write_cpu_oracle_report(json_out(), &cpu_oracle_report);", source)
+
     def test_rope_yarn_oracle_is_hash_gated_and_evidence_backed(self):
         source = GPU_EXECUTOR.read_text()
         self.assertIn("0xac41e8033a67af4aull", source)
