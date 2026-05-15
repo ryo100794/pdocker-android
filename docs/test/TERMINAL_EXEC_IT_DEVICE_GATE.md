@@ -20,14 +20,15 @@ The runner collects these files into `PDOCKER_SMOKE_ARTIFACT_DIR`:
 - `ui-it-selftest-latest.json`
 - `engine-exec-input-latest.jsonl`
 
-The skip artifact must include:
+The skip artifact and real-run artifact must include:
 
-- `Status: "planned-skip"`
-- `Success: false`
-- `DeviceProofAttempted: false`
+- `Status: "planned-skip"` for planned skips
+- `Success: false` for planned skips and `Success: true` only after a real run
+- `DeviceProofAttempted: false` for planned skips
 - `HardGateRequired`
 - `RequiredEvidence`
-- `Evidence`
+- `Evidence`, including `top-repaint-remains-terminal-shaped` and
+  `resize-route-is-observable` as first-class keys
 
 ## Required evidence names
 
@@ -46,16 +47,15 @@ The gate validates the following evidence names for a real-container run:
 - `top-starts-on-tty`: `top` can start against a controlling TTY.
 - `top-repaint-remains-terminal-shaped`: a full-screen `top` update must remain
   a terminal repaint, not collapse into log text, bracket argv noise, or broken
-  carriage-return/line-control output. The current artifact proves this with the
-  `top-starts-on-tty`, bracket-noise, and CRLF checks; keep this symptom named
-  so future artifacts can expose it as a first-class evidence key.
+  carriage-return/line-control output. The device artifact records this as a
+  first-class `Evidence` key so the symptom cannot be hidden behind a generic
+  success flag.
 - `q-quits-top`: `q` exits `top`, after which the shell accepts another
   command.
 - `resize-route-is-observable`: the Engine exec resize route is observable
-  through terminal diagnostics. Until the Android artifact records a dedicated
-  resize-success event, the runner accepts the existing Engine exec stream
-  diagnostics as the observable resize-route proof and keeps this evidence name
-  explicit so the contract cannot silently disappear.
+  through terminal diagnostics. The bridge records the Docker-compatible
+  `/exec/{id}/resize?h={rows}&w={cols}` path on resize success and on explicit
+  `resize-failed` events; opening the stream alone is not resize evidence.
 
 ## UI-driven reproduction route
 

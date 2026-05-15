@@ -205,13 +205,16 @@ class Bridge(
 
     private fun resizeEngineExecSync(execId: String, rows: Int, cols: Int) {
         if (rows <= 0 || cols <= 0) return
+        val path = "/exec/${DockerEngineClient.encodePath(execId)}/resize?h=$rows&w=$cols"
         runCatching {
             engineRequest(
                 "POST",
-                "/exec/${DockerEngineClient.encodePath(execId)}/resize?h=$rows&w=$cols",
+                path,
             )
+        }.onSuccess { response ->
+            recordEngineExecEvent("resize", execId = execId, status = response.status, body = path)
         }.onFailure {
-            recordEngineExecEvent("resize-failed", execId = execId, error = it.message.orEmpty())
+            recordEngineExecEvent("resize-failed", execId = execId, body = path, error = it.message.orEmpty())
         }
     }
 

@@ -3318,6 +3318,19 @@ class MainActivity : AppCompatActivity() {
             .put("StartedAtMs", startedAt)
             .put("RequestedContainer", requestedContainer)
         val output = StringBuffer()
+        val requiredEvidence = JSONArray(listOf(
+            "enter-single-submit",
+            "ctrl-c-interrupts-without-literal-c",
+            "arrow-up-reaches-readline-history",
+            "top-starts-on-tty",
+            "top-repaint-remains-terminal-shaped",
+            "q-quits-top",
+            "resize-route-is-observable",
+        ))
+        val evidence = JSONObject().apply {
+            for (i in 0 until requiredEvidence.length()) put(requiredEvidence.getString(i), false)
+        }
+        result.put("RequiredEvidence", requiredEvidence).put("Evidence", evidence)
         var bridge: Bridge? = null
         var webView: WebView? = null
         return runCatching {
@@ -3363,13 +3376,18 @@ class MainActivity : AppCompatActivity() {
             }
             check(waitUntil(5_000) {
                 val text = output.toString()
-                text.contains("pdocker-ui-it-ok") &&
+                val markersReady = text.contains("pdocker-ui-it-ok") &&
                     text.contains("pdocker-ui-it-bracket-ok") &&
                     text.contains("pdocker-ui-it-tty-ok") &&
                     text.contains("pdocker-ui-it-term-ok") &&
                     text.contains("pdocker-ui-it-bash-ok") &&
                     text.contains("pdocker-ui-it-top-ok") &&
                     text.contains("pdocker-ui-it-arrow-seed")
+                if (markersReady) {
+                    evidence.put("enter-single-submit", true)
+                    evidence.put("top-starts-on-tty", true)
+                }
+                markersReady
             }) { "UI exec -it did not echo initial expected markers" }
             ui.post {
                 webView?.evaluateJavascript(
@@ -3378,7 +3396,9 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             check(waitUntil(3_000) {
-                Regex("pdocker-ui-it-arrow-seed").findAll(output.toString()).count() >= 2
+                val reachedHistory = Regex("pdocker-ui-it-arrow-seed").findAll(output.toString()).count() >= 2
+                if (reachedHistory) evidence.put("arrow-up-reaches-readline-history", true)
+                reachedHistory
             }) { "UI exec -it arrow key did not reach shell readline/history as an escape sequence" }
             ui.post {
                 webView?.evaluateJavascript(
@@ -3400,7 +3420,11 @@ class MainActivity : AppCompatActivity() {
                     null,
                 )
             }
-            check(waitUntil(5_000) { output.toString().contains("pdocker-ui-it-topq-ok") }) {
+            check(waitUntil(5_000) {
+                val topQuit = output.toString().contains("pdocker-ui-it-topq-ok")
+                if (topQuit) evidence.put("q-quits-top", true)
+                topQuit
+            }) {
                 "UI exec -it fullscreen top did not accept q over the terminal input stream"
             }
             ui.post {
@@ -3428,16 +3452,28 @@ class MainActivity : AppCompatActivity() {
             val text = output.toString()
             val bracketNoise = Regex("(/usr/bin/)?\\[: extra argument").containsMatchIn(text)
             val arrowNoise = text.contains("\u001b[A")
+            val lineControlOk = text.contains("pdocker-ui-it-ok\r\n") || text.contains("pdocker-ui-it-ok\n")
+            val diagnostics = File(pdockerHome, "diagnostics/engine-exec-input-latest.jsonl").readTextIfExists()
+            val resizeObserved = diagnostics.contains("/resize?h=") || diagnostics.contains("\"event\":\"resize-failed\"") || diagnostics.contains("\"event\": \"resize-failed\"")
+            if (passed) evidence.put("ctrl-c-interrupts-without-literal-c", true)
+            if (!bracketNoise && !arrowNoise && lineControlOk && evidence.optBoolean("top-starts-on-tty") && evidence.optBoolean("q-quits-top")) {
+                evidence.put("top-repaint-remains-terminal-shaped", true)
+            }
+            if (resizeObserved) evidence.put("resize-route-is-observable", true)
             check(passed) { "UI exec -it Ctrl+C did not interrupt sleep and return to the shell" }
             check(!bracketNoise) { "UI exec -it produced bracket argv noise" }
             check(!arrowNoise) { "UI exec -it printed arrow escape bytes instead of treating them as terminal input" }
-            check(text.contains("pdocker-ui-it-ok\r\n") || text.contains("pdocker-ui-it-ok\n")) {
+            check(lineControlOk) {
                 "UI exec -it did not preserve terminal CRLF line control"
+            }
+            check(resizeObserved) {
+                "UI exec -it did not observe Engine exec resize route in diagnostics"
             }
             result
                 .put("Success", true)
                 .put("DurationMs", System.currentTimeMillis() - startedAt)
                 .put("OutputTail", text.takeLast(4096))
+                .put("EngineExecDiagnostics", diagnostics.takeLast(4096))
         }.getOrElse { err ->
             result
                 .put("Success", false)

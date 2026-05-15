@@ -291,7 +291,9 @@ write_state = sidecar_payload_state("pdocker/diagnostics/saf-direct-output/write
 rename_state = sidecar_payload_state("pdocker/diagnostics/saf-direct-output/rename.sidecar.json")
 fallback_states = {"mirror-fallback-after-saf-error"}
 fallback_recorded = write_state in fallback_states or rename_state in fallback_states
+mirror_present = mirror_exists_rc == "0"
 mirror_evicted = mirror_exists_rc == "1"
+mirror_only_not_direct = mirror_present and not direct_write_ok
 
 path_traversal = {
     "Name": "path-traversal-validation",
@@ -318,11 +320,19 @@ cases = {
     },
     "direct_saf_payload": {
         "Attempted": bool(selected_host),
-        "Success": direct_write_ok,
+        "Success": direct_write_ok and not fallback_recorded,
         "RelativePath": os.environ["SAF_DIRECT_WRITE_RELATIVE"],
         "SelectedHostPath": selected_host,
         "PayloadState": write_state,
+        "DirectPayloadObserved": direct_write_ok,
+        "MirrorPayloadPresent": mirror_present,
         "MirrorPayloadEvicted": mirror_evicted,
+    },
+    "mirror_not_accepted_as_direct": {
+        "Attempted": bool(selected_host),
+        "Success": not mirror_only_not_direct,
+        "MirrorOnlyRejected": mirror_only_not_direct,
+        "Policy": "An app-private mirror file is fallback/cache evidence only; direct-output success requires matching payload under the selected SAF/Documents host path.",
     },
     "sidecar_metadata": {
         "Attempted": bool(write_sidecar or rename_sidecar),
@@ -356,6 +366,8 @@ if selected_host and not (selected_host.startswith("/storage/") or selected_host
     failures.append(f"unsupported documents.hostPath: {selected_host}")
 if not direct_write_ok:
     failures.append("payload was not observed directly under selected SAF/Documents host path")
+if mirror_only_not_direct:
+    failures.append("app-private mirror exists but selected SAF/Documents host payload is missing; mirror is not direct-output evidence")
 if not direct_rename_ok:
     failures.append("renamed payload was not observed directly under selected SAF/Documents host path")
 if not unlink_ok:
@@ -393,6 +405,7 @@ artifact = {
         "AllowedOnlyWhenExplicitlyRecorded": True,
         "AcceptedPayloadStateForFallback": "mirror-fallback-after-saf-error",
         "FallbackRecorded": fallback_recorded,
+        "MirrorOnlyRejected": mirror_only_not_direct,
     },
     "Failures": failures,
     "EvidenceDirectory": str(evidence),

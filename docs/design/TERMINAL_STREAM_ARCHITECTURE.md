@@ -122,8 +122,10 @@ Docker semantics remain in `pdockerd`:
 - TTY mode returns raw bytes. Non-TTY mode returns Docker multiplex frames.
 - Resize should be implemented as the Docker-compatible exec resize route
   instead of a UI-private API. Diagnostics must prove the resize route was
-  requested (or record an explicit resize-failed event); a stream-started event
-  by itself only proves the exec stream opened and is not resize evidence.
+  requested by recording the `/exec/{id}/resize?h={rows}&w={cols}` path on
+  success or by recording an explicit resize-failed event. A stream-started event
+  by itself only proves the exec stream opened and is not resize evidence; tests
+  must not count stream-started alone as resize proof.
 
 The UI can provide a shortcut button for "Terminal", but pressing it must create
 an `EngineExecSession` through the same Engine API route that a Docker client
@@ -223,7 +225,9 @@ The terminal suite must include:
 - UI self-test that launches a real Engine exec session from the same path as
   the user button.
 - Device evidence stored under `files/pdocker/diagnostics/` and copied to the
-  test artifact tree when run by the Android smoke driver.
+  test artifact tree when run by the Android smoke driver. The artifact should
+  expose first-class `Evidence` keys for top repaint shape, `q` quit, Ctrl-C,
+  ArrowUp/history, Enter, and Engine exec resize route observation.
 
 Passing a JavaScript-only self-test is not enough to claim `exec -it` is fixed.
 The gate is a real device session that can run at least:

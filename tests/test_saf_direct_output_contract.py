@@ -44,6 +44,21 @@ class SafDirectOutputContractTest(unittest.TestCase):
         ]:
             self.assertIn(token, self.script)
 
+    def test_app_private_mirror_is_never_counted_as_direct_saf_success(self):
+        for token in [
+            "mirror_not_accepted_as_direct",
+            "DirectPayloadObserved",
+            "MirrorPayloadPresent",
+            "MirrorOnlyRejected",
+            "mirror_only_not_direct = mirror_present and not direct_write_ok",
+            "app-private mirror exists but selected SAF/Documents host payload is missing; mirror is not direct-output evidence",
+            "direct-output success requires matching payload under the selected SAF/Documents host path",
+        ]:
+            self.assertIn(token, self.script)
+        self.assertIn('direct_write_ok = write_payload == payload', self.script)
+        self.assertNotIn('direct_write_ok = mirror_exists', self.script)
+        self.assertNotIn('Success": mirror_present', self.script)
+
     def test_gate_covers_sidecar_rename_stat_unlink_and_validation_cases(self):
         for token in [
             "WRITE_RELATIVE",

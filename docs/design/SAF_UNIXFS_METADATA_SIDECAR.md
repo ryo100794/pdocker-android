@@ -134,6 +134,11 @@ Each sidecar record should include at least:
 - whiteout or opaque-directory state if the record participates in an overlay
   lower or exchange view;
 - mirror path when payload is staged in app-private storage;
+- `payloadLocation` and `directSafPublished` evidence so app-private mirror
+  success cannot be mistaken for publication to the selected SAF/Documents tree;
+- explicit fallback fields such as `fallbackRecorded` and `fallbackReason` when
+  payload bytes remain only in the app-private mirror after a provider write
+  failure;
 - last verified timestamp, provider generation evidence when available, and
   conflict state.
 

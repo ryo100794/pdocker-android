@@ -412,6 +412,7 @@ class SafDocumentsMediator(
                 mimeType = mimeType,
                 source = target,
                 payloadState = "mirror-fallback-after-saf-error",
+                fallbackReason = reason.ifBlank { "primary SAF/Documents write failed" },
             )
             JSONObject()
                 .put("Success", true)
@@ -504,22 +505,31 @@ class SafDocumentsMediator(
         payloadState: String = "mirror-present",
         mode: String? = null,
         modifiedAt: Long? = null,
+        fallbackReason: String? = null,
     ) {
         val normalized = normalizeRelativePath(relativePath)
         val sidecarName = normalized.replace('/', '_').ifBlank { "root" } + ".json"
+        val directSafPublished = payloadState != "mirror-fallback-after-saf-error"
+        val payloadLocation = if (directSafPublished) "saf-tree" else "app-private-mirror"
+        val json = JSONObject()
+            .put("relativePath", normalized)
+            .put("size", size)
+            .put("mimeType", mimeType)
+            .put("type", "file")
+            .put("mode", mode ?: source?.let { unixMode(it) } ?: "100644")
+            .put("modifiedAt", modifiedAt ?: source?.lastModified() ?: 0L)
+            .put("unixMetadata", "sidecar")
+            .put("payloadState", payloadState)
+            .put("payloadLocation", payloadLocation)
+            .put("directSafPublished", directSafPublished)
+            .put("mirrorPath", File(mirrorRoot, normalized).absolutePath)
+        if (!directSafPublished) {
+            json.put("fallbackRecorded", true)
+            json.put("fallbackReason", fallbackReason.orEmpty())
+        }
         writeSidecar(
             sidecarName,
-            JSONObject()
-                .put("relativePath", normalized)
-                .put("size", size)
-                .put("mimeType", mimeType)
-                .put("type", "file")
-                .put("mode", mode ?: source?.let { unixMode(it) } ?: "100644")
-                .put("modifiedAt", modifiedAt ?: source?.lastModified() ?: 0L)
-                .put("unixMetadata", "sidecar")
-                .put("payloadState", payloadState)
-                .put("mirrorPath", File(mirrorRoot, normalized).absolutePath)
-                .toString(2) + "\n",
+            json.toString(2) + "\n",
         )
     }
 
