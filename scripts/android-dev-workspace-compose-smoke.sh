@@ -250,18 +250,39 @@ running_state = ((running or {}).get("State") or "").lower()
 running_status = ((running or {}).get("Status") or "").lower()
 running_ok = bool(running_id) and (running_state == "running" or running_status.startswith("up"))
 
+container_inspect = read_json("container-inspect.json", {})
+inspect_id = container_inspect.get("Id") if isinstance(container_inspect, dict) else ""
+inspect_name = (container_inspect.get("Name") or "").lstrip("/") if isinstance(container_inspect, dict) else ""
+inspect_state = container_inspect.get("State") if isinstance(container_inspect, dict) else {}
+inspect_running = bool(inspect_state.get("Running")) if isinstance(inspect_state, dict) else False
+engine_state_current = bool(
+    running_id
+    and inspect_id
+    and (running_id == inspect_id or running_id.startswith(inspect_id) or inspect_id.startswith(running_id))
+    and inspect_name == container
+    and inspect_running
+    and running_ok
+)
+
 extension_output = read_text("extensions.out")
 extensions_present = {
     ext: any(line.strip().lower() == ext.lower() for line in extension_output.splitlines())
     for ext in required_extensions
 }
-extensions_ok = bool(required_extensions) and all(extensions_present.values())
+extensions_configured = bool(required_extensions)
 extension_inspect = read_json("extensions-inspect.json", {})
 extension_exit = extension_inspect.get("ExitCode")
+extensions_ok = (not extensions_configured) or (all(extensions_present.values()) and extension_exit == 0)
 
 listener_rc_text = read_text("pdocker/diagnostics/dev-workspace-compose-smoke/listener-http.rc").strip()
 listener_raw = read_text("pdocker/diagnostics/dev-workspace-compose-smoke/listener-http.raw")
+listener_status_line = next((line.strip() for line in listener_raw.splitlines() if line.upper().startswith("HTTP/")), "")
+try:
+    listener_http_status_code = int(listener_status_line.split()[1])
+except Exception:
+    listener_http_status_code = None
 listener_ok = listener_rc_text == "0" and bool(listener_raw.strip())
+code_server_http_ok = listener_ok and listener_http_status_code is not None and 200 <= listener_http_status_code <= 399
 
 ui_truth = read_json("pdocker/diagnostics/dev-workspace-compose-smoke/ui-rendered-service-truth-latest.json", {})
 rendered_cards = ui_truth.get("RenderedCards") if isinstance(ui_truth, dict) else []
@@ -294,26 +315,59 @@ job_text = "\n".join(
     for path in sorted((evidence / "pdocker/diagnostics/dev-workspace-compose-smoke/job-logs").glob("*.log"))
 )
 build_started = f"Service {os.environ['DEV_WORKSPACE_SERVICE']} Building" in job_text
+build_completed = (
+    "Successfully tagged pdocker/dev-workspace:latest" in job_text
+    or "Using image cache for pdocker/dev-workspace:latest" in job_text
+)
+container_create_seen = f"Container {container} Creating" in job_text
+container_start_seen = f"Container {container} Starting" in job_text
+container_started_seen = f"Container {container} Started" in job_text
+service_url_seen = f"Service URL VS Code http://127.0.0.1:{port}/" in job_text or f"Service URL VS Code http://127.0.0.1:{port}" in job_text
 build_failed = any(term in job_text.lower() for term in ["error: build failed", "build failed", "runtime blocked"])
-build_run_ok = running_ok and not build_failed
+build_run_ok = build_started and build_completed and container_create_seen and container_start_seen and container_started_seen and running_ok and not build_failed
 
 checks = {
     "build_run": {
         "ok": build_run_ok,
         "build_started_observed": build_started,
+        "build_completed_observed": build_completed,
+        "container_create_observed": container_create_seen,
+        "container_start_observed": container_start_seen,
+        "container_started_observed": container_started_seen,
+        "service_url_observed": service_url_seen,
         "build_failed_marker_observed": build_failed,
         "running_container_id": running_id or None,
         "container_state": running_state or None,
         "container_status": running_status or None,
     },
+    "engine_state": {
+        "ok": engine_state_current,
+        "container": container,
+        "running_container_id": running_id or None,
+        "inspect_id": inspect_id or None,
+        "inspect_name": inspect_name or None,
+        "inspect_running": inspect_running,
+        "containers_json_state": running_state or None,
+        "containers_json_status": running_status or None,
+    },
     "listener": {
         "ok": listener_ok,
         "port": port,
         "http_probe_exit_code": listener_rc_text or None,
+        "http_status_line": listener_status_line or None,
+        "http_status_code": listener_http_status_code,
         "response_preview": listener_raw[:200],
     },
+    "code_server_http": {
+        "ok": code_server_http_ok,
+        "url": f"http://127.0.0.1:{port}/",
+        "expected_status": "HTTP 2xx/3xx from code-server",
+        "http_status_line": listener_status_line or None,
+        "http_status_code": listener_http_status_code,
+    },
     "extensions": {
-        "ok": extensions_ok and (extension_exit in (0, None)),
+        "ok": extensions_ok,
+        "configured": extensions_configured,
         "required": required_extensions,
         "present": extensions_present,
         "exec_exit_code": extension_exit,
@@ -357,7 +411,8 @@ artifact = {
         "job_logs_dir": str(evidence / "pdocker/diagnostics/dev-workspace-compose-smoke/job-logs"),
     },
     "acceptance_contract": {
-        "no_fake_success": "The script exits zero only when build/run, listener, required extensions, and UI service-truth all pass.",
+        "no_fake_success": "The script exits zero only when compose/build/run, current Engine state for pdocker-dev, port 18080 listener, code-server HTTP reachability, configured required extensions, and UI service-truth all pass.",
+        "extensions_if_configured": "Required extension evidence is enforced when PDOCKER_DEV_WORKSPACE_REQUIRED_EXTENSIONS is non-empty; the default requires Continue.continue, OpenAI.chatgpt, and Anthropic.claude-code.",
         "ui_truth": "TruthState stale/unknown/ambiguous is never accepted as success; a current UI card must match the running Engine container ID.",
     },
 }

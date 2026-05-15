@@ -394,6 +394,8 @@ class MainActivity : AppCompatActivity() {
     private data class ServiceContainerProof(
         val serviceName: String,
         val engineContainerId: String,
+        val engineSnapshotAgeMs: Long?,
+        val engineSnapshotCurrent: Boolean,
     )
 
     private data class RenderedServiceTruthDecision(
@@ -901,11 +903,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderedServiceTruthDecision(engineId: String?, persistedId: String?): RenderedServiceTruthDecision {
-        val snapshotAgeMs = lastContainerSnapshotAt
-            .takeIf { it > 0L }
-            ?.let { (renderPassStartedAtMs - it).coerceAtLeast(0L) }
-        val snapshotIsCurrent = snapshotAgeMs != null &&
-            snapshotAgeMs <= SERVICE_TRUTH_ENGINE_SNAPSHOT_CURRENT_MAX_AGE_MS
+        val snapshotAgeMs = serviceTruthEngineSnapshotAgeMs()
+        val snapshotIsCurrent = serviceTruthEngineSnapshotIsCurrent(snapshotAgeMs)
         val engineSnapshotIdMismatch = engineId != null && persistedId != null &&
             !engineId.equals(persistedId, ignoreCase = true)
         val engineSnapshotStatus = when {
@@ -6520,17 +6519,24 @@ class MainActivity : AppCompatActivity() {
     private fun projectServiceHealthSummary(urls: List<ProjectServiceUrl>, projectDir: File): String {
         if (urls.isEmpty()) return "-"
         val snapshots = projectContainerSnapshots(projectDir)
+        val engineSnapshotCurrent = serviceTruthEngineSnapshotIsCurrent()
         val runningProofs = projectRunningServiceProofs(projectDir, snapshots)
-        val runningServices = projectRunningServiceNames(projectDir, snapshots)
+        val runningServices = if (engineSnapshotCurrent) {
+            projectRunningServiceNames(projectDir, snapshots)
+        } else {
+            emptySet()
+        }
         urls.filter { it.serviceName in runningServices && isHttpServiceUrl(it.url) }
+            .filter { runningProofs[it.serviceName]?.engineSnapshotCurrent == true }
             .forEach { scheduleServiceHealthProbe(it.url) }
         val inactive = getString(R.string.service_health_inactive)
         return urls.take(4).joinToString(", ") { serviceUrl ->
             val running = serviceUrl.serviceName in runningServices
             val proof = runningProofs[serviceUrl.serviceName]
             val state = when {
+                !engineSnapshotCurrent -> getString(R.string.service_health_unknown)
                 !running -> inactive
-                proof == null -> getString(R.string.service_health_unknown)
+                proof == null || !proof.engineSnapshotCurrent -> getString(R.string.service_health_unknown)
                 !isHttpServiceUrl(serviceUrl.url) -> getString(R.string.service_health_external_client)
                 else -> serviceHealth[serviceUrl.url] ?: getString(R.string.service_health_requested)
             }
@@ -6548,12 +6554,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun projectRunningServiceProofs(projectDir: File, snapshots: List<JSONObject>): Map<String, ServiceContainerProof> {
         val serviceByContainerName = projectComposeContainerNames(projectDir)
+        val snapshotAgeMs = serviceTruthEngineSnapshotAgeMs()
+        val snapshotCurrent = serviceTruthEngineSnapshotIsCurrent(snapshotAgeMs)
         val proofs = snapshots
             .filter { containerSnapshotIsRunning(it) }
             .mapNotNull { obj ->
                 val engineId = obj.optString("Id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val serviceName = projectSnapshotServiceName(obj, serviceByContainerName) ?: return@mapNotNull null
-                ServiceContainerProof(serviceName, engineId)
+                ServiceContainerProof(serviceName, engineId, snapshotAgeMs, snapshotCurrent)
             }
         return proofs.groupBy { it.serviceName }
             .mapNotNull { (service, matches) ->
@@ -6561,6 +6569,14 @@ class MainActivity : AppCompatActivity() {
             }
             .toMap()
     }
+
+    private fun serviceTruthEngineSnapshotAgeMs(): Long? =
+        lastContainerSnapshotAt
+            .takeIf { it > 0L }
+            ?.let { (renderPassStartedAtMs - it).coerceAtLeast(0L) }
+
+    private fun serviceTruthEngineSnapshotIsCurrent(snapshotAgeMs: Long? = serviceTruthEngineSnapshotAgeMs()): Boolean =
+        snapshotAgeMs != null && snapshotAgeMs <= SERVICE_TRUTH_ENGINE_SNAPSHOT_CURRENT_MAX_AGE_MS
 
     private fun projectSnapshotServiceName(obj: JSONObject, serviceByContainerName: Map<String, String>): String? {
         val labels = obj.optJSONObject("Labels")
@@ -6829,6 +6845,9 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.container_ip_fmt, ip.ifBlank { "-" }),
             getString(R.string.container_ports_fmt, summarizePorts(ports)),
         )
+        summarizePortMappingStatus(pdockerNetwork).takeIf { it.isNotBlank() }?.let {
+            lines += it
+        }
         if (rewriteCount > 0) {
             lines += getString(R.string.container_hook_plan_fmt, rewriteCount)
         }
@@ -6836,6 +6855,61 @@ class MainActivity : AppCompatActivity() {
             lines += it
         }
         return lines.joinToString("\n")
+    }
+
+    private fun summarizePortMappingStatus(pdockerNetwork: JSONObject?): String {
+        val summary = pdockerNetwork?.optJSONObject("PortMappingSummary")
+        val statuses = pdockerNetwork?.optJSONArray("PortMappingStatus")
+        if (summary == null && (statuses == null || statuses.length() == 0)) return ""
+        val active = summary?.optInt("Active", -1)?.takeIf { it >= 0 }
+            ?: countPortMappingState(statuses, "active")
+        val inactive = summary?.optInt("Inactive", -1)?.takeIf { it >= 0 }
+            ?: countPortMappingState(statuses, "inactive")
+        val planned = summary?.optInt("Planned", -1)?.takeIf { it >= 0 }
+            ?: countPortMappingState(statuses, "planned")
+        val conflict = summary?.optInt("Conflict", -1)?.takeIf { it >= 0 }
+            ?: countPortMappingState(statuses, "conflict")
+        if (active + inactive + planned + conflict == 0) return ""
+        val detail = summarizePortMappingStatusDetails(statuses)
+        val counts = getString(
+            R.string.container_port_status_counts_fmt,
+            active,
+            inactive,
+            planned,
+            conflict,
+        )
+        return if (detail.isBlank()) counts else "$counts\n$detail"
+    }
+
+    private fun countPortMappingState(statuses: JSONArray?, state: String): Int {
+        if (statuses == null) return 0
+        var count = 0
+        for (i in 0 until statuses.length()) {
+            if (statuses.optJSONObject(i)?.optString("State") == state) count += 1
+        }
+        return count
+    }
+
+    private fun summarizePortMappingStatusDetails(statuses: JSONArray?): String {
+        if (statuses == null || statuses.length() == 0) return ""
+        val rows = mutableListOf<String>()
+        for (i in 0 until statuses.length()) {
+            val item = statuses.optJSONObject(i) ?: continue
+            val state = item.optString("State").ifBlank { "unknown" }
+            val host = browserHost(item.optString("HostIp"))
+            val hostPort = item.optInt("HostPort", 0).takeIf { it > 0 }?.toString() ?: "?"
+            val containerPort = item.optInt("ContainerPort", 0).takeIf { it > 0 }?.toString() ?: "?"
+            val proto = item.optString("Protocol").ifBlank { "tcp" }
+            rows += getString(
+                R.string.container_port_status_item_fmt,
+                host,
+                hostPort,
+                containerPort,
+                proto,
+                state,
+            )
+        }
+        return rows.joinToString(", ")
     }
 
     private fun containerWarningSummary(state: JSONObject?, pdockerNetwork: JSONObject?): String {

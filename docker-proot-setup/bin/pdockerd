@@ -29,6 +29,7 @@ import fnmatch
 import glob
 import gc
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -3075,8 +3076,7 @@ def _all_container_states():
 def _port_mapping_conflict(a, b):
     if a["Protocol"] != b["Protocol"] or a["HostPort"] != b["HostPort"]:
         return False
-    wildcard = ("", "0.0.0.0", "::")
-    return a["HostIp"] == b["HostIp"] or a["HostIp"] in wildcard or b["HostIp"] in wildcard
+    return _port_mapping_hosts_match(a.get("HostIp"), b.get("HostIp"))
 
 
 def _port_mapping_claims(state):
@@ -3102,20 +3102,277 @@ def _port_mapping_claims(state):
     return claims
 
 
-def _port_mapping_active(item):
-    runtime_status = item.get("RuntimeStatus") or item.get("ProxyStatus")
-    if runtime_status == "active" or item.get("Active") is True:
+def _port_mapping_host_wildcard(host):
+    return str(host or "").strip() in ("", "0.0.0.0", "::", "*")
+
+
+def _port_mapping_hosts_match(requested, observed):
+    requested = str(requested or "").strip()
+    observed = str(observed or "").strip()
+    if _port_mapping_host_wildcard(requested) or _port_mapping_host_wildcard(observed):
         return True
-    proxy = item.get("Proxy") if isinstance(item.get("Proxy"), dict) else {}
-    return proxy.get("Status") == "active" or proxy.get("Active") is True
+    if requested == observed:
+        return True
+    try:
+        return ipaddress.ip_address(requested) == ipaddress.ip_address(observed)
+    except ValueError:
+        return False
+
+
+def _proc_net_ipv4(hex_addr):
+    try:
+        data = bytes.fromhex(hex_addr)
+        if len(data) != 4:
+            return ""
+        return ".".join(str(b) for b in data[::-1])
+    except ValueError:
+        return ""
+
+
+def _proc_net_ipv6(hex_addr):
+    try:
+        data = bytes.fromhex(hex_addr)
+        if len(data) != 16:
+            return ""
+        # Linux /proc/net/tcp6 renders each 32-bit word little-endian.
+        ordered = b"".join(data[i:i + 4][::-1] for i in range(0, 16, 4))
+        return str(ipaddress.IPv6Address(ordered))
+    except (ValueError, ipaddress.AddressValueError):
+        return ""
+
+
+def _proc_net_socket_rows(protocol):
+    """Return bound/listening sockets from /proc/net for host-port proof."""
+    proto = (protocol or "tcp").lower()
+    specs = []
+    if proto == "tcp":
+        specs = [("/proc/net/tcp", "tcp", "4"), ("/proc/net/tcp6", "tcp", "6")]
+    elif proto == "udp":
+        specs = [("/proc/net/udp", "udp", "4"), ("/proc/net/udp6", "udp", "6")]
+    else:
+        return []
+    rows = []
+    for path, row_proto, family in specs:
+        try:
+            with open(path) as f:
+                lines = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 10 or ":" not in parts[1]:
+                continue
+            local_addr, local_port_hex = parts[1].rsplit(":", 1)
+            state_hex = parts[3].upper()
+            if row_proto == "tcp" and state_hex != "0A":
+                continue
+            try:
+                local_port = int(local_port_hex, 16)
+            except ValueError:
+                continue
+            address = (_proc_net_ipv4(local_addr) if family == "4"
+                       else _proc_net_ipv6(local_addr))
+            rows.append({
+                "Protocol": row_proto,
+                "Family": family,
+                "LocalAddress": address,
+                "LocalPort": local_port,
+                "State": "LISTEN" if row_proto == "tcp" else "BOUND",
+                "Inode": parts[9],
+            })
+    return rows
+
+
+def _socket_inodes_for_pids(pids):
+    by_inode = {}
+    for pid in _unique_live_pids(pids):
+        fd_dir = f"/proc/{pid}/fd"
+        try:
+            fds = os.listdir(fd_dir)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(os.path.join(fd_dir, fd))
+            except OSError:
+                continue
+            m = re.match(r"socket:\[(\d+)\]$", target)
+            if not m:
+                continue
+            by_inode.setdefault(m.group(1), set()).add(pid)
+    return by_inode
+
+
+def _pids_for_socket_inodes(inodes):
+    wanted = {str(inode) for inode in inodes if inode}
+    if not wanted:
+        return {}
+    by_inode = {}
+    try:
+        pids = [int(name) for name in os.listdir("/proc") if name.isdigit()]
+    except OSError:
+        return by_inode
+    for inode, owners in _socket_inodes_for_pids(pids).items():
+        if inode in wanted:
+            by_inode[inode] = owners
+    return by_inode
+
+
+def _claim_matching_socket_rows(claim):
+    try:
+        host_port = int(claim.get("HostPort") or 0)
+    except (TypeError, ValueError):
+        return []
+    if host_port <= 0:
+        return []
+    host_ip = claim.get("HostIp") or "127.0.0.1"
+    out = []
+    for row in _proc_net_socket_rows(claim.get("Protocol") or "tcp"):
+        if row["LocalPort"] != host_port:
+            continue
+        if not _port_mapping_hosts_match(host_ip, row.get("LocalAddress")):
+            continue
+        out.append(row)
+    return out
+
+
+def _container_port_listener_evidence(state, claim):
+    rows = _claim_matching_socket_rows(claim)
+    if not rows:
+        return []
+    pids = set(_container_known_pids(state))
+    for pid in list(pids):
+        pids.update(_descendant_pids(pid))
+    inode_owners = _socket_inodes_for_pids(pids)
+    evidence = []
+    for row in rows:
+        owners = sorted(inode_owners.get(row["Inode"], []))
+        for pid in owners:
+            ident = _process_identity(pid)
+            if not ident:
+                continue
+            evidence.append({
+                "Kind": "listener",
+                "Source": "proc-net",
+                "Protocol": row["Protocol"],
+                "HostIp": row["LocalAddress"],
+                "HostPort": row["LocalPort"],
+                "SocketState": row["State"],
+                "Pid": ident["Pid"],
+                "StartTime": ident["StartTime"],
+                "Verified": True,
+            })
+    return evidence
+
+
+def _host_port_owner_conflicts(state, claim):
+    rows = _claim_matching_socket_rows(claim)
+    if not rows:
+        return []
+    current = set(_container_known_pids(state))
+    for pid in list(current):
+        current.update(_descendant_pids(pid))
+    owner_map = _pids_for_socket_inodes([row.get("Inode") for row in rows])
+    conflicts = []
+    for row in rows:
+        for pid in sorted(owner_map.get(row["Inode"], [])):
+            if pid in current:
+                continue
+            ident = _process_identity(pid)
+            conflicts.append({
+                "Type": "host-listener",
+                "HostIp": row["LocalAddress"],
+                "HostPort": row["LocalPort"],
+                "Protocol": row["Protocol"],
+                "Pid": pid,
+                "StartTime": (ident or {}).get("StartTime", ""),
+            })
+    return conflicts
+
+
+def _runtime_evidence_identity_alive(evidence):
+    try:
+        pid = int(evidence.get("Pid") or 0)
+    except (TypeError, ValueError):
+        pid = 0
+    if pid <= 0:
+        return bool(evidence.get("Verified") is True and
+                    (evidence.get("Kind") or evidence.get("Type")) in (
+                        "rewrite", "syscall-rewrite", "bind-rewrite", "connect-rewrite",
+                    ))
+    start_time = str(evidence.get("StartTime") or "")
+    if start_time:
+        return _process_identity_alive({"Pid": pid, "StartTime": start_time})
+    return _pid_alive(pid)
+
+
+def _declared_runtime_evidence(item, claim):
+    """Verified proxy/rewrite declarations written by runtime code.
+
+    Bare Docker/Compose port metadata, or a historical `Active: true` bit on
+    PortRewrite, is intentionally ignored. Active status requires either live
+    listener proof from /proc/net or an explicit runtime/proxy/rewrite evidence
+    object with a live pid or a verified syscall-rewrite marker.
+    """
+    candidates = []
+    for key in ("RuntimeEvidence", "Evidence"):
+        value = item.get(key)
+        if isinstance(value, list):
+            candidates.extend(v for v in value if isinstance(v, dict))
+        elif isinstance(value, dict):
+            candidates.append(value)
+    for key, kind in (("Listener", "listener"), ("Proxy", "proxy"), ("Rewrite", "rewrite")):
+        value = item.get(key)
+        if isinstance(value, dict):
+            entry = dict(value)
+            entry.setdefault("Kind", kind)
+            candidates.append(entry)
+    evidence = []
+    for entry in candidates:
+        status = str(entry.get("Status") or entry.get("State") or "").lower()
+        active_flag = entry.get("Active") is True
+        if status != "active" and not active_flag:
+            continue
+        kind = entry.get("Kind") or entry.get("Type") or "runtime"
+        if kind not in (
+            "listener", "proxy", "rewrite", "syscall-rewrite",
+            "bind-rewrite", "connect-rewrite", "runtime",
+        ):
+            continue
+        if not _runtime_evidence_identity_alive(entry):
+            continue
+        if entry.get("HostPort") and _safe_host_port(entry.get("HostPort"), 0) != claim["HostPort"]:
+            continue
+        if entry.get("HostIp") and not _port_mapping_hosts_match(claim.get("HostIp"), entry.get("HostIp")):
+            continue
+        evidence.append({
+            "Kind": kind,
+            "Source": entry.get("Source") or "runtime",
+            "HostIp": entry.get("HostIp") or claim.get("HostIp"),
+            "HostPort": _safe_host_port(entry.get("HostPort"), claim["HostPort"]),
+            "Protocol": entry.get("Protocol") or claim.get("Protocol"),
+            "Pid": entry.get("Pid", 0),
+            "StartTime": str(entry.get("StartTime") or ""),
+            "Target": entry.get("Target") or entry.get("ProxyTarget") or "",
+            "Verified": True,
+        })
+    return evidence
+
+
+def _port_mapping_evidence(state, claim, item):
+    evidence = []
+    evidence.extend(_container_port_listener_evidence(state, claim))
+    evidence.extend(_declared_runtime_evidence(item, claim))
+    return evidence
 
 
 def _refresh_port_mapping_status(state, peer_states=None):
     """Expose requested port mappings as planned/inactive/active/conflict state.
 
-    This is deliberately an Engine-visible scaffold, not a fake listener. A
-    mapping becomes active only when future runtime/proxy code records active
-    evidence on the PortRewrite entry.
+    This is deliberately Engine-visible truth, not a fake listener. A mapping
+    becomes active only when pdocker can prove a live container-owned listener
+    from /proc/net or runtime/proxy/rewrite code records verified active
+    evidence. Docker/Compose metadata alone stays planned or inactive.
     """
     pn = state.setdefault("PdockerNetwork", {})
     claims = _port_mapping_claims(state)
@@ -3151,12 +3408,17 @@ def _refresh_port_mapping_status(state, peer_states=None):
             if _port_mapping_conflict(claim, peer)
         ]
         item = rewrite[idx] if idx < len(rewrite) else {}
+        listener_conflicts = _host_port_owner_conflicts(state, claim)
+        evidence = _port_mapping_evidence(state, claim, item)
         if conflicts:
             state_name = "conflict"
             message = "requested host port is also claimed by another container"
-        elif _port_mapping_active(item):
+        elif listener_conflicts and not evidence:
+            state_name = "conflict"
+            message = "requested host port already has a listener not owned by this container"
+        elif evidence:
             state_name = "active"
-            message = "pdocker runtime reports an active listener/proxy/rewrite"
+            message = "pdocker verified an active listener/proxy/rewrite"
         elif running:
             state_name = "inactive"
             message = PORT_MAPPING_INACTIVE_WARNING
@@ -3168,7 +3430,8 @@ def _refresh_port_mapping_status(state, peer_states=None):
             **claim,
             "State": state_name,
             "Active": state_name == "active",
-            "Conflict": conflicts,
+            "Conflict": conflicts + listener_conflicts,
+            "Evidence": evidence,
             "Runtime": "host-network-only",
             "Limitation": HOST_NETWORK_LIMITATION_WARNING,
             "Message": message,

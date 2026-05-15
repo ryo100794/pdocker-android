@@ -248,6 +248,8 @@
     <string name="container_ports_none">none</string>
     <string name="container_port_binding_fmt">%1$s:%2$s-&gt;%3$s</string>
     <string name="container_port_exposed_fmt">%1$s exposed</string>
+    <string name="container_port_status_counts_fmt">Port status: active %1$d / inactive %2$d / planned %3$d / conflict %4$d</string>
+    <string name="container_port_status_item_fmt">%1$s:%2$s-&gt;%3$s/%4$s %5$s</string>
     <string name="container_hook_plan_fmt">port hook plan: %1$d</string>
     <string name="container_warnings_fmt">Warnings: %1$s</string>
     <string name="container_warning_ports_metadata">requested/inactive until runtime listener proof</string>

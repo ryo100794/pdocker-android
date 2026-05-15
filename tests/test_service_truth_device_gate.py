@@ -69,6 +69,11 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
             "OwnerEngineContainerId",
             "SelectedPidOwnsListener",
             "ExactEngineContainerIdRequired",
+            "Running: true",
+            "CurrentContainerFound",
+            "InspectStateRunning",
+            "SelectedPidPresent",
+            "MarkerEngineContainerId",
             "inspect-selected.http",
             "logs-selected.out",
             "exact ID match",
@@ -113,15 +118,23 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
             lambda a: a.update({"Status": "host-pass"}),
             lambda a: a["Proof"].update({"SameEngineContainerId": False}),
             lambda a: a["Sources"]["DockerPs"].update({"ContainerId": "different-container-id"}),
+            lambda a: a["Sources"]["DockerPs"].update({"Running": False}),
+            lambda a: a["Sources"]["DockerPs"].update({"ExactEngineContainerIdRequired": False}),
+            lambda a: a["Sources"]["EngineApiContainersJson"].update({"CurrentContainerFound": False}),
+            lambda a: a["Sources"]["EngineApiContainersJson"].update({"InspectStateRunning": False}),
+            lambda a: a["Sources"]["PersistedStateJson"].update({"MatchesSelectedEngineContainerId": False}),
+            lambda a: a["Sources"]["ProcessTable"].update({"SelectedPidPresent": False}),
             lambda a: a["Sources"]["ListenerProbe"].update({"Proven": False}),
             lambda a: a["Sources"]["ContainerLogs"].update({"Artifacts": []}),
             lambda a: a["Sources"]["ContainerLogs"].update({"CurrentServiceMarker": False}),
+            lambda a: a["Sources"]["ContainerLogs"].update({"MarkerEngineContainerId": "f" * 64}),
             lambda a: a["Sources"]["ListenerProbe"].update({"Ports": [], "ProcNetTcpMatchedPorts": ""}),
             lambda a: a["Sources"]["ListenerProbe"].update({"Pid": 9999}),
             lambda a: a["Sources"]["ListenerProbe"].update({"OwnerEngineContainerId": a["Proof"]["EngineContainerId"][:12]}),
             lambda a: a["Sources"]["ListenerProbe"].update({"SelectedPidOwnsListener": False}),
             lambda a: a["Sources"]["UICard"].update({"TruthState": "stale"}),
             lambda a: a["Sources"]["UICard"].update({"ContainerIdSource": "state.json"}),
+            lambda a: a["Sources"]["UICard"].update({"CurrentReason": ""}),
             lambda a: a["Proof"].update({"EngineContainerId": a["Proof"]["EngineContainerId"][:12]}),
         ]
         for mutate in cases:
@@ -170,6 +183,11 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
             "docker-inspect-selected.out",
             "logs-selected.out",
             "CurrentServiceMarker",
+            "MarkerEngineContainerId",
+            "CurrentContainerFound",
+            "InspectStateRunning",
+            "SelectedPidPresent",
+            "Running",
             "pdocker-service-truth-marker",
             "ui-rendered-service-truth-latest.json",
             "/proc/net/tcp",
@@ -184,6 +202,11 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
         self.assertIn("DockerPs", verifier)
         self.assertIn("docker ps", verifier)
         self.assertIn("ContainerLogs.CurrentServiceMarker", verifier)
+        self.assertIn("DockerPs.Running must be true", verifier)
+        self.assertIn("EngineApiContainersJson.InspectStateRunning must be true", verifier)
+        self.assertIn("ProcessTable.SelectedPidPresent must be true", verifier)
+        self.assertIn("ContainerLogs.MarkerEngineContainerId must exactly match", verifier)
+        self.assertIn("must require an exact 64-hex Engine container ID", verifier)
         self.assertIn("Proof.EngineContainerId must be an exact 64-hex", verifier)
         self.assertIn("ListenerProbe must bind at least one configured/listening port", verifier)
         self.assertIn("ListenerProbe.OwnerEngineContainerId must be an exact 64-hex", verifier)

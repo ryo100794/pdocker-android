@@ -221,6 +221,8 @@ def validate_service_truth_artifact(artifact: dict[str, Any]) -> None:
             raise artifact_error(f"{source_name} must be proven")
         if source.get("ContainerId") != expected:
             raise artifact_error(f"{source_name} must exactly match Proof.EngineContainerId")
+        if source.get("ExactEngineContainerIdRequired") is not True:
+            raise artifact_error(f"{source_name} must require an exact 64-hex Engine container ID")
         require_artifact_paths(source_name, source)
 
     ui = sources["UICard"]
@@ -228,6 +230,22 @@ def validate_service_truth_artifact(artifact: dict[str, Any]) -> None:
         raise artifact_error("UICard.TruthState must be current")
     if str(ui.get("ContainerIdSource", "")).lower() in {"", "unknown", "state.json", "persistedstatejson"}:
         raise artifact_error("UICard.ContainerIdSource must not be unknown or stale state-only")
+    if not ui.get("CurrentReason"):
+        raise artifact_error("UICard.CurrentReason must explain why the rendered card is current")
+
+    docker_ps = sources["DockerPs"]
+    if docker_ps.get("Running") is not True:
+        raise artifact_error("DockerPs.Running must be true for the selected exact Engine container ID")
+
+    engine_api = sources["EngineApiContainersJson"]
+    if engine_api.get("CurrentContainerFound") is not True:
+        raise artifact_error("EngineApiContainersJson.CurrentContainerFound must be true")
+    if engine_api.get("InspectStateRunning") is not True:
+        raise artifact_error("EngineApiContainersJson.InspectStateRunning must be true")
+
+    state = sources["PersistedStateJson"]
+    if state.get("MatchesSelectedEngineContainerId") is not True:
+        raise artifact_error("PersistedStateJson.MatchesSelectedEngineContainerId must be true")
 
     listener = sources["ListenerProbe"]
     if not listener.get("Ports") and not listener.get("ProcNetTcpMatchedPorts"):
@@ -245,12 +263,16 @@ def validate_service_truth_artifact(artifact: dict[str, Any]) -> None:
     process = sources["ProcessTable"]
     if process.get("Pid") in (None, "", 0, "0"):
         raise artifact_error("ProcessTable must include selected container PID")
+    if process.get("SelectedPidPresent") is not True:
+        raise artifact_error("ProcessTable.SelectedPidPresent must be true")
     if str(process.get("Pid")) != str(listener.get("Pid")):
         raise artifact_error("listener PID must map to the same selected container process")
 
     logs = sources["ContainerLogs"]
     if logs.get("CurrentServiceMarker") is not True:
         raise artifact_error("ContainerLogs must include a current service log marker")
+    if logs.get("MarkerEngineContainerId") != expected:
+        raise artifact_error("ContainerLogs.MarkerEngineContainerId must exactly match Proof.EngineContainerId")
 
 
 def build_success_fixture() -> dict[str, Any]:
@@ -261,16 +283,23 @@ def build_success_fixture() -> dict[str, Any]:
             "ContainerId": cid,
             "ContainerIdSource": "EngineApiContainersJson",
             "TruthState": "current",
+            "CurrentReason": "EngineSnapshotCurrent",
+            "ExactEngineContainerIdRequired": True,
             "Proven": True,
             "Artifacts": ["files/pdocker/diagnostics/service-truth/ui-rendered-service-truth-latest.json"],
         },
         "DockerPs": {
             "ContainerId": cid,
+            "Running": True,
+            "ExactEngineContainerIdRequired": True,
             "Proven": True,
             "Artifacts": ["files/pdocker/diagnostics/service-truth/engine-ps.out"],
         },
         "EngineApiContainersJson": {
             "ContainerId": cid,
+            "CurrentContainerFound": True,
+            "InspectStateRunning": True,
+            "ExactEngineContainerIdRequired": True,
             "Proven": True,
             "Artifacts": [
                 "files/pdocker/diagnostics/service-truth/engine-containers-json.http",
@@ -279,12 +308,16 @@ def build_success_fixture() -> dict[str, Any]:
         },
         "PersistedStateJson": {
             "ContainerId": cid,
+            "MatchesSelectedEngineContainerId": True,
+            "ExactEngineContainerIdRequired": True,
             "Proven": True,
             "Artifacts": ["files/pdocker/diagnostics/service-truth/state-id-comparison.json"],
         },
         "ProcessTable": {
             "ContainerId": cid,
             "Pid": pid,
+            "SelectedPidPresent": True,
+            "ExactEngineContainerIdRequired": True,
             "Proven": True,
             "Artifacts": [
                 "files/pdocker/diagnostics/service-truth/process-table.txt",
@@ -310,6 +343,8 @@ def build_success_fixture() -> dict[str, Any]:
         "ContainerLogs": {
             "ContainerId": cid,
             "CurrentServiceMarker": True,
+            "MarkerEngineContainerId": cid,
+            "ExactEngineContainerIdRequired": True,
             "Proven": True,
             "Artifacts": ["files/pdocker/diagnostics/service-truth/logs-selected.out"],
         },
@@ -340,6 +375,11 @@ def validate_service_truth_fixture_contract() -> None:
         lambda a: a["Sources"]["ListenerProbe"].update({"OwnerEngineContainerId": a["Proof"]["EngineContainerId"][:12]}),
         lambda a: a["Sources"]["ListenerProbe"].update({"SelectedPidOwnsListener": False}),
         lambda a: a["Sources"]["ContainerLogs"].update({"CurrentServiceMarker": False}),
+        lambda a: a["Sources"]["ContainerLogs"].update({"MarkerEngineContainerId": "f" * 64}),
+        lambda a: a["Sources"]["DockerPs"].update({"Running": False}),
+        lambda a: a["Sources"]["EngineApiContainersJson"].update({"InspectStateRunning": False}),
+        lambda a: a["Sources"]["ProcessTable"].update({"SelectedPidPresent": False}),
+        lambda a: a["Sources"]["UICard"].pop("ExactEngineContainerIdRequired"),
         lambda a: a["Sources"]["ContainerLogs"].update({"Artifacts": []}),
     ]
     for mutate in mutations:
@@ -378,6 +418,11 @@ def validate_docs() -> None:
             "planned-gap/Success: false",
             "same-container-ID",
             "ContainerLogs.CurrentServiceMarker",
+            "ExactEngineContainerIdRequired",
+            "DockerPs.Running",
+            "EngineApiContainersJson.InspectStateRunning",
+            "ProcessTable.SelectedPidPresent",
+            "ContainerLogs.MarkerEngineContainerId",
             "device-pass",
         ],
     )
@@ -410,6 +455,11 @@ def validate_android_smoke_entrypoints() -> None:
             "/proc/net/tcp",
             "LifecycleLogs",
             "ContainerLogs",
+            "ExactEngineContainerIdRequired",
+            "CurrentContainerFound",
+            "InspectStateRunning",
+            "SelectedPidPresent",
+            "MarkerEngineContainerId",
             "device-pass",
             "SERVICE_TRUTH_EXIT=0",
             "SERVICE_TRUTH_EXIT=2",

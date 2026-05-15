@@ -178,6 +178,17 @@ snapshot_ui_inputs() {
 
 collect_project_ports() {
   : >"$DIAG/configured-ports.txt"
+  target_lc=$(printf '%s' "$TARGET" | tr '[:upper:]' '[:lower:]')
+  case "$target_lc" in
+    default-workspace|workspace|vscode)
+      printf '18080\n' >"$DIAG/configured-ports.txt"
+      return
+      ;;
+    llama)
+      printf '18081\n' >"$DIAG/configured-ports.txt"
+      return
+      ;;
+  esac
   find pdocker/projects -maxdepth 4 \( -name compose.yaml -o -name docker-compose.yml \) -type f 2>/dev/null | sort | while IFS= read -r f; do
     sed -n 's/.*\([0-9][0-9][0-9][0-9][0-9]*\):[0-9][0-9]*/\1/p' "$f" 2>/dev/null
   done | tr -d '"' | sort -u >>"$DIAG/configured-ports.txt"
@@ -255,7 +266,11 @@ collect_engine_candidates() {
     case "$hay" in *pdocker*) score=$((score + 10)); reasons="${reasons}pdocker-label-or-name," ;; esac
     case "$hay" in *"$target_lc"*) score=$((score + 8)); reasons="${reasons}target-match," ;; esac
     case "$target_lc" in
-      default-workspace|workspace) case "$hay" in *workspace*|*code-server*|*vscode*) score=$((score + 5)); reasons="${reasons}workspace-service-hint," ;; esac ;;
+      default-workspace|workspace|vscode)
+        case "$names" in *pdocker-dev*) score=$((score + 20)); reasons="${reasons}pdocker-dev-name," ;; esac
+        case "$hay" in *workspace*|*code-server*|*vscode*) score=$((score + 5)); reasons="${reasons}workspace-service-hint," ;; esac
+        case "$ports" in *18080*) score=$((score + 6)); reasons="${reasons}vscode-port-18080," ;; esac
+        ;;
       llama) case "$hay" in *llama*) score=$((score + 5)); reasons="${reasons}llama-service-hint," ;; esac ;;
     esac
     case "$labels" in *com.docker.compose.service*|*pdocker.service*|*pdocker.project*) score=$((score + 4)); reasons="${reasons}service-label," ;; esac
@@ -282,7 +297,7 @@ write_engine_candidates_json() {
     score=0; reasons=
     case "$hay" in *pdocker*) score=$((score + 10)); reasons="${reasons}pdocker-label-or-name," ;; esac
     case "$hay" in *"$target_lc"*) score=$((score + 8)); reasons="${reasons}target-match," ;; esac
-    case "$target_lc" in default-workspace|workspace) case "$hay" in *workspace*|*code-server*|*vscode*) score=$((score + 5)); reasons="${reasons}workspace-service-hint," ;; esac ;; llama) case "$hay" in *llama*) score=$((score + 5)); reasons="${reasons}llama-service-hint," ;; esac ;; esac
+    case "$target_lc" in default-workspace|workspace|vscode) case "$names" in *pdocker-dev*) score=$((score + 20)); reasons="${reasons}pdocker-dev-name," ;; esac; case "$hay" in *workspace*|*code-server*|*vscode*) score=$((score + 5)); reasons="${reasons}workspace-service-hint," ;; esac; case "$ports" in *18080*) score=$((score + 6)); reasons="${reasons}vscode-port-18080," ;; esac ;; llama) case "$hay" in *llama*) score=$((score + 5)); reasons="${reasons}llama-service-hint," ;; esac ;; esac
     case "$labels" in *com.docker.compose.service*|*pdocker.service*|*pdocker.project*) score=$((score + 4)); reasons="${reasons}service-label," ;; esac
     case "$ports" in *18080*|*18081*) score=$((score + 3)); reasons="${reasons}known-service-port," ;; esac
     [ "$first" = 1 ] || printf ',\n' >>"$DIAG/engine-candidates.json"
@@ -340,6 +355,10 @@ inspect_pid_from_file() {
     | sed 's/.*://; s/[^0-9]//g'
 }
 
+inspect_running_from_file() {
+  grep -Eq '"Running"[[:space:]]*:[[:space:]]*true' "$1" 2>/dev/null
+}
+
 process_has_pid() {
   pid="$1"
   [ -n "$pid" ] && [ "$pid" != 0 ] || return 1
@@ -389,7 +408,7 @@ write_same_id_source_summary() {
   state_match="$4"
   selected_pid="$5"
   docker_ps_present=false; selected_in_docker_ps "$selected_id" && docker_ps_present=true
-  engine_api_present=false; selected_in_engine_api "$selected_id" && engine_api_present=true
+  engine_api_present=false; selected_in_engine_api "$selected_id" && inspect_running_from_file "$DIAG/inspect-selected.http" && engine_api_present=true
   process_pid_present=false; process_has_pid "$selected_pid" && process_pid_present=true
   listener_pid_present=false; [ -n "$selected_pid" ] && awk -F '\t' -v pid="$selected_pid" '$3 == pid { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/listener-owner-map.tsv" 2>/dev/null && listener_pid_present=true
   listener_exact_engine_id=false; [ "$listener_pid_present" = true ] && is_engine_container_id "$selected_id" && listener_exact_engine_id=true
@@ -399,7 +418,7 @@ write_same_id_source_summary() {
   same_id=false
   mismatched=""
   missing=""
-  [ -n "$ui_cid" ] || missing="$missing UICard"
+  [ -n "$ui_cid" ] && [ "$ui_state" = current ] && [ "$UI_SOURCE_CURRENT" = true ] && [ -n "$UI_CARD_CURRENT_REASON" ] || missing="$missing UICard"
   [ -n "$selected_id" ] || missing="$missing DockerPs EngineApiContainersJson"
   [ "$docker_ps_present" = true ] || missing="$missing DockerPs"
   [ "$engine_api_present" = true ] || missing="$missing EngineApiContainersJson"
@@ -408,12 +427,12 @@ write_same_id_source_summary() {
   [ "$listener_exact_engine_id" = true ] || missing="$missing ListenerProbe"
   [ "$logs_marker_present" = true ] || missing="$missing ContainerLogs"
   if [ -n "$selected_id" ] && [ -n "$ui_cid" ] && [ "$ui_cid" != "$selected_id" ]; then mismatched="$mismatched UICard"; fi
-  [ -n "$selected_id" ] && is_engine_container_id "$selected_id" && [ "$ui_cid" = "$selected_id" ] && [ "$ui_state" = current ] && [ "$docker_ps_present" = true ] && [ "$engine_api_present" = true ] && [ "$state_match" = true ] && [ "$process_pid_present" = true ] && [ "$listener_exact_engine_id" = true ] && [ "$logs_marker_present" = true ] && same_id=true
+  [ -n "$selected_id" ] && is_engine_container_id "$selected_id" && [ "$ui_cid" = "$selected_id" ] && [ "$ui_state" = current ] && [ "$UI_SOURCE_CURRENT" = true ] && [ -n "$UI_CARD_CURRENT_REASON" ] && [ "$docker_ps_present" = true ] && [ "$engine_api_present" = true ] && [ "$state_match" = true ] && [ "$process_pid_present" = true ] && [ "$listener_exact_engine_id" = true ] && [ "$logs_marker_present" = true ] && same_id=true
   cat >"$DIAG/same-id-source-summary.json" <<JSON
 {
   "SelectedEngineContainerId": $(source_container_id_json "$selected_id"),
   "SameEngineContainerIdIfPromoted": $(json_bool "$same_id"),
-  "Note": "Device-pass is allowed only when all seven sources are current/proven and name this exact 64-hex Engine container ID; otherwise the top-level result remains planned-gap/Success false.",
+  "Note": "Device-pass is allowed only when all seven sources are current/proven and name this exact 64-hex Engine container ID, including docker ps/API running-state, persisted state, selected process PID, listener owner PID, UI card, and current log marker; otherwise the top-level result remains planned-gap/Success false.",
   "SourceIds": {
     "UICard": $(source_container_id_json "$ui_cid"),
     "DockerPs": $( [ "$docker_ps_present" = true ] && source_container_id_json "$selected_id" || printf null ),
@@ -489,10 +508,19 @@ UI_RENDERED_EXPORT="files/$DIAG/ui-rendered-service-truth-latest.json"
 UI_CARD_CID="$(sed -n 's/.*"EngineContainerId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
 UI_CARD_SOURCE="$(sed -n 's/.*"ContainerIdSource"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
 UI_CARD_STATE="$(sed -n 's/.*"TruthState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
+UI_CARD_CURRENT_REASON="$(sed -n 's/.*"CurrentReason"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
+UI_CARD_STALE_REASON="$(sed -n 's/.*"StaleReason"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
+UI_CARD_UNKNOWN_REASON="$(sed -n 's/.*"UnknownReason"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
+UI_CARD_ENGINE_SNAPSHOT_STATUS="$(sed -n 's/.*"EngineSnapshotStatus"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
+UI_CARD_ENGINE_SNAPSHOT_AGE_MS="$(sed -n 's/.*"EngineSnapshotAgeMs"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null | head -1)"
+UI_CARD_ENGINE_SNAPSHOT_ID_MISMATCH=false
+grep -q '"EngineSnapshotIdMismatch"[[:space:]]*:[[:space:]]*true' "$DIAG/ui-rendered-service-truth-latest.json" 2>/dev/null && UI_CARD_ENGINE_SNAPSHOT_ID_MISMATCH=true
 UI_CARD_PROVEN=false
 [ "$UI_CARD_STATE" = current ] && [ -n "$UI_CARD_CID" ] && UI_CARD_PROVEN=true
 DOCKER_PS_PROVEN=false; selected_in_docker_ps "$SELECTED_ENGINE_CID" && DOCKER_PS_PROVEN=true
 ENGINE_API_PROVEN=false; selected_in_engine_api "$SELECTED_ENGINE_CID" && ENGINE_API_PROVEN=true
+INSPECT_STATE_RUNNING=false; inspect_running_from_file "$DIAG/inspect-selected.http" && INSPECT_STATE_RUNNING=true
+[ "$ENGINE_API_PROVEN" = true ] && [ "$INSPECT_STATE_RUNNING" = true ] && ENGINE_API_PROVEN=true || ENGINE_API_PROVEN=false
 PROCESS_PROVEN=false; process_has_pid "$SELECTED_INSPECT_PID" && PROCESS_PROVEN=true
 LISTENER_PID_OWNS_CONFIGURED_PORT=false; [ -n "$SELECTED_INSPECT_PID" ] && awk -F '\t' -v pid="$SELECTED_INSPECT_PID" '$3 == pid { found=1 } END{ exit found ? 0 : 1 }' "$DIAG/listener-owner-map.tsv" 2>/dev/null && LISTENER_PID_OWNS_CONFIGURED_PORT=true
 LISTENER_PROVEN=false
@@ -502,16 +530,18 @@ LISTENER_OWNER_ENGINE_CID=""
 LOGS_PROVEN=false; [ -n "$SELECTED_ENGINE_CID" ] && [ -s "$DIAG/logs-selected.out" ] && LOGS_PROVEN=true
 LOGS_CURRENT_MARKER=false
 [ "$LOGS_PROVEN" = true ] && grep -F "pdocker-service-truth-marker " "$DIAG/logs-selected.out" 2>/dev/null | grep -F "$SELECTED_ENGINE_CID" >/dev/null 2>&1 && LOGS_CURRENT_MARKER=true
+LOGS_MARKER_ENGINE_CID=""
+[ "$LOGS_CURRENT_MARKER" = true ] && LOGS_MARKER_ENGINE_CID="$SELECTED_ENGINE_CID"
 LOGS_PROVEN=false
 [ "$LOGS_CURRENT_MARKER" = true ] && LOGS_PROVEN=true
-write_same_id_source_summary "$SELECTED_ENGINE_CID" "$UI_CARD_CID" "$UI_CARD_STATE" "$STATE_MATCH" "$SELECTED_INSPECT_PID"
 
 UI_SOURCE_CURRENT=false
 case "$(printf '%s' "$UI_CARD_SOURCE" | tr '[:upper:]' '[:lower:]')" in
   ''|unknown|state.json|persistedstatejson|persisted_state_json|stale|ambiguous) UI_SOURCE_CURRENT=false ;;
   *) UI_SOURCE_CURRENT=true ;;
 esac
-[ "$SELECTED_ID_EXACT" = true ] && [ "$UI_CARD_CID" = "$SELECTED_ENGINE_CID" ] && [ "$UI_CARD_STATE" = current ] && [ "$UI_SOURCE_CURRENT" = true ] && UI_CARD_PROVEN=true || UI_CARD_PROVEN=false
+[ "$SELECTED_ID_EXACT" = true ] && [ "$UI_CARD_CID" = "$SELECTED_ENGINE_CID" ] && [ "$UI_CARD_STATE" = current ] && [ "$UI_SOURCE_CURRENT" = true ] && [ -n "$UI_CARD_CURRENT_REASON" ] && UI_CARD_PROVEN=true || UI_CARD_PROVEN=false
+write_same_id_source_summary "$SELECTED_ENGINE_CID" "$UI_CARD_CID" "$UI_CARD_STATE" "$STATE_MATCH" "$SELECTED_INSPECT_PID"
 
 MISSING_SOURCES=""
 MISMATCHED_SOURCES=""
@@ -586,12 +616,21 @@ cat > "$LATEST" <<JSON
       "ContainerId": $( [ -n "$UI_CARD_CID" ] && json_string "$UI_CARD_CID" || printf null ),
       "ContainerIdSource": $(json_string "${UI_CARD_SOURCE:-unknown}"),
       "TruthState": $(json_string "${UI_CARD_STATE:-unknown}"),
+      "CurrentReason": $( [ -n "$UI_CARD_CURRENT_REASON" ] && json_string "$UI_CARD_CURRENT_REASON" || printf null ),
+      "StaleReason": $( [ -n "$UI_CARD_STALE_REASON" ] && json_string "$UI_CARD_STALE_REASON" || printf null ),
+      "UnknownReason": $( [ -n "$UI_CARD_UNKNOWN_REASON" ] && json_string "$UI_CARD_UNKNOWN_REASON" || printf null ),
+      "EngineSnapshotStatus": $( [ -n "$UI_CARD_ENGINE_SNAPSHOT_STATUS" ] && json_string "$UI_CARD_ENGINE_SNAPSHOT_STATUS" || printf null ),
+      "EngineSnapshotAgeMs": $(json_number_or_null "$UI_CARD_ENGINE_SNAPSHOT_AGE_MS"),
+      "EngineSnapshotIdMismatch": $(json_bool "$UI_CARD_ENGINE_SNAPSHOT_ID_MISMATCH"),
+      "ExactEngineContainerIdRequired": true,
       "Proven": $(json_bool "$UI_CARD_PROVEN"),
       "Artifacts": ["$UI_RENDERED_EXPORT", "files/$DIAG/ui-jobs.json", "files/$DIAG/ui-project-files.txt", "files/$DIAG/ui-project-snippets.txt"],
       "Gap": "Rendered UI card export is collected when the app has rendered it, but success remains false until UI/Engine/state/process/listener/log sources agree on the same current Engine container ID."
     },
     "DockerPs": {
       "ContainerId": $( [ "$DOCKER_PS_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
+      "Running": $(json_bool "$DOCKER_PS_PROVEN"),
+      "ExactEngineContainerIdRequired": true,
       "Proven": $(json_bool "$DOCKER_PS_PROVEN"),
       "Artifacts": ["files/$DIAG/engine-ps.out", "files/$DIAG/engine-ps-running.out", "files/$DIAG/engine-candidates.tsv", "files/$DIAG/engine-candidates.json"],
       "Gap": "docker ps evidence is reduced to the selected exact Engine container ID, but top-level success remains false until all sources agree and the gate is promoted."
@@ -599,6 +638,9 @@ cat > "$LATEST" <<JSON
     "EngineApiContainersJson": {
       "ContainerId": $( [ "$ENGINE_API_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
       "CandidateSelected": $(json_bool "$( [ -n "$SELECTED_ENGINE_CID" ] && echo true || echo false )"),
+      "CurrentContainerFound": $(json_bool "$ENGINE_API_PROVEN"),
+      "InspectStateRunning": $(json_bool "$INSPECT_STATE_RUNNING"),
+      "ExactEngineContainerIdRequired": true,
       "Proven": $(json_bool "$ENGINE_API_PROVEN"),
       "Artifacts": ["files/$DIAG/engine-containers-json.http", "files/$DIAG/inspect-selected.http", "files/$DIAG/docker-inspect-selected.out", "files/$DIAG/container-ids.txt", "files/$DIAG/engine-candidates.json"],
       "Gap": "Engine API evidence is reduced to the selected exact Engine container ID, but it is not acceptance until UI/state/process/listener/log sources agree."
@@ -606,6 +648,7 @@ cat > "$LATEST" <<JSON
     "PersistedStateJson": {
       "ContainerId": $( [ "$STATE_MATCH" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
       "MatchesSelectedEngineContainerId": $(json_bool "$STATE_MATCH"),
+      "ExactEngineContainerIdRequired": true,
       "Proven": $(json_bool "$STATE_MATCH"),
       "Artifacts": ["files/$DIAG/persisted-state-json.txt", "files/$DIAG/state-id-comparison.json", "files/$DIAG/state-container-ids.tsv"],
       "Gap": "state.json ID comparison is machine-readable, but still not a same-source acceptance proof without UI/process/listener/log agreement."
@@ -613,6 +656,8 @@ cat > "$LATEST" <<JSON
     "ProcessTable": {
       "ContainerId": $( [ "$PROCESS_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
       "Pid": $(json_number_or_null "$SELECTED_INSPECT_PID"),
+      "SelectedPidPresent": $(json_bool "$PROCESS_PROVEN"),
+      "ExactEngineContainerIdRequired": true,
       "Proven": $(json_bool "$PROCESS_PROVEN"),
       "Artifacts": ["files/$DIAG/process-table.txt", "files/$DIAG/inspect-selected.http", "files/$DIAG/docker-inspect-selected.out"],
       "Gap": "Selected inspect PID is searched in the process table, but top-level success remains false until all seven sources agree."
@@ -633,6 +678,8 @@ cat > "$LATEST" <<JSON
       "ContainerId": $( [ "$LOGS_PROVEN" = true ] && [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
       "Proven": $(json_bool "$LOGS_PROVEN"),
       "CurrentServiceMarker": $(json_bool "$LOGS_CURRENT_MARKER"),
+      "MarkerEngineContainerId": $( [ -n "$LOGS_MARKER_ENGINE_CID" ] && json_string "$LOGS_MARKER_ENGINE_CID" || printf null ),
+      "ExactEngineContainerIdRequired": true,
       "Artifacts": ["files/$DIAG/logs-selected.out", "files/$DIAG/logs-<container-id>.out"],
       "Gap": "Logs are collected for the selected Engine container ID and checked for pdocker-service-truth-marker, but top-level success remains planned-gap until all seven sources are promoted together."
     }

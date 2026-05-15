@@ -26,11 +26,14 @@ sources to the exact same Engine container ID:
    `EngineSnapshotMissing`, `EngineSnapshotOld`, and
    `EngineContainerIdMismatch` cases are machine-readable non-success reasons.
 2. `DockerPs` - `docker ps --no-trunc` / `docker ps -a --no-trunc` evidence for
-   the running Engine container ID.
+   the running Engine container ID, with `Running: true` for the exact
+   64-hex ID selected by the gate.
 3. `EngineApiContainersJson` - Engine API `/containers/json?all=1` evidence.
+   The selected container must also have `InspectStateRunning: true` from
+   `inspect-selected.http`; an exited container in `all=1` is diagnostic only.
 4. `PersistedStateJson` - current `state.json` container ID comparison.
 5. `ProcessTable` - process-table owner/PID evidence for the selected Engine
-   container ID.
+   container ID, with `SelectedPidPresent: true` for the inspect PID.
 6. `ListenerProbe` - listener socket evidence, including `/proc/net/tcp`, for
    the service port owner. A port declaration or prefix match is not proof;
    `OwnerEngineContainerId` must be the exact same 64-hex ID as
@@ -80,13 +83,13 @@ Required top-level shape:
     "MissingSources": ["ProcessTable", "ListenerProbe", "ContainerLogs"]
   },
   "Sources": {
-    "UICard": {"ContainerId": null, "TruthState": "unknown", "CurrentReason": null, "StaleReason": null, "UnknownReason": "EngineSnapshotMissing", "Proven": false, "Artifacts": []},
-    "DockerPs": {"ContainerId": null, "Proven": false, "Artifacts": []},
-    "EngineApiContainersJson": {"ContainerId": null, "Proven": false, "Artifacts": []},
-    "PersistedStateJson": {"ContainerId": null, "Proven": false, "Artifacts": []},
-    "ProcessTable": {"ContainerId": null, "Pid": null, "Proven": false, "Artifacts": []},
+    "UICard": {"ContainerId": null, "TruthState": "unknown", "CurrentReason": null, "StaleReason": null, "UnknownReason": "EngineSnapshotMissing", "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
+    "DockerPs": {"ContainerId": null, "Running": false, "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
+    "EngineApiContainersJson": {"ContainerId": null, "CurrentContainerFound": false, "InspectStateRunning": false, "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
+    "PersistedStateJson": {"ContainerId": null, "MatchesSelectedEngineContainerId": false, "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
+    "ProcessTable": {"ContainerId": null, "Pid": null, "SelectedPidPresent": false, "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
     "ListenerProbe": {"ContainerId": null, "OwnerEngineContainerId": null, "Pid": null, "SelectedPidOwnsListener": false, "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
-    "ContainerLogs": {"ContainerId": null, "Proven": false, "CurrentServiceMarker": false, "Artifacts": []}
+    "ContainerLogs": {"ContainerId": null, "Proven": false, "CurrentServiceMarker": false, "MarkerEngineContainerId": null, "ExactEngineContainerIdRequired": true, "Artifacts": []}
   },
   "Evidence": {
     "UICard": ["files/pdocker/diagnostics/service-truth/ui-rendered-service-truth-latest.json"],
@@ -121,6 +124,9 @@ The passing form must set `Success: true` only when:
 - Every required `Sources.<name>.Proven` is `true`.
 - Every required `Sources.<name>.ContainerId` exactly equals
   `Proof.EngineContainerId`; prefix-only matches are not enough.
+- Every required source declares `ExactEngineContainerIdRequired: true`; a
+  source that only proves a name, label, configured port, PID, or short ID
+  prefix is not a source match.
 - `UICard.TruthState` is `current`; `unknown`, `stale`, and `ambiguous` are
   explicit non-success states, with `CurrentReason`, `StaleReason`, and
   `UnknownReason` carrying reason codes such as `EngineSnapshotMissing`,
@@ -129,6 +135,13 @@ The passing form must set `Success: true` only when:
   `Proof.EngineContainerId`, and `SelectedPidOwnsListener` is `true`;
   `configured-ports.txt`, `/proc/net/tcp`, or a 12-character prefix alone is
   never enough.
+- `DockerPs.Running`, `EngineApiContainersJson.CurrentContainerFound`,
+  `EngineApiContainersJson.InspectStateRunning`,
+  `PersistedStateJson.MatchesSelectedEngineContainerId`, and
+  `ProcessTable.SelectedPidPresent` are all `true` for the same exact ID.
+- `ContainerLogs.CurrentServiceMarker` is `true` and
+  `ContainerLogs.MarkerEngineContainerId` exactly equals
+  `Proof.EngineContainerId`.
 - Every required source names at least one raw artifact path under
   `files/pdocker/diagnostics/service-truth/`.
 
@@ -169,9 +182,11 @@ Engine container ID as follows:
   `EngineSnapshotAgeMs`, and `EngineSnapshotIdMismatch`.
 - Docker ps: records `engine-ps.out`, `engine-ps-running.out`,
   `engine-candidates.tsv`, and `engine-candidates.json`; the selected row must
-  be an exact ID match, not a prefix match.
+  be an exact ID match for a running 64-hex Engine container ID, not a prefix
+  match.
 - Engine API: records `/containers/json?all=1`, `inspect-selected.http`, and
-  `docker-inspect-selected.out` for the selected ID.
+  `docker-inspect-selected.out` for the selected ID; `InspectStateRunning` must
+  be true before this source can be proven.
 - Persisted state: records every discovered `state.json` and
   `state-id-comparison.json`; matches are exact selected-ID matches only.
 - Process table: extracts the selected container inspect PID and searches it in
@@ -181,7 +196,8 @@ Engine container ID as follows:
   requires `OwnerEngineContainerId` to equal the exact selected 64-hex Engine
   ID and `SelectedPidOwnsListener` to be true, not merely a configured port.
 - Logs: records per-running-container logs and `logs-selected.out` for the
-  selected Engine container ID.
+  selected Engine container ID, and records `MarkerEngineContainerId` only when
+  the current `pdocker-service-truth-marker` contains that exact ID.
 
 These artifacts make device failures actionable. They become a pass signal only
 through the strict same-ID branch; otherwise the runner preserves the old

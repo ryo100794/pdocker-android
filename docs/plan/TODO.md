@@ -23,10 +23,12 @@ issues, and deciding which planned gaps become hard gates.
    `docker ps`, Engine `/containers/json`, persisted state, process table,
    listener probes, and logs must prove the same current Engine container ID.
    Persisted `state.json`, Compose metadata, names, completed jobs, and port
-   declarations are hints only. Current slice in progress: new containers use
-   64-hex Engine IDs and container logs receive
-   `pdocker-service-truth-marker` entries so the log source can be bound to the
-   same exact ID before the device gate is promoted from `planned-gap`.
+   declarations are hints only. Current slice in progress: the
+   `--service-truth` device artifact and host verifier now require all seven
+   sources to name the same current 64-hex Engine container ID, including
+   docker ps/API running state, state, selected process PID, listener owner
+   PID, UI card current reason, and a matching
+   `pdocker-service-truth-marker`, before the gate can leave `planned-gap`.
 2. **[#10](https://github.com/ryo100794/pdocker-android/issues/10)
    Runtime teardown** `[P0 next]`: stop/kill must prove direct children,
    GPU executor helpers, listeners, logs, and stale PIDs are gone before the
@@ -111,16 +113,14 @@ issues, and deciding which planned gaps become hard gates.
   `docs/design/TERMINAL_STREAM_ARCHITECTURE.md`. The UI must remain a generic
   terminal surface, while Docker exec/attach, local diagnostic PTY, daemon log,
   and job log streams become explicit session types with shared tests.
-- [next] [#6](https://github.com/ryo100794/pdocker-android/issues/6)
-  Real listener service health: probe the actual device listener for
-  default workspace `18080` and llama `18081`, correlate it with Engine
-  container ID, health status, and logs, and never mark a service healthy from
-  compose/job metadata alone.
-- [next] [#6](https://github.com/ryo100794/pdocker-android/issues/6)
-  ID/label-based container truth: reconcile project cards, logs,
-  lifecycle actions, and duplicate-name cleanup from Engine container IDs plus
-  pdocker project/service labels. Container names are display hints and legacy
-  fallbacks only.
+- [doing] [#6](https://github.com/ryo100794/pdocker-android/issues/6)
+  Service truth same-container-ID device gate: the listener health and
+  ID/label truth work are one gate. Probe default workspace `18080` and llama
+  `18081`, then accept only when UI card, `docker ps`, Engine
+  `/containers/json` plus inspect running state, persisted `state.json`,
+  process table, listener owner map, and current logs all agree on the same
+  exact 64-hex Engine container ID. Project/service labels help select the
+  candidate; names and configured ports remain display/debug hints only.
 - [next] [#4](https://github.com/ryo100794/pdocker-android/issues/4)
   llama GPU performance workflow after Vulkan clamp: keep CPU fallback
   hiding Vulkan devices, force Vulkan only for measured GPU attempts, run the
@@ -142,10 +142,12 @@ issues, and deciding which planned gaps become hard gates.
   explicitly configured, expose cache hit/page-in/page-out/transfer metrics in
   the UI, and fail closed rather than claiming acceleration when correctness or
   residency evidence is missing.
-- [doing] Active port mapping: published ports now have an Engine-visible
-  `PdockerNetwork.PortMappingStatus` scaffold for planned/inactive/active/
-  conflict states while the runtime remains host-network-only. Next slice:
-  connect that state to real listener/proxy/rewrite evidence and UI labels.
+- [done] Active port mapping proof slice: published ports now keep
+  `PdockerNetwork.PortMappingStatus` truthful from evidence. Active requires a
+  live container-owned `/proc/net` listener or verified runtime proxy/rewrite
+  evidence; Docker/Compose metadata and bare active flags remain planned or
+  inactive. Foreign listeners and peer host-port claims surface as conflicts,
+  and container cards show active/inactive/planned/conflict counts.
 - [next] [#7](https://github.com/ryo100794/pdocker-android/issues/7)
   Android storage metrics verification: add device smoke/manual coverage
   that layer, image-view, container-private, total, and free-space values are
@@ -235,10 +237,13 @@ stable checkpoint.
   workspace health gate also requires code-server reachability on `18080`,
   extension evidence for the bundled IDE stack, and a UI card whose rendered
   container ID source is Engine API current state rather than stale persisted
-  metadata. Static acceptance-plan guard:
-  `python3 scripts/verify-service-truth-plan.py`; future evidence:
-  `docs/test/service-truth-latest.json` and a default-workspace health
-  artifact.
+  metadata. The executable VS Code health gate is now
+  `bash scripts/android-dev-workspace-compose-smoke.sh`; its contract is
+  documented in `docs/test/DEV_WORKSPACE_HEALTH_GATE.md` and its required
+  artifact is `docs/test/dev-workspace-compose-latest.json`. Static
+  acceptance-plan guard remains `python3 scripts/verify-service-truth-plan.py`;
+  future same-ID service-truth evidence also writes
+  `docs/test/service-truth-latest.json`.
 - [next] RUN changed-path/snapshot performance. `RUN chmod +x
   /usr/local/bin/pdocker-*` is functionally correct but still triggers an
   expensive broad snapshot in the default workspace build. Acceptance: profile
@@ -289,10 +294,11 @@ implementation change plus a focused verification artifact.
   total storage. Image apparent sizes, container apparent rootfs sizes, and
   merged views intentionally overlap lower-layer bytes, so UI summaries and
   tests must not add those apparent values together as unique usage.
-- [next] Service health truth source: health must be derived from Engine
-  container state, current Engine container ID, real listener evidence, and
-  matching logs. Project cards, Compose metadata, requested ports, old names,
-  and completed jobs are not sufficient to mark a service healthy.
+- [doing] Service health truth source: tracked by active issue #6 above and
+  `docs/test/SERVICE_TRUTH_DEVICE_GATE.md`. Health is not accepted until UI
+  card, `docker ps`/Engine API, state, process table, listener owner, and logs
+  share one current 64-hex Engine container ID; Compose metadata, requested
+  ports, old names, and completed jobs are hints only.
 - [next] Interactive terminal regression: do not paper over symptoms in the UI
   or scripts. Split terminal surface, session transport, Docker Engine exec API,
   local diagnostic PTY, and log panes per
@@ -364,9 +370,10 @@ implementation change plus a focused verification artifact.
   OpenCL ICD metadata, and binds the host OpenCL library when present. The
   library is visible but fails to load because Android/Bionic dependencies
   such as `liblog.so` are not available to the glibc container.
-- [next] Add a UI/device health card that checks the real listener for the
-  service port, verifies the owning Engine container ID and health state, and
-  links to container logs rather than relying on placeholder/job state.
+- [next] Add or finish the UI/device health card for the active #6 gate:
+  check the real listener for the service port, verify the owning Engine
+  container ID and health state, and link to container logs rather than relying
+  on placeholder/job state.
 - [next] Prevent duplicate container truth after interrupted compose attempts.
   The current device had an old exited `pdocker-llama-cpp` plus the new running
   one, which makes name-based `docker logs` and `docker ps` display ambiguous.
@@ -823,14 +830,16 @@ Acceptance:
 
 ## P1: Port Rewrite and Networking
 
-Status: **active-state scaffold; forwarding still pending**.
+Status: **active-state proof; forwarding still pending**.
 
 Temporary behavior:
 
 - Synthetic IPs and `PdockerNetwork.PortRewrite` are recorded.
 - `PdockerNetwork.PortMappingStatus` records planned, inactive, active, and
-  conflict states from requested host ports, container running state, runtime
-  evidence, and peer host-port claims.
+  conflict states from requested host ports, container running state, live
+  container-owned listener proof, verified proxy/rewrite evidence, foreign
+  listeners, and peer host-port claims. It does not mark active from
+  Docker/Compose metadata alone.
 - Network mode is treated as a Compose-compatible host-network stub with stable
   network IDs, endpoint IDs, service aliases, and `/networks` metadata.
 - Port publishing warnings are surfaced.
@@ -844,11 +853,12 @@ Real implementation needed:
 3. Provide container DNS/alias resolution beyond `/etc/hosts` injection.
 4. Teach running containers to refresh peer aliases after network connect and
    disconnect without requiring a restart.
-5. Add UI labels for active/inactive/blocked port mappings from
-   `PdockerNetwork.PortMappingStatus`.
-6. Record real active host listener/proxy target evidence for each published port and
-   surface conflicts explicitly when a requested host port is already owned by
-   another container.
+5. Expand UI labels from counts to per-port troubleshooting details and
+   conflict owner hints where screen space allows.
+6. Implement actual forwarding/proxy or syscall rewrite for mappings whose
+   host and container ports differ; current proof can only mark active when a
+   container already owns the requested host listener or runtime code records
+   verified rewrite/proxy evidence.
 
 Acceptance:
 

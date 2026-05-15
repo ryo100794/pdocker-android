@@ -40,14 +40,20 @@ class DevWorkspaceSmokeContractTest(unittest.TestCase):
             "job-logs",
             "code-server --list-extensions",
             "Continue.continue OpenAI.chatgpt Anthropic.claude-code",
+            "Successfully tagged pdocker/dev-workspace:latest",
+            "Using image cache for pdocker/dev-workspace:latest",
         ]:
             self.assertIn(token, self.script)
 
-        for check in ["build_run", "listener", "extensions", "ui_truth"]:
+        for check in ["build_run", "engine_state", "listener", "code_server_http", "extensions", "ui_truth"]:
             self.assertIn(f'"{check}"', self.script)
+        self.assertIn("engine_state_current", self.script)
+        self.assertIn("code_server_http_ok", self.script)
+        self.assertIn("extensions_configured", self.script)
         self.assertIn("all_checks_ok = all(item[\"ok\"] for item in checks.values())", self.script)
         self.assertIn("success = all_checks_ok and not failures", self.script)
         self.assertIn("no_fake_success", self.script)
+        self.assertIn("extensions_if_configured", self.script)
 
     def test_ui_truth_must_be_current_and_matching_not_stale_or_unknown(self):
         for token in [

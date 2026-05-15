@@ -248,6 +248,8 @@
     <string name="container_ports_none">なし</string>
     <string name="container_port_binding_fmt">%1$s:%2$s-&gt;%3$s</string>
     <string name="container_port_exposed_fmt">%1$s 公開予定</string>
+    <string name="container_port_status_counts_fmt">ポート状態: active %1$d / inactive %2$d / planned %3$d / conflict %4$d</string>
+    <string name="container_port_status_item_fmt">%1$s:%2$s-&gt;%3$s/%4$s %5$s</string>
     <string name="container_hook_plan_fmt">ポート hook 計画: %1$d</string>
     <string name="container_warnings_fmt">警告: %1$s</string>
     <string name="container_warning_ports_metadata">実行時リスナー確認までは要求済み/非アクティブ</string>
