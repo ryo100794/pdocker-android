@@ -1,15 +1,17 @@
 # Service truth same-container-ID device gate
 
-Status: planned-gap
+Status: planned-gap until complete device proof; device-pass when all seven sources match
 Host gate: `python3 scripts/verify-service-truth-plan.py`
 Device smoke: `bash scripts/android-device-smoke.sh --no-install --service-truth <target>`
-Planned artifact: `files/pdocker/diagnostics/service-truth-latest.json` copied to `docs/test/service-truth-latest.json` only after a real device run.
+Device artifact: `files/pdocker/diagnostics/service-truth-latest.json` copied to `docs/test/service-truth-latest.json` only after a real device run.
 
 This gate exists to prevent UI service cards from claiming healthy/running from
 configured ports, stale names, stale state, or background-job success.  Until a
 real Android device artifact proves one current Engine container ID across every
 truth source, the device artifact must remain `Status: planned-gap` and
-`Success: false`.
+`Success: false`. When, and only when, the device runner proves all seven
+sources below are current/proven for one exact 64-hex ID, it may emit
+`Status: device-pass`, `Success: true`, and exit 0.
 
 ## Required same-ID proof
 
@@ -38,8 +40,9 @@ proof.
 ## Device artifact schema
 
 `service-truth-latest.json` is a device artifact, not a host-generated pass.  The
-planned-gap implementation may collect partial evidence, but must not report
-success.
+host verifier and tests validate the schema, but they do not manufacture a pass:
+missing, stale, ambiguous, prefix-only, or mismatched evidence stays
+`planned-gap`/`Success: false` and exits nonzero.
 
 Required top-level shape:
 
@@ -104,10 +107,9 @@ Required top-level shape:
 }
 ```
 
-Promotion from `planned-gap` requires changing both the implementation and this
-contract.  The first passing form must set `Success: true` only when:
+The passing form must set `Success: true` only when:
 
-- `Status` is no longer `planned-gap`.
+- `Status` is exactly `device-pass`.
 - `Proof.SameEngineContainerId` is `true`.
 - `Proof.EngineContainerId` is a non-empty exact Engine container ID.
 - `TruthContract.RequiredSameContainerId` contains all seven required sources.
@@ -132,18 +134,18 @@ contract.  The first passing form must set `Success: true` only when:
 - Compose/build/background job success exists without the same-container-ID
   proof above.
 
-The current runner is therefore expected to be a useful diagnostic collector and
-a failing gate: real-device-required work remains represented as
-`planned-gap`/`Success: false`, while host tests enforce that fake success cannot
-be introduced silently.
+The current runner is therefore expected to be both a useful diagnostic collector
+and a real device gate: complete same-container-ID proof returns
+`device-pass`/`Success: true`/exit 0; every incomplete case remains
+`planned-gap`/`Success: false`/nonzero. Host tests enforce that fake success
+cannot be introduced silently.
 
 ## Current diagnostic collection detail
 
 `--service-truth` now writes an additional aggregation artifact at
-`files/pdocker/diagnostics/service-truth/same-id-source-summary.json`.  It is
-still diagnostic-only: even if a real device happens to populate every source,
-the top-level artifact remains `Status: planned-gap`, `Success: false`, and exits
-nonzero until this contract is deliberately promoted.
+`files/pdocker/diagnostics/service-truth/same-id-source-summary.json`.  The
+summary is used by the promoted gate, but it is only a pass signal when the
+seven source objects also prove the same exact 64-hex Engine container ID.
 
 The diagnostic collector attempts to reduce each source to the selected exact
 Engine container ID as follows:
@@ -164,5 +166,6 @@ Engine container ID as follows:
 - Logs: records per-running-container logs and `logs-selected.out` for the
   selected Engine container ID.
 
-These artifacts make device failures actionable, but they are not a pass signal
-while the gate is a planned gap.
+These artifacts make device failures actionable. They become a pass signal only
+through the strict same-ID branch; otherwise the runner preserves the old
+planned-gap failure behavior.

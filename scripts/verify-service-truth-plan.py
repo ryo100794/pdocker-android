@@ -187,6 +187,8 @@ def validate_service_truth_artifact(artifact: dict[str, Any]) -> None:
             raise artifact_error("planned-gap artifacts must set Success false")
         return
 
+    if artifact.get("Status") != "device-pass":
+        raise artifact_error("successful service truth artifact must set Status device-pass")
     if artifact.get("Success") is not True:
         raise artifact_error("non-planned service truth artifact is not a success")
 
@@ -363,6 +365,7 @@ def validate_docs() -> None:
             "planned-gap/Success: false",
             "same-container-ID",
             "ContainerLogs.CurrentServiceMarker",
+            "device-pass",
         ],
     )
 
@@ -394,6 +397,9 @@ def validate_android_smoke_entrypoints() -> None:
             "/proc/net/tcp",
             "LifecycleLogs",
             "ContainerLogs",
+            "device-pass",
+            "SERVICE_TRUTH_EXIT=0",
+            "SERVICE_TRUTH_EXIT=2",
             "\"Success\": false",
         ],
     )

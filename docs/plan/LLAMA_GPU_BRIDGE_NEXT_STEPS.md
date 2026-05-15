@@ -367,6 +367,16 @@ is explicit rather than implicit:
   `LLAMA_GPU_CONFIG_PROPAGATION_ENV_FIELDS`.  A stale compare script that omits
   a diagnostic env from the artifact is classified as
   `config-propagation-mismatch` even if the remaining checks say `pass`.
+- Artifact verifier strictness update: compare artifacts now fail closed if
+  `gpu.diagnostics.config_propagation.checks` is missing entirely.  This closes
+  the stale-artifact hole where a run with no env reflection evidence could
+  still inherit a later Q6_K/pass classification.
+- Unsupported GPU work gate: structured executor/oracle fields such as
+  `status`, `latest_status`, `error`, `blocker_class`, or `classification`
+  containing `unsupported`/`kernel-not-implemented-yet` are classified as
+  `unsupported-gpu-work-accepted` and block correctness and benchmark claims.
+  This keeps unsupported kernels/layouts from being hidden by served HTTP,
+  speedup, or unrelated Q6_K summary fields.
 
 ### Stage 5: Correctness gate for `ngl=1`
 

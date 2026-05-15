@@ -809,8 +809,11 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("LLAMA_GPU_UI_RUNTIME_ENV_KEYS", LLAMA_GPU_ARTIFACT_VERIFIER.read_text())
         self.assertIn("LLAMA_GPU_COMPARE_DIAGNOSTIC_ENV_KEYS", LLAMA_GPU_ARTIFACT_VERIFIER.read_text())
         self.assertIn("LLAMA_GPU_CONFIG_PROPAGATION_ENV_FIELDS", LLAMA_GPU_ARTIFACT_VERIFIER.read_text())
+        self.assertIn("UNSUPPORTED_GPU_WORK_TOKENS", LLAMA_GPU_ARTIFACT_VERIFIER.read_text())
+        self.assertIn("unsupported-gpu-work-accepted", LLAMA_GPU_ARTIFACT_VERIFIER.read_text())
         self.assertIn("UI/compose runtime defaults and compare-only diagnostics", next_steps)
         self.assertIn("Artifact verifier manifest guard", next_steps)
+        self.assertIn("Unsupported GPU work gate", next_steps)
         self.assertIn("Environment propagation parity", correctness)
 
     def test_llama_gpu_artifact_verifier_blocks_env_reflection_misses(self):

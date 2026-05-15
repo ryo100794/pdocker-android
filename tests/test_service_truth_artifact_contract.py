@@ -6,13 +6,16 @@ VERIFIER = ROOT / "scripts/verify-service-truth-plan.py"
 COMPAT = ROOT / "docs/test/COMPATIBILITY.md"
 
 
-def test_service_truth_device_artifact_is_non_passing_until_same_id_proof():
+def test_service_truth_device_artifact_pass_branch_requires_same_id_proof():
     smoke = SMOKE.read_text()
     body = smoke.split("service_truth_acceptance_entrypoint()", 1)[1].split(
         "runtime_teardown_acceptance_entrypoint()", 1
     )[0]
-    assert '"Status": "planned-gap"' in body
-    assert '"Success": false' in body
+    assert 'SERVICE_TRUTH_STATUS="planned-gap"' in body
+    assert 'SERVICE_TRUTH_STATUS="device-pass"' in body
+    assert 'SERVICE_TRUTH_SUCCESS=true' in body
+    assert 'SERVICE_TRUTH_EXIT=0' in body
+    assert 'SERVICE_TRUTH_EXIT=2' in body
     assert "TruthContract" in body
     assert "RequiredSameContainerId" in body
     for source in [

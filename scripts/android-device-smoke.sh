@@ -199,6 +199,22 @@ json_number_or_null() {
   esac
 }
 
+is_engine_container_id() {
+  printf '%s' "$1" | grep -Eq '^[0-9a-fA-F]{64}$'
+}
+
+json_word_array() {
+  first=1
+  printf '['
+  for item in $1; do
+    [ -n "$item" ] || continue
+    [ "$first" = 1 ] || printf ', '
+    first=0
+    json_string "$item"
+  done
+  printf ']'
+}
+
 snapshot_listener_probe() {
   : >"$DIAG/listener-probe.txt"
   : >"$DIAG/listener-probe.json"
@@ -391,12 +407,12 @@ write_same_id_source_summary() {
   [ "$listener_pid_present" = true ] || missing="$missing ListenerProbe"
   [ "$logs_marker_present" = true ] || missing="$missing ContainerLogs"
   if [ -n "$selected_id" ] && [ -n "$ui_cid" ] && [ "$ui_cid" != "$selected_id" ]; then mismatched="$mismatched UICard"; fi
-  [ -n "$selected_id" ] && [ "$ui_cid" = "$selected_id" ] && [ "$ui_state" = current ] && [ "$docker_ps_present" = true ] && [ "$engine_api_present" = true ] && [ "$state_match" = true ] && [ "$process_pid_present" = true ] && [ "$listener_pid_present" = true ] && [ "$logs_marker_present" = true ] && same_id=true
+  [ -n "$selected_id" ] && is_engine_container_id "$selected_id" && [ "$ui_cid" = "$selected_id" ] && [ "$ui_state" = current ] && [ "$docker_ps_present" = true ] && [ "$engine_api_present" = true ] && [ "$state_match" = true ] && [ "$process_pid_present" = true ] && [ "$listener_pid_present" = true ] && [ "$logs_marker_present" = true ] && same_id=true
   cat >"$DIAG/same-id-source-summary.json" <<JSON
 {
   "SelectedEngineContainerId": $(source_container_id_json "$selected_id"),
   "SameEngineContainerIdIfPromoted": $(json_bool "$same_id"),
-  "Note": "Diagnostic aggregation only: top-level Status remains planned-gap and Success remains false until the device gate is promoted intentionally.",
+  "Note": "Device-pass is allowed only when all seven sources are current/proven and name this exact 64-hex Engine container ID; otherwise the top-level result remains planned-gap/Success false.",
   "SourceIds": {
     "UICard": $(source_container_id_json "$ui_cid"),
     "DockerPs": $( [ "$docker_ps_present" = true ] && source_container_id_json "$selected_id" || printf null ),
@@ -483,12 +499,44 @@ LOGS_PROVEN=false
 [ "$LOGS_CURRENT_MARKER" = true ] && LOGS_PROVEN=true
 write_same_id_source_summary "$SELECTED_ENGINE_CID" "$UI_CARD_CID" "$UI_CARD_STATE" "$STATE_MATCH" "$SELECTED_INSPECT_PID"
 
+SELECTED_ID_EXACT=false
+is_engine_container_id "$SELECTED_ENGINE_CID" && SELECTED_ID_EXACT=true
+UI_SOURCE_CURRENT=false
+case "$(printf '%s' "$UI_CARD_SOURCE" | tr '[:upper:]' '[:lower:]')" in
+  ''|unknown|state.json|persistedstatejson|persisted_state_json|stale|ambiguous) UI_SOURCE_CURRENT=false ;;
+  *) UI_SOURCE_CURRENT=true ;;
+esac
+[ "$SELECTED_ID_EXACT" = true ] && [ "$UI_CARD_CID" = "$SELECTED_ENGINE_CID" ] && [ "$UI_CARD_STATE" = current ] && [ "$UI_SOURCE_CURRENT" = true ] && UI_CARD_PROVEN=true || UI_CARD_PROVEN=false
+
+MISSING_SOURCES=""
+MISMATCHED_SOURCES=""
+[ "$SELECTED_ID_EXACT" = true ] || MISSING_SOURCES="$MISSING_SOURCES EngineContainerId"
+[ "$UI_CARD_PROVEN" = true ] || MISSING_SOURCES="$MISSING_SOURCES UICard"
+[ "$DOCKER_PS_PROVEN" = true ] || MISSING_SOURCES="$MISSING_SOURCES DockerPs"
+[ "$ENGINE_API_PROVEN" = true ] || MISSING_SOURCES="$MISSING_SOURCES EngineApiContainersJson"
+[ "$STATE_MATCH" = true ] || MISSING_SOURCES="$MISSING_SOURCES PersistedStateJson"
+[ "$PROCESS_PROVEN" = true ] || MISSING_SOURCES="$MISSING_SOURCES ProcessTable"
+[ "$LISTENER_PROVEN" = true ] || MISSING_SOURCES="$MISSING_SOURCES ListenerProbe"
+[ "$LOGS_PROVEN" = true ] || MISSING_SOURCES="$MISSING_SOURCES ContainerLogs"
+[ -n "$UI_CARD_CID" ] && [ -n "$SELECTED_ENGINE_CID" ] && [ "$UI_CARD_CID" != "$SELECTED_ENGINE_CID" ] && MISMATCHED_SOURCES="$MISMATCHED_SOURCES UICard"
+
+SAME_ENGINE_CONTAINER_ID=false
+SERVICE_TRUTH_STATUS="planned-gap"
+SERVICE_TRUTH_SUCCESS=false
+SERVICE_TRUTH_EXIT=2
+if [ "$SELECTED_ID_EXACT" = true ]   && [ "$UI_CARD_PROVEN" = true ]   && [ "$DOCKER_PS_PROVEN" = true ]   && [ "$ENGINE_API_PROVEN" = true ]   && [ "$STATE_MATCH" = true ]   && [ "$PROCESS_PROVEN" = true ]   && [ "$LISTENER_PROVEN" = true ]   && [ "$LOGS_PROVEN" = true ]   && [ -z "$(printf '%s' "$MISMATCHED_SOURCES" | tr -d ' ')" ]; then
+  SAME_ENGINE_CONTAINER_ID=true
+  SERVICE_TRUTH_STATUS="device-pass"
+  SERVICE_TRUTH_SUCCESS=true
+  SERVICE_TRUTH_EXIT=0
+fi
+
 cat > "$LATEST" <<JSON
 {
   "SchemaVersion": 1,
   "Kind": "service-truth",
-  "Status": "planned-gap",
-  "Success": false,
+  "Status": $(json_string "$SERVICE_TRUTH_STATUS"),
+  "Success": $(json_bool "$SERVICE_TRUTH_SUCCESS"),
   "Target": $(json_string "$TARGET"),
   "StartedAt": $(json_string "$STARTED_AT"),
   "CompletedAt": $(json_string "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date)"),
@@ -499,10 +547,10 @@ cat > "$LATEST" <<JSON
   },
   "Proof": {
     "EngineContainerId": $( [ -n "$SELECTED_ENGINE_CID" ] && json_string "$SELECTED_ENGINE_CID" || printf null ),
-    "SameEngineContainerId": false,
+    "SameEngineContainerId": $(json_bool "$SAME_ENGINE_CONTAINER_ID"),
     "AggregationArtifact": "files/$DIAG/same-id-source-summary.json",
-    "MismatchedSources": [],
-    "MissingSources": ["planned device proof gap; see files/$DIAG/same-id-source-summary.json"]
+    "MismatchedSources": $(json_word_array "$MISMATCHED_SOURCES"),
+    "MissingSources": $(json_word_array "$MISSING_SOURCES")
   },
   "Observed": {
     "EngineCliExitCode": $(json_string "$ENGINE_PS_RC"),
@@ -598,7 +646,7 @@ cat > "$LATEST" <<JSON
 }
 JSON
 cat "$LATEST"
-exit 2
+exit "$SERVICE_TRUTH_EXIT"
 REMOTE_SERVICE_TRUTH
   run_adb push "$local_script" "$remote_script" >/dev/null
   rm -f "$local_script"

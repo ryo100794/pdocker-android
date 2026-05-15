@@ -48,7 +48,9 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
         text = DOC.read_text()
         for term in [
             "Status: planned-gap",
+            "Status: device-pass",
             "Success: false",
+            "Success: true",
             "files/pdocker/diagnostics/service-truth-latest.json",
             "docs/test/service-truth-latest.json",
             "TruthContract",
@@ -90,6 +92,7 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
     def test_fake_success_is_rejected_for_missing_mismatched_or_stale_sources(self):
         cases = [
             lambda a: a["TruthContract"].update({"RequiredSameContainerId": REQUIRED_SOURCES[:-1]}),
+            lambda a: a.update({"Status": "host-pass"}),
             lambda a: a["Proof"].update({"SameEngineContainerId": False}),
             lambda a: a["Sources"]["DockerPs"].update({"ContainerId": "different-container-id"}),
             lambda a: a["Sources"]["ListenerProbe"].update({"Proven": False}),
@@ -114,20 +117,24 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
         artifact["Sources"]["UICard"]["TruthState"] = "current"
         validate_same_container_id_contract(artifact)
 
-    def test_existing_device_smoke_entrypoint_stays_non_passing_planned_gap(self):
+    def test_device_smoke_entrypoint_only_passes_with_complete_same_id_proof(self):
         smoke = SMOKE.read_text()
         body = smoke.split("service_truth_acceptance_entrypoint()", 1)[1].split(
             "runtime_teardown_acceptance_entrypoint()", 1
         )[0]
-        self.assertIn('"Status": "planned-gap"', body)
-        self.assertIn('"Success": false', body)
-        self.assertIn("exit 2", body)
+        self.assertIn('SERVICE_TRUTH_STATUS="planned-gap"', body)
+        self.assertIn('SERVICE_TRUTH_STATUS="device-pass"', body)
+        self.assertIn('SERVICE_TRUTH_SUCCESS=true', body)
+        self.assertIn('SERVICE_TRUTH_EXIT=0', body)
+        self.assertIn('SERVICE_TRUTH_EXIT=2', body)
+        self.assertIn('exit "$SERVICE_TRUTH_EXIT"', body)
         self.assertIn("docker ps -a --no-trunc", body)
         self.assertIn("docker ps -q --no-trunc", body)
         for source in [s for s in REQUIRED_SOURCES if s != "DockerPs"]:
             self.assertIn(source, body)
         self.assertIn('"DockerPs"', body)
-        self.assertIn('"SameEngineContainerId": false', body)
+        self.assertIn('SAME_ENGINE_CONTAINER_ID=true', body)
+        self.assertIn('"SameEngineContainerId": $(json_bool "$SAME_ENGINE_CONTAINER_ID")', body)
         self.assertIn("$2 == id", body)
         self.assertNotIn("index(id,$2)==1", body)
         for term in [
@@ -156,6 +163,7 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
         self.assertIn("ContainerLogs.CurrentServiceMarker", verifier)
         self.assertIn("Proof.EngineContainerId must be an exact 64-hex", verifier)
         self.assertIn("ListenerProbe must bind at least one configured/listening port", verifier)
+        self.assertIn("successful service truth artifact must set Status device-pass", verifier)
 
     def test_static_verifier_fixture_rejects_missing_same_id_edges(self):
         verify_service_truth_plan.validate_service_truth_fixture_contract()

@@ -65,6 +65,17 @@ LLAMA_GPU_CONFIG_PROPAGATION_ENV_FIELDS = (
     ("PDOCKER_GPU_MUTABLE_BUFFER_CACHE", "mutable_buffer_cache.enabled"),
 )
 
+UNSUPPORTED_GPU_WORK_TOKENS = (
+    "unsupported",
+    "kernel-not-implemented-yet",
+    "not-implemented",
+    "unimplemented",
+)
+
+
+def _is_compare_artifact(data: dict[str, Any]) -> bool:
+    return data.get("schema") == "pdocker.llama.gpu.compare.v1"
+
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -140,6 +151,13 @@ def _config_propagation(data: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _config_propagation_missing(data: dict[str, Any], config_propagation: dict[str, Any]) -> bool:
+    if not _is_compare_artifact(data):
+        return False
+    checks = config_propagation.get("checks")
+    return not isinstance(checks, list) or not checks
+
+
 def _config_propagation_manifest_misses(config_propagation: dict[str, Any]) -> list[str]:
     checks = config_propagation.get("checks") or []
     if not isinstance(checks, list):
@@ -164,6 +182,50 @@ def _config_propagation_failed(config_propagation: dict[str, Any]) -> bool:
         if isinstance(check, dict) and check.get("status") in {"missing-evidence", "mismatch"}:
             return True
     return False
+
+
+def _unsupported_gpu_work_evidence(data: Any, path: str = "$") -> list[dict[str, str]]:
+    """Return bounded structured evidence for unsupported GPU work.
+
+    The compare artifact contains raw log excerpts with human prose, so this
+    intentionally looks only at structured status/error/classification fields.
+    Unsupported executor/oracle statuses must fail closed instead of being
+    accepted by a later passing q6 summary or benchmark section.
+    """
+
+    evidence: list[dict[str, str]] = []
+    interesting_keys = {
+        "status",
+        "latest_status",
+        "error",
+        "blocker_class",
+        "classification",
+        "diagnostic_interpretation",
+    }
+
+    def visit(value: Any, value_path: str) -> None:
+        if len(evidence) >= 16:
+            return
+        if isinstance(value, dict):
+            for key, child in value.items():
+                child_path = f"{value_path}.{key}"
+                if key in interesting_keys and isinstance(child, str):
+                    lowered = child.lower()
+                    if any(token in lowered for token in UNSUPPORTED_GPU_WORK_TOKENS):
+                        evidence.append({"path": child_path, "value": child})
+                        if len(evidence) >= 16:
+                            return
+                visit(child, child_path)
+                if len(evidence) >= 16:
+                    return
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, f"{value_path}[{index}]")
+                if len(evidence) >= 16:
+                    return
+
+    visit(data, path)
+    return evidence
 
 
 def _claim_base(
@@ -222,7 +284,8 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         )
 
     config_propagation = _config_propagation(data)
-    if _config_propagation_failed(config_propagation):
+    config_propagation_missing = _config_propagation_missing(data, config_propagation)
+    if config_propagation_missing or _config_propagation_failed(config_propagation):
         manifest_misses = _config_propagation_manifest_misses(config_propagation)
         return _claim_base(
             "config-propagation-mismatch",
@@ -233,10 +296,25 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             runtime_freshness=runtime_freshness,
         ) | {
             "config_propagation": config_propagation,
+            "config_propagation_missing": config_propagation_missing,
             "config_propagation_manifest_misses": manifest_misses,
             "required_config_propagation_envs": [
                 env_name for env_name, _field_name in LLAMA_GPU_CONFIG_PROPAGATION_ENV_FIELDS
             ],
+        }
+
+    unsupported_evidence = _unsupported_gpu_work_evidence(data)
+    if unsupported_evidence:
+        return _claim_base(
+            "unsupported-gpu-work-accepted",
+            next_action=(
+                data.get("next_action")
+                or "fail or gate unsupported GPU executor/oracle work before accepting correctness or benchmark claims"
+            ),
+            runtime_freshness=runtime_freshness,
+        ) | {
+            "unsupported_gpu_work_evidence": unsupported_evidence,
+            "config_propagation": config_propagation,
         }
 
     if not q6:
@@ -311,6 +389,8 @@ def main(argv: list[str]) -> int:
         return 34
     if classification == "config-propagation-mismatch":
         return 35
+    if classification == "unsupported-gpu-work-accepted":
+        return 36
     if args.require_q6_match:
         return 0 if classification == "q6-workgroup-cleared-and-oracle-match" else 30
     if args.require_q6_workgroup_clear:

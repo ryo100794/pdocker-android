@@ -125,6 +125,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
             "gpu": {
                 "diagnostics": {
                     "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
                     "q6_workgroup_diagnostics": {
                         "workgroup_shape_blocker": False,
                         "latest_status": "match",
@@ -153,6 +154,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
             "gpu": {
                 "diagnostics": {
                     "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
                     "q6_workgroup_diagnostics": {
                         "workgroup_shape_blocker": False,
                         "latest_status": "mismatch",
@@ -169,6 +171,31 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         self.assertEqual(report["classification"], "q6-workgroup-cleared-but-oracle-mismatch")
         exact = self.run_verifier(payload, "--require-q6-match")
         self.assertEqual(exact.returncode, 30, exact.stdout)
+
+
+    def test_compare_artifact_without_config_propagation_fails_closed(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "match",
+                    },
+                },
+                "correctness": {"summary": {"correctness": "pass"}},
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            "comparison": {"speedup": 2.0, "target_met": True},
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 35, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "config-propagation-mismatch")
+        self.assertTrue(report["config_propagation_missing"])
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
 
 
     def test_config_propagation_pass_must_cover_verifier_manifest(self):
@@ -204,6 +231,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
             "gpu": {
                 "diagnostics": {
                     "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
                     "q6_workgroup_diagnostics": {
                         "workgroup_shape_blocker": True,
                         "latest_status": "mismatch",
@@ -216,6 +244,44 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         result = self.run_verifier(payload)
         self.assertEqual(result.returncode, 32, result.stdout)
         self.assertIn("q6-workgroup-shape-blocker", result.stdout)
+
+    def test_structured_unsupported_executor_oracle_evidence_fails_closed(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "generic_spirv_dispatch": {
+                        "valid_android_vulkan_events": [
+                            {
+                                "valid": True,
+                                "kernel": "generic_spirv",
+                                "cpu_oracle": {
+                                    "requested": True,
+                                    "status": "unsupported-q6k-layout",
+                                    "kernel_hint": "mul-mat-vec-q6-k-large",
+                                },
+                            }
+                        ],
+                    },
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "match",
+                    },
+                },
+                "correctness": {"summary": {"correctness": "pass"}},
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            "comparison": {"speedup": 2.0, "target_met": True},
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 36, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "unsupported-gpu-work-accepted")
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+        self.assertIn("unsupported-q6k-layout", json.dumps(report["unsupported_gpu_work_evidence"]))
 
 
 if __name__ == "__main__":
