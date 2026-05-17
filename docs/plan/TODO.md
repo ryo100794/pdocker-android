@@ -38,7 +38,12 @@ issues, and deciding which planned gaps become hard gates.
    Q6_K blocker without touching llama.cpp, Dockerfiles, models, or prompts.
    The compare script, pdockerd defaults, UI/compose path, and artifact
    verifier must use an audited GPU diagnostic environment so device results do
-   not diverge by launch path.
+   not diverge by launch path. Granular executable units: (a) env manifest
+   parity across compare, pdockerd, UI/compose, and verifier; (b) device
+   readiness/headroom artifact before model load; (c) NGL=1 Q6_K
+   workgroup/writeback oracle run; (d) artifact classification that keeps
+   memory blockers and Q6_K mismatches non-promoting; and (e) only after a
+   matching oracle, CPU/GPU benchmark reporting.
 4. **[#11](https://github.com/ryo100794/pdocker-android/issues/11)
    Image-pull crash safety** `[P0 doing]`: partial pulls, `.pull-*`,
    `.tmp-*`, `.old-*`, interrupted layer extraction, tag publish, and startup
@@ -67,7 +72,11 @@ issues, and deciding which planned gaps become hard gates.
    `engine-exec-input-latest.jsonl` before the gate can promote. The JSONL must
    prove single-Enter submission, isolated ETX with no injected `c` for JP/EN
    IME Ctrl-C, ArrowUp reaching shell history instead of raw escape text, a
-   stable `top` refresh, and `q` returning to a usable shell.
+   stable `top` refresh, and `q` returning to a usable shell. Work units:
+   terminal surface/session-type split; Engine exec/HTTP-upgrade byte capture;
+   UI scripted input artifact; raw JSONL verifier with `--require-container`;
+   and resize/IME regression replay. Host-only verifier results remain
+   non-promoting.
 7. **[#14](https://github.com/ryo100794/pdocker-android/issues/14)
    VS Code health gate** `[P1 next]`: default workspace success requires
    compose/build/run, `pdocker-dev` current Engine state, port `18080` listener,
@@ -87,7 +96,9 @@ issues, and deciding which planned gaps become hard gates.
    storage graph/layer maintenance UI, `linkat` hardlink semantics, Docker CLI
    `docker cp`/archive API, COW kill-at-step, and image live-pull interruption
    gates. Each gate stays planned-gap or otherwise non-promoting until its
-   named device promotion condition produces a passing artifact.
+   named device promotion condition produces a passing artifact. This audit
+   splits broad blockers into separately executable units so a passing
+   sub-check cannot accidentally promote its parent gate.
 
 ### Next Queue Generated 2026-05-04
 
@@ -359,7 +370,16 @@ implementation change plus a focused verification artifact.
   device Engine exec evidence plus generic terminal input tests. The new
   terminal artifact verifier is a host-side guard only; it becomes promoting
   evidence only with raw device Engine exec JSONL for a real container and
-  `--require-container`.
+  `--require-container`. Split the work into executable slices:
+  1. session-type plumbing that routes container terminals only through Engine
+     exec/attach and keeps diagnostic PTY/log panes separate;
+  2. byte-level capture for Enter, ETX/Ctrl-C, cursor keys, resize, and `top`
+     refresh into `engine-exec-input-latest.jsonl`;
+  3. UI self-test artifact capture for JP/EN IME paths and shell usability after
+     `q`;
+  4. host verifier replay with `--require-container`; and
+  5. only then device promotion. Slices 1-4 are regression evidence but remain
+     non-promoting without the paired fresh device artifacts.
 - [done] Runtime freeze risk: stop/kill/rm now treats teardown as a
   no-orphan operation instead of trusting HTTP 204/API acknowledgement. The
   daemon scans known PIDs, descendants, launcher PIDs, and
@@ -372,7 +392,11 @@ implementation change plus a focused verification artifact.
   `--n-gpu-layers 1` probe offloaded only the output layer. The llama template
   and compare script now default to at least `--n-gpu-layers 2`; next device
   evidence must show `offloading N repeating layers` before treating the result
-  as meaningful transformer-layer acceleration.
+  as meaningful transformer-layer acceleration. Break the device run into:
+  readiness/headroom check, env propagation diff, NGL=1 Q6_K oracle,
+  NGL>=2 repeating-layer proof, artifact verifier classification, and finally
+  benchmark reporting. All readiness-blocked or oracle-mismatch artifacts stay
+  non-promoting.
 
 ### Runtime / Compose-Up
 
@@ -552,7 +576,19 @@ implementation change plus a focused verification artifact.
     `stable_checkpoint_eligible=false`. No native pager code is promoted by this gate.
   Next slice: fill the runtime counters from the managed-region table, add
   thread/signal guardrails, and run synthetic fault-latency/stress evidence
-  before any llama/container opt-in.
+  before any llama/container opt-in. Smaller executable proof units:
+  1. managed-pager PoC artifact proving explicit opt-in, managed-region table
+     counters, page materialization, dirty/writeback accounting, and fallback
+     denial fields;
+  2. transparent-pager PoC artifact proving unsupported mappings are excluded or
+     passed through safely instead of being claimed as managed;
+  3. OOM/LMK replay artifact proving allocation denial, backend-death
+     classifier, ring/summary retention, and operation/container identity;
+  4. UI evidence artifact/screenshot proving stale, missing, blocked-device, or
+     planned-gap memory data is not rendered as live success; and
+  5. future mmap/userfault capability artifact. Units 1-5 remain
+     non-promoting for stable/release credit until the connected-device pager
+     plus controlled OOM/LMK replay promotion condition passes.
 - [next] Revisit Dockerfile build memory pressure without changing upstream
   Dockerfiles. The managed-region pager remains explicit and opt-in; ordinary
   toolchain heap allocations such as `cc1plus` are not yet under pdocker memory
@@ -670,7 +706,20 @@ implementation change plus a focused verification artifact.
   artifacts. The May 16 host slice found reusable pdockerd/archive inode
   evidence for existing hardlinks, but no daemon-side sidecar/index is promoted
   as a source of truth; true creation, mediation, and recovery still require
-  direct-runtime C work and device evidence.
+  direct-runtime C work and device evidence. Execute as separate units:
+  1. C runtime syscall contract and errno matrix for `linkat`, `linkat(AT_FDCWD,
+     ...)`, invalid flags, missing parents, cross-root escapes, and
+     hardlink-to-directory denials;
+  2. inode/index or CoW metadata design that records link peers without
+     treating copy-fallback bytes as success;
+  3. C implementation for creation, unlink decrement, rename/replace over
+     hardlinked destinations, copy-up interactions, and write-through from
+     either name;
+  4. interrupted metadata-update recovery that fails closed after daemon/helper
+     kill; and
+  5. Android artifact proof for inode identity, link-count transitions,
+     write-through, errno parity, and restart recovery. Host/static units are
+     non-promoting until unit 5 passes.
 - [done] Replace `/proc/self/exe` rootfs temporary symlink mediation with direct
   readlink emulation that does not mutate image state; remaining work is
   Android device evidence for `/proc/self/exe`, `/proc/thread-self/exe`, and
@@ -688,7 +737,10 @@ implementation change plus a focused verification artifact.
   - keep `linkat` hardlink semantics fail-closed until the non-promoting
     Android artifact proves inode identity, link-count preservation, write-through
     behavior, errno parity, and recovery from interrupted hardlink/CoW metadata
-    updates;
+    updates; split this into C errno-matrix tests, C runtime metadata/index
+    implementation, write-through/unlink/rename cases, kill/restart recovery,
+    and Android artifact verification so a host copy-fallback check cannot
+    promote the gate;
   - collect Android device evidence that `/proc/self/exe`,
     `/proc/thread-self/exe`, and `/proc/<pid>/exe` readlink emulation reports
     the guest executable without mutating image state.
@@ -1121,6 +1173,17 @@ Reusable scenario:
 - During tight GPU bridge tuning, pass `--gpu-only` to reuse the latest recorded
   CPU baseline, or `--cpu-tps N` to pin a known baseline. Full CPU/GPU
   comparison remains the milestone gate.
+- Device run unit boundaries for issue #4:
+  1. local ABI/env contract checks and `scripts/llama-gpu-env-manifest.json`
+     parity;
+  2. Android readiness/headroom artifact that may block without starting llama;
+  3. forced NGL=1 Q6_K workgroup/writeback oracle run;
+  4. NGL>=2 transformer-layer proof only after the NGL=1 blocker is classified;
+  5. verifier classification of memory blockers, writeback/workgroup evidence,
+     and Q6_K numeric mismatch; and
+  6. benchmark/performance claim only when correctness and
+     `benchmark_claim_allowed=true` pass. Units 1-5 are non-promoting blocker
+     evidence when readiness is blocked or the Q6_K oracle mismatches.
 
 Tasks:
 

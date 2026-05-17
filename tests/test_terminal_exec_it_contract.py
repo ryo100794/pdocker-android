@@ -110,6 +110,35 @@ class TerminalExecItContractTest(unittest.TestCase):
         self.assertIn("const payload = raw ? normalized : applyModifiers(normalized);", self.xterm)
         self.assertIn("PdockerBridge.input(toB64(enc.encode(payload)))", self.xterm)
 
+    def test_terminal_modifier_policy_is_generic_one_shot_ctrl_then_alt_prefix(self):
+        for mapping in [
+            "case ' ': return '\\x00';",
+            "case '[': return '\\x1b';",
+            "case '\\\\': return '\\x1c';",
+            "case ']': return '\\x1d';",
+            "case '^': return '\\x1e';",
+            "case '_': return '\\x1f';",
+            "case '?': return '\\x7f';",
+        ]:
+            self.assertIn(mapping, self.xterm)
+
+        apply_modifiers = _method_body(self.xterm, "const applyModifiers = (data) =>")
+        self.assertLess(
+            apply_modifiers.index("if (mods.ctrl && data.length === 1) out = ctrlMap(data);"),
+            apply_modifiers.index("if (mods.alt || mods.esc) out = '\\x1b' + out;"),
+        )
+
+        send_input = _method_body(self.xterm, "const sendInput = (data, raw = false) =>")
+        self.assertIn("const payload = raw ? normalized : applyModifiers(normalized);", send_input)
+        self.assertIn("finally", send_input)
+        self.assertIn("clearTransientModifiers();", send_input)
+
+        schedule_clear = _method_body(self.xterm, "const scheduleModifierClear = () =>")
+        self.assertIn("setTimeout", schedule_clear)
+        self.assertIn("clearTransientModifiers();", schedule_clear)
+        self.assertIn("}, 4000);", schedule_clear)
+        self.assertIn("sendInput(decodeKey(btn.dataset.key), btn.dataset.raw === '1');", self.xterm)
+
     def test_ime_fallback_claims_modifier_input_to_prevent_literal_c_and_double_enter(self):
         self.assertIn("const normalizeTerminalInput = (data) =>", self.xterm)
         self.assertIn("return data.replace(/\\r\\n/g, '\\r').replace(/\\n/g, '\\r');", self.xterm)
@@ -366,6 +395,12 @@ class TerminalExecItContractTest(unittest.TestCase):
             "stream-started event",
             "not resize evidence",
             "must not count stream-started alone",
+            "Current Self-Test Evidence",
+            "EngineExecSession transport",
+            "Ctrl/Alt modifier policy",
+            "Ctrl applies the conventional terminal control mapping",
+            "Top/fullscreen behavior",
+            "Raw soft-key buttons bypass the modifier",
         ]:
             self.assertIn(required, design)
 
@@ -389,6 +424,11 @@ class TerminalExecItContractTest(unittest.TestCase):
             "static host test",
             "ui-it-selftest-latest.json",
             "engine-exec-input-latest.jsonl",
+            "Current proof matrix",
+            "EngineExecSession transport",
+            "generic Ctrl/Alt modifier policy",
+            "foreground/full-screen `top`",
+            "batch `top -b -n 1` probe is only a",
         ]:
             self.assertIn(required, doc)
 

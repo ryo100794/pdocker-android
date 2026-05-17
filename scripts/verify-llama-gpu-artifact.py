@@ -24,6 +24,14 @@ COMPACT_HASH_RE = re.compile(r"^0x[0-9a-fA-F]{16}$")
 ZERO_COMPACT_HASH = "0x0000000000000000"
 Q6_WRITEBACK_REQUIRED_FIELDS = (
     "gpu.diagnostics.q6_workgroup_diagnostics.q6_writeback_verified_all",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_sample_indices",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_evidence",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_verified",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_evidence[].q6_row_indexed",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_evidence[].q6_sample_indices",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_evidence[].f32_after_dispatch",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_evidence[].f32_after_writeback",
+    "gpu.diagnostics.q6_workgroup_diagnostics.q6_row_indexed_writeback_evidence[].row_indexed_samples_match_oracle",
     "gpu.diagnostics.q6_workgroup_diagnostics.q6_writable_bindings[].index",
     "gpu.diagnostics.q6_workgroup_diagnostics.q6_writable_bindings[].binding",
     "gpu.diagnostics.q6_workgroup_diagnostics.q6_writable_bindings[].writable",
@@ -370,6 +378,36 @@ def _compact_binding_identity(binding: dict[str, Any], path: str) -> dict[str, A
     }
 
 
+def _integer_list(value: Any) -> list[int] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    result: list[int] = []
+    for item in value:
+        try:
+            result.append(int(item))
+        except (TypeError, ValueError):
+            return None
+    return result
+
+
+def _f32_samples_by_index(value: Any) -> dict[int, float] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    result: dict[int, float] = {}
+    for sample in value:
+        if not isinstance(sample, dict):
+            return None
+        try:
+            index = int(sample.get("index"))
+            sample_value = sample.get("value")
+            if not _is_finite_number(sample_value):
+                return None
+            result[index] = float(sample_value)
+        except (TypeError, ValueError):
+            return None
+    return result
+
+
 def _q6_writeback_evidence(q6: Any) -> dict[str, Any]:
     """Validate Q6_K compact writable-binding writeback hash evidence.
 
@@ -377,8 +415,13 @@ def _q6_writeback_evidence(q6: Any) -> dict[str, Any]:
     event.  A Q6_K oracle match is only claimable when every writable output
     binding has a non-zero hash after GPU dispatch, a non-zero hash after
     host/container writeback, the hashes match, and the executor explicitly
-    marked the writeback as verified.  Missing compact fields fail closed as
-    unverified; present mismatches fail closed as writeback mismatches.
+    marked the writeback as verified.  It must also include row-indexed
+    post-dispatch/post-writeback f32 samples tied to the Q6 oracle
+    row_window/q6_first_mismatch dst indices.  Generic or exact-index f32 samples
+    on q6_writable_bindings alone cannot promote correctness because they do not
+    prove the executor sampled the oracle-requested rows.  Missing compact or
+    row-indexed fields fail closed as unverified; present mismatches fail closed
+    as writeback mismatches.
     """
 
     required_fields = list(Q6_WRITEBACK_REQUIRED_FIELDS)
@@ -397,12 +440,110 @@ def _q6_writeback_evidence(q6: Any) -> dict[str, Any]:
     mismatches: list[dict[str, Any]] = []
     unknown: list[dict[str, Any]] = []
     verified_bindings: list[dict[str, Any]] = []
+    row_indexed_details: list[dict[str, Any]] = []
 
     if q6.get("q6_writeback_verified_all") is not True:
         missing.append({
             "path": "q6_writeback_verified_all",
             "reason": "expected true",
             "value": q6.get("q6_writeback_verified_all"),
+        })
+
+    required_row_indices = _integer_list(q6.get("q6_row_indexed_sample_indices"))
+    if not required_row_indices:
+        missing.append({
+            "path": "q6_row_indexed_sample_indices",
+            "reason": "expected non-empty oracle row-indexed dst indices",
+            "value": q6.get("q6_row_indexed_sample_indices"),
+        })
+
+    if q6.get("q6_row_indexed_writeback_verified") is not True:
+        missing.append({
+            "path": "q6_row_indexed_writeback_verified",
+            "reason": "expected true",
+            "value": q6.get("q6_row_indexed_writeback_verified"),
+        })
+
+    row_evidence = q6.get("q6_row_indexed_writeback_evidence")
+    if not isinstance(row_evidence, list) or not row_evidence:
+        missing.append({
+            "path": "q6_row_indexed_writeback_evidence",
+            "reason": "expected non-empty row-indexed writeback diagnostics",
+            "value": row_evidence,
+        })
+        row_evidence = []
+
+    for index, item in enumerate(row_evidence):
+        path = f"q6_row_indexed_writeback_evidence[{index}]"
+        if not isinstance(item, dict):
+            missing.append({"path": path, "reason": "expected object", "value": item})
+            continue
+        identity = _compact_binding_identity(item, path)
+        sample_indices = _integer_list(item.get("q6_sample_indices"))
+        if item.get("q6_row_indexed") is not True:
+            missing.append(identity | {
+                "field": "q6_row_indexed",
+                "reason": "expected true",
+                "value": item.get("q6_row_indexed"),
+            })
+        if not sample_indices:
+            missing.append(identity | {
+                "field": "q6_sample_indices",
+                "reason": "expected non-empty row-indexed sample indices",
+                "value": item.get("q6_sample_indices"),
+            })
+        elif required_row_indices and not (set(sample_indices) & set(required_row_indices)):
+            missing.append(identity | {
+                "field": "q6_sample_indices",
+                "reason": "expected overlap with oracle row-indexed dst indices",
+                "value": item.get("q6_sample_indices"),
+                "required_indices": required_row_indices[:48],
+            })
+        if item.get("row_indexed_samples_match_oracle") is not True:
+            missing.append(identity | {
+                "field": "row_indexed_samples_match_oracle",
+                "reason": "expected true",
+                "value": item.get("row_indexed_samples_match_oracle"),
+            })
+        dispatch_samples = _f32_samples_by_index(item.get("f32_after_dispatch"))
+        writeback_samples = _f32_samples_by_index(item.get("f32_after_writeback"))
+        if dispatch_samples is None:
+            missing.append(identity | {
+                "field": "f32_after_dispatch",
+                "reason": "expected non-empty finite row-indexed f32 samples",
+                "value": item.get("f32_after_dispatch"),
+            })
+        if writeback_samples is None:
+            missing.append(identity | {
+                "field": "f32_after_writeback",
+                "reason": "expected non-empty finite row-indexed f32 samples",
+                "value": item.get("f32_after_writeback"),
+            })
+        if sample_indices and dispatch_samples is not None and writeback_samples is not None:
+            missing_sample_indices = [
+                sample_index
+                for sample_index in sample_indices
+                if sample_index not in dispatch_samples or sample_index not in writeback_samples
+            ]
+            if missing_sample_indices:
+                missing.append(identity | {
+                    "field": "f32_after_dispatch/f32_after_writeback",
+                    "reason": "row-indexed sample index missing from dispatch or writeback f32 evidence",
+                    "missing_sample_indices": missing_sample_indices[:48],
+                })
+            for sample_index in sample_indices:
+                if sample_index in dispatch_samples and sample_index in writeback_samples:
+                    if dispatch_samples[sample_index] != writeback_samples[sample_index]:
+                        mismatches.append(identity | {
+                            "field": "f32_after_dispatch/f32_after_writeback",
+                            "sample_index": sample_index,
+                            "dispatch_value": dispatch_samples[sample_index],
+                            "writeback_value": writeback_samples[sample_index],
+                        })
+        row_indexed_details.append(identity | {
+            "q6_row_indexed": item.get("q6_row_indexed"),
+            "q6_sample_indices": item.get("q6_sample_indices"),
+            "row_indexed_samples_match_oracle": item.get("row_indexed_samples_match_oracle"),
         })
 
     for item in q6.get("q6_writable_writeback_mismatches") or []:
@@ -510,6 +651,8 @@ def _q6_writeback_evidence(q6: Any) -> dict[str, Any]:
         "unknown": unknown[:16],
         "verified_bindings": verified_bindings[:16],
         "verified_binding_count": len(verified_bindings),
+        "row_indexed_required_indices": required_row_indices[:48] if required_row_indices else [],
+        "row_indexed_evidence": row_indexed_details[:16],
     }
 
 

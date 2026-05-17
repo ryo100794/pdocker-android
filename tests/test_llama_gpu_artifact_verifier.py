@@ -95,6 +95,22 @@ def speedup_sections(speedup=2.0, target_met=True, cpu_tps=0.1, gpu_tps=0.2):
 def q6_verified_writeback(hash_value="0x1111111111111111"):
     return {
         "q6_writeback_verified_all": True,
+        "q6_row_indexed_sample_indices": [257],
+        "q6_row_indexed_writeback_verified": True,
+        "q6_row_indexed_writeback_evidence": [
+            {
+                "index": 2,
+                "binding": 2,
+                "alias_rep": 2,
+                "offset": 0,
+                "size": 607744,
+                "q6_row_indexed": True,
+                "q6_sample_indices": [257],
+                "f32_after_dispatch": [{"index": 257, "value": 1.25}],
+                "f32_after_writeback": [{"index": 257, "value": 1.25}],
+                "row_indexed_samples_match_oracle": True,
+            }
+        ],
         "q6_writable_bindings": [
             {
                 "index": 2,
@@ -358,6 +374,51 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(report["classification"], "q6-writeback-unverified")
         self.assertIn("q6_writable_bindings", json.dumps(report["q6_writeback_evidence"]["missing"]))
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
+    def test_q6_match_fails_closed_when_only_exact_index_f32_samples_lack_row_index_evidence(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "match",
+                        "q6_writeback_verified_all": True,
+                        "q6_row_indexed_sample_indices": [257],
+                        "q6_writable_bindings": [
+                            {
+                                "index": 2,
+                                "binding": 2,
+                                "alias_rep": 2,
+                                "offset": 0,
+                                "size": 607744,
+                                "writable": True,
+                                "gpu_after_dispatch_hash": "0x1111111111111111",
+                                "fd_after_hash": "0x1111111111111111",
+                                "writeback_verified": True,
+                                "writeback_mismatch": False,
+                                "f32_after_dispatch": [{"index": 257, "value": 1.25}],
+                                "f32_after_writeback": [{"index": 257, "value": 1.25}],
+                            }
+                        ],
+                    },
+                },
+                "correctness": gpu_correctness_report(),
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            **speedup_sections(speedup=2.0, target_met=True),
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 41, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-writeback-unverified")
+        missing = json.dumps(report["q6_writeback_evidence"]["missing"])
+        self.assertIn("q6_row_indexed_writeback_evidence", missing)
+        self.assertIn("q6_row_indexed_writeback_verified", missing)
         self.assertFalse(report["correctness_claim_allowed"])
         self.assertFalse(report["benchmark_claim_allowed"])
 

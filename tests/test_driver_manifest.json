@@ -14,7 +14,8 @@
       "skip",
       "skipped"
     ],
-    "device_gate_rule": "Lanes that require adb/installed APKs provide device evidence only; they do not promote a stable checkpoint unless the corresponding CI gate ledger promotion condition is satisfied, the artifact status is passing, and success/stable_checkpoint_eligible are true."
+    "device_gate_rule": "Lanes that require adb/installed APKs provide device evidence only; they do not promote a stable checkpoint unless the corresponding CI gate ledger promotion condition is satisfied, the artifact status is passing, and success/stable_checkpoint_eligible are true.",
+    "granularity_rule": "Broad P0/P1 blockers are split into execution_units. A passing sub-unit is regression evidence only and cannot promote a stable checkpoint unless the lane promotion_condition and matching device artifact promotion condition also pass."
   },
   "lanes": {
     "host-smoke": {
@@ -250,6 +251,54 @@
             "docs/test/llama-gpu-q6k-workflow-latest.json"
           ]
         }
+      ],
+      "execution_units": [
+        {
+          "id": "llama-q6k-env-parity",
+          "scope": "Compare script, pdockerd defaults, UI/compose launch path, and artifact verifier use the audited GPU diagnostic environment.",
+          "evidence": [
+            "scripts/llama-gpu-env-manifest.json",
+            "docs/test/llama-gpu-device-readiness-latest.json"
+          ],
+          "command_ids": [
+            "android-llama-gpu-q6k-workflow"
+          ],
+          "non_promoting_until": "Environment parity plus connected-device readiness/headroom pass; mismatches or readiness-blocked artifacts are non-promoting."
+        },
+        {
+          "id": "llama-q6k-readiness-headroom",
+          "scope": "ADB/device, installed APK, model fixture, thermal/device metadata, and Android swap/headroom are checked before model load.",
+          "evidence": [
+            "docs/test/llama-gpu-device-readiness-latest.json"
+          ],
+          "command_ids": [
+            "android-llama-gpu-q6k-workflow"
+          ],
+          "non_promoting_until": "Readiness status is pass and does not use --allow-memory-blocker as release evidence."
+        },
+        {
+          "id": "llama-q6k-oracle-run",
+          "scope": "Forced NGL=1 Q6_K workgroup/writeback device run captures local-size, writable-output, and sampled oracle data.",
+          "evidence": [
+            "docs/test/llama-gpu-workgroup3d-ngl1-latest.json",
+            "docs/test/llama-gpu-q6k-workflow-latest.json"
+          ],
+          "command_ids": [
+            "android-llama-gpu-q6k-workflow"
+          ],
+          "non_promoting_until": "Verifier reports a matching Q6_K oracle; numeric mismatches remain blocker evidence only."
+        },
+        {
+          "id": "llama-q6k-benchmark-claim",
+          "scope": "NGL>=2 repeating-layer proof and CPU/GPU throughput fields are considered only after correctness passes.",
+          "evidence": [
+            "docs/test/llama-gpu-q6k-workflow-latest.json"
+          ],
+          "command_ids": [
+            "android-llama-gpu-q6k-workflow"
+          ],
+          "non_promoting_until": "benchmark_claim_allowed=true and the CI gate ledger llama GPU promotion condition passes."
+        }
       ]
     },
     "python-coverage": {
@@ -407,6 +456,44 @@
             "docs/test/ui-it-selftest-latest.json",
             "docs/test/engine-exec-input-latest.jsonl"
           ]
+        }
+      ],
+      "execution_units": [
+        {
+          "id": "terminal-session-route",
+          "scope": "Container terminals use Engine exec/HTTP upgrade while local PTY, daemon log, and job log sessions stay separate.",
+          "evidence": [
+            "docs/test/ui-it-selftest-latest.json"
+          ],
+          "command_ids": [
+            "android-terminal-exec-it-smoke"
+          ],
+          "non_promoting_until": "Paired raw Engine JSONL proves the route for a real running container."
+        },
+        {
+          "id": "terminal-input-bytes",
+          "scope": "Raw JSONL proves single Enter, isolated Ctrl-C/ETX without literal c injection, ArrowUp history, top repaint, q return, and resize.",
+          "evidence": [
+            "docs/test/engine-exec-input-latest.jsonl"
+          ],
+          "command_ids": [
+            "android-terminal-exec-it-smoke",
+            "verify-terminal-exec-it-artifact"
+          ],
+          "non_promoting_until": "verify-terminal-exec-it-artifact passes with --require-container on fresh paired artifacts."
+        },
+        {
+          "id": "terminal-ime-ui-replay",
+          "scope": "UI self-test covers JP/EN IME and shell usability after q/resize regression cases.",
+          "evidence": [
+            "docs/test/ui-it-selftest-latest.json",
+            "docs/test/engine-exec-input-latest.jsonl"
+          ],
+          "command_ids": [
+            "android-terminal-exec-it-smoke",
+            "verify-terminal-exec-it-artifact"
+          ],
+          "non_promoting_until": "Host verifier alone is non-promoting; both device artifacts must be present and current."
         }
       ]
     },
@@ -611,6 +698,41 @@
       ],
       "planned_gap_contracts": [
         "APK memory pager promotion device evidence and controlled OOM/LMK replay"
+      ],
+      "execution_units": [
+        {
+          "id": "memory-pager-managed-proof",
+          "scope": "Explicit managed opt-in proves managed-region table counters, page materialization, dirty/writeback accounting, and safe denial/fallback fields.",
+          "evidence": [
+            "docs/test/apk-memory-pager-managed-latest.json"
+          ],
+          "command_ids": [
+            "android-memory-pager-managed-poc"
+          ],
+          "non_promoting_until": "Connected-device managed artifact passes and is paired with OOM/LMK replay; standalone PoC artifacts are non-promoting."
+        },
+        {
+          "id": "memory-pager-transparent-proof",
+          "scope": "Transparent probe proves capability detection, unsupported mapping exclusion/pass-through, and unresolved-fault fail-closed diagnostics.",
+          "evidence": [
+            "docs/test/apk-memory-pager-transparent-latest.json"
+          ],
+          "command_ids": [
+            "android-memory-pager-transparent-poc"
+          ],
+          "non_promoting_until": "Connected-device transparent artifact passes and does not claim ordinary Dockerfile heap paging."
+        },
+        {
+          "id": "memory-oom-lmk-replay",
+          "scope": "Controlled replay proves allocation denial, backend-death classifier, ring/summary retention, and operation/container identity.",
+          "evidence": [
+            "docs/test/oom-lmk-survival-latest.json"
+          ],
+          "command_ids": [
+            "oom-lmk-survival-device-gate"
+          ],
+          "non_promoting_until": "Full pager plus LMK replay promotion condition passes with UI stale-evidence rejection."
+        }
       ]
     },
     "linkat-hardlink-semantics-plan": {
@@ -631,6 +753,52 @@
           "artifacts": [
             "tests/direct_syscall_coverage.json"
           ]
+        }
+      ],
+      "execution_units": [
+        {
+          "id": "linkat-errno-matrix",
+          "scope": "C runtime contract for linkat AT_FDCWD/path variants, invalid flags, missing parents, cross-root escapes, and directory hardlink denial.",
+          "evidence": [
+            "tests/direct_syscall_coverage.json"
+          ],
+          "command_ids": [
+            "linkat-hardlink-planned-gap"
+          ],
+          "non_promoting_until": "Host/static contract is represented; Android device semantics artifact is still required."
+        },
+        {
+          "id": "linkat-inode-index-design",
+          "scope": "Metadata/index or CoW peer tracking records hardlink relationships without treating copy-fallback bytes as success.",
+          "evidence": [
+            "tests/direct_syscall_coverage.json"
+          ],
+          "command_ids": [
+            "linkat-hardlink-planned-gap"
+          ],
+          "non_promoting_until": "Design/static evidence cannot promote until direct-runtime C implementation and device proof pass."
+        },
+        {
+          "id": "linkat-c-runtime-semantics",
+          "scope": "C implementation proves creation, unlink decrement, rename/replace over hardlinked destinations, copy-up interactions, and write-through from either name.",
+          "evidence": [
+            "tests/direct_syscall_coverage.json"
+          ],
+          "command_ids": [
+            "linkat-hardlink-planned-gap"
+          ],
+          "non_promoting_until": "Device artifact must prove identical st_dev/st_ino, link-count transitions, write-through, and Linux errno parity."
+        },
+        {
+          "id": "linkat-recovery-device-proof",
+          "scope": "Daemon/helper kill during metadata updates recovers without partial hardlink index or divergent copy fallback promotion.",
+          "evidence": [
+            "tests/direct_syscall_coverage.json"
+          ],
+          "command_ids": [
+            "linkat-hardlink-planned-gap"
+          ],
+          "non_promoting_until": "Final Android restart-recovery artifact passes; planned-gap or host-only artifacts remain non-promoting."
         }
       ]
     },

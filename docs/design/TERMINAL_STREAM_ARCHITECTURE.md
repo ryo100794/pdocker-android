@@ -1,6 +1,6 @@
 # Terminal Stream Architecture
 
-Snapshot date: 2026-05-06.
+Snapshot date: 2026-05-16.
 
 ## Purpose
 
@@ -17,9 +17,9 @@ implementation points that must be refactored.
 
 | Area | Current file | Current responsibility |
 |---|---|---|
-| Terminal surface | `app/src/main/assets/xterm/index.html` | xterm.js rendering, soft-key palette, selection/copy, pinch zoom, IME handling, input forwarding, resize forwarding |
+| Terminal surface | `app/src/main/assets/xterm/index.html` | Generic xterm.js rendering, soft-key palette, selection/copy, pinch zoom, IME/input normalization, byte input forwarding, resize forwarding |
 | Android bridge | `app/src/main/kotlin/io/github/ryo100794/pdocker/Bridge.kt` | WebView JavaScript bridge, local PTY child, clipboard, and delegation to selected session helpers |
-| Engine exec session | `app/src/main/kotlin/io/github/ryo100794/pdocker/EngineExecSession.kt` | Engine exec creation, hijacked raw TTY stream, stdin, resize route, and Engine exec diagnostics |
+| Engine exec session | `app/src/main/kotlin/io/github/ryo100794/pdocker/EngineExecSession.kt` | Docker-compatible exec create/start, HTTP 101 hijacked raw TTY stream, raw stdin writes, resize route, and Engine exec diagnostics |
 | Local PTY helper | `app/src/main/kotlin/io/github/ryo100794/pdocker/PtyNative.kt`, `app/src/main/cpp/pty.c` | APK-local pseudo terminal process for diagnostic shells |
 | Engine API | `app/src/main/assets/pdockerd/pdockerd` | Docker-compatible `/containers/{id}/exec`, `/exec/{id}/start`, attach, multiplex/raw stream, backend process launch |
 | Direct executor TTY support | `app/src/main/cpp/pdocker_direct_exec.c` | Container path mediation, `/dev/tty` and process-group handling for the direct executor |
@@ -32,6 +32,46 @@ a named owner outside the WebView bridge. `Bridge.kt` still has local PTY launch
 and command-prefix selection, so the split is not complete, but Engine exec
 routing is now centralized in a session-layer file instead of being duplicated
 in the generic terminal surface or bridge.
+
+## Current Self-Test Evidence
+
+The 2026-05-16 terminal self-test evidence narrows the remaining architecture
+work without changing the boundary: the WebView/xterm asset is the generic
+terminal surface, while `EngineExecSession` is the Engine exec session
+transport.
+
+The evidence currently proves these points on device when a real container is
+available:
+
+- **Generic terminal surface:** the self-test drives the same
+  `xterm/index.html` surface and generic `PdockerBridge.input` /
+  `PdockerBridge.resize` verbs that user interaction uses. The surface exposes
+  generic test hooks, but it does not construct Docker exec requests, know
+  container IDs, or enforce smoke-artifact policy.
+- **EngineExecSession transport:** Engine exec sessions are created through
+  `/containers/{id}/exec` with `Tty=true`, attach stdin/stdout/stderr, and an
+  interactive shell environment. `/exec/{id}/start` is started with Docker
+  hijack semantics and must return HTTP 101 before raw PTY bytes are treated as
+  terminal data. Stdin is written as the exact bytes produced by the terminal
+  input adapter; the bridge must not add line endings or read lines.
+- **Resize evidence:** resize is not inferred from a successful stream start.
+  Diagnostics must record a Docker-compatible `/exec/{id}/resize?h={rows}&w={cols}`
+  request or an explicit `resize-failed` event for the same exec id.
+- **IME handling:** Android WebView helper-textarea fallback paths claim
+  `beforeinput`/`keydown` events for Enter and modifier shortcuts, suppress the
+  duplicate xterm data event, normalize line breaks to one carriage return, and
+  prevent Ctrl-C from also injecting literal `c`.
+- **Ctrl/Alt modifier policy:** Ctrl maps a single character to its terminal
+  control byte before any Alt/Esc prefix is applied; Alt and Esc prefix the
+  resulting byte sequence with `ESC` (`0x1b`). Modifier toggles are transient:
+  after one non-raw send they clear, and an idle toggle also clears on timeout.
+  Raw soft keys such as Ctrl-C/Ctrl-D/Ctrl-Z send their literal control bytes and
+  bypass modifier state.
+- **Top/fullscreen behavior:** the real-device gate requires foreground `top` to
+  emit a visible terminal repaint before `q` is accepted. A batch `top` check or
+  a shell prompt after a failed launch is not enough. The evidence also records
+  that the repaint remains terminal-shaped rather than turning into log text,
+  bracket argv noise, raw cursor-key text, or broken CR/LF output.
 
 ## Architectural Rule
 
@@ -169,8 +209,14 @@ Terminal input must preserve user intent without session-specific hacks:
   xterm-style terminals send carriage return.
 - Modifier keys are a generic terminal feature. Ctrl plus `c` must produce byte
   `0x03`; it must not also emit literal `c`.
+- Ctrl applies the conventional terminal control mapping to one character
+  (`a`-`z`, `A`-`Z`, space, `[`, `\`, `]`, `^`, `_`, and `?`). Alt and Esc
+  prefix the post-Ctrl result with `ESC` (`0x1b`), so combined Ctrl+Alt uses a
+  deterministic Ctrl-then-Esc-prefix order.
 - A modifier is one-shot unless explicitly locked by a future lock UI. After a
-  modified key is sent, the modifier state clears.
+  modified key is sent, the modifier state clears; an armed-but-unused modifier
+  also expires on a short timeout. Raw soft-key buttons bypass the modifier
+  toggle state and send their exact bytes.
 - Selection mode suppresses the soft keyboard while selection handles are being
   used.
 - Raw shortcut buttons such as Ctrl-C send the exact control byte and must not
@@ -225,8 +271,9 @@ telemetry.
 
 The terminal suite must include:
 
-- Generic xterm input tests: Enter, Ctrl-C, Ctrl-D, Ctrl-Z, Alt/Esc prefix,
-  Japanese IME line break, selection mode keyboard suppression, paste.
+- Generic xterm input tests: Enter, Ctrl-C, Ctrl-D, Ctrl-Z, Ctrl special
+  character mapping, Alt/Esc prefix, one-shot modifier clearing, Japanese IME
+  line break, selection mode keyboard suppression, paste.
 - Engine exec API tests: create/start/hijack path, `Tty=true`, command argv
   preservation, stdin, stdout, Ctrl-C, resize.
 - Non-TTY exec tests: multiplex frame decoding and stderr separation.
@@ -235,8 +282,9 @@ The terminal suite must include:
   the user button.
 - Device evidence stored under `files/pdocker/diagnostics/` and copied to the
   test artifact tree when run by the Android smoke driver. The artifact should
-  expose first-class `Evidence` keys for top repaint shape, `q` quit, Ctrl-C,
-  ArrowUp/history, Enter, and Engine exec resize route observation.
+  expose first-class `Evidence` keys for top repaint shape, foreground `top`
+  refresh before `q`, `q` quit, Ctrl-C, ArrowUp/history, IME Enter/Ctrl-C,
+  Enter, and Engine exec resize route observation.
 
 Passing a JavaScript-only self-test is not enough to claim `exec -it` is fixed.
 The gate is a real device session that can run at least:
@@ -343,6 +391,8 @@ owns the Engine exec transport contract, including Docker-compatible create,
 start/hijack, raw stdin, resize, and diagnostics. `Bridge.kt` is still the
 WebView JavaScript bridge and still owns the local diagnostic PTY path, while
 `MainActivity.kt` still opens Engine exec terminals through command-like routing.
-The next slices should introduce explicit `TerminalSession` construction at the
-launch sites and move the remaining local PTY transport into its own session
-class before further terminal bug fixes are marked complete.
+The self-test evidence is therefore a transport and UI-boundary proof, not proof
+that the final `TerminalSession` abstraction is complete. The next slices should
+introduce explicit `TerminalSession` construction at the launch sites and move
+the remaining local PTY transport into its own session class before further
+terminal bug fixes are marked complete.

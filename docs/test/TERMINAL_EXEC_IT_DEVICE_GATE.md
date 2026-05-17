@@ -25,6 +25,13 @@ The runner collects these files into `PDOCKER_SMOKE_ARTIFACT_DIR`:
 - `ui-it-selftest-latest.json`
 - `engine-exec-input-latest.jsonl`
 
+The current evidence model is intentionally split by layer: the JSON artifact
+summarizes required UI-observable evidence, while the JSONL sidecar is the
+session-transport proof emitted by `EngineExecSession`. A pass must show that
+the generic terminal surface produced the bytes, that the Engine exec session
+transport delivered those bytes over a Docker hijacked TTY stream, and that
+resize/top/IME behavior was observed through the same route a user action uses.
+
 The skip artifact and real-run artifact must include:
 
 - `Status: "planned-skip"` for planned skips
@@ -39,6 +46,11 @@ The skip artifact and real-run artifact must include:
 For a real run, `engine-exec-input-latest.jsonl` must contain device-emitted
 EngineExecSession records, not reconstructed host text:
 
+These records are the EngineExecSession transport contract: Docker-compatible
+exec create, HTTP 101 start/hijack, exact raw stdin writes, and explicit resize
+route observation. They must not be replaced by host-side replay, local shell
+stdin, or a JavaScript-only assertion.
+
 - a `start` event whose `container` equals the artifact `Container`
 - `create-response`, `created`, `start-response`, and `stream-started` events
   for one exec id, including a 2xx exec-create response and a 101 hijack start
@@ -51,6 +63,11 @@ EngineExecSession records, not reconstructed host text:
 - for the JP/EN IME Ctrl-C regression, an isolated ETX byte (`03`) after
   `sleep 15`; `03 63`, a standalone `63` before recovery, or `sleep 15c` is
   failure evidence, not a pass
+- the generic Ctrl/Alt modifier policy remains session-neutral: Ctrl maps a
+  single character to the conventional terminal control byte, Alt/Esc prefix the
+  resulting byte sequence with `ESC`, modifiers clear after one modified send or
+  timeout, and raw soft keys send exact bytes without depending on shell or
+  Docker behavior
 - a Docker-compatible resize event with `/exec/{id}/resize?h={rows}&w={cols}`
   or an explicit `resize-failed` event for the same exec id
 
@@ -118,12 +135,24 @@ private test-only Engine endpoint. Required reproductions are:
    with one isolated `03` byte for both Japanese and English IME routes.
 4. Send the UI cursor-key path (`ArrowUp` / `\u001b[A`) and verify readline
    history replays the seeded command instead of printing escape text.
-5. Launch full-screen `top`, require a visible refresh before `q` via
-   `top-refresh-observed-before-q`, verify the display remains a TTY-shaped
+5. Launch foreground/full-screen `top`, require a visible refresh before `q`
+   via `top-refresh-observed-before-q`, verify the display remains a TTY-shaped
    terminal repaint, press UI `q`, and verify the shell accepts
-   `echo pdocker-ui-it-topq-ok`.
+   `echo pdocker-ui-it-topq-ok`. The batch `top -b -n 1` probe is only a
+   capability check; it cannot satisfy fullscreen refresh or `q` evidence.
 6. Trigger a terminal resize and verify the Engine exec resize route is
    observable in diagnostics.
+
+## Current proof matrix
+
+| Concern | Required proof |
+|---|---|
+| Generic terminal surface | Input is sent through `xterm/index.html` generic test hooks and `PdockerBridge.input`; resize is sent through `PdockerBridge.resize`; static tests keep Docker/Engine tokens out of the surface. |
+| Engine exec session transport | JSONL shows one exec id with create response, created event, 101 start response, stream-started event, raw input events, and matching container id. |
+| IME handling | The helper-textarea `beforeinput` path submits the IME Enter command with exactly one `0d` and sends Ctrl-C as one isolated `03` without literal `c`. |
+| Ctrl/Alt modifier policy | Ctrl/Alt behavior is verified as generic terminal input behavior; device Ctrl-C evidence proves the control-byte route, while host/static tests cover Alt/Esc prefix and one-shot clearing. |
+| Top/fullscreen behavior | Foreground `top` must repaint before `q`, remain terminal-shaped, accept `q`, and return to a shell that runs the recovery command. |
+| Resize | JSONL contains `/exec/{id}/resize?h={rows}&w={cols}` or same-id `resize-failed`; `stream-started` is never counted as resize proof. |
 
 ## Regression symptoms this gate is meant to catch
 
@@ -139,6 +168,9 @@ private test-only Engine endpoint. Required reproductions are:
 
 - The terminal surface is a generic terminal UI. It may normalize bytes, expose
   generic test hooks, and call bridge methods such as `input` and `resize`.
+  IME handling, Enter normalization, Ctrl/Alt modifier mapping, selection-mode
+  keyboard suppression, paste, and soft-key buttons are terminal-surface/input
+  adapter behavior, not Docker exec policy.
 - The terminal surface must not contain Docker command strings, container IDs,
   Engine endpoints such as `/containers/{id}/exec` or `/exec/{id}/start`, PTY
   implementation names, artifact validators, or device-smoke policy.

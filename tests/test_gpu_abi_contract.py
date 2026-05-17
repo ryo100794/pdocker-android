@@ -603,6 +603,12 @@ class GpuAbiContractTest(unittest.TestCase):
             "cpu-oracle-required",
             "comparison.target_tokens_per_second",
             "bridge_overhead_phase",
+            "q6_row_indexed_sample_indices",
+            "q6_row_indexed_writeback_evidence",
+            "q6_row_indexed_writeback_verified",
+            "row_indexed_samples_match_oracle",
+            "row_window/q6_first_mismatch dst indices",
+            "Generic or exact-index f32 samples",
         ]:
             self.assertIn(marker, verifier + "\n" + runbook + "\n" + next_steps)
         for marker in [
