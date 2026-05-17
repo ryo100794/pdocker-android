@@ -7,6 +7,7 @@
     "android-quick": "Short Android device smoke tests.",
     "android-full": "Longer Android device smoke tests.",
     "android-documents": "Android SAF Documents mediator tests.",
+    "android-service-truth": "Focused Android planned-gap service truth evidence.",
     "android-gpu": "Android GPU executor and bridge measurements.",
     "android-llama": "llama.cpp container and benchmark measurements.",
     "release": "Publication, payload, and secret-readiness checks.",
@@ -775,8 +776,8 @@
     {
       "id": "service.health.listener-container-proof",
       "area": "service-health-listener-proof",
-      "lane": "android-full",
-      "command": "bash scripts/android-device-smoke.sh --no-install",
+      "lane": "android-service-truth",
+      "command": "bash scripts/verify-heavy.sh --android-service-truth",
       "status": "planned-gap",
       "docs": [
         "docs/plan/TODO.md",

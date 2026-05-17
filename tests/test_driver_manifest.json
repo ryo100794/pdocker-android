@@ -972,6 +972,30 @@
         }
       ]
     },
+    "android-service-truth": {
+      "description": "Device route for service truth evidence. The current smoke intentionally returns planned-gap/non-promoting evidence until UI card, Engine state, listener owner, process tree, and logs reduce to the same container ID.",
+      "requires": [
+        "adb",
+        "installed-debug-apk",
+        "running-pdockerd",
+        "ui-service-card-export"
+      ],
+      "checkpoint_class": "device-evidence-planned-gap",
+      "stable_checkpoint_eligible": false,
+      "planned_gap_contracts": [
+        "service truth device-pass reducer for UI/Engine/state/process/listener/log same-ID proof"
+      ],
+      "promotion_condition": "Must satisfy docs/test/CI_GATE_LEDGER.md service truth promotion condition with Status=device-pass, Success=true, and strict same-container-ID proof artifacts.",
+      "commands": [
+        {
+          "id": "android-service-truth-planned-gap-smoke",
+          "shell": "rm -f docs/test/service-truth-latest.json\nset +e\nPDOCKER_SMOKE_ARTIFACT_DIR=docs/test bash scripts/android-device-smoke.sh --no-install --service-truth default-workspace\nrc=$?\nset -e\ntest \"$rc\" -eq 2\npython3 - <<'PY'\nimport json\nfrom pathlib import Path\np=Path('docs/test/service-truth-latest.json')\nif not p.is_file():\n    raise SystemExit('service truth artifact missing')\ndata=json.loads(p.read_text())\nif data.get('Status') != 'planned-gap' or data.get('Success') is not False:\n    raise SystemExit('service truth scaffold must remain planned-gap Success=false')\nPY",
+          "artifacts": [
+            "docs/test/service-truth-latest.json"
+          ]
+        }
+      ]
+    },
     "android-single-container-echo-hi": {
       "description": "Focused Android device gate for docker run --rm ubuntu:22.04 echo hi. It must not rely on --quick, because quick exits before docker_run_rm_smoke.",
       "checkpoint_class": "device-evidence-only",

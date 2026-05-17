@@ -27,6 +27,9 @@ Modes:
   --android-runtime-teardown
                     run the runtime teardown planned-gap device lane through
                     the canonical test driver
+  --android-service-truth
+                    run the service truth planned-gap device lane through
+                    the canonical test driver
   --android-storage-metrics-sequence
                     run the storage metrics device-sequence lane through the
                     canonical test driver
@@ -49,7 +52,7 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --backend-quick|--backend-full|--container-probe|--android-quick|--android-full|--android-dev-workspace|--android-documents|--android-runtime-teardown|--android-storage-metrics-sequence|--android-single-container|--android-modern-runtime-truth)
+    --backend-quick|--backend-full|--container-probe|--android-quick|--android-full|--android-dev-workspace|--android-documents|--android-runtime-teardown|--android-service-truth|--android-storage-metrics-sequence|--android-single-container|--android-modern-runtime-truth)
       MODE="${1#--}"
       ;;
     --no-install)
@@ -96,6 +99,9 @@ case "$MODE" in
     ;;
   android-runtime-teardown)
     python3 scripts/pdocker-test-driver.py --lane android-runtime-teardown
+    ;;
+  android-service-truth)
+    python3 scripts/pdocker-test-driver.py --lane android-service-truth
     ;;
   android-storage-metrics-sequence)
     python3 scripts/pdocker-test-driver.py --lane android-storage-metrics-sequence

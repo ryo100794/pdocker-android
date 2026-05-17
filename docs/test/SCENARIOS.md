@@ -72,6 +72,7 @@ missing-artifact evidence, never as a passing scenario.
 | `android-quick` | Short ADB smoke tests on an installed APK. |
 | `android-full` | Longer ADB smoke tests on an installed APK. |
 | `android-documents` | SAF Documents mediator tests. |
+| `android-service-truth` | Focused Android planned-gap service truth evidence. |
 | `android-gpu` | GPU executor and bridge measurements. |
 | `android-llama` | llama.cpp container and benchmark measurements. |
 | `release` | Publication, payload, secret-readiness, and checkpoint-honesty checks. Host-only release hygiene is non-promoting while P0 planned-gap/device gates remain open. |

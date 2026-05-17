@@ -67,12 +67,21 @@ class TestDriverManifestTest(unittest.TestCase):
         lanes = self.manifest["lanes"]
         for lane_name in [
             "android-runtime-teardown",
+            "android-service-truth",
             "android-storage-metrics-sequence",
             "android-single-container-echo-hi",
             "android-modern-runtime-truth",
         ]:
             self.assertIn(lane_name, lanes)
             self.assertFalse(lanes[lane_name]["stable_checkpoint_eligible"], lane_name)
+
+        service_cmd = lanes["android-service-truth"]["commands"][0]["shell"]
+        self.assertIn("rm -f docs/test/service-truth-latest.json", service_cmd)
+        self.assertIn("PDOCKER_SMOKE_ARTIFACT_DIR=docs/test", service_cmd)
+        self.assertIn("--service-truth default-workspace", service_cmd)
+        self.assertIn('test "$rc" -eq 2', service_cmd)
+        self.assertIn("service truth scaffold must remain planned-gap Success=false", service_cmd)
+        self.assertIn("docs/test/service-truth-latest.json", lanes["android-service-truth"]["commands"][0]["artifacts"])
 
         single_cmd = lanes["android-single-container-echo-hi"]["commands"][0]["shell"]
         self.assertIn("--single-container-echo-hi", single_cmd)
@@ -90,6 +99,7 @@ class TestDriverManifestTest(unittest.TestCase):
             "--android-dev-workspace",
             "--android-documents",
             "--android-runtime-teardown",
+            "--android-service-truth",
             "--android-storage-metrics-sequence",
             "--android-single-container",
             "--android-modern-runtime-truth",
@@ -99,6 +109,7 @@ class TestDriverManifestTest(unittest.TestCase):
             "android-dev-workspace",
             "android-documents",
             "android-runtime-teardown",
+            "android-service-truth",
             "android-storage-metrics-sequence",
             "android-single-container-echo-hi",
             "android-modern-runtime-truth",
