@@ -966,3 +966,42 @@ classifies the artifact as `q6-writeback-mismatch` (exit 40).  This makes the
 next device run actionable: a Q6_K match with stable compact writeback hashes
 can move on to `ngl=2`, while missing or differing output hashes remain a
 writeback/device-boundary blocker rather than a correctness pass.
+
+### Row-indexed Q6_K Next-Blocker Decision Tree (2026-05-17)
+
+The next row-indexed device run is a classifier, not a performance run.  Read
+the artifact in this exact order:
+
+1. **Memory-blocked**: `insufficient_memory`, `runtime_memory_pressure`, or
+   `device_memory_blocked:true` means the device stopped before trustworthy
+   Q6_K evidence.  Do not make a C-side Q6 change from that artifact.  Recover
+   Android memory and rerun with the same APK, image, prompts, and diagnostics.
+2. **Writeback evidence missing or mismatching**: absent
+   `q6_row_indexed_writeback_evidence`, false
+   `q6_row_indexed_writeback_verified`, false `q6_writeback_verified_all`, or
+   differing row-indexed `f32_after_dispatch` / `f32_after_writeback` values
+   classify the blocker as `writeback`.  The next native work is limited to
+   writable-output writeback/staging/cache/fd propagation.
+3. **Writeback verified + mismatch**: if
+   `q6_writeback_verified_all == true`,
+   `q6_row_indexed_writeback_verified == true`, and `latest_status == "mismatch"`,
+   writeback is no longer the leading explanation.  Choose one sub-branch:
+   - `workgroup_shape_blocker == true`, non-true
+     `spirv_local_size_consistent`, or `spirv_local_size_resolved` other than
+     `[32,2,1]` means the next blocker is `workgroup-shape`.
+   - Workgroup shape clear, row-indexed writeback verified, read-only hashes
+     clean, and shader-like Q6 diagnostics cleared means the next blocker is
+     `vulkan-device-execution`: barriers, queue submit, device-local staging, or
+     host/device visibility.
+   - Workgroup shape clear and writeback verified, but shader-like Q6 diagnostics
+     not cleared, means the next blocker is
+     `q6-arithmetic-reduction-or-output-layout`: lane reduction, accumulator
+     mask/base-workgroup handling, and output index mapping.
+4. **Writeback verified + match**: only a Q6_K `latest_status:"match"` with
+   row-indexed writeback verified, prompt correctness, runtime freshness, config
+   propagation, and speedup fields may exit the Q6 blocker.
+
+This tree intentionally keeps "row-indexed writeback verified + Q6 mismatch"
+separate from both "writeback failed" and "memory blocked" so the next C-side
+change targets a single boundary instead of weakening the correctness gate.
+A sampled mismatch without row-indexed writeback evidence is not progress.

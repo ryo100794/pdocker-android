@@ -343,6 +343,50 @@ Pass criteria:
   being promoted into a correctness claim when the container-visible fd boundary
   has not been proven.
 
+#### Row-indexed Q6_K device-run decision tree
+
+After the next strict `ngl=1` device artifact with row-indexed Q6_K writeback
+evidence, decide the next C-side blocker in this order.  Do not change native
+code until the artifact lands in exactly one branch.
+
+1. **If memory-blocked**: if the artifact reports `insufficient_memory`,
+   `runtime_memory_pressure`, `device_memory_blocked:true`, or a runtime abort
+   before the Q6_K dispatch, stop Q6 diagnosis.  This is not Q6 evidence and it
+   does not justify a C-side Q6 change.  Free Android memory without killing the
+   user's browser/VS Code session, keep the same APK/image/prompts, and rerun
+   the same compare command.
+2. **If row-indexed writeback is absent or differs**: if
+   `q6_row_indexed_writeback_evidence` is empty, `q6_row_indexed_writeback_verified`
+   is not true, `q6_writeback_verified_all` is not true, or any
+   `f32_after_dispatch` / `f32_after_writeback` value differs at the
+   `q6_row_indexed_sample_indices`, classify the next blocker as `writeback`.
+   Fix only writable-output staging/cache/download/fd propagation before
+   revisiting shader math.
+3. **If writeback is verified + the Q6 oracle still mismatches**: require
+   `q6_writeback_verified_all == true`,
+   `q6_row_indexed_writeback_verified == true`, non-empty
+   `q6_row_indexed_writeback_evidence`, and `latest_status == "mismatch"`.
+   Then use the existing sub-classifier instead of treating "another mismatch"
+   as progress:
+   - If `workgroup_shape_blocker == true`, `spirv_local_size_consistent` is not
+     true, or `spirv_local_size_resolved` is not `[32,2,1]` for the Q6_K event,
+     the next C-side blocker is **workgroup-shape**: fix local-size
+     propagation/materialization and strict refusal semantics.
+   - If workgroup shape is clear, read-only upload/dispatch hashes are clean,
+     and `q6_shader_like_64_abs_delta` / shader-like diagnostics clear the
+     CPU-side Q6 arithmetic, the next C-side blocker is **Vulkan
+     device-execution**: inspect barriers, queue submission, device-local
+     staging, and host/device visibility, not the Q6 decode.
+   - If workgroup shape and writeback are clear but the shader-like oracle does
+     not clear the math, the next C-side blocker is
+     **Q6 arithmetic/reduction/output-layout**: inspect the native Q6 SPIR-V
+     reduction, lane mapping, accumulator mask/base-workgroup handling, and
+     output index expression.  Do not add a Q6 block data conversion layer or
+     rebuild llama.cpp unless a bounded artifact proves that exact need.
+4. **If writeback is verified + the Q6 oracle matches**: only then may the run
+   advance out of this blocker, and only if the normal prompt correctness,
+   runtime freshness, config propagation, and speedup fields also pass.
+
 Fail criteria:
 
 - Eagerly reading hundreds of MiB into a diagnostic oracle.
@@ -517,10 +561,11 @@ Suggested first Spark task:
 ```text
 Continue the Q6_K strict-passthrough blocker for 0x274f68a67dfef210.  Do not
 modify llama.cpp, Dockerfiles, the model, or prompt probes.  Acceptance:
-the next device artifact either shows the sampled Q6_K oracle matching with
-spirv_local_size_resolved [32,2,1] and memory readiness passed, or records a
-new precise blocker class at the descriptor-view, workgroup, device-execution,
-or writeback boundary.
+the next row-indexed device artifact either memory-blocks before Q6_K and is
+rerun unchanged after memory recovers, or shows row-indexed writeback verified
+and then names exactly one remaining C-side blocker: workgroup-shape, Vulkan
+device-execution, or Q6 arithmetic/reduction/output-layout.  A sampled mismatch
+without row-indexed writeback evidence is not progress.
 ```
 
 If Spark gets lost, it should run:

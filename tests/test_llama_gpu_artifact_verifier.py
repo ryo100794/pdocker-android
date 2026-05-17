@@ -148,7 +148,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
     def test_memory_blocker_is_structured_and_optionally_allowed(self):
         payload = {
             "error": "insufficient_memory",
-            "memory": {"mem_available_mb": 100, "swap_free_mb": 1},
+            "memory": {"mem_available_mb": 1036, "swap_free_mb": 5},
             "device_actions": ["wait"],
         }
         blocked = self.run_verifier(payload)
@@ -156,8 +156,42 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         report = json.loads(blocked.stdout)
         self.assertEqual(report["classification"], "insufficient_memory")
         self.assertFalse(report["benchmark_claim_allowed"])
+        self.assertTrue(report["device_memory_blocked"])
+        self.assertIn("wait", report["device_actions"])
+        self.assertTrue(
+            any("pdocker-owned" in action and "stale llama" in action for action in report["device_actions"]),
+            report["device_actions"],
+        )
+        self.assertTrue(
+            any("run-as io.github.ryo100794.pdocker.compat" in command for command in report["diagnostic_commands"]),
+            report["diagnostic_commands"],
+        )
+        self.assertFalse(
+            any("am force-stop" in action for action in report["device_actions"]),
+            report["device_actions"],
+        )
         allowed = self.run_verifier(payload, "--allow-memory-blocker")
         self.assertEqual(allowed.returncode, 0, allowed.stdout)
+
+    def test_memory_blocker_preserves_artifact_diagnostics(self):
+        payload = {
+            "error": "runtime_memory_pressure",
+            "memory": {"mem_available_mb": 600, "swap_free_mb": 4},
+            "diagnostic_commands": ["adb shell cat /proc/meminfo"],
+            "pdocker_memory_diagnostics": {
+                "process_count": 1,
+                "stale_llama_process_hint": True,
+                "process_sample": [{"raw": "u0_a1 42 1 123456 llama-server", "rss_mb": 120.6}],
+                "diagnostic_commands": ["adb shell run-as pkg ps"],
+            },
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 20, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "runtime_memory_pressure")
+        self.assertEqual(report["pdocker_memory_diagnostics"]["process_count"], 1)
+        self.assertIn("adb shell cat /proc/meminfo", report["diagnostic_commands"])
+        self.assertIn("adb shell run-as pkg ps", report["diagnostic_commands"])
 
     def test_readiness_false_blocks_gpu_run_claims(self):
         payload = {

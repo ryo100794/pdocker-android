@@ -274,9 +274,141 @@ print(json.dumps(snap, separators=(",", ":")))
 PY
 }
 
+memory_diagnostic_commands_json() {
+  python3 - "$ADB" "${ANDROID_SERIAL:-}" "$PKG" "$CONTAINER" <<'PY'
+import json
+import shlex
+import sys
+import urllib.parse
+
+adb, serial, pkg, container = sys.argv[1:5]
+
+def adb_prefix() -> str:
+    prefix = shlex.quote(adb)
+    if serial:
+        prefix = f"ANDROID_SERIAL={shlex.quote(serial)} {prefix}"
+    return prefix
+
+def adb_shell(command: str) -> str:
+    return f"{adb_prefix()} shell {shlex.quote(command)}"
+
+process_check = (
+    "ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null "
+    f"| grep -E '(pdocker|llama|{pkg})' || true"
+)
+proc_status_check = (
+    "for p in /proc/[0-9]*; do "
+    "cmd=$(tr '\\0' ' ' < \"$p/cmdline\" 2>/dev/null || true); "
+    "case \"$cmd\" in *pdocker*|*llama*) "
+    "rss=$(grep -m1 '^VmRSS:' \"$p/status\" 2>/dev/null | awk '{print $2\" \"$3}'); "
+    "printf '%s rss=%s cmd=%s\\n' \"${p##*/}\" \"$rss\" \"$cmd\";; esac; "
+    "done"
+)
+encoded_container = urllib.parse.quote(container, safe="")
+engine_stop = (
+    "cd files && test -S pdocker/pdockerd.sock && "
+    "printf 'POST /containers/%s/stop HTTP/1.1\\r\\nHost: pdocker\\r\\n"
+    "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n' "
+    "| toybox nc -U -W 3 pdocker/pdockerd.sock || true"
+) % encoded_container
+commands = [
+    adb_shell("cat /proc/meminfo | egrep 'MemAvailable|SwapFree|SwapTotal'"),
+    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(process_check)}"),
+    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(proc_status_check)}"),
+    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(engine_stop)}"),
+]
+print(json.dumps(commands, separators=(",", ":")))
+PY
+}
+
+pdocker_memory_diagnostics_json() {
+  local raw_ps app_ps socket_state commands
+  raw_ps="$("$ADB" shell "ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null || ps -A 2>/dev/null" 2>/dev/null || true)"
+  app_ps="$(run_as "ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null || ps -A 2>/dev/null" 2>/dev/null || true)"
+  socket_state="$(run_as "cd files 2>/dev/null && if test -S pdocker/pdockerd.sock; then echo present; else echo absent; fi" 2>/dev/null | tr -d '\r' || true)"
+  commands="$(memory_diagnostic_commands_json || printf '[]')"
+  python3 - "$PKG" "$CONTAINER" "$raw_ps" "$app_ps" "$socket_state" "$commands" <<'PY'
+import json
+import re
+import sys
+from datetime import datetime, timezone
+
+pkg, container, raw_ps, app_ps, socket_state, commands_s = sys.argv[1:7]
+try:
+    commands = json.loads(commands_s)
+except Exception:
+    commands = []
+
+tokens = ("pdocker", "llama", pkg.lower(), container.lower())
+
+def parse_rows(raw: str, source: str) -> list[dict[str, object]]:
+    rows = []
+    header = []
+    rss_index = None
+    for line in raw.splitlines():
+        clean = line.strip().replace("\r", "")
+        if not clean:
+            continue
+        parts = clean.split()
+        if parts and any(name in parts for name in ("PID", "RSS", "ARGS", "NAME")):
+            header = parts
+            try:
+                rss_index = header.index("RSS")
+            except ValueError:
+                rss_index = None
+            continue
+        lowered = clean.lower()
+        if not any(token and token in lowered for token in tokens):
+            continue
+        rss_kb = None
+        if rss_index is not None and len(parts) > rss_index:
+            try:
+                rss_kb = int(re.sub(r"[^0-9]", "", parts[rss_index]) or "0")
+            except ValueError:
+                rss_kb = None
+        elif len(parts) >= 5:
+            # Common Android toybox ps fallback: USER PID PPID VSZ RSS ...
+            try:
+                rss_kb = int(re.sub(r"[^0-9]", "", parts[4]) or "0")
+            except ValueError:
+                rss_kb = None
+        rows.append(
+            {
+                "source": source,
+                "raw": clean[:500],
+                "rss_mb": round(rss_kb / 1024.0, 1) if rss_kb is not None else None,
+                "stale_llama_hint": "llama" in lowered or container.lower() in lowered,
+            }
+        )
+    return rows
+
+processes = parse_rows(raw_ps, "adb-ps")
+seen = {item["raw"] for item in processes}
+for item in parse_rows(app_ps, "run-as-ps"):
+    if item["raw"] not in seen:
+        seen.add(item["raw"])
+        processes.append(item)
+
+rss_values = [item["rss_mb"] for item in processes if isinstance(item.get("rss_mb"), (int, float))]
+report = {
+    "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "package": pkg,
+    "container": container,
+    "pdockerd_socket": (socket_state.strip() or "unknown"),
+    "process_count": len(processes),
+    "process_rss_mb_total": round(sum(rss_values), 1) if rss_values else None,
+    "stale_llama_process_hint": any(bool(item.get("stale_llama_hint")) for item in processes),
+    "process_sample": processes[:32],
+    "diagnostic_commands": commands,
+    "note": "Best-effort snapshot only; the compare preflight did not force-stop user apps.",
+}
+print(json.dumps(report, separators=(",", ":")))
+PY
+}
+
 ensure_memory_headroom() {
   local phase="$1"
-  local snap free_mb swap_free_mb
+  local snap free_mb swap_free_mb diagnostics
   snap="$(memory_snapshot_json || printf '{}')"
   free_mb="$(python3 - "$snap" <<'PY'
 import json, sys
@@ -296,17 +428,25 @@ except Exception:
 PY
 )"
   if (( free_mb < MIN_FREE_MB || swap_free_mb < MIN_SWAP_FREE_MB )); then
+    diagnostics="$(pdocker_memory_diagnostics_json || printf '{}')"
     operation_notify "failed" "Insufficient memory before $phase: $snap" 1 >/dev/null 2>&1 || true
-    python3 - "$OUT" "$phase" "$snap" "$MIN_FREE_MB" "$MIN_SWAP_FREE_MB" <<'PY' || true
+    python3 - "$OUT" "$phase" "$snap" "$MIN_FREE_MB" "$MIN_SWAP_FREE_MB" "$diagnostics" <<'PY' || true
 import json
 import sys
 from pathlib import Path
 
-out, phase, snap_s, min_free, min_swap = sys.argv[1:6]
+out, phase, snap_s, min_free, min_swap, diagnostics_s = sys.argv[1:7]
 try:
     snap = json.loads(snap_s)
 except Exception:
     snap = {}
+try:
+    diagnostics = json.loads(diagnostics_s)
+except Exception:
+    diagnostics = {}
+commands = diagnostics.get("diagnostic_commands") if isinstance(diagnostics, dict) else []
+if not isinstance(commands, list):
+    commands = []
 report = {
     "error": "insufficient_memory",
     "phase": phase,
@@ -319,8 +459,13 @@ report = {
         f"insufficient Android memory before {phase}; "
         f"require mem_free>={min_free}MB and swap_free>={min_swap}MB"
     ),
+    "pdocker_memory_diagnostics": diagnostics,
+    "diagnostic_commands": commands,
     "device_actions": [
-        "Stop the pdocker llama container from the UI or Engine if it is still running.",
+        "Do not start or classify the llama GPU compare while this memory blocker is present; this is not a GPU correctness result.",
+        "Check MemAvailable/SwapFree with the first diagnostic command and rerun only after both thresholds recover.",
+        "Use the pdocker process diagnostic commands to identify app-owned pdockerd, executor, or stale llama processes and their RSS before taking action.",
+        "If pdocker-owned stale llama work is present, stop only the pdocker llama container from the UI/Engine or with the targeted Engine stop command; do not force-stop user apps.",
         "Close memory-heavy foreground apps only with user approval; do not force-stop the browser/VS Code session during automated runs.",
         "Wait until MemAvailable and SwapFree recover, then rerun with PDOCKER_LLAMA_WAIT_FOR_MEMORY_SEC set.",
         "Keep the generated JSON artifact with the APK/build commit for regression evidence.",
@@ -353,7 +498,7 @@ wait_for_memory_headroom() {
 
 runtime_memory_headroom_ok() {
   local phase="$1"
-  local snap free_mb swap_free_mb
+  local snap free_mb swap_free_mb diagnostics
   snap="$(memory_snapshot_json || printf '{}')"
   free_mb="$(python3 - "$snap" <<'PY'
 import json, sys
@@ -373,16 +518,24 @@ except Exception:
 PY
 )"
   if (( free_mb < RUNTIME_MIN_FREE_MB || swap_free_mb < RUNTIME_MIN_SWAP_FREE_MB )); then
-    python3 - "$RUNTIME_ABORT_JSON" "$phase" "$snap" "$RUNTIME_MIN_FREE_MB" "$RUNTIME_MIN_SWAP_FREE_MB" <<'PY' || true
+    diagnostics="$(pdocker_memory_diagnostics_json || printf '{}')"
+    python3 - "$RUNTIME_ABORT_JSON" "$phase" "$snap" "$RUNTIME_MIN_FREE_MB" "$RUNTIME_MIN_SWAP_FREE_MB" "$diagnostics" <<'PY' || true
 import json
 import sys
 from pathlib import Path
 
-out, phase, snap_s, min_free, min_swap = sys.argv[1:6]
+out, phase, snap_s, min_free, min_swap, diagnostics_s = sys.argv[1:7]
 try:
     snap = json.loads(snap_s)
 except Exception:
     snap = {}
+try:
+    diagnostics = json.loads(diagnostics_s)
+except Exception:
+    diagnostics = {}
+commands = diagnostics.get("diagnostic_commands") if isinstance(diagnostics, dict) else []
+if not isinstance(commands, list):
+    commands = []
 Path(out).write_text(json.dumps({
     "error": "runtime_memory_pressure",
     "phase": phase,
@@ -395,8 +548,12 @@ Path(out).write_text(json.dumps({
         f"stopped llama GPU attempt during {phase} before Android LMK/OOM; "
         f"require mem_available>={min_free}MB and swap_free>={min_swap}MB"
     ),
+    "pdocker_memory_diagnostics": diagnostics,
+    "diagnostic_commands": commands,
     "device_actions": [
         "Inspect the generated report before rerunning; it indicates a device-memory failure, not a GPU-correctness result.",
+        "Use the pdocker process diagnostic commands to identify app-owned pdockerd, executor, or stale llama processes and their RSS before taking action.",
+        "If stale pdocker llama work is present, stop only the pdocker llama container from the UI/Engine or with the targeted Engine stop command; do not force-stop user apps.",
         "Let Android reclaim swap, or reboot the test device if swap remains exhausted.",
         "Rerun with the same APK and output path after memory recovers; do not rebuild the llama image just because this guard fired.",
     ],

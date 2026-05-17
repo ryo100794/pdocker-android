@@ -56,15 +56,15 @@ The immediate acceptance signal for `ngl=1` is:
 Use the current connected serial:
 
 ```bash
-ANDROID_SERIAL=10.79.130.150:35389 adb devices
-ANDROID_SERIAL=10.79.130.150:35389 adb shell 'cat /proc/meminfo | egrep "MemAvailable|SwapFree|SwapTotal"'
+ANDROID_SERIAL=192.168.179.26:37683 adb devices
+ANDROID_SERIAL=192.168.179.26:37683 adb shell 'cat /proc/meminfo | egrep "MemAvailable|SwapFree|SwapTotal"'
 ```
 
 Or write a structured readiness artifact without starting pdockerd or stopping
 any user-facing browser/VS Code process:
 
 ```bash
-ANDROID_SERIAL=10.79.130.150:35389 \
+ANDROID_SERIAL=192.168.179.26:37683 \
 bash scripts/android-llama-gpu-readiness.sh \
   --out docs/test/llama-gpu-device-readiness-latest.json
 ```
@@ -80,6 +80,37 @@ a GPU correctness result.  A readiness artifact with `ready: false` or
 `gpu_run_allowed: false` is a hard stop: do not launch the GPU compare/benchmark
 and do not classify claims from a run that ignored that stop.
 
+When `MemAvailable` is above the threshold but `SwapFree` is exhausted (for
+example the 2026-05-17 blocker had `mem_available_mb=1036` and
+`swap_free_mb=5` before daemon start), identify pdocker-owned pressure before
+asking the user to close anything:
+
+```bash
+ANDROID_SERIAL=192.168.179.26:37683 \
+  adb shell 'cat /proc/meminfo | egrep "MemAvailable|SwapFree|SwapTotal"'
+
+ANDROID_SERIAL=192.168.179.26:37683 \
+  adb shell "run-as io.github.ryo100794.pdocker.compat sh -c 'ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null | grep -E \"(pdocker|llama|io.github.ryo100794.pdocker.compat)\" || true'"
+
+ANDROID_SERIAL=192.168.179.26:37683 \
+  adb shell "run-as io.github.ryo100794.pdocker.compat sh -c 'for p in /proc/[0-9]*; do cmd=\$(tr \"\\0\" \" \" < \"\$p/cmdline\" 2>/dev/null || true); case \"\$cmd\" in *pdocker*|*llama*) rss=\$(grep -m1 \"^VmRSS:\" \"\$p/status\" 2>/dev/null); printf \"%s %s %s\n\" \"\${p##*/}\" \"\$rss\" \"\$cmd\";; esac; done'"
+```
+
+If the check shows a stale `pdocker-llama-cpp`, `llama-server`, pdockerd, or
+executor process owned by the pdocker app, stop only that pdocker work.  Prefer
+the app UI/Engine container action.  If the Engine socket already exists, this
+targeted stop does not start pdockerd and does not touch user apps:
+
+```bash
+ANDROID_SERIAL=192.168.179.26:37683 \
+  adb shell "run-as io.github.ryo100794.pdocker.compat sh -c 'cd files && test -S pdocker/pdockerd.sock && printf \"POST /containers/pdocker-llama-cpp/stop HTTP/1.1\r\nHost: pdocker\r\nContent-Length: 0\r\nConnection: close\r\n\r\n\" | toybox nc -U -W 3 pdocker/pdockerd.sock || true'"
+```
+
+Do not run `am force-stop` against Chrome, VS Code, the browser, or any other
+user-facing app from this automated path.  Re-check `SwapFree` after the
+targeted pdocker cleanup; if swap remains near zero, wait for Android reclaim or
+reboot the test device.
+
 ## Install Current APK
 
 ```bash
@@ -87,7 +118,7 @@ cd /root/tl/pdocker-android
 python3 -m unittest tests.test_gpu_abi_contract
 bash scripts/build-native-termux.sh
 ./gradlew :app:assembleCompatDebug
-ANDROID_SERIAL=10.79.130.150:35389 \
+ANDROID_SERIAL=192.168.179.26:37683 \
   adb install -r app/build/outputs/apk/compat/debug/app-compat-debug.apk
 ```
 
@@ -99,7 +130,7 @@ writes one workflow manifest:
 
 ```bash
 cd /root/tl/pdocker-android
-ANDROID_SERIAL=10.79.130.150:35389 \
+ANDROID_SERIAL=192.168.179.26:37683 \
 python3 scripts/android-llama-gpu-q6k-run.py \
   --manifest-out docs/test/llama-gpu-q6k-workflow-latest.json \
   --readiness-out docs/test/llama-gpu-device-readiness-latest.json \
@@ -112,7 +143,7 @@ Android state:
 
 ```bash
 cd /root/tl/pdocker-android
-ANDROID_SERIAL=10.79.130.150:35389 \
+ANDROID_SERIAL=192.168.179.26:37683 \
 PDOCKER_LLAMA_WAIT_FOR_MEMORY_SEC=600 \
 PDOCKER_GPU_CPU_ORACLE=1 \
 PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1 \
@@ -226,6 +257,19 @@ or:
 then do not interpret the run as GPU pass/fail.  Follow the `device_actions`
 array in the JSON and rerun after memory recovers.  The same rule applies to a
 readiness report or embedded readiness object with `ready: false`.
+
+New compare artifacts also include:
+
+- `diagnostic_commands`: copy/paste checks for `MemAvailable`/`SwapFree`,
+  app-owned pdocker/llama processes, and a targeted Engine stop for
+  `pdocker-llama-cpp` when the socket is already present.
+- `pdocker_memory_diagnostics`: best-effort process sample, RSS total, stale
+  llama hint, and socket state captured without starting a new daemon and
+  without force-stopping user apps.
+
+The verifier remains fail-closed: memory artifacts exit `20` unless
+`--allow-memory-blocker` is passed for workflow bookkeeping.  Even with that
+flag, `correctness_claim_allowed` and `benchmark_claim_allowed` stay `false`.
 
 ### Executor Marker / Benchmark Claim Guards
 

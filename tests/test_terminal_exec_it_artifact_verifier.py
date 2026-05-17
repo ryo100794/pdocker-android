@@ -20,6 +20,13 @@ CID = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 EXEC_ID = "abcdef123456"
 
 
+def smoke_script_function(script, name):
+    match = re.search(rf"^{re.escape(name)}\(\) \{{\n(?P<body>.*?)(?=^[A-Za-z0-9_]+\(\) \{{|\Z)", script, re.M | re.S)
+    if match is None:
+        raise AssertionError(f"missing bash function {name}")
+    return match.group("body")
+
+
 def good_artifact():
     tail = "\n".join(
         [
@@ -190,6 +197,26 @@ class TerminalExecItArtifactVerifierTest(unittest.TestCase):
         self.assertNotIn('SMOKE_ARTIFACT_DIR_RESOLVED="$ROOT/tmp/device-smoke-artifacts/$(date', skip_function)
         self.assertIn("Ctrl-C must be an isolated ETX byte", script)
         self.assertIn("IME Enter must be proven by exactly one Enter byte", script)
+
+    def test_smoke_artifact_dir_is_resolved_once_and_reused_by_collect_and_validate(self):
+        script = SMOKE_SCRIPT_PATH.read_text()
+        timestamp_expr = "$(date -u +%Y%m%dT%H%M%SZ)"
+        self.assertEqual(1, script.count(timestamp_expr))
+        self.assertIn(
+            'SMOKE_ARTIFACT_DIR_RESOLVED="${PDOCKER_SMOKE_ARTIFACT_DIR:-$ROOT/tmp/device-smoke-artifacts/$(date -u +%Y%m%dT%H%M%SZ)}"\n',
+            script,
+        )
+
+        smoke_artifact_dir = smoke_script_function(script, "smoke_artifact_dir")
+        self.assertIn('printf \'%s\' "$SMOKE_ARTIFACT_DIR_RESOLVED"', smoke_artifact_dir)
+        self.assertNotIn("date -u", smoke_artifact_dir)
+
+        for name in ("collect_device_file", "clear_ui_it_selftest_artifacts", "validate_ui_it_selftest_artifact"):
+            with self.subTest(function=name):
+                body = smoke_script_function(script, name)
+                self.assertIn('dest_dir="$(smoke_artifact_dir)"', body)
+                self.assertNotIn(timestamp_expr, body)
+                self.assertNotIn("PDOCKER_SMOKE_ARTIFACT_DIR:-", body)
 
 
 if __name__ == "__main__":

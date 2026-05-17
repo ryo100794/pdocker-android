@@ -19,6 +19,17 @@ from typing import Any
 
 
 MEMORY_ERRORS = {"insufficient_memory", "runtime_memory_pressure"}
+DEFAULT_MEMORY_DEVICE_ACTIONS = (
+    "Do not start or classify the llama GPU compare while this memory blocker is present; this is not a GPU correctness result.",
+    "Check MemAvailable/SwapFree and rerun only after both thresholds recover.",
+    "Identify pdocker-owned pdockerd, executor, or stale llama processes and their RSS before taking action.",
+    "If pdocker-owned stale llama work is present, stop only the pdocker llama container from the UI/Engine or targeted Engine API; do not force-stop user apps.",
+    "Wait for Android reclaim or reboot the test device if SwapFree remains exhausted.",
+)
+DEFAULT_MEMORY_DIAGNOSTIC_COMMANDS = (
+    "adb shell 'cat /proc/meminfo | egrep \"MemAvailable|SwapFree|SwapTotal\"'",
+    "adb shell \"run-as io.github.ryo100794.pdocker.compat sh -c 'ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null | grep -E \\\"(pdocker|llama|io.github.ryo100794.pdocker.compat)\\\" || true'\"",
+)
 ENV_MANIFEST_PATH = Path(__file__).resolve().with_name("llama-gpu-env-manifest.json")
 COMPACT_HASH_RE = re.compile(r"^0x[0-9a-fA-F]{16}$")
 ZERO_COMPACT_HASH = "0x0000000000000000"
@@ -129,6 +140,40 @@ def nested(data: dict[str, Any], *keys: str) -> Any:
             return None
         current = current.get(key)
     return current
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if isinstance(item, (str, int, float)) and str(item)]
+
+
+def _append_unique(base: list[str], additions: tuple[str, ...] | list[str]) -> list[str]:
+    seen = set(base)
+    for item in additions:
+        if item not in seen:
+            base.append(item)
+            seen.add(item)
+    return base
+
+
+def _memory_diagnostics(data: dict[str, Any]) -> dict[str, Any]:
+    value = data.get("pdocker_memory_diagnostics")
+    return value if isinstance(value, dict) else {}
+
+
+def _memory_diagnostic_commands(data: dict[str, Any]) -> list[str]:
+    commands = _string_list(data.get("diagnostic_commands"))
+    diagnostics = _memory_diagnostics(data)
+    commands = _append_unique(commands, _string_list(diagnostics.get("diagnostic_commands")))
+    if not commands:
+        commands = list(DEFAULT_MEMORY_DIAGNOSTIC_COMMANDS)
+    return commands
+
+
+def _memory_device_actions(data: dict[str, Any]) -> list[str]:
+    actions = _string_list(data.get("device_actions"))
+    return _append_unique(actions, list(DEFAULT_MEMORY_DEVICE_ACTIONS))
 
 
 def _runtime_freshness(data: dict[str, Any]) -> dict[str, Any]:
@@ -737,6 +782,8 @@ def _claim_base(
     next_action: str,
     device_memory_blocked: bool = False,
     device_actions: list[Any] | None = None,
+    diagnostic_commands: list[Any] | None = None,
+    pdocker_memory_diagnostics: dict[str, Any] | None = None,
     memory: dict[str, Any] | None = None,
     runtime_freshness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -748,6 +795,8 @@ def _claim_base(
         "benchmark_claim_allowed": False,
         "next_action": next_action,
         "device_actions": device_actions or [],
+        "diagnostic_commands": diagnostic_commands or [],
+        "pdocker_memory_diagnostics": pdocker_memory_diagnostics or {},
         "memory": memory or {},
         "runtime_freshness": runtime_freshness or {},
     }
@@ -760,7 +809,9 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             error,
             device_memory_blocked=True,
             next_action=data.get("next_blocker") or "recover Android memory and rerun",
-            device_actions=data.get("device_actions") or [],
+            device_actions=_memory_device_actions(data),
+            diagnostic_commands=_memory_diagnostic_commands(data),
+            pdocker_memory_diagnostics=_memory_diagnostics(data),
             memory=data.get("memory") or {},
         )
 

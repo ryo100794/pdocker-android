@@ -622,6 +622,39 @@ class GpuAbiContractTest(unittest.TestCase):
         ]:
             self.assertIn(marker, runbook)
 
+    def test_row_indexed_q6_next_blocker_decision_tree_is_documented(self):
+        docs = LLAMA_GPU_NEXT_STEPS.read_text() + "\n" + LLAMA_GPU_CORRECTNESS.read_text()
+        for marker in [
+            "Row-indexed Q6_K device-run decision tree",
+            "Row-indexed Q6_K Next-Blocker Decision Tree",
+            "memory-blocked",
+            "insufficient_memory",
+            "runtime_memory_pressure",
+            "device_memory_blocked:true",
+            "does not justify a C-side Q6 change",
+            "q6_row_indexed_writeback_evidence",
+            "q6_row_indexed_writeback_verified",
+            "q6_writeback_verified_all",
+            "f32_after_dispatch",
+            "f32_after_writeback",
+            "q6_row_indexed_sample_indices",
+            "classify the next blocker as `writeback`",
+            "writeback is verified + the Q6 oracle still mismatches",
+            "q6_writeback_verified_all == true",
+            "q6_row_indexed_writeback_verified == true",
+            "latest_status == \"mismatch\"",
+            "workgroup_shape_blocker == true",
+            "spirv_local_size_consistent",
+            "spirv_local_size_resolved",
+            "[32,2,1]",
+            "workgroup-shape",
+            "q6_shader_like_64_abs_delta",
+            "Vulkan device-execution",
+            "Q6 arithmetic/reduction/output-layout",
+            "A sampled mismatch without row-indexed writeback evidence is not progress.",
+        ]:
+            self.assertIn(marker, docs)
+
     def test_llama_gpu_compare_can_forward_bridge_tuning_env(self):
         compare = LLAMA_COMPARE.read_text()
         self.assertIn("import os", compare)
