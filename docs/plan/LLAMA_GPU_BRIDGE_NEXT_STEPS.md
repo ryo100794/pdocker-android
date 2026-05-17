@@ -466,6 +466,23 @@ is explicit rather than implicit:
   prefix `5`) with HTTP status and content evidence.  Missing or mutated prompt
   evidence is classified as `api-prompt-sanity-missing`; a wrong answer can
   remain diagnostic but cannot be hidden by performance fields.
+- Completion-readiness gate: `/v1/models` liveness is not enough.  The compare
+  driver now records `gpu.service_readiness` with `/health`, `/v1/models`, and
+  an unchanged one-token `/completion` probe before benchmarking.  If liveness
+  passes but completion times out, the artifact is classified as
+  `llama-completion-timeout`; it is evidence for ICD/executor dispatch
+  boundary investigation, not a correctness or speed claim.
+- Runtime-startup evidence gate: the llama entrypoint writes
+  `/workspace/logs/llama-startup.json`, and compare artifacts embed it as
+  `gpu.startup_diagnostics` while merging its post-profile environment into
+  `gpu.runtime_env`.  Use this to detect stale profile/env propagation before
+  changing Dockerfile, model, prompt, or llama.cpp.
+- Dispatch lifecycle gate: when `PDOCKER_GPU_DISPATCH_PROFILE_LOG=1`, both the
+  glibc ICD and Android executor emit compact `generic dispatch lifecycle`
+  begin/stage/end records.  Compare artifacts summarize them under
+  `gpu.diagnostics.dispatch_lifecycle`, including unmatched begin/end IDs.  If
+  `/completion` stalls, inspect this boundary first to decide whether the wait
+  is in ICD socket response, executor submit, fence wait, or writeback.
 - Artifact verifier speedup-field gate: compare artifacts must carry
   `comparison.speedup`, `comparison.target_tokens_per_second`,
   `comparison.target_met`, plus the matching `bridge_overhead_phase` CPU/GPU
