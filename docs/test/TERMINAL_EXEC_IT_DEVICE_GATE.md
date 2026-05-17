@@ -7,9 +7,12 @@ ID or name is required by the caller.
 ## Pass/fail rule
 
 - `planned-skip is evidence, not success`.
-- If `HardGateRequired` is true, `Status: planned-skip` must fail the gate.
-- If a real container is required, the artifact must contain `Success: true`
-  and a non-empty `Container` value.
+- If `HardGateRequired` is true in a skip artifact, or the verifier is invoked
+  with `--require-container`, `Status: planned-skip` must fail the gate.
+- A planned-skip may validate only as optional skip evidence; it never promotes
+  or substitutes for a real-container pass, even if a stale JSONL sidecar exists.
+- A real-container pass must contain `Success: true` and a non-empty
+  `Container` value, and the JSONL `start.container` must exactly match it.
 - A `Success: true` JSON file is not enough. The host-side verifier
   `python3 scripts/verify-terminal-exec-it-artifact.py
   ui-it-selftest-latest.json engine-exec-input-latest.jsonl
@@ -32,16 +35,28 @@ the generic terminal surface produced the bytes, that the Engine exec session
 transport delivered those bytes over a Docker hijacked TTY stream, and that
 resize/top/IME behavior was observed through the same route a user action uses.
 
-The skip artifact and real-run artifact must include:
+A planned-skip artifact is non-promoting and must include:
 
 - `Status: "planned-skip"` for planned skips
-- `Success: false` for planned skips and `Success: true` only after a real run
+- `Success: false`
 - `DeviceProofAttempted: false` for planned skips
 - `HardGateRequired`
 - `RequiredEvidence`
+- `Evidence` with every required evidence key set to `false`
+
+A real-run artifact must include:
+
+- `Name: "ui-engine-exec-it"`
+- `Success: true` only after a real run against a resolved Engine container
+- a non-empty `Container`; `RequestedContainer` is trace context only and is not
+  proof that a container was exercised
+- `RequiredEvidence`
 - `Evidence`, including `ime-enter-ctrlc-regression-covered`,
   `top-refresh-observed-before-q`, `top-repaint-remains-terminal-shaped`, and
-  `resize-route-is-observable` as first-class keys
+  `resize-route-is-observable` as first-class keys set to `true`
+- `OutputTail` containing the required UI-observable shell markers; embedded
+  `EngineExecDiagnostics` text in this JSON is helpful for debugging but is
+  never a substitute for the raw JSONL sidecar
 
 For a real run, `engine-exec-input-latest.jsonl` must contain device-emitted
 EngineExecSession records, not reconstructed host text:

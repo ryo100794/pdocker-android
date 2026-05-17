@@ -60,6 +60,16 @@ ANDROID_SERIAL=192.168.179.26:37683 adb devices
 ANDROID_SERIAL=192.168.179.26:37683 adb shell 'cat /proc/meminfo | egrep "MemAvailable|SwapFree|SwapTotal"'
 ```
 
+For a standalone memory/process/swap snapshot that does **not** start llama
+compare, does **not** start pdockerd or containers, and does **not** force-stop
+any user apps, run:
+
+```bash
+ANDROID_SERIAL=192.168.179.26:37683 \
+bash scripts/android-device-memory-diagnostics.sh \
+  --out docs/test/android-device-memory-diagnostics-latest.json
+```
+
 Or write a structured readiness artifact without starting pdockerd or stopping
 any user-facing browser/VS Code process:
 
@@ -72,28 +82,26 @@ bash scripts/android-llama-gpu-readiness.sh \
 The default compare guard requires:
 
 - `MemAvailable >= 512 MiB`
-- `SwapFree >= 1024 MiB`
+- `SwapFree` is advisory by default because Android zram swap is commonly kept
+  near full even when reclaimable memory still exists.
 
-If `SwapFree` stays below 1024 MiB after stopping the llama container, wait for
-Android reclaim or reboot the test device.  This is a device-memory blocker, not
-a GPU correctness result.  A readiness artifact with `ready: false` or
-`gpu_run_allowed: false` is a hard stop: do not launch the GPU compare/benchmark
-and do not classify claims from a run that ignored that stop.
+Use `PDOCKER_LLAMA_MIN_SWAP_FREE_MB=<MiB>` or
+`PDOCKER_LLAMA_RUNTIME_MIN_SWAP_FREE_MB=<MiB>` only for strict memory-pressure
+experiments that intentionally make swap a hard gate.  A readiness artifact with
+`ready: false` or `gpu_run_allowed: false` is a hard stop: do not launch the GPU
+compare/benchmark and do not classify claims from a run that ignored that stop.
 
 When `MemAvailable` is above the threshold but `SwapFree` is exhausted (for
 example the 2026-05-17 blocker had `mem_available_mb=1036` and
-`swap_free_mb=5` before daemon start), identify pdocker-owned pressure before
-asking the user to close anything:
+`swap_free_mb=5` before daemon start), capture the standalone diagnostic first
+and treat swap as a pressure warning unless a strict swap gate was explicitly
+configured.  Identify pdocker-owned pressure before asking the user to close
+anything:
 
 ```bash
 ANDROID_SERIAL=192.168.179.26:37683 \
-  adb shell 'cat /proc/meminfo | egrep "MemAvailable|SwapFree|SwapTotal"'
-
-ANDROID_SERIAL=192.168.179.26:37683 \
-  adb shell "run-as io.github.ryo100794.pdocker.compat sh -c 'ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null | grep -E \"(pdocker|llama|io.github.ryo100794.pdocker.compat)\" || true'"
-
-ANDROID_SERIAL=192.168.179.26:37683 \
-  adb shell "run-as io.github.ryo100794.pdocker.compat sh -c 'for p in /proc/[0-9]*; do cmd=\$(tr \"\\0\" \" \" < \"\$p/cmdline\" 2>/dev/null || true); case \"\$cmd\" in *pdocker*|*llama*) rss=\$(grep -m1 \"^VmRSS:\" \"\$p/status\" 2>/dev/null); printf \"%s %s %s\n\" \"\${p##*/}\" \"\$rss\" \"\$cmd\";; esac; done'"
+bash scripts/android-device-memory-diagnostics.sh \
+  --out docs/test/android-device-memory-diagnostics-latest.json
 ```
 
 If the check shows a stale `pdocker-llama-cpp`, `llama-server`, pdockerd, or
@@ -108,8 +116,9 @@ ANDROID_SERIAL=192.168.179.26:37683 \
 
 Do not run `am force-stop` against Chrome, VS Code, the browser, or any other
 user-facing app from this automated path.  Re-check `SwapFree` after the
-targeted pdocker cleanup; if swap remains near zero, wait for Android reclaim or
-reboot the test device.
+targeted pdocker cleanup.  If swap remains near zero but `MemAvailable` is
+healthy, continue the guarded run and keep the swap-pressure advisory in the
+artifact.
 
 ## Install Current APK
 
@@ -266,6 +275,14 @@ New compare artifacts also include:
 - `pdocker_memory_diagnostics`: best-effort process sample, RSS total, stale
   llama hint, and socket state captured without starting a new daemon and
   without force-stopping user apps.
+
+For the same memory evidence without launching compare, use
+`scripts/android-device-memory-diagnostics.sh`.  Its JSON schema is
+`pdocker.android.device-memory-diagnostics.v1` and includes `/proc/meminfo`,
+`free -m`, selected `/proc/vmstat` counters, `/proc/pressure/memory`,
+`/proc/swaps`/zram raw lines, top process RSS samples, pdocker/llama process
+hints, and the pdockerd socket state.  Treat it as a read-only evidence bundle:
+the script does not kill, force-stop, or start user or pdocker workloads.
 
 The verifier remains fail-closed: memory artifacts exit `20` unless
 `--allow-memory-blocker` is passed for workflow bookkeeping.  Even with that

@@ -26,7 +26,7 @@ Confirmed facts:
 | `ngl=1` RoPE/Yarn shader | CPU oracle executes and matches | `0xac41e8033a67af4a`, `docs/test/llama-gpu-ngl1-rope-yarn-oracle-20260509.json` |
 | `ngl=1` RMSNorm shader | CPU oracle executes and matches | `0xf2f988b94bd3e0dc`, `docs/test/llama-gpu-ngl1-rms-norm-oracle-20260509.json` |
 | `ngl=1` Q6_K/final-projection shader | Sampled oracle executes and mismatches | `0x274f68a67dfef210`, Q6_K strict passthrough/workgroup/device-execution semantics |
-| current device readiness | Heavy compare is memory-gated | readiness requires sufficient `MemAvailable` and `SwapFree` before starting llama |
+| current device readiness | Heavy compare is memory-gated | readiness requires sufficient `MemAvailable`; low Android zram `SwapFree` is advisory unless a strict swap gate is explicitly configured |
 
 Do not claim GPU inference correctness or performance for `ngl>=1` from served
 HTTP alone.  Correctness is currently blocked at the Q6_K / final-projection

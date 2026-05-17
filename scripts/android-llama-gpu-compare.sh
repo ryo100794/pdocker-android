@@ -28,11 +28,17 @@ CORRECTNESS="${PDOCKER_LLAMA_CORRECTNESS:-1}"
 LOG_TAIL_LINES="${PDOCKER_LLAMA_LOG_TAIL_LINES:-2000}"
 RESTART_APP_DAEMON="${PDOCKER_LLAMA_RESTART_APP_DAEMON:-1}"
 MIN_FREE_MB="${PDOCKER_LLAMA_MIN_FREE_MB:-512}"
-MIN_SWAP_FREE_MB="${PDOCKER_LLAMA_MIN_SWAP_FREE_MB:-1024}"
+# Android devices commonly use zram swap aggressively; SwapFree can stay near
+# zero while MemAvailable is still adequate.  Keep swap as an advisory signal by
+# default, but allow strict runs to opt into a hard gate by setting
+# PDOCKER_LLAMA_MIN_SWAP_FREE_MB/PDOCKER_LLAMA_RUNTIME_MIN_SWAP_FREE_MB.
+MIN_SWAP_FREE_MB="${PDOCKER_LLAMA_MIN_SWAP_FREE_MB:-0}"
+SWAP_ADVISORY_MB="${PDOCKER_LLAMA_SWAP_ADVISORY_MB:-1024}"
 WAIT_FOR_MEMORY_SEC="${PDOCKER_LLAMA_WAIT_FOR_MEMORY_SEC:-0}"
 WAIT_FOR_MEMORY_INTERVAL_SEC="${PDOCKER_LLAMA_WAIT_FOR_MEMORY_INTERVAL_SEC:-10}"
 RUNTIME_MIN_FREE_MB="${PDOCKER_LLAMA_RUNTIME_MIN_FREE_MB:-384}"
-RUNTIME_MIN_SWAP_FREE_MB="${PDOCKER_LLAMA_RUNTIME_MIN_SWAP_FREE_MB:-512}"
+RUNTIME_MIN_SWAP_FREE_MB="${PDOCKER_LLAMA_RUNTIME_MIN_SWAP_FREE_MB:-0}"
+RUNTIME_SWAP_ADVISORY_MB="${PDOCKER_LLAMA_RUNTIME_SWAP_ADVISORY_MB:-512}"
 STOP_ON_FAILURE="${PDOCKER_LLAMA_STOP_ON_FAILURE:-1}"
 ENGINE_START_TIMEOUT_SEC="${PDOCKER_LLAMA_ENGINE_START_TIMEOUT_SEC:-15}"
 STOP_STALE_TARGET_BEFORE_PREFLIGHT="${PDOCKER_LLAMA_STOP_STALE_TARGET_BEFORE_PREFLIGHT:-1}"
@@ -148,16 +154,14 @@ start_daemon_for_test() {
 restart_app_daemon_for_test() {
   # Native executor binaries are loaded by the long-lived pdockerd process.  A
   # reinstall alone can leave old executors alive, which makes GPU bridge tests
-  # appear to run new code while actually exercising stale code.  Kill only for
-  # this repeatable test route; normal UI operation is not changed.
+  # appear to run new code while actually exercising stale code.  Kill only
+  # app-owned pdocker native children for this repeatable test route; normal UI
+  # operation is not changed and this route intentionally avoids force-stopping
+  # the app or any user application.
   if [[ "$RESTART_APP_DAEMON" != "1" ]]; then
     return 0
   fi
   "$ADB" shell "run-as $PKG sh -c 'pkill -x pdocker-gpu-executor 2>/dev/null; pkill -x pdocker-media-executor 2>/dev/null; pkill -f pdockerd 2>/dev/null; true'" >/dev/null 2>&1 || true
-  # `am kill` may leave app-owned native children alive on some devices.  Use
-  # force-stop for this explicit test route so native executor freshness is
-  # deterministic after reinstall/rebuild.
-  "$ADB" shell am force-stop "$PKG" >/dev/null 2>&1 || true
   sleep 1
   start_daemon_for_test
 }
@@ -279,7 +283,6 @@ memory_diagnostic_commands_json() {
 import json
 import shlex
 import sys
-import urllib.parse
 
 adb, serial, pkg, container = sys.argv[1:5]
 
@@ -304,40 +307,154 @@ proc_status_check = (
     "printf '%s rss=%s cmd=%s\\n' \"${p##*/}\" \"$rss\" \"$cmd\";; esac; "
     "done"
 )
-encoded_container = urllib.parse.quote(container, safe="")
-engine_stop = (
-    "cd files && test -S pdocker/pdockerd.sock && "
-    "printf 'POST /containers/%s/stop HTTP/1.1\\r\\nHost: pdocker\\r\\n"
-    "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n' "
-    "| toybox nc -U -W 3 pdocker/pdockerd.sock || true"
-) % encoded_container
 commands = [
     adb_shell("cat /proc/meminfo | egrep 'MemAvailable|SwapFree|SwapTotal'"),
     adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(process_check)}"),
     adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(proc_status_check)}"),
-    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(engine_stop)}"),
 ]
 print(json.dumps(commands, separators=(",", ":")))
 PY
 }
 
+memory_cleanup_commands_json() {
+  python3 - "$ADB" "${ANDROID_SERIAL:-}" "$PKG" "$CONTAINER" "$LOCAL_PORT" <<'PY'
+import json
+import shlex
+import sys
+import urllib.parse
+
+adb, serial, pkg, container, local_port = sys.argv[1:6]
+
+def adb_prefix() -> str:
+    prefix = shlex.quote(adb)
+    if serial:
+        prefix = f"ANDROID_SERIAL={shlex.quote(serial)} {prefix}"
+    return prefix
+
+def adb_shell(command: str) -> str:
+    return f"{adb_prefix()} shell {shlex.quote(command)}"
+
+encoded_container = urllib.parse.quote(container, safe="")
+engine_stop = (
+    "cd files && test -S pdocker/pdockerd.sock && "
+    "printf 'POST /containers/%s/stop HTTP/1.1\\r\\nHost: pdocker\\r\\n"
+    "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n' "
+    "| toybox nc -U -W 3 pdocker/pdockerd.sock >/dev/null || true"
+) % encoded_container
+engine_remove = (
+    "cd files && test -S pdocker/pdockerd.sock && "
+    "printf 'DELETE /containers/%s?force=true HTTP/1.1\\r\\nHost: pdocker\\r\\n"
+    "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n' "
+    "| toybox nc -U -W 3 pdocker/pdockerd.sock >/dev/null || true"
+) % encoded_container
+executor_cleanup = (
+    "pkill -x pdocker-gpu-executor 2>/dev/null; "
+    "pkill -x pdocker-media-executor 2>/dev/null; "
+    "true"
+)
+commands = [
+    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(engine_stop)}"),
+    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(engine_remove)}"),
+    adb_shell(f"run-as {shlex.quote(pkg)} sh -c {shlex.quote(executor_cleanup)}"),
+    f"{adb_prefix()} forward --remove tcp:{shlex.quote(str(local_port))}",
+]
+print(json.dumps(commands, separators=(",", ":")))
+PY
+}
+
+memory_threshold_state_json() {
+  local snap="$1"
+  local min_free="$2"
+  local min_swap="$3"
+  local mem_key="${4:-mem_preflight_free_mb}"
+  local advisory_swap="${5:-0}"
+  python3 - "$snap" "$min_free" "$min_swap" "$mem_key" "$advisory_swap" <<'PY'
+import json
+import sys
+
+snap_s, min_free_s, min_swap_s, mem_key, advisory_swap_s = sys.argv[1:6]
+try:
+    snap = json.loads(snap_s)
+except Exception:
+    snap = {}
+try:
+    min_free = int(min_free_s)
+except Exception:
+    min_free = 0
+try:
+    min_swap = int(min_swap_s)
+except Exception:
+    min_swap = 0
+try:
+    advisory_swap = int(advisory_swap_s)
+except Exception:
+    advisory_swap = 0
+
+def observed(*keys: str) -> int:
+    for key in keys:
+        try:
+            value = int(snap.get(key) or 0)
+        except Exception:
+            value = 0
+        if value:
+            return value
+    return 0
+
+mem_observed = observed(mem_key, "mem_preflight_free_mb", "mem_available_mb", "mem_free_mb")
+swap_observed = observed("swap_free_mb")
+swap_hard_ok = min_swap <= 0 or swap_observed >= min_swap
+swap_advisory_ok = advisory_swap <= 0 or swap_observed >= advisory_swap
+state = {
+    "summary": "pass" if mem_observed >= min_free and swap_hard_ok else "fail",
+    mem_key: {
+        "observed_mb": mem_observed,
+        "required_min_mb": min_free,
+        "ok": mem_observed >= min_free,
+    },
+    "swap_free_mb": {
+        "observed_mb": swap_observed,
+        "hard_required_min_mb": min_swap,
+        "advisory_min_mb": advisory_swap,
+        "hard_gate_enabled": min_swap > 0,
+        "ok": swap_hard_ok,
+        "advisory_ok": swap_advisory_ok,
+        "state": "ok" if swap_hard_ok else "below-hard-threshold",
+        "advisory_state": "ok" if swap_advisory_ok else "below-advisory-threshold",
+    },
+    "swap_policy": {
+        "default": "advisory",
+        "hard_gate_enabled": min_swap > 0,
+        "hard_min_swap_free_mb": min_swap,
+        "advisory_swap_free_mb": advisory_swap,
+        "swap_pressure_advisory": not swap_advisory_ok,
+    },
+}
+print(json.dumps(state, separators=(",", ":")))
+PY
+}
+
 pdocker_memory_diagnostics_json() {
-  local raw_ps app_ps socket_state commands
+  local raw_ps app_ps socket_state commands cleanup_commands
   raw_ps="$("$ADB" shell "ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null || ps -A 2>/dev/null" 2>/dev/null || true)"
   app_ps="$(run_as "ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null || ps -A 2>/dev/null" 2>/dev/null || true)"
   socket_state="$(run_as "cd files 2>/dev/null && if test -S pdocker/pdockerd.sock; then echo present; else echo absent; fi" 2>/dev/null | tr -d '\r' || true)"
   commands="$(memory_diagnostic_commands_json || printf '[]')"
-  python3 - "$PKG" "$CONTAINER" "$raw_ps" "$app_ps" "$socket_state" "$commands" <<'PY'
+  cleanup_commands="$(memory_cleanup_commands_json || printf '[]')"
+  python3 - "$PKG" "$CONTAINER" "$raw_ps" "$app_ps" "$socket_state" "$commands" "$cleanup_commands" <<'PY'
 import json
 import re
 import sys
 from datetime import datetime, timezone
 
-pkg, container, raw_ps, app_ps, socket_state, commands_s = sys.argv[1:7]
+pkg, container, raw_ps, app_ps, socket_state, commands_s, cleanup_commands_s = sys.argv[1:8]
 try:
     commands = json.loads(commands_s)
 except Exception:
     commands = []
+try:
+    cleanup_commands = json.loads(cleanup_commands_s)
+except Exception:
+    cleanup_commands = []
 
 tokens = ("pdocker", "llama", pkg.lower(), container.lower())
 
@@ -372,9 +489,49 @@ def parse_rows(raw: str, source: str) -> list[dict[str, object]]:
                 rss_kb = int(re.sub(r"[^0-9]", "", parts[4]) or "0")
             except ValueError:
                 rss_kb = None
+        pid = None
+        ppid = None
+        name = None
+        args = None
+        if header:
+            values = {key: parts[index] for index, key in enumerate(header) if index < len(parts)}
+            for key in ("PID", "Pid", "pid"):
+                if key in values:
+                    try:
+                        pid = int(re.sub(r"[^0-9]", "", values[key]) or "0")
+                    except ValueError:
+                        pid = None
+                    break
+            for key in ("PPID", "Ppid", "ppid"):
+                if key in values:
+                    try:
+                        ppid = int(re.sub(r"[^0-9]", "", values[key]) or "0")
+                    except ValueError:
+                        ppid = None
+                    break
+            name = values.get("NAME") or values.get("COMM") or values.get("CMD")
+            if "ARGS" in header:
+                args_index = header.index("ARGS")
+                if len(parts) > args_index:
+                    args = " ".join(parts[args_index:])
+        elif len(parts) >= 2:
+            try:
+                pid = int(re.sub(r"[^0-9]", "", parts[1]) or "0")
+            except ValueError:
+                pid = None
+            if len(parts) >= 3:
+                try:
+                    ppid = int(re.sub(r"[^0-9]", "", parts[2]) or "0")
+                except ValueError:
+                    ppid = None
+            name = parts[-1]
         rows.append(
             {
                 "source": source,
+                "pid": pid,
+                "ppid": ppid,
+                "name": name,
+                "args": args,
                 "raw": clean[:500],
                 "rss_mb": round(rss_kb / 1024.0, 1) if rss_kb is not None else None,
                 "stale_llama_hint": "llama" in lowered or container.lower() in lowered,
@@ -389,6 +546,14 @@ for item in parse_rows(app_ps, "run-as-ps"):
         seen.add(item["raw"])
         processes.append(item)
 
+top_rss_processes = sorted(
+    processes,
+    key=lambda item: (
+        float(item.get("rss_mb")) if isinstance(item.get("rss_mb"), (int, float)) else -1.0,
+        str(item.get("raw") or ""),
+    ),
+    reverse=True,
+)
 rss_values = [item["rss_mb"] for item in processes if isinstance(item.get("rss_mb"), (int, float))]
 report = {
     "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -398,8 +563,10 @@ report = {
     "process_count": len(processes),
     "process_rss_mb_total": round(sum(rss_values), 1) if rss_values else None,
     "stale_llama_process_hint": any(bool(item.get("stale_llama_hint")) for item in processes),
-    "process_sample": processes[:32],
+    "top_rss_processes": top_rss_processes[:10],
+    "process_sample": top_rss_processes[:32],
     "diagnostic_commands": commands,
+    "cleanup_commands": cleanup_commands,
     "note": "Best-effort snapshot only; the compare preflight did not force-stop user apps.",
 }
 print(json.dumps(report, separators=(",", ":")))
@@ -408,7 +575,7 @@ PY
 
 ensure_memory_headroom() {
   local phase="$1"
-  local snap free_mb swap_free_mb diagnostics
+  local snap free_mb swap_free_mb swap_hard_block diagnostics thresholds cleanup_commands
   snap="$(memory_snapshot_json || printf '{}')"
   free_mb="$(python3 - "$snap" <<'PY'
 import json, sys
@@ -427,15 +594,20 @@ except Exception:
     print(0)
 PY
 )"
-  if (( free_mb < MIN_FREE_MB || swap_free_mb < MIN_SWAP_FREE_MB )); then
+  swap_hard_block=0
+  if (( MIN_SWAP_FREE_MB > 0 && swap_free_mb < MIN_SWAP_FREE_MB )); then
+    swap_hard_block=1
+  fi
+  if (( free_mb < MIN_FREE_MB || swap_hard_block )); then
     diagnostics="$(pdocker_memory_diagnostics_json || printf '{}')"
+    thresholds="$(memory_threshold_state_json "$snap" "$MIN_FREE_MB" "$MIN_SWAP_FREE_MB" "mem_preflight_free_mb" "$SWAP_ADVISORY_MB" || printf '{}')"
     operation_notify "failed" "Insufficient memory before $phase: $snap" 1 >/dev/null 2>&1 || true
-    python3 - "$OUT" "$phase" "$snap" "$MIN_FREE_MB" "$MIN_SWAP_FREE_MB" "$diagnostics" <<'PY' || true
+    python3 - "$OUT" "$phase" "$snap" "$MIN_FREE_MB" "$MIN_SWAP_FREE_MB" "$SWAP_ADVISORY_MB" "$diagnostics" "$thresholds" <<'PY' || true
 import json
 import sys
 from pathlib import Path
 
-out, phase, snap_s, min_free, min_swap, diagnostics_s = sys.argv[1:7]
+out, phase, snap_s, min_free, min_swap, advisory_swap, diagnostics_s, thresholds_s = sys.argv[1:9]
 try:
     snap = json.loads(snap_s)
 except Exception:
@@ -444,9 +616,35 @@ try:
     diagnostics = json.loads(diagnostics_s)
 except Exception:
     diagnostics = {}
+try:
+    thresholds = json.loads(thresholds_s)
+except Exception:
+    thresholds = {}
 commands = diagnostics.get("diagnostic_commands") if isinstance(diagnostics, dict) else []
 if not isinstance(commands, list):
     commands = []
+cleanup_commands = diagnostics.get("cleanup_commands") if isinstance(diagnostics, dict) else []
+if not isinstance(cleanup_commands, list):
+    cleanup_commands = []
+swap_state = thresholds.get("swap_free_mb") if isinstance(thresholds, dict) else {}
+if not isinstance(swap_state, dict):
+    swap_state = {
+        "observed_mb": int(snap.get("swap_free_mb") or 0),
+        "hard_required_min_mb": int(min_swap),
+        "advisory_min_mb": int(advisory_swap),
+        "hard_gate_enabled": int(min_swap) > 0,
+        "ok": int(min_swap) <= 0 or int(snap.get("swap_free_mb") or 0) >= int(min_swap),
+    }
+swap_state.setdefault("state", "ok" if bool(swap_state.get("ok")) else "below-hard-threshold")
+swap_policy = thresholds.get("swap_policy") if isinstance(thresholds, dict) else {}
+if not isinstance(swap_policy, dict):
+    swap_policy = {
+        "default": "advisory",
+        "hard_gate_enabled": int(min_swap) > 0,
+        "hard_min_swap_free_mb": int(min_swap),
+        "advisory_swap_free_mb": int(advisory_swap),
+        "swap_pressure_advisory": int(snap.get("swap_free_mb") or 0) < int(advisory_swap),
+    }
 report = {
     "error": "insufficient_memory",
     "phase": phase,
@@ -454,18 +652,26 @@ report = {
     "required": {
         "mem_free_mb": int(min_free),
         "swap_free_mb": int(min_swap),
+        "swap_free_hard_gate_enabled": int(min_swap) > 0,
+        "swap_free_advisory_mb": int(advisory_swap),
     },
+    "memory_thresholds": thresholds,
+    "swap_policy": swap_policy,
+    "swap_free_threshold": swap_state,
+    "swap_free_threshold_state": swap_state.get("state"),
     "next_blocker": (
         f"insufficient Android memory before {phase}; "
-        f"require mem_free>={min_free}MB and swap_free>={min_swap}MB"
+        f"require mem_free>={min_free}MB"
+        + (f" and swap_free>={min_swap}MB" if int(min_swap) > 0 else "; SwapFree is advisory by default")
     ),
     "pdocker_memory_diagnostics": diagnostics,
     "diagnostic_commands": commands,
+    "cleanup_commands": cleanup_commands,
     "device_actions": [
         "Do not start or classify the llama GPU compare while this memory blocker is present; this is not a GPU correctness result.",
-        "Check MemAvailable/SwapFree with the first diagnostic command and rerun only after both thresholds recover.",
+        "Check MemAvailable with the first diagnostic command; low SwapFree on Android zram is advisory unless a hard swap threshold was explicitly configured.",
         "Use the pdocker process diagnostic commands to identify app-owned pdockerd, executor, or stale llama processes and their RSS before taking action.",
-        "If pdocker-owned stale llama work is present, stop only the pdocker llama container from the UI/Engine or with the targeted Engine stop command; do not force-stop user apps.",
+        "If pdocker-owned stale llama work is present, use cleanup_commands in order: stop/remove only the pdocker llama container, then clear app-owned pdocker executors if needed; do not force-stop apps.",
         "Close memory-heavy foreground apps only with user approval; do not force-stop the browser/VS Code session during automated runs.",
         "Wait until MemAvailable and SwapFree recover, then rerun with PDOCKER_LLAMA_WAIT_FOR_MEMORY_SEC set.",
         "Keep the generated JSON artifact with the APK/build commit for regression evidence.",
@@ -474,8 +680,15 @@ report = {
 Path(out).parent.mkdir(parents=True, exist_ok=True)
 Path(out).write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
-    echo "[pdocker llama compare] insufficient memory before $phase: $snap; require mem_free>=${MIN_FREE_MB}MB swap_free>=${MIN_SWAP_FREE_MB}MB" >&2
+    if (( MIN_SWAP_FREE_MB > 0 )); then
+      echo "[pdocker llama compare] insufficient memory before $phase: $snap; require mem_free>=${MIN_FREE_MB}MB swap_free>=${MIN_SWAP_FREE_MB}MB" >&2
+    else
+      echo "[pdocker llama compare] insufficient memory before $phase: $snap; require mem_free>=${MIN_FREE_MB}MB (swap_free is advisory, warn below ${SWAP_ADVISORY_MB}MB)" >&2
+    fi
     return 1
+  fi
+  if (( SWAP_ADVISORY_MB > 0 && swap_free_mb < SWAP_ADVISORY_MB )); then
+    echo "[pdocker llama compare] memory before $phase has low Android zram SwapFree (${swap_free_mb}MB < advisory ${SWAP_ADVISORY_MB}MB); continuing because swap is advisory by default" >&2
   fi
   echo "[pdocker llama compare] memory before $phase: $snap"
 }
@@ -498,7 +711,7 @@ wait_for_memory_headroom() {
 
 runtime_memory_headroom_ok() {
   local phase="$1"
-  local snap free_mb swap_free_mb diagnostics
+  local snap free_mb swap_free_mb swap_hard_block diagnostics thresholds
   snap="$(memory_snapshot_json || printf '{}')"
   free_mb="$(python3 - "$snap" <<'PY'
 import json, sys
@@ -517,14 +730,19 @@ except Exception:
     print(0)
 PY
 )"
-  if (( free_mb < RUNTIME_MIN_FREE_MB || swap_free_mb < RUNTIME_MIN_SWAP_FREE_MB )); then
+  swap_hard_block=0
+  if (( RUNTIME_MIN_SWAP_FREE_MB > 0 && swap_free_mb < RUNTIME_MIN_SWAP_FREE_MB )); then
+    swap_hard_block=1
+  fi
+  if (( free_mb < RUNTIME_MIN_FREE_MB || swap_hard_block )); then
     diagnostics="$(pdocker_memory_diagnostics_json || printf '{}')"
-    python3 - "$RUNTIME_ABORT_JSON" "$phase" "$snap" "$RUNTIME_MIN_FREE_MB" "$RUNTIME_MIN_SWAP_FREE_MB" "$diagnostics" <<'PY' || true
+    thresholds="$(memory_threshold_state_json "$snap" "$RUNTIME_MIN_FREE_MB" "$RUNTIME_MIN_SWAP_FREE_MB" "mem_preflight_free_mb" "$RUNTIME_SWAP_ADVISORY_MB" || printf '{}')"
+    python3 - "$RUNTIME_ABORT_JSON" "$phase" "$snap" "$RUNTIME_MIN_FREE_MB" "$RUNTIME_MIN_SWAP_FREE_MB" "$RUNTIME_SWAP_ADVISORY_MB" "$diagnostics" "$thresholds" <<'PY' || true
 import json
 import sys
 from pathlib import Path
 
-out, phase, snap_s, min_free, min_swap, diagnostics_s = sys.argv[1:7]
+out, phase, snap_s, min_free, min_swap, advisory_swap, diagnostics_s, thresholds_s = sys.argv[1:9]
 try:
     snap = json.loads(snap_s)
 except Exception:
@@ -533,9 +751,35 @@ try:
     diagnostics = json.loads(diagnostics_s)
 except Exception:
     diagnostics = {}
+try:
+    thresholds = json.loads(thresholds_s)
+except Exception:
+    thresholds = {}
 commands = diagnostics.get("diagnostic_commands") if isinstance(diagnostics, dict) else []
 if not isinstance(commands, list):
     commands = []
+cleanup_commands = diagnostics.get("cleanup_commands") if isinstance(diagnostics, dict) else []
+if not isinstance(cleanup_commands, list):
+    cleanup_commands = []
+swap_state = thresholds.get("swap_free_mb") if isinstance(thresholds, dict) else {}
+if not isinstance(swap_state, dict):
+    swap_state = {
+        "observed_mb": int(snap.get("swap_free_mb") or 0),
+        "hard_required_min_mb": int(min_swap),
+        "advisory_min_mb": int(advisory_swap),
+        "hard_gate_enabled": int(min_swap) > 0,
+        "ok": int(min_swap) <= 0 or int(snap.get("swap_free_mb") or 0) >= int(min_swap),
+    }
+swap_state.setdefault("state", "ok" if bool(swap_state.get("ok")) else "below-hard-threshold")
+swap_policy = thresholds.get("swap_policy") if isinstance(thresholds, dict) else {}
+if not isinstance(swap_policy, dict):
+    swap_policy = {
+        "default": "advisory",
+        "hard_gate_enabled": int(min_swap) > 0,
+        "hard_min_swap_free_mb": int(min_swap),
+        "advisory_swap_free_mb": int(advisory_swap),
+        "swap_pressure_advisory": int(snap.get("swap_free_mb") or 0) < int(advisory_swap),
+    }
 Path(out).write_text(json.dumps({
     "error": "runtime_memory_pressure",
     "phase": phase,
@@ -543,18 +787,26 @@ Path(out).write_text(json.dumps({
     "required": {
         "mem_preflight_free_mb": int(min_free),
         "swap_free_mb": int(min_swap),
+        "swap_free_hard_gate_enabled": int(min_swap) > 0,
+        "swap_free_advisory_mb": int(advisory_swap),
     },
+    "memory_thresholds": thresholds,
+    "swap_policy": swap_policy,
+    "swap_free_threshold": swap_state,
+    "swap_free_threshold_state": swap_state.get("state"),
     "next_blocker": (
         f"stopped llama GPU attempt during {phase} before Android LMK/OOM; "
-        f"require mem_available>={min_free}MB and swap_free>={min_swap}MB"
+        f"require mem_available>={min_free}MB"
+        + (f" and swap_free>={min_swap}MB" if int(min_swap) > 0 else "; SwapFree is advisory by default")
     ),
     "pdocker_memory_diagnostics": diagnostics,
     "diagnostic_commands": commands,
+    "cleanup_commands": cleanup_commands,
     "device_actions": [
         "Inspect the generated report before rerunning; it indicates a device-memory failure, not a GPU-correctness result.",
         "Use the pdocker process diagnostic commands to identify app-owned pdockerd, executor, or stale llama processes and their RSS before taking action.",
-        "If stale pdocker llama work is present, stop only the pdocker llama container from the UI/Engine or with the targeted Engine stop command; do not force-stop user apps.",
-        "Let Android reclaim swap, or reboot the test device if swap remains exhausted.",
+        "If stale pdocker llama work is present, use cleanup_commands in order: stop/remove only the pdocker llama container, then clear app-owned pdocker executors if needed; do not force-stop apps.",
+        "Treat low SwapFree as Android zram pressure evidence, not a hard failure unless a strict swap threshold was configured.",
         "Rerun with the same APK and output path after memory recovers; do not rebuild the llama image just because this guard fired.",
     ],
 }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -563,6 +815,9 @@ PY
     echo "[pdocker llama compare] runtime memory pressure during $phase: $snap; stopping container" >&2
     remove_container >/dev/null 2>&1 || true
     return 1
+  fi
+  if (( RUNTIME_SWAP_ADVISORY_MB > 0 && swap_free_mb < RUNTIME_SWAP_ADVISORY_MB )); then
+    echo "[pdocker llama compare] runtime low Android zram SwapFree during $phase (${swap_free_mb}MB < advisory ${RUNTIME_SWAP_ADVISORY_MB}MB); continuing because swap is advisory by default" >&2
   fi
   return 0
 }

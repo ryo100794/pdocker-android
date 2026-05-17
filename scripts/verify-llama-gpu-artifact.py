@@ -21,14 +21,19 @@ from typing import Any
 MEMORY_ERRORS = {"insufficient_memory", "runtime_memory_pressure"}
 DEFAULT_MEMORY_DEVICE_ACTIONS = (
     "Do not start or classify the llama GPU compare while this memory blocker is present; this is not a GPU correctness result.",
-    "Check MemAvailable/SwapFree and rerun only after both thresholds recover.",
+    "Check MemAvailable first; low SwapFree is Android zram pressure evidence and is advisory unless the artifact enabled a hard swap threshold.",
     "Identify pdocker-owned pdockerd, executor, or stale llama processes and their RSS before taking action.",
-    "If pdocker-owned stale llama work is present, stop only the pdocker llama container from the UI/Engine or targeted Engine API; do not force-stop user apps.",
-    "Wait for Android reclaim or reboot the test device if SwapFree remains exhausted.",
+    "If pdocker-owned stale llama work is present, run cleanup_commands in order to stop/remove only the pdocker llama container and app-owned pdocker executors; do not force-stop apps.",
+    "Wait for Android reclaim or reboot the test device only when MemAvailable remains below the hard threshold or strict swap gating was explicitly configured.",
 )
 DEFAULT_MEMORY_DIAGNOSTIC_COMMANDS = (
     "adb shell 'cat /proc/meminfo | egrep \"MemAvailable|SwapFree|SwapTotal\"'",
     "adb shell \"run-as io.github.ryo100794.pdocker.compat sh -c 'ps -A -o PID,PPID,RSS,VSZ,NAME,ARGS 2>/dev/null | grep -E \\\"(pdocker|llama|io.github.ryo100794.pdocker.compat)\\\" || true'\"",
+)
+DEFAULT_MEMORY_CLEANUP_COMMANDS = (
+    "adb shell \"run-as io.github.ryo100794.pdocker.compat sh -c 'cd files && test -S pdocker/pdockerd.sock && printf '\\''POST /containers/pdocker-llama-cpp/stop HTTP/1.1\\r\\nHost: pdocker\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n'\\'' | toybox nc -U -W 3 pdocker/pdockerd.sock >/dev/null || true'\"",
+    "adb shell \"run-as io.github.ryo100794.pdocker.compat sh -c 'cd files && test -S pdocker/pdockerd.sock && printf '\\''DELETE /containers/pdocker-llama-cpp?force=true HTTP/1.1\\r\\nHost: pdocker\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n'\\'' | toybox nc -U -W 3 pdocker/pdockerd.sock >/dev/null || true'\"",
+    "adb shell \"run-as io.github.ryo100794.pdocker.compat sh -c 'pkill -x pdocker-gpu-executor 2>/dev/null; pkill -x pdocker-media-executor 2>/dev/null; true'\"",
 )
 ENV_MANIFEST_PATH = Path(__file__).resolve().with_name("llama-gpu-env-manifest.json")
 COMPACT_HASH_RE = re.compile(r"^0x[0-9a-fA-F]{16}$")
@@ -162,6 +167,15 @@ def _memory_diagnostics(data: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _memory_cleanup_commands(data: dict[str, Any]) -> list[str]:
+    commands = _string_list(data.get("cleanup_commands"))
+    diagnostics = _memory_diagnostics(data)
+    commands = _append_unique(commands, _string_list(diagnostics.get("cleanup_commands")))
+    if not commands:
+        commands = list(DEFAULT_MEMORY_CLEANUP_COMMANDS)
+    return commands
+
+
 def _memory_diagnostic_commands(data: dict[str, Any]) -> list[str]:
     commands = _string_list(data.get("diagnostic_commands"))
     diagnostics = _memory_diagnostics(data)
@@ -174,6 +188,86 @@ def _memory_diagnostic_commands(data: dict[str, Any]) -> list[str]:
 def _memory_device_actions(data: dict[str, Any]) -> list[str]:
     actions = _string_list(data.get("device_actions"))
     return _append_unique(actions, list(DEFAULT_MEMORY_DEVICE_ACTIONS))
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _memory_thresholds(data: dict[str, Any]) -> dict[str, Any]:
+    value = data.get("memory_thresholds")
+    if isinstance(value, dict):
+        return value
+    memory = data.get("memory")
+    required = data.get("required")
+    if not isinstance(memory, dict) or not isinstance(required, dict):
+        return {}
+    mem_required = _safe_int(required.get("mem_preflight_free_mb") or required.get("mem_free_mb"))
+    swap_required = _safe_int(required.get("swap_free_mb"))
+    swap_hard_gate_value = required.get("swap_free_hard_gate_enabled")
+    swap_hard_gate_enabled = (
+        bool(swap_hard_gate_value)
+        if isinstance(swap_hard_gate_value, bool)
+        else swap_required > 0
+    )
+    swap_advisory = _safe_int(required.get("swap_free_advisory_mb"))
+    mem_observed = _safe_int(
+        memory.get("mem_preflight_free_mb") or memory.get("mem_available_mb") or memory.get("mem_free_mb")
+    )
+    swap_observed = _safe_int(memory.get("swap_free_mb"))
+    if not mem_required and not swap_required:
+        return {}
+    mem_key = "mem_preflight_free_mb"
+    swap_ok = (not swap_hard_gate_enabled) or swap_observed >= swap_required
+    swap_advisory_ok = (not swap_advisory) or swap_observed >= swap_advisory
+    legacy_state = "ok" if swap_ok else "below-threshold"
+    return {
+        "summary": "pass" if mem_observed >= mem_required and swap_ok else "fail",
+        mem_key: {
+            "observed_mb": mem_observed,
+            "required_min_mb": mem_required,
+            "ok": mem_observed >= mem_required,
+        },
+        "swap_free_mb": {
+            "observed_mb": swap_observed,
+            "required_min_mb": swap_required,
+            "hard_required_min_mb": swap_required,
+            "advisory_min_mb": swap_advisory,
+            "hard_gate_enabled": swap_hard_gate_enabled,
+            "ok": swap_ok,
+            "advisory_ok": swap_advisory_ok,
+            "state": legacy_state,
+            "advisory_state": "ok" if swap_advisory_ok else "below-advisory-threshold",
+        },
+        "swap_policy": {
+            "default": "advisory",
+            "hard_gate_enabled": swap_hard_gate_enabled,
+            "hard_min_swap_free_mb": swap_required,
+            "advisory_swap_free_mb": swap_advisory,
+            "swap_pressure_advisory": not swap_advisory_ok,
+        },
+    }
+
+
+def _swap_free_threshold(data: dict[str, Any]) -> dict[str, Any]:
+    value = data.get("swap_free_threshold")
+    if isinstance(value, dict):
+        return value
+    thresholds = _memory_thresholds(data)
+    value = thresholds.get("swap_free_mb") if isinstance(thresholds, dict) else {}
+    return value if isinstance(value, dict) else {}
+
+
+def _swap_policy(data: dict[str, Any]) -> dict[str, Any]:
+    value = data.get("swap_policy")
+    if isinstance(value, dict):
+        return value
+    thresholds = _memory_thresholds(data)
+    value = thresholds.get("swap_policy") if isinstance(thresholds, dict) else {}
+    return value if isinstance(value, dict) else {}
 
 
 def _runtime_freshness(data: dict[str, Any]) -> dict[str, Any]:
@@ -783,10 +877,15 @@ def _claim_base(
     device_memory_blocked: bool = False,
     device_actions: list[Any] | None = None,
     diagnostic_commands: list[Any] | None = None,
+    cleanup_commands: list[Any] | None = None,
     pdocker_memory_diagnostics: dict[str, Any] | None = None,
     memory: dict[str, Any] | None = None,
+    memory_thresholds: dict[str, Any] | None = None,
+    swap_free_threshold: dict[str, Any] | None = None,
+    swap_policy: dict[str, Any] | None = None,
     runtime_freshness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    swap_threshold = swap_free_threshold or {}
     return {
         "classification": classification,
         "terminal": False,
@@ -796,8 +895,13 @@ def _claim_base(
         "next_action": next_action,
         "device_actions": device_actions or [],
         "diagnostic_commands": diagnostic_commands or [],
+        "cleanup_commands": cleanup_commands or [],
         "pdocker_memory_diagnostics": pdocker_memory_diagnostics or {},
         "memory": memory or {},
+        "memory_thresholds": memory_thresholds or {},
+        "swap_free_threshold": swap_threshold,
+        "swap_free_threshold_state": swap_threshold.get("state") if isinstance(swap_threshold, dict) else None,
+        "swap_policy": swap_policy or {},
         "runtime_freshness": runtime_freshness or {},
     }
 
@@ -811,8 +915,12 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             next_action=data.get("next_blocker") or "recover Android memory and rerun",
             device_actions=_memory_device_actions(data),
             diagnostic_commands=_memory_diagnostic_commands(data),
+            cleanup_commands=_memory_cleanup_commands(data),
             pdocker_memory_diagnostics=_memory_diagnostics(data),
             memory=data.get("memory") or {},
+            memory_thresholds=_memory_thresholds(data),
+            swap_free_threshold=_swap_free_threshold(data),
+            swap_policy=_swap_policy(data),
         )
 
     if _readiness_false(data):

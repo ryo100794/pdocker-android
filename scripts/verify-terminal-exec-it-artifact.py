@@ -117,7 +117,7 @@ def _verify_planned_skip(artifact: dict[str, Any], require_container: bool) -> N
         artifact.get("DeviceProofAttempted") is not True,
         "UI exec-it planned-skip must not claim device proof was attempted",
     )
-    if require_container:
+    if require_container or artifact.get("HardGateRequired") is True:
         raise VerificationError("UI exec-it hard gate requires a real container; planned-skip is not a pass")
 
 

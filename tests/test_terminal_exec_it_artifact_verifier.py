@@ -98,11 +98,63 @@ class TerminalExecItArtifactVerifierTest(unittest.TestCase):
             "Status": "planned-skip",
             "Success": True,
             "DeviceProofAttempted": False,
+            "HardGateRequired": False,
         }
         tmp, artifact_path, input_path = self.write_case(artifact=artifact, events=None)
         with tmp:
             with self.assertRaisesRegex(verifier.VerificationError, "planned-skip must never report Success=true"):
                 verifier.verify(artifact_path, input_path, require_container=False)
+
+    def test_accepts_planned_skip_only_as_optional_non_promoting_skip_evidence(self):
+        artifact = {
+            "Name": "ui-engine-exec-it",
+            "Status": "planned-skip",
+            "Success": False,
+            "DeviceProofAttempted": False,
+            "HardGateRequired": False,
+        }
+        tmp, artifact_path, input_path = self.write_case(artifact=artifact, events=None)
+        with tmp:
+            verifier.verify(artifact_path, input_path, require_container=False)
+
+    def test_rejects_planned_skip_when_artifact_marks_hard_gate_even_without_cli_flag(self):
+        artifact = {
+            "Name": "ui-engine-exec-it",
+            "Status": "planned-skip",
+            "Success": False,
+            "DeviceProofAttempted": False,
+            "HardGateRequired": True,
+        }
+        tmp, artifact_path, input_path = self.write_case(artifact=artifact, events=None)
+        with tmp:
+            with self.assertRaisesRegex(verifier.VerificationError, "hard gate requires a real container"):
+                verifier.verify(artifact_path, input_path, require_container=False)
+
+    def test_rejects_success_artifact_without_container_even_when_optional(self):
+        artifact = good_artifact()
+        artifact["Container"] = ""
+        tmp, artifact_path, input_path = self.write_case(artifact=artifact, events=good_events())
+        with tmp:
+            with self.assertRaisesRegex(verifier.VerificationError, "success artifact is missing Container"):
+                verifier.verify(artifact_path, input_path, require_container=False)
+
+    def test_rejects_container_mismatch_between_artifact_and_engine_exec_jsonl(self):
+        events = [dict(event) for event in good_events()]
+        events[0]["container"] = "fedcba9876543210"
+        tmp, artifact_path, input_path = self.write_case(events=events)
+        with tmp:
+            with self.assertRaisesRegex(verifier.VerificationError, "start container mismatch"):
+                verifier.verify(artifact_path, input_path, require_container=True)
+
+    def test_rejects_resize_route_for_different_exec_id(self):
+        events = [dict(event) for event in good_events()]
+        for event in events:
+            if event.get("event") == "resize":
+                event["execId"] = "different-exec-id"
+        tmp, artifact_path, input_path = self.write_case(events=events)
+        with tmp:
+            with self.assertRaisesRegex(verifier.VerificationError, "resize route is not observable for the created execId"):
+                verifier.verify(artifact_path, input_path, require_container=True)
 
     def test_rejects_success_json_without_raw_engine_exec_jsonl(self):
         artifact = good_artifact()

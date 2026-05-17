@@ -19,6 +19,11 @@ class LlamaGpuReadinessContractTest(unittest.TestCase):
         self.assertIn('"readiness_false_blocks_gpu_run": True', self.source)
         self.assertIn('"executor_marker_required_for_compare_claim": True', self.source)
         self.assertIn('"cpu_comparison_required_for_benchmark_claim": True', self.source)
+        self.assertIn('MIN_SWAP_FREE_MB="${PDOCKER_LLAMA_MIN_SWAP_FREE_MB:-0}"', self.source)
+        self.assertIn('SWAP_ADVISORY_MB="${PDOCKER_LLAMA_SWAP_ADVISORY_MB:-1024}"', self.source)
+        self.assertIn('"swap_policy"', self.source)
+        self.assertIn('"swap_pressure_advisory"', self.source)
+        self.assertIn("low SwapFree is advisory", self.source)
         self.assertIn('"device_actions": actions', self.source)
         self.assertIn("raise SystemExit(0 if ready else 20)", self.source)
 

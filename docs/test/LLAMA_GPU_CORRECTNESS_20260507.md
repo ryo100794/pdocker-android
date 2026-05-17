@@ -256,10 +256,14 @@ Two ICD correctness fixes were added on 2026-05-08:
   The next device run must confirm that Q6_K reports `local_size_patched=true`
   with `spirv_local_size=[32,2,1]` and then re-check the sampled oracle.
 - The compare driver now refuses to start a llama container when Android memory
-  headroom is already unsafe. Defaults are `PDOCKER_LLAMA_MIN_FREE_MB=512` and
-  `PDOCKER_LLAMA_MIN_SWAP_FREE_MB=1024`. This prevents GPU tuning runs from
-  starving the browser-backed VS Code session or making failures look like GPU
-  correctness regressions when they are actually low-memory pressure.
+  headroom is already unsafe. The default hard gate is
+  `PDOCKER_LLAMA_MIN_FREE_MB=512`; `SwapFree` is recorded as Android zram
+  pressure evidence but is advisory by default. Set
+  `PDOCKER_LLAMA_MIN_SWAP_FREE_MB` or
+  `PDOCKER_LLAMA_RUNTIME_MIN_SWAP_FREE_MB` only when a strict swap gate is the
+  subject of the experiment. This prevents GPU tuning runs from starving the
+  browser-backed VS Code session while avoiding false blocks on normal Android
+  zram behavior.
 - Decode-variant diagnostics now compare the canonical Q6_K decode against
   common wrong interpretations for the first sampled row. Ignoring high 2-bit
   planes gives `-1.30868773`, treating scales as unsigned gives `-10.0479286`,
@@ -826,11 +830,13 @@ Local evidence:
 Device llama comparison was intentionally stopped from this step because the
 device was memory-constrained.  A short forced-GPU attempt showed that model
 startup can consume the remaining swap before the HTTP server becomes reachable.
-The compare script now has a stricter preflight gate (`SwapFree >= 1024 MiB` by
-default), stale-target cleanup for `pdocker-llama-cpp`, an Engine start timeout,
-and a runtime watchdog.  It will record memory-pressure evidence instead of
-pushing Android toward LMK/OOM.  The thresholds remain overridable for
-controlled experiments, but benchmark evidence should use the defaults.
+The compare script now has a stricter `MemAvailable` preflight gate, stale-target
+cleanup for `pdocker-llama-cpp`, an Engine start timeout, and a runtime
+watchdog.  It records low `SwapFree` as advisory zram pressure by default
+instead of treating near-full Android swap as a standalone blocker.  Strict swap
+thresholds remain overridable for controlled memory-pressure experiments, but
+benchmark evidence should use the defaults unless the report explicitly says it
+is a strict-swap run.
 
 Next pass condition: on the next `ngl=1` strict run, the JSON event for
 `mul-mat-vec-q6-k-large` must show `spirv_local_size_resolved:[32,2,1]`,

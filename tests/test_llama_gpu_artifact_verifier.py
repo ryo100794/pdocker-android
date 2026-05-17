@@ -149,6 +149,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         payload = {
             "error": "insufficient_memory",
             "memory": {"mem_available_mb": 1036, "swap_free_mb": 5},
+            "required": {"mem_free_mb": 512, "swap_free_mb": 1024},
             "device_actions": ["wait"],
         }
         blocked = self.run_verifier(payload)
@@ -166,9 +167,20 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
             any("run-as io.github.ryo100794.pdocker.compat" in command for command in report["diagnostic_commands"]),
             report["diagnostic_commands"],
         )
+        self.assertEqual(report["memory_thresholds"]["swap_free_mb"]["state"], "below-threshold")
+        self.assertEqual(report["memory_thresholds"]["swap_free_mb"]["observed_mb"], 5)
+        self.assertFalse(report["memory_thresholds"]["swap_free_mb"]["ok"])
+        self.assertTrue(
+            any("/containers/pdocker-llama-cpp/stop" in command for command in report["cleanup_commands"]),
+            report["cleanup_commands"],
+        )
         self.assertFalse(
             any("am force-stop" in action for action in report["device_actions"]),
             report["device_actions"],
+        )
+        self.assertFalse(
+            any("am force-stop" in command for command in report["cleanup_commands"]),
+            report["cleanup_commands"],
         )
         allowed = self.run_verifier(payload, "--allow-memory-blocker")
         self.assertEqual(allowed.returncode, 0, allowed.stdout)
@@ -181,8 +193,20 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
             "pdocker_memory_diagnostics": {
                 "process_count": 1,
                 "stale_llama_process_hint": True,
+                "top_rss_processes": [{"raw": "u0_a1 42 1 123456 llama-server", "rss_mb": 120.6}],
                 "process_sample": [{"raw": "u0_a1 42 1 123456 llama-server", "rss_mb": 120.6}],
                 "diagnostic_commands": ["adb shell run-as pkg ps"],
+                "cleanup_commands": ["adb shell run-as pkg stop-target-container"],
+            },
+            "memory_thresholds": {
+                "summary": "fail",
+                "mem_preflight_free_mb": {"observed_mb": 600, "required_min_mb": 384, "ok": True},
+                "swap_free_mb": {
+                    "observed_mb": 4,
+                    "required_min_mb": 512,
+                    "ok": False,
+                    "state": "below-threshold",
+                },
             },
         }
         result = self.run_verifier(payload)
@@ -190,8 +214,11 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual(report["classification"], "runtime_memory_pressure")
         self.assertEqual(report["pdocker_memory_diagnostics"]["process_count"], 1)
+        self.assertEqual(report["pdocker_memory_diagnostics"]["top_rss_processes"][0]["rss_mb"], 120.6)
+        self.assertEqual(report["swap_free_threshold_state"], "below-threshold")
         self.assertIn("adb shell cat /proc/meminfo", report["diagnostic_commands"])
         self.assertIn("adb shell run-as pkg ps", report["diagnostic_commands"])
+        self.assertIn("adb shell run-as pkg stop-target-container", report["cleanup_commands"])
 
     def test_readiness_false_blocks_gpu_run_claims(self):
         payload = {
