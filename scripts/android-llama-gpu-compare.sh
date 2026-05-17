@@ -1406,14 +1406,23 @@ timeout_sec = max(1, int(timeout_s))
 
 def get_json(path: str, timeout: int) -> dict:
     started = time.monotonic()
-    item = {"ok": False, "status_code": None, "duration_ms": None, "error": None, "path": path}
+    item = {
+        "ok": False,
+        "status": "fail",
+        "status_code": None,
+        "duration_ms": None,
+        "error": None,
+        "path": path,
+    }
     try:
         with urllib.request.urlopen(base_url + path, timeout=timeout) as resp:
             body = resp.read().decode("utf-8", "replace")
+            ok = 200 <= int(resp.status) < 300
             item.update({
                 "status_code": resp.status,
                 "duration_ms": round((time.monotonic() - started) * 1000.0, 3),
-                "ok": 200 <= int(resp.status) < 300,
+                "ok": ok,
+                "status": "pass" if ok else "fail",
             })
             try:
                 item["json"] = json.loads(body)
@@ -1438,23 +1447,40 @@ def post_json(path: str, body: dict, timeout: int) -> dict:
     started = time.monotonic()
     item = {
         "ok": False,
+        "status": "fail",
         "status_code": None,
         "duration_ms": None,
         "error": None,
         "path": path,
         "timeout_sec": timeout,
+        "prompt": str(body.get("prompt", "")),
+        "expected": ["5"],
+        "n_predict": body.get("n_predict"),
+        "deterministic": (
+            body.get("temperature") == 0
+            and body.get("top_k") == 1
+            and body.get("top_p") == 1
+            and body.get("stream") is False
+        ),
+        "content": "",
+        "passed": False,
     }
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = resp.read().decode("utf-8", "replace")
+            ok = 200 <= int(resp.status) < 300
             item.update({
                 "status_code": resp.status,
                 "duration_ms": round((time.monotonic() - started) * 1000.0, 3),
-                "ok": 200 <= int(resp.status) < 300,
+                "ok": ok,
+                "status": "pass" if ok else "fail",
             })
             try:
                 parsed = json.loads(payload)
-                item["content_excerpt"] = str(parsed.get("content", ""))[:128] if isinstance(parsed, dict) else ""
+                content = str(parsed.get("content", "")) if isinstance(parsed, dict) else ""
+                item["content"] = content[:256]
+                item["content_excerpt"] = content[:128]
+                item["passed"] = any(content.lstrip().startswith(prefix) for prefix in item["expected"])
             except Exception:
                 item["body_excerpt"] = payload[:512]
     except Exception as exc:
@@ -1488,9 +1514,11 @@ report = {
     "completion": post_json("/completion", completion_body, timeout_sec),
 }
 report["summary"] = {
-    "liveness": "pass" if report["models"]["ok"] else "fail",
+    "health": "pass" if report["health"]["ok"] else "fail",
+    "models": "pass" if report["models"]["ok"] else "fail",
+    "liveness": "pass" if report["health"]["ok"] and report["models"]["ok"] else "fail",
     "completion": "pass" if report["completion"]["ok"] else "fail",
-    "ready": bool(report["models"]["ok"] and report["completion"]["ok"]),
+    "ready": bool(report["health"]["ok"] and report["models"]["ok"] and report["completion"]["ok"]),
 }
 with open(out_path, "w", encoding="utf-8") as f:
     json.dump(report, f, indent=2, ensure_ascii=False)
@@ -2165,12 +2193,15 @@ evidence = {
 gpu_correctness_summary = correctness.get("summary", {}).get("correctness")
 differential_correctness_summary = differential_correctness.get("summary")
 service_summary = service_readiness.get("summary") if isinstance(service_readiness.get("summary"), dict) else {}
+service_health = service_readiness.get("health") if isinstance(service_readiness.get("health"), dict) else {}
 service_completion = service_readiness.get("completion") if isinstance(service_readiness.get("completion"), dict) else {}
 service_models = service_readiness.get("models") if isinstance(service_readiness.get("models"), dict) else {}
 completion_ready = service_summary.get("completion") == "pass" or service_completion.get("ok") is True
-models_ready = service_summary.get("liveness") == "pass" or service_models.get("ok") is True
+health_ready = service_summary.get("health") == "pass" or service_health.get("ok") is True
+models_ready = service_summary.get("models") == "pass" or service_models.get("ok") is True
 completion_timeout = (
     bool(int(gpu_served_s))
+    and health_ready
     and models_ready
     and not completion_ready
     and "timed out" in str(service_completion.get("error") or "").lower()
@@ -2189,7 +2220,7 @@ elif generic_spirv_dispatch_blocker:
     blocker_detail = "generic SPIR-V dispatch reached submit-generic-dispatch / queue submit failure"
 elif completion_timeout:
     blocker_class = "llama_completion_timeout"
-    blocker_detail = "HTTP liveness passed, but deterministic /completion did not finish during readiness probing"
+    blocker_detail = "HTTP /health and /v1/models passed, but deterministic /completion did not finish during readiness probing"
 elif runtime_freshness["summary"] == "fail":
     blocker_class = "runtime_freshness_mismatch"
     blocker_detail = "expected GPU executor build marker was not observed; test may be running stale native code or missing executor evidence"

@@ -1,6 +1,6 @@
 # Agent Coordination Ledger
 
-Last updated: 2026-05-04
+Last updated: 2026-05-17
 
 This ledger records active delegation lanes and integration risks for the main
 agent. The main agent owns waiting on agents, closing lanes, and integrating
@@ -17,6 +17,10 @@ risks; it does not edit implementation files or resolve sibling work.
 
 | Result | Owner | Landed as | Follow-up |
 | --- | --- | --- | --- |
+| Llama GPU readiness artifacts | Linnaeus | `/completion` readiness probe, runtime GPU env snapshot, and timeout classifier | Rerun Android compare to populate device artifacts; do not claim benchmark success on timeout |
+| Llama startup evidence | Wegener | early profile logging and `llama-startup.json` contract | Confirm startup JSON appears in `docker logs`/workspace during next device run |
+| TODO decomposition audit | Harvey | integrated into audit/TODO triage | Keep device-gated lanes open until fresh Android artifacts promote them |
+| Placeholder/Documents cleanup | Averroes | bounded dev-workspace repair comment, static guard, Documents placeholder wording | Device SAF direct-output gate remains open |
 | Build environment consolidation | Boyle | `scripts/build-all.sh`, `PDOCKER_SKIP_NATIVE_BUILD`, build docs | Treat as local convenience, not the full release/F-Droid process |
 | TODO lane decomposition | Sartre | Used to assign non-overlapping work | Keep GPU implementation local; delegate low-conflict test/docs lanes |
 | Direct syscall coverage lane | Banach | `scripts/run_direct_syscall_scenarios.py --lane local`, `tests/direct_syscall/`, `docs/test/DIRECT_SYSCALL_COVERAGE.md` | Included in `scripts/verify-fast.sh` |

@@ -7372,6 +7372,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Compatibility repair for dev-workspace installs created from the short-lived
+    // placeholder Dockerfile template. The guard is intentionally narrow: only a
+    // compose file that still expects start-code-server plus the exact placeholder
+    // Dockerfile is migrated, and the original is kept once for operator recovery.
     private fun repairDefaultDevWorkspaceDockerfile(project: File) {
         val dockerfile = File(project, "Dockerfile")
         val compose = File(project, "compose.yaml")

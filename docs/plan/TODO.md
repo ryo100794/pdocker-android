@@ -234,10 +234,13 @@ issues, and deciding which planned gaps become hard gates.
   per-image virtual/shared/unique bytes, container upper/private bytes, and
   merged image/rootfs view bytes with explicit overlap notes so UI totals do
   not double-count hardlinked lower data.
-- [next] Default workspace Dockerfile placeholder repair cleanup: the
-  one-off `Dockerfile.pdocker-broken-backup` migration path in `MainActivity`
-  must be documented as intentional compatibility repair logic or retired after
-  a bounded migration window with a regression fixture.
+- [done] Default workspace Dockerfile placeholder repair cleanup: the
+  `Dockerfile.pdocker-broken-backup` path is intentional bounded compatibility
+  repair logic for installs created from the short-lived placeholder template.
+  `MainActivity.repairDefaultDevWorkspaceDockerfile` only rewrites the exact
+  known placeholder when compose still needs `start-code-server`, keeps the
+  original as a one-time operator backup, and `scripts/verify-ui-actions.py`
+  statically guards that narrow migration contract.
 
 ### Post-Build Conversation Intake 2026-05-06
 

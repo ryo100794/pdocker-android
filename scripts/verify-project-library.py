@@ -84,12 +84,17 @@ def check_llama_gpu_compare_contract(compare_script: str) -> None:
         if token in compare_script:
             fail(f"compare script main path must not require Docker CLI token {token!r}")
     engine_api_checks = {
-        "creates containers through Engine API": "/containers/create" in compare_script and "engine_body POST" in compare_script,
+        "creates containers through Engine API": "/containers/create" in compare_script
+        and (
+            "engine_body POST" in compare_script
+            or "engine_request_with_host_timeout" in compare_script
+        ),
         "starts containers through Engine API": "/start" in compare_script
         and ("engine_request POST" in compare_script or "engine_request_with_host_timeout" in compare_script),
         "removes containers through Engine API": "DELETE" in compare_script and "/containers/" in compare_script,
         "reads logs through Engine API": "/logs?stdout=1&stderr=1" in compare_script and "decode_engine_logs" in compare_script,
-        "uses pdockerd Unix socket directly": "toybox nc -U pdocker/pdockerd.sock" in compare_script,
+        "uses pdockerd Unix socket directly": "toybox nc -U" in compare_script
+        and "pdocker/pdockerd.sock" in compare_script,
     }
     for name, passed in engine_api_checks.items():
         if not passed:
@@ -416,6 +421,9 @@ def main() -> int:
         "llama optional model download": "LLAMA_MODEL_URL" in llama_compose and "curl -fL" in start and "-C -" in start,
         "llama default chat template": "--jinja" in start,
         "llama docker logs stream": "LLAMA_LOG_FILE" in llama_compose and "tee -a \"$log_file\"" in start and "stdbuf -oL -eL" in start,
+        "llama startup tee captures profile generation": start.find("exec > >(tee -a \"$log_file\") 2>&1") < start.find("pdocker-gpu-profile") and "pdocker llama startup: refreshing GPU profile" in start and ">/dev/null" not in start[start.find("pdocker-gpu-profile") - 80:start.find("pdocker-gpu-profile") + 120],
+        "llama startup json records resolved GPU contract": "LLAMA_STARTUP_JSON" in start and "profile_path" in start and "profile_refresh_rc" in start and "llama_server_argv" in start and "MemAvailable" in start and "SwapFree" in start and "PDOCKER_GPU_QUEUE_SOCKET" in start and "VK_ICD_FILENAMES" in start,
+        "llama startup json records KV guard state": "kv_offload_guard" in start and "kv_offload_guard_active" in start and "added_arg" in start and "disabled_effective" in start,
         "llama missing-model status page": "http.server" in start and "waiting for a GGUF model" in start,
     }
     for name, passed in expectations.items():

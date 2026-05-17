@@ -14,7 +14,9 @@ fi
 
 profile_refresh_rc=0
 if [[ "$refresh" = "always" || ! -f "$profile" || ! -f "$diagnostics" || ( "$refresh" = "auto" && "${PDOCKER_GPU_AUTO:-}" = "1" ) ]]; then
-  LLAMA_GPU_DIAGNOSTICS="$diagnostics" pdocker-gpu-profile "$profile" >/dev/null || profile_refresh_rc=$?
+  echo "pdocker llama startup: refreshing GPU profile path=$profile diagnostics=$diagnostics refresh=$refresh"
+  LLAMA_GPU_DIAGNOSTICS="$diagnostics" pdocker-gpu-profile "$profile" || profile_refresh_rc=$?
+  echo "pdocker llama startup: GPU profile refresh rc=$profile_refresh_rc path=$profile diagnostics=$diagnostics"
 fi
 if [[ -f "$profile" ]]; then
   # shellcheck disable=SC1090
@@ -53,25 +55,37 @@ has_llama_arg() {
   esac
 }
 
+kv_offload_guard_active=0
+kv_offload_guard_added_arg=0
+kv_offload_guard_arg_present_before=0
+if has_llama_arg "--no-kv-offload" || has_llama_arg "-nkvo" || has_llama_arg "--kv-offload"; then
+  kv_offload_guard_arg_present_before=1
+fi
 if [[ "${LLAMA_GPU_BACKEND:-}" = "vulkan" \
       && "${PDOCKER_VULKAN_ICD_KIND:-}" = pdocker-* \
       && "${PDOCKER_VULKAN_ICD_READY:-0}" != "1" \
       && "${PDOCKER_VULKAN_ALLOW_KV_OFFLOAD:-0}" != "1" ]]; then
+  kv_offload_guard_active=1
   export LLAMA_ARG_KV_OFFLOAD=0
   if ! has_llama_arg "--no-kv-offload" && ! has_llama_arg "-nkvo" && ! has_llama_arg "--kv-offload"; then
     extra_args="--no-kv-offload ${extra_args}"
+    kv_offload_guard_added_arg=1
   fi
   echo "pdocker: disabling llama.cpp KV cache offload for unfinished pdocker Vulkan ICD; set PDOCKER_VULKAN_ALLOW_KV_OFFLOAD=1 to override"
 fi
 
 mkdir -p "$(dirname "$startup_json")"
-python3 - "$startup_json" "$profile_refresh_rc" "$profile" "$diagnostics" "$refresh" "$server" "$model" "$port" "$ctx" "$threads" "$ngl" "$extra_args" <<'PY' || true
+python3 - "$startup_json" "$profile_refresh_rc" "$profile" "$diagnostics" "$refresh" "$server" "$model" "$port" "$ctx" "$threads" "$ngl" "$extra_args" "$kv_offload_guard_active" "$kv_offload_guard_added_arg" "$kv_offload_guard_arg_present_before" <<'PY' || true
 import json
 import os
 import sys
 import time
 
-out, profile_rc, profile, diagnostics, refresh, server, model, port, ctx, threads, ngl, extra_args = sys.argv[1:13]
+(
+    out, profile_rc, profile, diagnostics, refresh, server, model, port, ctx,
+    threads, ngl, extra_args, kv_guard_active, kv_guard_added_arg,
+    kv_guard_arg_present_before,
+) = sys.argv[1:16]
 interesting = (
     "LLAMA_",
     "PDOCKER_GPU_",
@@ -106,20 +120,53 @@ argv = [
 ] + extra_args.split()
 kv_offload_arg_present = any(arg in {"--no-kv-offload", "-nkvo"} for arg in argv)
 kv_offload_env = os.environ.get("LLAMA_ARG_KV_OFFLOAD")
+resolved = {
+    "LLAMA_GPU_BACKEND": os.environ.get("LLAMA_GPU_BACKEND", ""),
+    "LLAMA_ARG_N_GPU_LAYERS": ngl,
+    "LLAMA_ARG_CTX": ctx,
+    "LLAMA_ARG_THREADS": threads,
+    "VK_ICD_FILENAMES": os.environ.get("VK_ICD_FILENAMES", ""),
+    "PDOCKER_GPU_QUEUE_SOCKET": os.environ.get("PDOCKER_GPU_QUEUE_SOCKET", ""),
+    "PDOCKER_VULKAN_ICD_KIND": os.environ.get("PDOCKER_VULKAN_ICD_KIND", ""),
+    "PDOCKER_VULKAN_ICD_READY": os.environ.get("PDOCKER_VULKAN_ICD_READY", ""),
+}
+kv_guard_active_bool = kv_guard_active == "1"
+kv_guard_added_arg_bool = kv_guard_added_arg == "1"
+kv_guard_arg_present_before_bool = kv_guard_arg_present_before == "1"
+kv_offload_disabled_effective = kv_offload_arg_present or kv_offload_env == "0"
 report = {
     "schema": "pdocker.llama.startup.v1",
     "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     "profile": profile,
+    "profile_path": profile,
     "diagnostics": diagnostics,
+    "diagnostics_path": diagnostics,
     "profile_refresh": refresh,
     "profile_refresh_rc": int(profile_rc),
+    "resolved": resolved,
     "env": env,
     "meminfo": meminfo,
+    "memory": {
+        "MemAvailable": meminfo.get("MemAvailable", ""),
+        "SwapFree": meminfo.get("SwapFree", ""),
+    },
     "argv": argv,
+    "llama_server_argv": argv,
     "kv_offload_env": kv_offload_env,
     "kv_offload_arg_present": kv_offload_arg_present,
-    "kv_offload_disabled_effective": kv_offload_arg_present or kv_offload_env == "0",
-    "kv_offload_guarded": kv_offload_arg_present or kv_offload_env == "0",
+    "kv_offload_disabled_effective": kv_offload_disabled_effective,
+    "kv_offload_guarded": kv_guard_active_bool,
+    "kv_offload_guard": {
+        "active": kv_guard_active_bool,
+        "added_arg": kv_guard_added_arg_bool,
+        "arg_present_before": kv_guard_arg_present_before_bool,
+        "disabled_effective": kv_offload_disabled_effective,
+        "env": kv_offload_env,
+        "backend": resolved["LLAMA_GPU_BACKEND"],
+        "icd_kind": resolved["PDOCKER_VULKAN_ICD_KIND"],
+        "icd_ready": resolved["PDOCKER_VULKAN_ICD_READY"],
+        "allow_override": os.environ.get("PDOCKER_VULKAN_ALLOW_KV_OFFLOAD", ""),
+    },
 }
 with open(out, "w", encoding="utf-8") as f:
     json.dump(report, f, indent=2, sort_keys=True)

@@ -110,10 +110,13 @@ The GPU profile action writes:
   shared-buffer probe is recorded as bridge readiness, not as llama.cpp GPU
   acceleration until the llama backend is wired to the bridge.
 
-All startup, download, status-page, and `llama-server` output is written to
-stdout/stderr so `docker logs pdocker-llama-cpp` can show it. The same stream is
-also copied to `/workspace/logs/llama-server.log`; override `LLAMA_LOG_FILE` to
-change or disable that extra file.
+All startup, GPU profile generation, download, status-page, and `llama-server`
+output is written to stdout/stderr so `docker logs pdocker-llama-cpp` can show
+it. The same stream is also copied to `/workspace/logs/llama-server.log`;
+override `LLAMA_LOG_FILE` to change or disable that extra file. The entrypoint
+also writes `/workspace/logs/llama-startup.json` with the profile refresh result,
+resolved GPU/backend arguments, KV offload guard state, llama-server argv, and
+`MemAvailable`/`SwapFree` startup memory evidence.
 
 Qwen3 weights are available under the Apache 2.0 license. This template
 downloads the model at runtime; it is not bundled into the APK.

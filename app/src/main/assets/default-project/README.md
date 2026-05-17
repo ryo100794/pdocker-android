@@ -43,10 +43,12 @@ The default Compose project mounts app-owned pdocker paths into the container:
 - `/pdocker/host`: the app pdocker home, matching `filesDir/pdocker` on
   Android.
 - `/pdocker/host/pdockerd.sock`: pdocker Engine socket when pdockerd is running.
-- `/documents`: the selected Android Documents folder. Use this path when a
-  containerized app explicitly needs to import, export, or exchange data on
-  SD/Documents storage. Override with `PDOCKER_DOCUMENTS_HOST` or
-  `PDOCKER_DOCUMENTS_MOUNT`.
+- `/documents`: the selected Android Documents folder when Android grants
+  direct path access, or pdocker's SAF-mediated app-private mirror when direct
+  writes are unavailable. Use this path when a containerized app explicitly
+  needs to import, export, or exchange data on SD/Documents storage; SAF mirror
+  sync/writeback is visible in the pdocker Documents actions. Override with
+  `PDOCKER_DOCUMENTS_HOST` or `PDOCKER_DOCUMENTS_MOUNT`.
 - `/shared`: cross-project shared Documents volume. Point multiple projects at
   the same folder by setting `PDOCKER_SHARED_DOCUMENTS_HOST`.
 

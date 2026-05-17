@@ -83,15 +83,17 @@ COMPOSE
   cat > "$dest/documents/README.md" <<'README'
 # Shared Documents Volume
 
-This placeholder is used when the pdocker Android app has not configured a
-host Documents folder. Containers see the shared folder at `/documents` by
-default.
+This placeholder exists only as an app-private fallback for a new project.
+Containers see this folder at `/documents` until the pdocker Android app
+provides either direct Documents path access or its SAF-mediated mirror.
 
-The selected Android Documents folder is mounted at `/documents` by default.
-Use it for explicit exports, benchmark artifacts, models you choose to share,
-and handoff files. Containers from other projects may intentionally share a
-folder by overriding `PDOCKER_DOCUMENTS_HOST` or by using the shared mount at
-`/shared`.
+When Android grants direct path access, the selected Documents folder is mounted
+at `/documents`. On SAF-only devices, pdocker mounts an app-private mirror at
+`/documents` and syncs selected writes back through the Documents actions. Use
+that path for explicit exports, benchmark artifacts, models you choose to
+share, and handoff files. Containers from other projects may intentionally
+share a folder by overriding `PDOCKER_DOCUMENTS_HOST` or by using the shared
+mount at `/shared`.
 
 Keep hot build caches, databases, and high-frequency logs in `/workspace` or
 another app-private volume, then copy selected results to `/documents` when

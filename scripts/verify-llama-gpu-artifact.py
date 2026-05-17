@@ -879,19 +879,29 @@ def _service_completion_timeout(data: dict[str, Any]) -> dict[str, Any]:
     if readiness.get("schema") != "pdocker.llama.service-readiness.v1":
         return {"summary": "invalid-schema", "timeout": False, "schema": readiness.get("schema")}
     summary = readiness.get("summary") if isinstance(readiness.get("summary"), dict) else {}
+    health = readiness.get("health") if isinstance(readiness.get("health"), dict) else {}
     models = readiness.get("models") if isinstance(readiness.get("models"), dict) else {}
     completion = readiness.get("completion") if isinstance(readiness.get("completion"), dict) else {}
-    models_ok = summary.get("liveness") == "pass" or models.get("ok") is True
+    health_ok = summary.get("health") == "pass" or health.get("ok") is True
+    models_ok = summary.get("models") == "pass" or models.get("ok") is True
     completion_ok = summary.get("completion") == "pass" or completion.get("ok") is True
     error = str(completion.get("error") or "")
     timed_out = "timed out" in error.lower() or "timeouterror" in error.lower()
-    timeout = bool(models_ok and not completion_ok and timed_out)
+    timeout = bool(health_ok and models_ok and not completion_ok and timed_out)
     return {
         "summary": "timeout" if timeout else "ready" if completion_ok else "not-ready",
         "timeout": timeout,
+        "health_ok": bool(health_ok),
         "models_ok": bool(models_ok),
         "completion_ok": bool(completion_ok),
+        "health_status": health.get("status") or summary.get("health"),
+        "health_duration_ms": health.get("duration_ms"),
+        "health_error": health.get("error"),
+        "models_status": models.get("status") or summary.get("models"),
+        "models_duration_ms": models.get("duration_ms"),
+        "models_error": models.get("error"),
         "completion_error": error,
+        "completion_status": completion.get("status") or summary.get("completion"),
         "completion_duration_ms": completion.get("duration_ms"),
         "completion_timeout_sec": completion.get("timeout_sec") or readiness.get("completion_timeout_sec"),
         "runtime_freshness": _runtime_freshness(data),
@@ -1020,7 +1030,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             "llama-completion-timeout",
             next_action=(
                 data.get("next_action")
-                or "inspect ICD/executor dispatch begin/end/stage evidence; HTTP liveness passed but deterministic /completion timed out"
+                or "inspect ICD/executor dispatch begin/end/stage evidence; HTTP /health and /v1/models passed but deterministic /completion timed out"
             ),
             runtime_freshness=runtime_freshness,
         ) | {

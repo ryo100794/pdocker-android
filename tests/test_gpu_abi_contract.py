@@ -1066,6 +1066,10 @@ class GpuAbiContractTest(unittest.TestCase):
             '"schema": "pdocker.llama.service-readiness.v1"',
             '"prompt": "2+3="',
             '"n_predict": 1',
+            '"expected": ["5"]',
+            '"status": "pass"',
+            '"health": "pass"',
+            '"models": "pass"',
             "service_readiness",
             "runtime_env",
             "startup_diagnostics",
@@ -1073,6 +1077,13 @@ class GpuAbiContractTest(unittest.TestCase):
             "container_archive_file",
             "except (EOFError, OSError, tarfile.TarError)",
             "container_env_snapshot",
+            "LLAMA_",
+            "PDOCKER_GPU_",
+            "PDOCKER_VULKAN_",
+            "GGML_VK_",
+            "VK_ICD_FILENAMES",
+            "VK_DRIVER_FILES",
+            "OCL_ICD_VENDORS",
             "llama_completion_timeout",
         ]:
             self.assertIn(marker, compare)
@@ -1103,10 +1114,18 @@ class GpuAbiContractTest(unittest.TestCase):
                 },
                 "service_readiness": {
                     "schema": "pdocker.llama.service-readiness.v1",
-                    "summary": {"liveness": "pass", "completion": "fail", "ready": False},
-                    "models": {"ok": True, "status_code": 200},
+                    "summary": {
+                        "health": "pass",
+                        "models": "pass",
+                        "liveness": "pass",
+                        "completion": "fail",
+                        "ready": False,
+                    },
+                    "health": {"ok": True, "status": "pass", "status_code": 200, "duration_ms": 3},
+                    "models": {"ok": True, "status": "pass", "status_code": 200, "duration_ms": 4},
                     "completion": {
                         "ok": False,
+                        "status": "fail",
                         "error": "TimeoutError: timed out",
                         "timeout_sec": 180,
                         "duration_ms": 180000,
@@ -1126,6 +1145,48 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertFalse(report["correctness_claim_allowed"])
         self.assertFalse(report["benchmark_claim_allowed"])
         self.assertIn("LLAMA_GPU_BACKEND", report["runtime_env"])
+        self.assertTrue(report["service_readiness"]["health_ok"])
+        self.assertTrue(report["service_readiness"]["models_ok"])
+        self.assertEqual("fail", report["service_readiness"]["completion_status"])
+
+    def test_llama_gpu_artifact_verifier_requires_health_and_models_for_completion_timeout(self):
+        verifier = load_llama_gpu_artifact_verifier()
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "served": True,
+                "service_readiness": {
+                    "schema": "pdocker.llama.service-readiness.v1",
+                    "summary": {
+                        "health": "fail",
+                        "models": "pass",
+                        "liveness": "fail",
+                        "completion": "fail",
+                        "ready": False,
+                    },
+                    "health": {"ok": False, "status": "fail", "error": "HTTP Error 503"},
+                    "models": {"ok": True, "status": "pass", "status_code": 200},
+                    "completion": {
+                        "ok": False,
+                        "status": "fail",
+                        "error": "TimeoutError: timed out",
+                        "timeout_sec": 180,
+                    },
+                },
+                "diagnostics": {
+                    "runtime_freshness": {
+                        "summary": "fail",
+                        "expected_executor_marker": "gpu-executor-workgroup3d-20260513",
+                        "observed_executor_markers": [],
+                    },
+                },
+            },
+        }
+        readiness = verifier._service_completion_timeout(payload)
+        self.assertFalse(readiness["timeout"])
+        self.assertFalse(readiness["health_ok"])
+        self.assertTrue(readiness["models_ok"])
+        self.assertNotEqual("llama-completion-timeout", verifier.classify(payload)["classification"])
 
     def test_llama_gpu_artifact_verifier_prefers_pre_http_gpu_blocker(self):
         verifier = load_llama_gpu_artifact_verifier()
