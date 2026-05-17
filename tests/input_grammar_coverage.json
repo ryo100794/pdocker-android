@@ -107,11 +107,34 @@
         "<compose-file> ::= <yaml-document>",
         "<services> ::= 'services:' <service-map>",
         "<service> ::= image | build | command | environment | ports | volumes | healthcheck | depends_on | labels | deploy",
-        "<invalid-compose> ::= <unknown-type> | <invalid-port> | <invalid-volume> | <invalid-env-expansion>"
+        "<env-expansion> ::= '${' <name> '}' | '${' <name> ':-' <default> '}' | '${' <name> ':?' <message> '}'",
+        "<port-mapping> ::= <container-port> | <host-port> ':' <container-port> | <host-ip> ':' <host-port> ':' <container-port>",
+        "<volume-mapping> ::= <host-path> ':' <container-path> (':' <mode>)?",
+        "<invalid-compose> ::= <unknown-type> | <invalid-port> | <invalid-volume> | <invalid-env-expansion> | <recursive-env-expansion>"
       ],
-      "positive_cases": ["bundled templates parse enough for project UI", "project env expansion is statically guarded"],
-      "negative_cases": ["invalid port syntax", "invalid volume syntax", "unsupported type shape"],
-      "value_ranges": ["host port 1..65535", "container port 1..65535", "memory values parse units"],
+      "positive_cases": [
+        "bundled templates parse enough for project UI",
+        "project env expansion is statically guarded",
+        "default-value env expansion ${NAME:-value} is accepted as syntax",
+        "host:container port mapping preserves numeric values",
+        "named and absolute-path volumes preserve their source/target split"
+      ],
+      "negative_cases": [
+        "invalid port syntax",
+        "invalid volume syntax",
+        "unsupported type shape",
+        "env expansion with unterminated brace",
+        "recursive or nested env expansion that would require shell evaluation",
+        "host port outside 1..65535",
+        "container path traversal that escapes the project volume root"
+      ],
+      "value_ranges": [
+        "host port 1..65535",
+        "container port 1..65535",
+        "memory values parse units",
+        "env variable names match [A-Za-z_][A-Za-z0-9_]*",
+        "volume mode is one of ro,rw,z,Z,delegated,cached,consistent when present"
+      ],
       "evidence_command": "python3 scripts/verify-project-library.py",
       "gap_reason": "Full Compose YAML grammar and differential validation against upstream Compose are not implemented yet."
     }
