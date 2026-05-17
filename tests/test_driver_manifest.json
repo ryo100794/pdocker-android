@@ -85,6 +85,19 @@
           ]
         },
         {
+          "id": "verify-android-selfdebug-helper-contract",
+          "argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "tests.test_android_selfdebug_helper"
+          ],
+          "artifacts": [
+            "scripts/android-selfdebug.sh",
+            "docs/test/ANDROID_SELFDEBUG.md"
+          ]
+        },
+        {
           "id": "verify-image-pull-crash-safety",
           "argv": [
             "python3",
@@ -145,6 +158,17 @@
           "artifacts": [
             "docs/test/STORAGE_METRICS.md",
             "docs/test/storage-metrics-sequence-latest.json"
+          ]
+        },
+        {
+          "id": "verify-script-inventory",
+          "argv": [
+            "python3",
+            "scripts/verify-script-inventory.py"
+          ],
+          "artifacts": [
+            "scripts/script-inventory.json",
+            "scripts/README.md"
           ]
         },
         {

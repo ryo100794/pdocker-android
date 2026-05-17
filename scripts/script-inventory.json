@@ -1,0 +1,517 @@
+{
+  "schema": "pdocker.script-inventory.v1",
+  "snapshot_date": "2026-05-17",
+  "policy": {
+    "top_level_paths_are_stable": true,
+    "move_rule": "Do not move top-level scripts directly. Add subfolder implementations only behind stable wrapper shims and update this inventory first.",
+    "delete_rule": "obsolete-suspect entries require a focused audit commit before deletion.",
+    "package_rule": "Root scripts are host-side unless category is runtime-package-needed; APK-bundled runtime scripts live under app/src/main/assets/**/scripts."
+  },
+  "categories": {
+    "runtime-package-needed": "Needed to stage runtime/APK payloads or otherwise part of packaging flow.",
+    "build-developer": "Build, setup, fetch, or developer environment helper.",
+    "test-verification": "Test, smoke, benchmark, contract, or device verification helper.",
+    "generated-maintenance": "Generated-doc/evidence maintenance or manifest data.",
+    "obsolete-suspect": "Unreferenced or weakly referenced candidate; not deleted without audit."
+  },
+  "entries": [
+    {
+      "path": "scripts/android-api29-direct-feasibility.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-blas-cmake-build-smoke.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-container-direct-probe.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-dev-workspace-compose-smoke.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-device-memory-diagnostics.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-device-smoke.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-direct-path-boundary-probe.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-documents-mediator-smoke.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-file-io-bench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-file-io-microbench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-gpu-compare-bench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-gpu-host-bench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-llama-bench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-llama-gpu-compare.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-llama-gpu-q6k-run.py",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-llama-gpu-readiness.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-llama-tool-bench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-memory-pager-managed-poc.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-memory-pager-transparent-poc.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-runtime-bench.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-selfdebug.sh",
+      "category": "test-verification",
+      "stability": "stable-entrypoint",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-storage-metrics-sequence.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-syscall-usecase-profile.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/android-terminal-it-repro.sh",
+      "category": "obsolete-suspect",
+      "stability": "legacy-audit",
+      "role": "Audit candidate; keep until references and intent are confirmed."
+    },
+    {
+      "path": "scripts/android-test-suite-container-exec.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/bench-gpu-bridge.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/build-all.sh",
+      "category": "build-developer",
+      "stability": "stable-entrypoint",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/build-apk.sh",
+      "category": "build-developer",
+      "stability": "stable-entrypoint",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/build-gpu-shim.sh",
+      "category": "build-developer",
+      "stability": "stable-entrypoint",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/build-native-termux.sh",
+      "category": "build-developer",
+      "stability": "stable-entrypoint",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/compat-audit.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/container-direct-probe.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/copy-native.sh",
+      "category": "runtime-package-needed",
+      "stability": "stable-entrypoint",
+      "role": "Stages APK/runtime payloads consumed by Gradle packaging."
+    },
+    {
+      "path": "scripts/fetch-xterm.sh",
+      "category": "build-developer",
+      "stability": "developer-helper",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/git-preflight.sh",
+      "category": "build-developer",
+      "stability": "developer-helper",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/llama-gpu-env-manifest.json",
+      "category": "generated-maintenance",
+      "stability": "maintenance-helper",
+      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries."
+    },
+    {
+      "path": "scripts/pdocker-test-driver.py",
+      "category": "test-verification",
+      "stability": "stable-entrypoint",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/run-python-coverage.sh",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/run_direct_syscall_scenarios.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/setup-env.sh",
+      "category": "build-developer",
+      "stability": "developer-helper",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/setup-git-worktree.sh",
+      "category": "build-developer",
+      "stability": "developer-helper",
+      "role": "Build, setup, or developer environment helper."
+    },
+    {
+      "path": "scripts/smoke-opencl-bridge.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/smoke-vulkan-icd-bridge.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/smoke-vulkan-llama-init.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+    },
+    {
+      "path": "scripts/summarize-llama-gpu-artifacts.py",
+      "category": "generated-maintenance",
+      "stability": "maintenance-helper",
+      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries."
+    },
+    {
+      "path": "scripts/update-showcase.py",
+      "category": "generated-maintenance",
+      "stability": "stable-entrypoint",
+      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries."
+    },
+    {
+      "path": "scripts/verify-abnormal-events.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-archive-api-compat.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-blackbox-requirements.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-build-profile.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-cow-overlay-bench-recovery.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-dev-workspace-compose-artifact.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-device-llama-template.sh",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-dockerfile-standard.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-fast.sh",
+      "category": "test-verification",
+      "stability": "stable-entrypoint",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-feature-scenarios.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-heavy.sh",
+      "category": "test-verification",
+      "stability": "stable-entrypoint",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-image-pull-crash-safety.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-input-grammar-coverage.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-input-validation.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-llama-gpu-artifact.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-llama-startup-logging.py",
+      "category": "obsolete-suspect",
+      "stability": "legacy-audit",
+      "role": "Audit candidate; keep until references and intent are confirmed."
+    },
+    {
+      "path": "scripts/verify-memory-pager-contract.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-memory-pager-design.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-metadata-index.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-oom-lmk-survival-gate.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-project-library.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-refactor-resilience.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-release-readiness.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-runtime-single-container-artifact.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-runtime-teardown-artifact.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-saf-direct-output-artifact.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-scenarios.sh",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-script-inventory.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-service-truth-plan.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-storage-metrics.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-stress-regression.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-terminal-exec-it-artifact.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-test-design-criteria.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify-ui-actions.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify_direct_syscall_contracts.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/verify_terminal_editor_contracts.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate."
+    },
+    {
+      "path": "scripts/wrap-ndk-box64.sh",
+      "category": "obsolete-suspect",
+      "stability": "legacy-audit",
+      "role": "Audit candidate; keep until references and intent are confirmed."
+    }
+  ]
+}

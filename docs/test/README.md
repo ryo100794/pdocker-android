@@ -18,7 +18,7 @@ run it, and where the latest result is stored.
 | [`SCENARIOS.md`](SCENARIOS.md) | Feature-level scenario ledger and combined test runner |
 | [`COW_OVERLAY_KILL_AT_STEP_DEVICE_GATE.md`](COW_OVERLAY_KILL_AT_STEP_DEVICE_GATE.md) | Android device-gated COW/overlay daemon/helper kill-at-step evidence contract |
 | [`compat-audit-latest.md`](compat-audit-latest.md) | Latest recorded compatibility audit result |
-| [`ANDROID_SELFDEBUG.md`](ANDROID_SELFDEBUG.md) | Android Wi-Fi ADB and self-debug workflow |
+| [`ANDROID_SELFDEBUG.md`](ANDROID_SELFDEBUG.md) | Android single-device localhost Wireless debugging and self-debug workflow, including `scripts/android-selfdebug.sh` |
 | [`DIRECT_SYSCALL_COVERAGE.md`](DIRECT_SYSCALL_COVERAGE.md) | Direct runtime syscall hook inventory and fast/static coverage gate |
 | [`APK_MEMORY_PAGER_PROBE.md`](APK_MEMORY_PAGER_PROBE.md) | SDK28 compat APK syscall probe for the opt-in memory pager |
 | [`SECRET_AUDIT.md`](SECRET_AUDIT.md) | Repeatable secret, signing material, and remote URL audit before publication |

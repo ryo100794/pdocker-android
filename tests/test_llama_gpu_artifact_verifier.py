@@ -308,6 +308,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
                         "workgroup_shape_blocker": False,
                         "latest_status": "mismatch",
                         "q6_shader_like_64_abs_delta": 3.25,
+                        **q6_verified_writeback(),
                     },
                 },
                 "correctness": gpu_correctness_report("fail", required_failures=1, passed=False, content="4"),
@@ -333,6 +334,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
                         "latest_status": "mismatch",
                         "blocker_class": "vulkan-device-execution-or-writeback",
                         "q6_shader_like_oracle_cleared": True,
+                        **q6_verified_writeback(),
                     },
                 },
                 "correctness": gpu_correctness_report("pass", required_failures=0, passed=True, content="5"),
@@ -347,6 +349,63 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         self.assertFalse(report["correctness_claim_allowed"])
         self.assertFalse(report["benchmark_claim_allowed"])
         self.assertIn("vulkan-device-execution-or-writeback", report["next_action"])
+
+    def test_q6_oracle_mismatch_requires_verified_writable_writeback(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "mismatch",
+                        "q6_shader_like_oracle_cleared": True,
+                    },
+                },
+                "correctness": gpu_correctness_report("fail", required_failures=1, passed=False, content="4"),
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            **speedup_sections(speedup=0.5, target_met=False, cpu_tps=0.1, gpu_tps=0.05),
+        }
+        result = self.run_verifier(payload, "--require-q6-workgroup-clear")
+        self.assertEqual(result.returncode, 41, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-writeback-unverified")
+        self.assertIn("q6_row_indexed_writeback_evidence", json.dumps(report["q6_writeback_evidence"]["missing"]))
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
+    def test_q6_oracle_mismatch_fails_closed_when_row_indexed_writeback_differs(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "mismatch",
+                        "q6_shader_like_oracle_cleared": True,
+                        **q6_verified_writeback(),
+                    },
+                },
+                "correctness": gpu_correctness_report("fail", required_failures=1, passed=False, content="4"),
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            **speedup_sections(speedup=0.5, target_met=False, cpu_tps=0.1, gpu_tps=0.05),
+        }
+        q6 = payload["gpu"]["diagnostics"]["q6_workgroup_diagnostics"]
+        q6["q6_row_indexed_writeback_evidence"][0]["f32_after_writeback"] = [
+            {"index": 257, "value": 9.5}
+        ]
+        result = self.run_verifier(payload, "--require-q6-workgroup-clear")
+        self.assertEqual(result.returncode, 40, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-writeback-mismatch")
+        self.assertIn("f32_after_dispatch/f32_after_writeback", json.dumps(report["q6_writeback_evidence"]["mismatches"]))
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
 
     def test_q6_oracle_match_requires_verified_writable_writeback(self):
         payload = {

@@ -246,6 +246,17 @@ issues, and deciding which planned gaps become hard gates.
   `python3 scripts/verify-storage-metrics.py`, documenting shared layer-pool
   accounting, guarding against image-view double counting, and rejecting fake
   rebuild/edit/prune sequences that do not preserve shared-layer accounting.
+- [done] Android single-device self-debugging has a localhost Wireless
+  debugging helper: `scripts/android-selfdebug.sh` wraps pair/connect,
+  install/start, logcat, `run-as`, and Unix-socket probes without enabling ADB
+  TCP itself or scanning the LAN. The manual fallback remains
+  `docs/test/ANDROID_SELFDEBUG.md`.
+- [done] Root script clutter now has a first-pass inventory gate:
+  `scripts/script-inventory.json`, `scripts/README.md`, and
+  `scripts/verify-script-inventory.py` classify top-level scripts into
+  runtime/package-needed, build/developer, test/verification,
+  generated/maintenance, and obsolete-suspect buckets. Future moves must keep
+  top-level compatibility wrappers until references migrate.
 - [done] F-Droid/reproducible-build readiness is captured in
   `docs/release/FDROID_RELEASE_PROCESS.md`, including the distinction between
   user-directed container/image/package downloads and hidden APK self-extension.

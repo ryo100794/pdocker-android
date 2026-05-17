@@ -55,6 +55,33 @@ Use `127.0.0.1` because the ADB client and target are on the same phone. The
 localhost route is usually faster and more stable than routing through the
 device LAN address from PRoot.
 
+## Helper Script
+
+`scripts/android-selfdebug.sh` is a thin wrapper around the manual commands
+above.  It does not enable ADB over TCP, scan the LAN, or start the non-exported
+pdockerd service directly; Wireless debugging must already be enabled from the
+Android Developer options screen.
+
+```sh
+# Pair once, using the short-lived pairing port and code from Android Settings.
+bash scripts/android-selfdebug.sh pair 127.0.0.1:<PAIR_PORT> <CODE>
+
+# Connect each session, using the normal Wireless debugging connection port.
+bash scripts/android-selfdebug.sh connect 127.0.0.1:<CONNECT_PORT>
+export ANDROID_SERIAL=127.0.0.1:<CONNECT_PORT>
+
+# Common self-debug actions.
+bash scripts/android-selfdebug.sh install-debug
+bash scripts/android-selfdebug.sh start
+bash scripts/android-selfdebug.sh logcat
+bash scripts/android-selfdebug.sh ping-daemon
+bash scripts/android-selfdebug.sh socket-get /version
+```
+
+The helper defaults to the compat package and APK.  Override with
+`PDOCKER_ANDROID_FLAVOR=modern`, `PDOCKER_PACKAGE`, or `PDOCKER_APK` when a
+different build is being tested.
+
 ## Build, Install, and Start
 
 ```sh

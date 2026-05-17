@@ -1129,14 +1129,14 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
     elif q6.get("workgroup_shape_blocker") is True:
         classification = "q6-workgroup-shape-blocker"
         next_action = "fix Q6_K local-size propagation/materialization"
-    elif q6.get("latest_status") == "match" and q6_writeback_evidence.get("summary") == "mismatch":
+    elif q6_writeback_evidence.get("summary") == "mismatch":
         classification = "q6-writeback-mismatch"
         next_action = "fix Q6_K writable output writeback before accepting correctness or benchmark claims"
-    elif q6.get("latest_status") == "match" and q6_writeback_evidence.get("summary") != "pass":
+    elif q6_writeback_evidence.get("summary") != "pass":
         classification = "q6-writeback-unverified"
         next_action = (
             data.get("next_action")
-            or "rerun with PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1 so Q6_K compact writable output hashes before/after writeback are present and verified"
+            or "rerun with PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1 so Q6_K compact writable output hashes and row-indexed before/after writeback samples are present and verified"
         )
     elif q6.get("latest_status") == "match":
         classification = "q6-workgroup-cleared-and-oracle-match"

@@ -44,6 +44,7 @@ run python3 -m py_compile \
   scripts/verify-refactor-resilience.py \
   scripts/verify-service-truth-plan.py \
   scripts/verify-storage-metrics.py \
+  scripts/verify-script-inventory.py \
   scripts/verify-dev-workspace-compose-artifact.py \
   scripts/verify-runtime-teardown-artifact.py \
   scripts/verify-runtime-single-container-artifact.py \
@@ -56,6 +57,7 @@ run python3 -m py_compile \
   docker-proot-setup/scripts/verify_runtime_contract.py
 
 run bash -n \
+  scripts/android-selfdebug.sh \
   scripts/android-device-smoke.sh \
   scripts/android-dev-workspace-compose-smoke.sh \
   scripts/android-documents-mediator-smoke.sh \
@@ -82,6 +84,7 @@ run python3 scripts/verify-feature-scenarios.py
 run python3 scripts/verify-dockerfile-standard.py
 run python3 scripts/verify-project-library.py
 run python3 scripts/verify-storage-metrics.py
+run python3 scripts/verify-script-inventory.py
 tmp_storage_sequence="$(mktemp)"
 printf '\n==> python3 scripts/verify-storage-metrics.py --print-sequence-fixture > %s\n' "$tmp_storage_sequence"
 python3 scripts/verify-storage-metrics.py --print-sequence-fixture > "$tmp_storage_sequence"
@@ -93,6 +96,7 @@ run python3 scripts/verify-ui-actions.py
 run python3 scripts/verify_terminal_editor_contracts.py
 run python3 -m unittest \
   tests.test_terminal_exec_it_contract \
+  tests.test_android_selfdebug_helper \
   tests.test_terminal_exec_it_artifact_verifier \
   tests.test_runtime_teardown_device_gate \
   tests.test_runtime_teardown_artifact_verifier \

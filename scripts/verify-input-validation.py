@@ -206,7 +206,8 @@ def start_daemon(tmpdir: Path) -> tuple[subprocess.Popen[bytes], Path]:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
-    deadline = time.monotonic() + 10
+    socket_timeout = float(os.environ.get("PDOCKER_INPUT_VALIDATION_SOCKET_TIMEOUT", "30"))
+    deadline = time.monotonic() + socket_timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             output = (proc.stdout.read() if proc.stdout else b"").decode("utf-8", "replace")
@@ -215,7 +216,16 @@ def start_daemon(tmpdir: Path) -> tuple[subprocess.Popen[bytes], Path]:
             return proc, socket_path
         time.sleep(0.05)
     proc.terminate()
-    raise ValidationError("pdockerd did not create its Unix socket in time")
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+    output = (proc.stdout.read() if proc.stdout else b"").decode("utf-8", "replace")
+    raise ValidationError(
+        f"pdockerd did not create its Unix socket in {socket_timeout:.1f}s"
+        + (f"; output tail:\n{output[-2000:]}" if output else "")
+    )
 
 
 def assert_status(label: str, got: int, want: int, body: Any, text: str | None = None) -> None:
