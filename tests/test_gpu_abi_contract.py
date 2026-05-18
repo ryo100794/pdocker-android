@@ -168,6 +168,14 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("observed_icd_markers", compare)
         self.assertIn("runtime_freshness", compare)
         self.assertIn("runtime_freshness_mismatch", compare)
+        self.assertIn(
+            "(not expected_executor_marker or expected_executor_marker in observed_executor_markers) and",
+            compare,
+        )
+        self.assertIn(
+            "(not expected_icd_marker or expected_icd_marker in observed_icd_markers)",
+            compare,
+        )
         self.assertIn("executor_build_marker", compare)
         self.assertIn("runtime_marker", VULKAN_ICD.read_text())
         self.assertIn("while helper executors are gone", service)
@@ -1243,6 +1251,8 @@ class GpuAbiContractTest(unittest.TestCase):
             '"spirv_feature_requirements"',
             '"android_vulkan_features"',
             '"android_vulkan_enabled_features"',
+            "][:4]",
+            "event = failed[0] if failed else {}",
         ]:
             self.assertIn(marker, compare)
 

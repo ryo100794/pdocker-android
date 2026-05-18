@@ -142,6 +142,15 @@ SPIR-V pipeline failures.  If this trips, reinstall the freshly built compat
 APK and rerun the same compare; do not infer feature-chain or Q6_K state from
 the stale artifact.
 
+2026-05-18 compare hardening: the compare artifact now marks runtime freshness
+as `pass` only when both requested runtime markers are observed, and pre-Q6
+generic SPIR-V evidence is anchored to the first failed event rather than a
+later cleanup or follow-on failure.  Fresh feature-chain ICD artifacts also
+fail closed as `vulkan-pipeline-feature-evidence-missing` if a
+`VK_ERROR_FEATURE_NOT_PRESENT` blocker lacks required/requested feature masks
+or Android enabled-feature evidence.  This keeps the next device run from
+turning incomplete setup evidence into a false Q6_K conclusion.
+
 Milestone compare with CPU baseline should be run only after a correctness
 blocker changes, not after every small diagnostic edit.
 

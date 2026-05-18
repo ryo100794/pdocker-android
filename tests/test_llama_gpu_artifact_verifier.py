@@ -907,6 +907,9 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         self.assertEqual(evidence["q6_reachability"]["event_count"], 0)
 
     def test_legacy_pre_http_pipeline_feature_artifacts_do_not_require_enabled_features(self):
+        legacy_runtime = runtime_marker()
+        legacy_runtime["expected_icd_marker"] = "vulkan-icd-runtime-marker-20260510"
+        legacy_runtime["observed_icd_markers"] = ["vulkan-icd-runtime-marker-20260510"]
         payload = {
             "schema": "pdocker.llama.gpu.compare.v1",
             "gpu": {
@@ -914,7 +917,7 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
                 "diagnostics": {
                     "blocker_class": "vulkan_pipeline_feature",
                     "blocker_detail": "Android Vulkan rejected a ggml generic SPIR-V compute pipeline with VK_ERROR_FEATURE_NOT_PRESENT",
-                    "runtime_freshness": runtime_marker(),
+                    "runtime_freshness": legacy_runtime,
                     "config_propagation": passing_config_propagation(),
                     "generic_spirv_dispatch": {
                         "attempted": True,
@@ -938,6 +941,86 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         failure_event = report["pre_http_failure_evidence"]["failure_event"]
         self.assertEqual(failure_event["android_vulkan_features"]["shaderInt8"], 1)
         self.assertNotIn("android_vulkan_enabled_features", failure_event)
+
+    def test_fresh_pre_http_pipeline_feature_requires_feature_evidence(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "served": False,
+                "diagnostics": {
+                    "blocker_class": "vulkan_pipeline_feature",
+                    "blocker_detail": "Android Vulkan rejected a ggml generic SPIR-V compute pipeline with VK_ERROR_FEATURE_NOT_PRESENT",
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "generic_spirv_dispatch": {
+                        "attempted": True,
+                        "failed_events": [
+                            {
+                                "error": "create-generic-compute-pipeline",
+                                "vk_result": -13,
+                                "spirv_hash": "0xfresh-missing",
+                                "android_vulkan_features": {"shaderInt8": 1},
+                            }
+                        ],
+                    },
+                    "q6_workgroup_diagnostics": {"event_count": 0, "blocker_class": "not-reached"},
+                },
+            },
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 43, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "vulkan-pipeline-feature-evidence-missing")
+        self.assertIn("android_vulkan_enabled_features", report["missing_pre_http_feature_evidence"])
+        self.assertIn("spirv_requested_feature_missing_mask", report["missing_pre_http_feature_evidence"])
+
+    def test_pre_http_failure_evidence_uses_first_failed_event(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "served": False,
+                "diagnostics": {
+                    "blocker_class": "vulkan_pipeline_feature",
+                    "blocker_detail": "Android Vulkan rejected a ggml generic SPIR-V compute pipeline with VK_ERROR_FEATURE_NOT_PRESENT",
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "generic_spirv_dispatch": {
+                        "attempted": True,
+                        "failed_events": [
+                            {
+                                "error": "create-generic-compute-pipeline",
+                                "vk_result": -13,
+                                "spirv_hash": "0xfirst",
+                                "spirv_required_feature_mask": "0x0000000000000448",
+                                "spirv_requested_feature_missing_mask": "0x0000000000000440",
+                                "spirv_requested_feature_mismatches": ["storageBuffer8BitAccess"],
+                                "android_vulkan_features": {"shaderInt8": 1},
+                                "android_vulkan_enabled_features": {"shaderInt8": 1},
+                            },
+                            {
+                                "error": "secondary-cleanup-failure",
+                                "vk_result": -1,
+                                "spirv_hash": "0xsecond",
+                                "spirv_required_feature_mask": "0x0000000000000000",
+                                "spirv_requested_feature_missing_mask": "0x0000000000000000",
+                                "spirv_requested_feature_mismatches": [],
+                                "android_vulkan_features": {},
+                                "android_vulkan_enabled_features": {},
+                            },
+                        ],
+                    },
+                    "q6_workgroup_diagnostics": {"event_count": 0, "blocker_class": "not-reached"},
+                },
+            },
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(
+            report["pre_http_failure_evidence"]["failure_event"]["spirv_hash"],
+            "0xfirst",
+        )
+        self.assertEqual(report["pre_http_failure_evidence"]["failed_event_count"], 2)
 
     def test_pre_http_pipeline_feature_requires_fresh_icd_marker(self):
         stale_runtime = runtime_marker()

@@ -2142,8 +2142,8 @@ runtime_freshness = {
     "summary": (
         "pass"
         if (
-            (expected_executor_marker and expected_executor_marker in observed_executor_markers) or
-            (expected_icd_marker and expected_icd_marker in observed_icd_markers)
+            (not expected_executor_marker or expected_executor_marker in observed_executor_markers) and
+            (not expected_icd_marker or expected_icd_marker in observed_icd_markers)
         )
         else "not-requested"
         if not expected_executor_marker and not expected_icd_marker
@@ -2434,7 +2434,7 @@ generic_spirv_dispatch = {
     "failed_events": [
         e for e in executor_events
         if e.get("valid") is False and (e.get("kernel") == "generic_spirv" or e.get("error") == "submit-generic-dispatch")
-    ][-4:],
+    ][:4],
     "fallback_events": [e for e in executor_events if e.get("backend_affinity") == "fallback"][-4:],
     "llama_throw": "vk::Queue::submit: ErrorFeatureNotPresent" if queue_submit_blocker else "",
 }
@@ -2457,7 +2457,7 @@ def compact_pre_q6_failure(generic_dispatch, q6_diagnostics):
         event for event in (generic_dispatch.get("failed_events") or [])
         if isinstance(event, dict)
     ]
-    event = failed[-1] if failed else {}
+    event = failed[0] if failed else {}
     pipeline_key = event.get("pipeline_key") if isinstance(event.get("pipeline_key"), dict) else {}
 
     def pick(source, keys):

@@ -303,6 +303,15 @@ def _observed_icd_marker_ok(runtime_freshness: dict[str, Any]) -> bool:
     return bool(markers) if markers else True
 
 
+def _fresh_feature_chain_icd(runtime_freshness: dict[str, Any]) -> bool:
+    markers = runtime_freshness.get("observed_icd_markers") or []
+    if not isinstance(markers, list):
+        markers = []
+    values = [str(runtime_freshness.get("expected_icd_marker") or "")]
+    values.extend(str(marker) for marker in markers if str(marker))
+    return "vulkan-icd-feature-chain-marker-20260518" in values
+
+
 def _readiness_false(data: dict[str, Any]) -> bool:
     readiness = data.get("readiness")
     if isinstance(readiness, dict) and readiness.get("ready") is False:
@@ -982,7 +991,7 @@ def _pre_http_failure_evidence(diagnostics: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(failed_events, list):
         failed_events = []
     failed_dicts = [event for event in failed_events if isinstance(event, dict)]
-    event = failed_dicts[-1] if failed_dicts else {}
+    event = failed_dicts[0] if failed_dicts else {}
     q6 = diagnostics.get("q6_workgroup_diagnostics") if isinstance(diagnostics, dict) else {}
     if not isinstance(q6, dict):
         q6 = {}
@@ -1036,6 +1045,28 @@ def _pre_http_failure_evidence(diagnostics: dict[str, Any]) -> dict[str, Any]:
             "diagnostic_interpretation": q6.get("diagnostic_interpretation") or "",
         },
     }
+
+
+def _pre_http_feature_evidence_missing(
+    blocker: dict[str, Any],
+    evidence: dict[str, Any],
+    runtime_freshness: dict[str, Any],
+) -> list[str]:
+    if blocker.get("classification") != "vulkan-pipeline-feature":
+        return []
+    if not _fresh_feature_chain_icd(runtime_freshness):
+        return []
+    failure_event = evidence.get("failure_event")
+    if not isinstance(failure_event, dict):
+        failure_event = {}
+    required = [
+        "spirv_required_feature_mask",
+        "spirv_requested_feature_missing_mask",
+        "spirv_requested_feature_mismatches",
+        "android_vulkan_features",
+        "android_vulkan_enabled_features",
+    ]
+    return [key for key in required if key not in failure_event]
 
 
 def _claim_base(
@@ -1149,6 +1180,26 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
 
     pre_http_gpu_blocker = _pre_http_gpu_blocker(data, diagnostics)
     if pre_http_gpu_blocker:
+        evidence = _pre_http_failure_evidence(diagnostics)
+        feature_evidence_missing = _pre_http_feature_evidence_missing(
+            pre_http_gpu_blocker,
+            evidence,
+            runtime_freshness,
+        )
+        if feature_evidence_missing:
+            return _claim_base(
+                "vulkan-pipeline-feature-evidence-missing",
+                next_action=(
+                    "rerun compare with fresh ICD/executor evidence that includes SPIR-V required/requested "
+                    "feature masks and Android enabled feature bits before accepting a pre-Q6 feature conclusion"
+                ),
+                runtime_freshness=runtime_freshness,
+                runtime_env_manifest=runtime_env_manifest,
+                responsibility_boundary="gpu-setup-evidence",
+            ) | {
+                "missing_pre_http_feature_evidence": feature_evidence_missing,
+                "pre_http_failure_evidence": evidence,
+            }
         return _claim_base(
             pre_http_gpu_blocker["classification"],
             next_action=str(pre_http_gpu_blocker["next_action"]),
@@ -1158,7 +1209,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         ) | {
             "gpu_blocker_class": pre_http_gpu_blocker["gpu_blocker_class"],
             "gpu_blocker_detail": pre_http_gpu_blocker["gpu_blocker_detail"],
-            "pre_http_failure_evidence": _pre_http_failure_evidence(diagnostics),
+            "pre_http_failure_evidence": evidence,
             "config_propagation": _config_propagation(data),
         }
 
@@ -1346,6 +1397,8 @@ def main(argv: list[str]) -> int:
         return 34
     if classification == "icd-marker-not-observed":
         return 42
+    if classification == "vulkan-pipeline-feature-evidence-missing":
+        return 43
     if classification == "config-propagation-mismatch":
         return 35
     if classification == "unsupported-gpu-work-accepted":
