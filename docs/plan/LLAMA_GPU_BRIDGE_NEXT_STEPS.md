@@ -55,7 +55,7 @@ Fast local checks:
 ```bash
 cd /root/tl/pdocker-android
 python3 -m unittest tests.test_gpu_abi_contract
-python3 scripts/summarize-llama-gpu-artifacts.py \
+python3 scripts/maintenance/summarize-llama-gpu-artifacts.py \
   --snapshot-date 2026-05-17 \
   --out docs/test/llama-gpu-artifact-sweep-latest.json
 bash scripts/build-native-termux.sh

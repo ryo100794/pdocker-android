@@ -59,7 +59,6 @@ run python3 -m py_compile \
   scripts/verify-terminal-exec-it-artifact.py \
   scripts/verify_terminal_editor_contracts.py \
   scripts/verify-cow-overlay-bench-recovery.py \
-  scripts/summarize-llama-gpu-artifacts.py \
   scripts/maintenance/summarize-llama-gpu-artifacts.py \
   scripts/update-showcase.py \
   docker-proot-setup/scripts/verify_runtime_contract.py
@@ -73,12 +72,9 @@ run bash -n \
   scripts/android-llama-gpu-readiness.sh \
   scripts/android-llama-gpu-compare.sh \
   scripts/android-storage-metrics-sequence.sh \
-  scripts/smoke-opencl-bridge.sh \
-  scripts/smoke-vulkan-llama-init.sh \
   scripts/test/smoke-opencl-bridge.sh \
   scripts/test/smoke-vulkan-llama-init.sh \
   scripts/test/verify-device-llama-template.sh \
-  scripts/verify-device-llama-template.sh \
   scripts/verify-heavy.sh
 
 run python3 docker-proot-setup/scripts/verify_runtime_contract.py
@@ -143,7 +139,7 @@ run python3 -m unittest \
   tests.test_vulkan_icd_feature_chain \
   tests.test_ci_gate_ledger \
   tests.test_test_driver
-run bash scripts/smoke-vulkan-llama-init.sh
+run bash scripts/test/smoke-vulkan-llama-init.sh
 run bash scripts/smoke-vulkan-icd-bridge.sh
 run python3 scripts/compat-audit.py
 run python3 scripts/update-showcase.py --check

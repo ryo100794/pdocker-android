@@ -388,7 +388,7 @@ bridge and avoids exposing them directly to glibc applications.
 Reusable local smoke:
 
 ```sh
-bash scripts/smoke-opencl-bridge.sh
+bash scripts/test/smoke-opencl-bridge.sh
 ```
 
 Latest local result:

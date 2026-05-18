@@ -26,7 +26,7 @@ run it, and where the latest result is stored.
 | [`gpu-host-container-comparison-latest.md`](gpu-host-container-comparison-latest.md) | Latest host/container bridge overhead comparison |
 | [`LLAMA_BENCHMARKS.md`](LLAMA_BENCHMARKS.md) | llama.cpp CPU/GPU benchmark history and current blockers |
 | `scripts/verify-archive-api-compat.py` | Host-only fail-closed Docker archive API / `docker cp` compatibility gate |
-| `scripts/smoke-vulkan-llama-init.sh` | Lightweight llama.cpp-oriented Vulkan ICD initialization smoke |
+| `scripts/test/smoke-vulkan-llama-init.sh` | Lightweight llama.cpp-oriented Vulkan ICD initialization smoke |
 | `scripts/smoke-vulkan-icd-bridge.sh` | Lightweight Vulkan ICD dispatch smoke through the pdocker GPU executor socket; planned-skip when the local executor Vulkan preflight is unavailable |
 
 ## Canonical Sources

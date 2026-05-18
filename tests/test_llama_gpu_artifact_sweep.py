@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SWEEP = ROOT / "scripts" / "summarize-llama-gpu-artifacts.py"
+SWEEP = ROOT / "scripts" / "maintenance" / "summarize-llama-gpu-artifacts.py"
 LATEST = ROOT / "docs" / "test" / "llama-gpu-artifact-sweep-latest.json"
 
 
