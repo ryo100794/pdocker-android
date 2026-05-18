@@ -3,6 +3,7 @@
 Snapshot date: 2026-05-18.
 
 This directory is intentionally kept with stable top-level entrypoints while the implementation is reorganized.  The machine-readable source of truth is [`script-inventory.json`](script-inventory.json).
+Every inventory entry now also carries a `migration` object with a proposed destination path, migration phase, action, and compatibility-wrapper policy.  This is a planning ledger only; no top-level script was moved in this stage.
 
 ## Policy
 
@@ -10,6 +11,8 @@ This directory is intentionally kept with stable top-level entrypoints while the
 - **move rule**: Do not move top-level scripts directly. Add subfolder implementations only behind stable wrapper shims and update this inventory first.
 - **delete rule**: obsolete-suspect entries require a focused audit commit before deletion.
 - **package rule**: Root scripts are host-side unless category is runtime-package-needed; APK-bundled runtime scripts live under app/src/main/assets/**/scripts.
+- **compat wrapper rule**: Future moves keep the existing top-level path as a thin wrapper until all repository references and documented commands are migrated.
+- **first stage rule**: This inventory records categories and move candidates only; it must not rename or move files by itself.
 
 ## Category Summary
 
@@ -21,6 +24,16 @@ This directory is intentionally kept with stable top-level entrypoints while the
 | `generated-maintenance` | 3 | Generated-doc/evidence maintenance or manifest data. |
 | `obsolete-suspect` | 3 | Unreferenced or weakly referenced candidate; not deleted without audit. |
 
+## Move Candidate Targets
+
+| Category | Proposed target dir | Compatibility wrapper policy |
+|---|---|---|
+| `runtime-package-needed` | `scripts/runtime/` | Keep stable top-level wrappers; migrate Gradle/package callers before any wrapper removal. |
+| `build-developer` | `scripts/build/` | Stable entrypoints keep wrappers; developer helpers keep temporary wrappers while docs/CI references migrate. |
+| `test-verification` | `scripts/test/` | Stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths. |
+| `generated-maintenance` | `scripts/maintenance/` | Top-level wrapper or symlink shim allowed after docs and generated-artifact references migrate. |
+| `obsolete-suspect` | `scripts/obsolete-candidates/` | Do not move first; audit for deletion or archive in a focused follow-up commit. |
+
 ## Stable Public Entrypoints
 
 - `scripts/build-all.sh` — full build orchestration.
@@ -29,7 +42,8 @@ This directory is intentionally kept with stable top-level entrypoints while the
 - `scripts/verify-heavy.sh` — heavier/device-oriented lane wrapper.
 - `scripts/pdocker-test-driver.py` — canonical test-driver manifest executor.
 - `scripts/android-selfdebug.sh` — Android single-device localhost Wireless debugging helper.
-| `scripts/android-service-truth-capture.sh` | `device-helper` | Android/device service-truth same-container evidence capture wrapper; delegates to android-device-smoke and never promotes device-pass itself. |
+
+`scripts/android-service-truth-capture.sh` is intentionally not a stable public entrypoint; it is a device-helper wrapper for service-truth evidence capture and belongs to the `test-verification` migration bucket.
 
 ## Entries
 

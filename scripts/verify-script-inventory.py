@@ -31,6 +31,13 @@ REQUIRED_CATEGORIES = {
     "generated-maintenance",
     "obsolete-suspect",
 }
+REQUIRED_CATEGORY_TARGETS = {
+    "runtime-package-needed": "scripts/runtime",
+    "build-developer": "scripts/build",
+    "test-verification": "scripts/test",
+    "generated-maintenance": "scripts/maintenance",
+    "obsolete-suspect": "scripts/obsolete-candidates",
+}
 REQUIRED_STABLE_ENTRYPOINTS = {
     "scripts/build-all.sh",
     "scripts/build-apk.sh",
@@ -74,6 +81,21 @@ def main() -> int:
     entries = data.get("entries")
     if not isinstance(entries, list):
         fail("entries must be a list")
+    category_targets = data.get("category_targets")
+    if not isinstance(category_targets, dict):
+        fail("category_targets must describe planned move destinations")
+    observed_targets: dict[str, str] = {}
+    for category, expected_dir in REQUIRED_CATEGORY_TARGETS.items():
+        target = category_targets.get(category)
+        if not isinstance(target, dict):
+            fail(f"category_targets missing object for {category}")
+        target_dir = target.get("target_dir")
+        wrapper_policy = target.get("wrapper_policy")
+        if target_dir != expected_dir:
+            fail(f"{category} target_dir mismatch: expected {expected_dir!r}, got {target_dir!r}")
+        if not isinstance(wrapper_policy, str) or not wrapper_policy:
+            fail(f"{category} missing wrapper_policy")
+        observed_targets[category] = target_dir
 
     paths: list[str] = []
     categories: Counter[str] = Counter()
@@ -94,6 +116,30 @@ def main() -> int:
             fail(f"{path} has missing stability")
         if not isinstance(role, str) or not role:
             fail(f"{path} has missing role")
+        migration = entry.get("migration")
+        if not isinstance(migration, dict):
+            fail(f"{path} has missing migration plan")
+        target_dir = migration.get("target_dir")
+        candidate_path = migration.get("candidate_path")
+        phase = migration.get("phase")
+        action = migration.get("action")
+        compat_wrapper = migration.get("compat_wrapper")
+        if target_dir != observed_targets[category]:
+            fail(f"{path} migration target {target_dir!r} does not match category {category}")
+        expected_candidate = f"{target_dir}/{Path(path).name}"
+        if candidate_path != expected_candidate:
+            fail(f"{path} candidate_path mismatch: expected {expected_candidate!r}, got {candidate_path!r}")
+        if category == "obsolete-suspect":
+            if action != "audit-delete-or-archive":
+                fail(f"{path} obsolete-suspect action must be audit-delete-or-archive")
+        elif action != "candidate-move-behind-wrapper":
+            fail(f"{path} non-obsolete action must be candidate-move-behind-wrapper")
+        for field_name, value in {
+            "phase": phase,
+            "compat_wrapper": compat_wrapper,
+        }.items():
+            if not isinstance(value, str) or not value:
+                fail(f"{path} has missing migration {field_name}")
         paths.append(path)
         categories[category] += 1
         if stability == "stable-entrypoint":

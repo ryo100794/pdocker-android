@@ -12,6 +12,38 @@ class ScriptInventoryAuditTest(unittest.TestCase):
         self.readme = (ROOT / "scripts" / "README.md").read_text(encoding="utf-8")
         self.entries = {entry["path"]: entry for entry in self.inventory["entries"]}
 
+    def test_every_entry_has_move_candidate_and_wrapper_policy(self):
+        expected_targets = {
+            "runtime-package-needed": "scripts/runtime",
+            "build-developer": "scripts/build",
+            "test-verification": "scripts/test",
+            "generated-maintenance": "scripts/maintenance",
+            "obsolete-suspect": "scripts/obsolete-candidates",
+        }
+        self.assertEqual(
+            expected_targets,
+            {
+                category: value["target_dir"]
+                for category, value in self.inventory["category_targets"].items()
+            },
+        )
+
+        for entry in self.inventory["entries"]:
+            with self.subTest(path=entry["path"]):
+                migration = entry.get("migration")
+                self.assertIsInstance(migration, dict)
+                target_dir = expected_targets[entry["category"]]
+                self.assertEqual(migration["target_dir"], target_dir)
+                self.assertEqual(
+                    migration["candidate_path"],
+                    f"{target_dir}/{Path(entry['path']).name}",
+                )
+                self.assertIn("wrapper", migration["compat_wrapper"].lower())
+                if entry["category"] == "obsolete-suspect":
+                    self.assertEqual(migration["action"], "audit-delete-or-archive")
+                else:
+                    self.assertEqual(migration["action"], "candidate-move-behind-wrapper")
+
     def test_obsolete_suspects_have_audit_decisions_and_replacements(self):
         expected_replacements = {
             "scripts/android-terminal-it-repro.sh": "python3 scripts/pdocker-test-driver.py --lane android-terminal-exec-it",

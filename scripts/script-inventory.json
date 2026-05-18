@@ -5,7 +5,9 @@
     "top_level_paths_are_stable": true,
     "move_rule": "Do not move top-level scripts directly. Add subfolder implementations only behind stable wrapper shims and update this inventory first.",
     "delete_rule": "obsolete-suspect entries require a focused audit commit before deletion.",
-    "package_rule": "Root scripts are host-side unless category is runtime-package-needed; APK-bundled runtime scripts live under app/src/main/assets/**/scripts."
+    "package_rule": "Root scripts are host-side unless category is runtime-package-needed; APK-bundled runtime scripts live under app/src/main/assets/**/scripts.",
+    "compat_wrapper_rule": "Future moves keep the existing top-level path as a thin wrapper until all repository references and documented commands are migrated.",
+    "first_stage_rule": "This inventory records categories and move candidates only; it must not rename or move files by itself."
   },
   "categories": {
     "runtime-package-needed": "Needed to stage runtime/APK payloads or otherwise part of packaging flow.",
@@ -14,150 +16,340 @@
     "generated-maintenance": "Generated-doc/evidence maintenance or manifest data.",
     "obsolete-suspect": "Unreferenced or weakly referenced candidate; not deleted without audit."
   },
+  "category_targets": {
+    "runtime-package-needed": {
+      "target_dir": "scripts/runtime",
+      "wrapper_policy": "keep stable top-level wrapper; Gradle/package callers must be migrated before wrapper removal"
+    },
+    "build-developer": {
+      "target_dir": "scripts/build",
+      "wrapper_policy": "stable entrypoints keep wrappers; developer helpers keep temporary wrappers while docs/CI references migrate"
+    },
+    "test-verification": {
+      "target_dir": "scripts/test",
+      "wrapper_policy": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+    },
+    "generated-maintenance": {
+      "target_dir": "scripts/maintenance",
+      "wrapper_policy": "top-level wrapper or symlink shim allowed after docs and generated-artifact references migrate"
+    },
+    "obsolete-suspect": {
+      "target_dir": "scripts/obsolete-candidates",
+      "wrapper_policy": "no compatibility wrapper until audit chooses archive-over-delete; prefer deletion over moved wrapper when safe"
+    }
+  },
   "entries": [
     {
       "path": "scripts/android-api29-direct-feasibility.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-api29-direct-feasibility.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-blas-cmake-build-smoke.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-blas-cmake-build-smoke.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-container-direct-probe.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-container-direct-probe.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-dev-workspace-compose-smoke.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-dev-workspace-compose-smoke.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-device-memory-diagnostics.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-device-memory-diagnostics.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-device-smoke.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-device-smoke.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-direct-path-boundary-probe.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-direct-path-boundary-probe.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-documents-mediator-smoke.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-documents-mediator-smoke.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-file-io-bench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-file-io-bench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-file-io-microbench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-file-io-microbench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-gpu-compare-bench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-gpu-compare-bench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-gpu-host-bench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-gpu-host-bench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-llama-bench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-llama-bench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-llama-gpu-compare.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-llama-gpu-compare.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-llama-gpu-q6k-run.py",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-llama-gpu-q6k-run.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-llama-gpu-readiness.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-llama-gpu-readiness.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-llama-tool-bench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-llama-tool-bench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-memory-pager-managed-poc.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-memory-pager-managed-poc.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-memory-pager-transparent-poc.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-memory-pager-transparent-poc.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-runtime-bench.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-runtime-bench.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-selfdebug.sh",
       "category": "test-verification",
       "stability": "stable-entrypoint",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-selfdebug.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/android-service-truth-capture.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device service-truth same-container evidence capture wrapper; delegates to android-device-smoke and never promotes device-pass itself."
+      "role": "Android/device service-truth same-container evidence capture wrapper; delegates to android-device-smoke and never promotes device-pass itself.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-service-truth-capture.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-storage-metrics-sequence.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-storage-metrics-sequence.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-syscall-usecase-profile.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-syscall-usecase-profile.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/android-terminal-it-repro.sh",
@@ -169,235 +361,508 @@
         "reference_scan": "rg found no runtime callers outside script inventory/README/verifier allowlist and the script file itself; pycache-only hits are ignored.",
         "replacement_command": "python3 scripts/pdocker-test-driver.py --lane android-terminal-exec-it",
         "decision": "keep as obsolete-suspect for now; do not delete until paired UI self-test and engine-exec-input JSONL device artifacts have fully replaced this ad-hoc repro."
+      },
+      "migration": {
+        "target_dir": "scripts/obsolete-candidates",
+        "candidate_path": "scripts/obsolete-candidates/android-terminal-it-repro.sh",
+        "phase": "audit-before-move-or-delete",
+        "action": "audit-delete-or-archive",
+        "compat_wrapper": "no compatibility wrapper until audit chooses archive-over-delete; prefer deletion over moved wrapper when safe"
       }
     },
     {
       "path": "scripts/android-test-suite-container-exec.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/android-test-suite-container-exec.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/bench-gpu-bridge.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/bench-gpu-bridge.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/build-all.sh",
       "category": "build-developer",
       "stability": "stable-entrypoint",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/build-all.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/build-apk.sh",
       "category": "build-developer",
       "stability": "stable-entrypoint",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/build-apk.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/build-gpu-shim.sh",
       "category": "build-developer",
       "stability": "stable-entrypoint",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/build-gpu-shim.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/build-native-termux.sh",
       "category": "build-developer",
       "stability": "stable-entrypoint",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/build-native-termux.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/compat-audit.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/compat-audit.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/container-direct-probe.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/container-direct-probe.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/copy-native.sh",
       "category": "runtime-package-needed",
       "stability": "stable-entrypoint",
-      "role": "Stages APK/runtime payloads consumed by Gradle packaging."
+      "role": "Stages APK/runtime payloads consumed by Gradle packaging.",
+      "migration": {
+        "target_dir": "scripts/runtime",
+        "candidate_path": "scripts/runtime/copy-native.sh",
+        "phase": "phase-3-runtime-after-packaging-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/fetch-xterm.sh",
       "category": "build-developer",
       "stability": "developer-helper",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/fetch-xterm.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable entrypoints keep wrappers; developer helpers keep temporary wrappers while docs/CI references migrate"
+      }
     },
     {
       "path": "scripts/git-preflight.sh",
       "category": "build-developer",
       "stability": "developer-helper",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/git-preflight.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable entrypoints keep wrappers; developer helpers keep temporary wrappers while docs/CI references migrate"
+      }
     },
     {
       "path": "scripts/llama-gpu-env-manifest.json",
       "category": "generated-maintenance",
       "stability": "maintenance-helper",
-      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries."
+      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries.",
+      "migration": {
+        "target_dir": "scripts/maintenance",
+        "candidate_path": "scripts/maintenance/llama-gpu-env-manifest.json",
+        "phase": "phase-2-maintenance-after-doc-reference-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "top-level wrapper or symlink shim allowed after docs and generated-artifact references migrate"
+      }
     },
     {
       "path": "scripts/pdocker-test-driver.py",
       "category": "test-verification",
       "stability": "stable-entrypoint",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/pdocker-test-driver.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/run-python-coverage.sh",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/run-python-coverage.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/run_direct_syscall_scenarios.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/run_direct_syscall_scenarios.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/setup-env.sh",
       "category": "build-developer",
       "stability": "developer-helper",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/setup-env.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable entrypoints keep wrappers; developer helpers keep temporary wrappers while docs/CI references migrate"
+      }
     },
     {
       "path": "scripts/setup-git-worktree.sh",
       "category": "build-developer",
       "stability": "developer-helper",
-      "role": "Build, setup, or developer environment helper."
+      "role": "Build, setup, or developer environment helper.",
+      "migration": {
+        "target_dir": "scripts/build",
+        "candidate_path": "scripts/build/setup-git-worktree.sh",
+        "phase": "phase-2-build-after-callsite-audit",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable entrypoints keep wrappers; developer helpers keep temporary wrappers while docs/CI references migrate"
+      }
     },
     {
       "path": "scripts/smoke-opencl-bridge.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/smoke-opencl-bridge.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/smoke-vulkan-icd-bridge.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/smoke-vulkan-icd-bridge.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/smoke-vulkan-llama-init.sh",
       "category": "test-verification",
       "stability": "device-helper",
-      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
+      "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/smoke-vulkan-llama-init.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/summarize-llama-gpu-artifacts.py",
       "category": "generated-maintenance",
       "stability": "maintenance-helper",
-      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries."
+      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries.",
+      "migration": {
+        "target_dir": "scripts/maintenance",
+        "candidate_path": "scripts/maintenance/summarize-llama-gpu-artifacts.py",
+        "phase": "phase-2-maintenance-after-doc-reference-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "top-level wrapper or symlink shim allowed after docs and generated-artifact references migrate"
+      }
     },
     {
       "path": "scripts/update-showcase.py",
       "category": "generated-maintenance",
       "stability": "stable-entrypoint",
-      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries."
+      "role": "Maintains generated docs, GPU environment manifests, or evidence summaries.",
+      "migration": {
+        "target_dir": "scripts/maintenance",
+        "candidate_path": "scripts/maintenance/update-showcase.py",
+        "phase": "phase-2-maintenance-after-doc-reference-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/verify-abnormal-events.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-abnormal-events.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-archive-api-compat.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-archive-api-compat.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-blackbox-requirements.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-blackbox-requirements.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-build-profile.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-build-profile.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-build-context-tar-compat.py",
       "category": "test-verification",
       "stability": "internal-gate",
-      "role": "Host gate for Android build-context tar metadata, symlink, PAX, and dockerignore compatibility."
+      "role": "Host gate for Android build-context tar metadata, symlink, PAX, and dockerignore compatibility.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-build-context-tar-compat.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-cow-overlay-bench-recovery.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-cow-overlay-bench-recovery.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-dev-workspace-compose-artifact.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-dev-workspace-compose-artifact.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-device-llama-template.sh",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-device-llama-template.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-dockerfile-standard.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-dockerfile-standard.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-fast.sh",
       "category": "test-verification",
       "stability": "stable-entrypoint",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-fast.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/verify-feature-scenarios.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-feature-scenarios.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-heavy.sh",
       "category": "test-verification",
       "stability": "stable-entrypoint",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-heavy.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "wrapper required; permanent or long-lived stable entrypoint compatibility path"
+      }
     },
     {
       "path": "scripts/verify-image-pull-crash-safety.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-image-pull-crash-safety.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-input-grammar-coverage.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-input-grammar-coverage.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-input-validation.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-input-validation.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-llama-gpu-artifact.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-llama-gpu-artifact.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-llama-startup-logging.py",
@@ -409,133 +874,287 @@
         "reference_scan": "rg found no active caller; llama startup contract is now covered by verify-project-library.py static checks and test_gpu_abi_contract markers.",
         "replacement_command": "python3 scripts/verify-project-library.py",
         "decision": "keep as obsolete-suspect for now; future deletion is acceptable only after its early-tee/startup-json assertions are represented in maintained tests."
+      },
+      "migration": {
+        "target_dir": "scripts/obsolete-candidates",
+        "candidate_path": "scripts/obsolete-candidates/verify-llama-startup-logging.py",
+        "phase": "audit-before-move-or-delete",
+        "action": "audit-delete-or-archive",
+        "compat_wrapper": "no compatibility wrapper until audit chooses archive-over-delete; prefer deletion over moved wrapper when safe"
       }
     },
     {
       "path": "scripts/verify-memory-pager-contract.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-memory-pager-contract.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-memory-pager-design.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-memory-pager-design.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-metadata-index.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-metadata-index.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-oom-lmk-survival-gate.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-oom-lmk-survival-gate.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-project-library.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-project-library.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-refactor-resilience.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-refactor-resilience.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-release-readiness.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-release-readiness.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-runtime-single-container-artifact.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-runtime-single-container-artifact.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-runtime-teardown-artifact.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-runtime-teardown-artifact.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-saf-direct-output-artifact.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-saf-direct-output-artifact.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-scenarios.sh",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-scenarios.sh",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-script-inventory.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-script-inventory.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-self-debug-bundle.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verifier for APK-generated ADB-free self-debug bundle JSON artifacts."
+      "role": "Host-side verifier for APK-generated ADB-free self-debug bundle JSON artifacts.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-self-debug-bundle.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-service-truth-plan.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-service-truth-plan.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-storage-metrics.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-storage-metrics.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-stress-regression.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-stress-regression.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-terminal-exec-it-artifact.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-terminal-exec-it-artifact.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-test-design-criteria.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-test-design-criteria.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify-ui-actions.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-ui-actions.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify_direct_syscall_contracts.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify_direct_syscall_contracts.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/verify_terminal_editor_contracts.py",
       "category": "test-verification",
       "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate."
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify_terminal_editor_contracts.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
     },
     {
       "path": "scripts/wrap-ndk-box64.sh",
@@ -547,6 +1166,13 @@
         "reference_scan": "rg found no active caller; current build wrappers use build-native-termux.sh to avoid x86_64 NDK tool invocation on aarch64 hosts.",
         "replacement_command": "bash scripts/build-native-termux.sh",
         "decision": "keep as obsolete-suspect for now; future deletion is acceptable after confirming no supported aarch64-host build path depends on mutating the NDK with box64 shims."
+      },
+      "migration": {
+        "target_dir": "scripts/obsolete-candidates",
+        "candidate_path": "scripts/obsolete-candidates/wrap-ndk-box64.sh",
+        "phase": "audit-before-move-or-delete",
+        "action": "audit-delete-or-archive",
+        "compat_wrapper": "no compatibility wrapper until audit chooses archive-over-delete; prefer deletion over moved wrapper when safe"
       }
     }
   ]
