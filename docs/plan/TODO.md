@@ -65,7 +65,7 @@ issues, and deciding which planned gaps become hard gates.
    registry-pull interruption remains device-gated, scenario-owned only, and
    non-promoting until it proves no partial/user tag is published.
 5. **[#12](https://github.com/ryo100794/pdocker-android/issues/12)
-   COW/overlay mutation safety** `[P0 next]`: host-local `libcow` coverage now
+   COW/overlay mutation safety** `[P0 doing]`: host-local `libcow` coverage now
    fails closed for copy-up, metadata, `rename()`/`renameat()` over hardlinked
    destinations, whiteout/rename/archive staging models, low-space, corrupt
    hardlink-ring rebuild, and a local copy-up kill-step orphan-temp recovery.
@@ -144,9 +144,10 @@ issues, and deciding which planned gaps become hard gates.
   source/age telemetry, and service-health executable acceptance criteria.
   Acceptance: live assignments move to `docs/plan/AGENT_COORDINATION.md` and
   historical timeline snapshots do not retain operational `running` statuses.
-- [next] Documentation/script sprawl guard: new docs or scripts are durable
-  only when connected to a category README, inventory/manifest, verifier, or
-  fast/heavy gate. Acceptance: `scripts/verify-docs-maintenance.py` or
+- [done] Documentation/script sprawl guard: commit `f053df0` pushed the
+  script/doc drift guard. New docs or scripts are durable only when connected
+  to a category README, inventory/manifest, verifier, or fast/heavy gate.
+  Acceptance: `scripts/verify-docs-maintenance.py` or
   `scripts/verify-script-inventory.py` rejects unindexed durable docs/scripts.
 - [next] Script directory cleanup follow-up: register `scripts/verify/runner/*`
   in the script inventory, keep the documented `__pycache__` cleanup policy in
@@ -173,12 +174,13 @@ issues, and deciding which planned gaps become hard gates.
   `mul_mat_vec_q6_k`-like large quantized matvec. The bounded sample oracle now
   executes and mismatches 8/8 sampled rows, so the next split is Q6_K
   decode/math vs descriptor-view/local-size execution semantics. Current slice:
-  the executor preserves three-dimensional specialized local size
-  (`32x2x1` instead of a collapsed `32x1x1`), emits Q6_K 64-lane diagnostic
-  evidence, and the compare runner refuses llama GPU starts when Android swap
-  headroom is unsafe. `scripts/verify-llama-gpu-artifact.py` classifies memory
-  blockers, Q6 workgroup-clear evidence, and remaining Q6 numeric mismatches so
-  device results are not interpreted ad hoc. Environment propagation is now a
+  main is working the GPU Q6 classifier/oracle boundary: the executor preserves
+  three-dimensional specialized local size (`32x2x1` instead of a collapsed
+  `32x1x1`), emits Q6_K 64-lane diagnostic evidence, and the compare runner
+  refuses llama GPU starts when Android swap headroom is unsafe.
+  `scripts/verify-llama-gpu-artifact.py` classifies memory blockers, Q6
+  workgroup-clear evidence, and remaining Q6 numeric mismatches so device
+  results are not interpreted ad hoc. Environment propagation is now a
   first-class blocker: diagnostic flags used by the compare script, pdockerd
   defaults, UI/compose launches, and artifact verification must remain
   synchronized before a GPU result can be compared. The Q6_K workgroup and
@@ -188,6 +190,14 @@ issues, and deciding which planned gaps become hard gates.
   `docs/test/LLAMA_GPU_DEVICE_RUNBOOK_20260513.md`.
   Stage gates and compact-model handoff are maintained in
   `docs/plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md`.
+- [next] [#10](https://github.com/ryo100794/pdocker-android/issues/10)
+  / [#5](https://github.com/ryo100794/pdocker-android/issues/5) runtime
+  teardown and terminal exec-it scheduling: plan these as the next integration
+  lanes after the currently assigned P0 service-truth, image-pull, and COW
+  workers report back, because both lanes conflict on
+  `scripts/android-device-smoke.sh`. Acceptance: only one owner edits the
+  smoke helper at a time, and each lane reports its focused device artifact
+  before promotion.
 - [next] [#5](https://github.com/ryo100794/pdocker-android/issues/5)
   Terminal `-it` interactive path: refactor the terminal stack according to
   `docs/design/TERMINAL_STREAM_ARCHITECTURE.md`. The UI must remain a generic
@@ -229,6 +239,12 @@ issues, and deciding which planned gaps become hard gates.
   explicitly configured, expose cache hit/page-in/page-out/transfer metrics in
   the UI, and fail closed rather than claiming acceleration when correctness or
   residency evidence is missing.
+- [next] Mobile-resource residency constraints for MoE: keep a concise design
+  note with device RAM/headroom, thermal, storage bandwidth, SAF/app-private
+  backing, cache eviction, and correctness evidence requirements before any
+  MoE acceleration claim. Acceptance: the note links to the llama GPU runbook
+  or bridge next-steps and marks unsupported resource conditions as
+  non-promoting instead of benchmark evidence.
 - [done] Active port mapping proof slice: published ports now keep
   `PdockerNetwork.PortMappingStatus` truthful from evidence. Active requires a
   live container-owned `/proc/net` listener or verified runtime proxy/rewrite

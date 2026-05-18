@@ -32,7 +32,7 @@ The standing workflow is:
 ## Compaction Handoff Snapshot
 
 - Latest committed/pushed green base before the current local work slice:
-  `0e9b33e` (`main`/`origin/main`, "Migrate script wrapper references") as
+  `f053df0` (`main`/`origin/main`, "Guard script/doc drift") as
   observed locally on 2026-05-18.
 - Last known green default gate: `bash scripts/verify-fast.sh`.
 - Default operating loop: read this ledger, inspect repo status, recover/close
@@ -60,8 +60,13 @@ artifact instead of relying on retained chat history.
 
 | Lane | Owner | Write scope | Expected deliverable | Integration risks |
 | --- | --- | --- | --- | --- |
-| Llama GPU bridge implementation | Main agent | `docker-proot-setup/src/gpu/`, `app/src/main/cpp/pdocker_gpu_executor.c`, GPU smoke/benchmark artifacts | Working llama GPU bridge plus final integrated repo state | Must keep llama.cpp unmodified and avoid broad docs/script churn while GPU ABI is moving |
+| Llama GPU Q6 classifier/oracle boundary | Main agent | GPU bridge code plus llama GPU compare/verifier artifacts | Resolve the Q6_K classifier/oracle boundary and keep memory blockers, workgroup/writeback diagnostics, and numeric mismatches classified as non-promoting until the oracle matches | Must keep llama.cpp unmodified and avoid broad docs/script churn while GPU ABI is moving |
 | Connected Android device status | Goodall | read-only ADB at `192.168.179.26:39565` | Device connected; package `io.github.ryo100794.pdocker.compat` installed; `pdockerd`, `pdocker-gpu-executor`, and `pdocker-media-executor` observed running | Do not force-stop, reinstall, or start long builds unless explicitly assigned |
+| Service truth same-container-ID | Assigned P0 worker | Issue #6 implementation/tests/artifacts only | Produce the same-current-Engine-container-ID service truth artifact across UI, docker ps/API, state, process table, listener owner, and logs | Coordinate around `scripts/android-device-smoke.sh`; do not overlap with runtime teardown or terminal exec-it edits |
+| Image-pull crash safety | Assigned P0 worker | Issue #11 implementation/tests/artifacts only | Produce scenario-owned interrupted pull/restart evidence without publishing partial/user tags | Keep live registry interruption non-promoting unless the fixture is explicitly isolated and owned |
+| COW/overlay mutation safety | Assigned P0 worker | Issue #12 implementation/tests/artifacts only | Produce daemon/helper kill-at-step restart evidence for copy-up, rename, whiteout, archive, and metadata checkpoints | Coordinate with runtime smoke ownership before touching shared device-smoke helpers |
+| Runtime teardown | Planned next | Runtime teardown scripts/tests/artifacts | Follow service/image/COW integration with real adb/run-as teardown evidence | Planned after current P0 workers because it conflicts on `scripts/android-device-smoke.sh` |
+| Terminal exec-it | Planned next | Terminal exec/UI/session scripts/tests/artifacts | Implement the Engine exec-it device gate with raw JSONL and UI artifact evidence | Planned after runtime teardown/service-smoke coordination because it also conflicts on `scripts/android-device-smoke.sh` |
 | Low-conflict docs backlog | Pauli-derived queue | docs-only scopes under release/test/plan/maintenance README ownership | Delegate release dedup, GPU/storage evidence indexes, memory/terminal link cleanup, F-Droid consistency, test evidence retention, and plan/status cross-link hygiene as independent tasks | Avoid touching GPU/runtime implementation while these docs lanes run |
 
 ## Recently Recovered Agent Results
@@ -87,6 +92,7 @@ artifact instead of relying on retained chat history.
 | Wrapper migration audit | Descartes | read-only | Reference migration follow-up committed as `0e9b33e`; next slice is wrapper retirement only after the compatibility window |
 | CI release-readiness clean-checkout payload | Helmholtz/Archimedes | `scripts/verify-release-readiness.py`, `tests/test_release_readiness_notice_audit.py`, `metadata/fdroid/generated-binary-inventory.md` | Local fix distinguishes gitignored generated/staged payload rows from missing source-tree payloads; next check is GitHub Release readiness rerun after push |
 | Llama GPU next-step audit | Anscombe | read-only | Next GPU action: fresh APK/readiness/Q6_K row-indexed artifact before further C changes |
+| Script/doc drift guard | Main agent | `f053df0` | Pushed guard for script/doc maintenance drift; continue using docs-maintenance and script-inventory checks before broad cleanup |
 
 ## Intake Rule
 
@@ -143,7 +149,8 @@ verifiers before the next broad documentation cleanup:
 3. Script migration completion: `scripts/verify-script-inventory.py` should
    eventually scan docs, `.github/`, and test manifests before any migrated
    top-level wrapper can be removed. Wrapper reference migration landed as
-   `0e9b33e`; auto-add wrapper retirement only after the compatibility window.
+   `0e9b33e`; script/doc drift guard landed as `f053df0`; auto-add wrapper
+   retirement only after the compatibility window.
 4. Documentation discoverability: every new `docs/**/*.md` should be reachable
    through its category README or the maintenance backlog owner map.
 5. Issue workflow parity: major active TODO items should include `[#N]` unless
