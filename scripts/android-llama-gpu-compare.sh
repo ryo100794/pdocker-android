@@ -2757,6 +2757,7 @@ q6_workgroup_shape_blocker = bool(
     q6_latest
     and (
         q6_latest.get("spirv_local_size_consistent") is False
+        or q6_latest.get("spirv_local_size_resolved") != [32, 2, 1]
         or (
             isinstance(q6_latest_partial.get("q6_local_size"), list)
             and q6_latest_partial.get("q6_local_size") != q6_latest.get("spirv_local_size_resolved")

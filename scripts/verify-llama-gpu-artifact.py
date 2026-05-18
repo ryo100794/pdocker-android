@@ -1064,6 +1064,10 @@ def _q6_local_size_resolved(q6: Any) -> list[int] | None:
     return _integer_list(q6.get("local_size_resolved") or q6.get("local_size"))
 
 
+def _q6_required_local_size_clear(q6: Any) -> bool:
+    return _q6_local_size_resolved(q6) == [32, 2, 1]
+
+
 def _q6_shader_like_interpretation(q6: Any) -> dict[str, Any]:
     """Explain whether the Q6 shader-like CPU oracle cleared.
 
@@ -1374,10 +1378,10 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         classification = "q6-not-reached"
         responsibility_boundary = "q6-not-reached"
         next_action = data.get("next_action") or "collect an ngl=1 artifact with Q6_K oracle enabled"
-    elif q6.get("workgroup_shape_blocker") is True:
+    elif q6.get("workgroup_shape_blocker") is True or not _q6_required_local_size_clear(q6):
         classification = "q6-workgroup-shape-blocker"
         responsibility_boundary = "q6-local-size"
-        next_action = "fix Q6_K local-size propagation/materialization"
+        next_action = "fix Q6_K local-size propagation/materialization to the expected [32,2,1] workgroup shape"
     elif q6_writeback_evidence.get("summary") == "mismatch":
         classification = "q6-writeback-mismatch"
         responsibility_boundary = "q6-writeback"
