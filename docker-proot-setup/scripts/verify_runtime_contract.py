@@ -676,6 +676,50 @@ def test_storage_summary_distinguishes_layer_and_upper_bytes() -> None:
         ok("storage summary separates shared layers, image views, and container upper bytes")
 
 
+def test_image_create_platform_contract() -> None:
+    with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
+        home_path = Path(home)
+        mod = load_pdockerd_with_env("image_create_platform", "no-proot", home_path)
+        calls: list[tuple[str, str | None]] = []
+        original_pull_image = mod.pull_image
+
+        def fake_pull_image(name: str, platform: str | None = None) -> None:
+            calls.append((name, platform))
+
+        mod.pull_image = fake_pull_image
+        srv = mod.ThreadingTCPHTTPServer(("127.0.0.1", 0), mod.DockerAPIHandler)
+        thread = threading.Thread(target=srv.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection(srv.server_address[0], srv.server_address[1], timeout=5)
+            try:
+                conn.request("POST", "/images/create?fromImage=busybox&platform=linux/arm64/v8")
+                resp = conn.getresponse()
+                body = resp.read()
+            finally:
+                conn.close()
+            conn = http.client.HTTPConnection(srv.server_address[0], srv.server_address[1], timeout=5)
+            try:
+                conn.request("POST", "/images/create?fromImage=busybox&platform=linux/%0Abad")
+                bad_resp = conn.getresponse()
+                bad_body = bad_resp.read()
+            finally:
+                conn.close()
+        finally:
+            mod.pull_image = original_pull_image
+            srv.shutdown()
+            srv.server_close()
+        if resp.status != 200:
+            fail(f"/images/create platform status mismatch: {resp.status}, body={body!r}")
+        if calls != [("busybox:latest", "linux/arm64/v8")]:
+            fail(f"/images/create did not propagate platform to pull_image: {calls!r}")
+        if b'"id": "linux/arm64/v8"' not in body:
+            fail(f"/images/create stream did not surface selected platform: {body!r}")
+        if bad_resp.status != 400 or b"invalid platform" not in bad_body:
+            fail(f"/images/create should reject malformed platform: {bad_resp.status}, {bad_body!r}")
+        ok("image create propagates and validates platform")
+
+
 def test_dockerfile_unknown_instruction_rejected() -> None:
     with tempfile.TemporaryDirectory(prefix="pdocker-test-") as home:
         home_path = Path(home)
@@ -1255,6 +1299,7 @@ def main() -> int:
     test_existing_tag_full_image_cache()
     test_build_cache_contract()
     test_storage_summary_distinguishes_layer_and_upper_bytes()
+    test_image_create_platform_contract()
     test_active_operations_contract()
     test_exclusive_build_operations_contract()
     test_active_operations_prune_stale_idle_entries()

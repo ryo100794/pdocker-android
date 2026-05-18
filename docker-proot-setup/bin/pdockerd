@@ -4268,6 +4268,15 @@ def normalize_image(name):
     return f"{repo}:{tag}"
 
 
+def normalize_platform(value):
+    platform = (value or PLATFORM).strip()
+    if not platform:
+        return PLATFORM
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*(/[A-Za-z0-9][A-Za-z0-9_.-]*){0,2}", platform):
+        raise ValueError(f"invalid platform: {platform!r}")
+    return platform
+
+
 def image_to_path(name):
     return name.replace("/", "_").replace(":", "_")
 
@@ -7965,7 +7974,11 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         if path == "/images/create" and method == "POST":
             fromImage = query.get("fromImage", [""])[0]
             tag = query.get("tag", ["latest"])[0]
-            platform = query.get("platform", [PLATFORM])[0] or PLATFORM
+            try:
+                platform = normalize_platform(query.get("platform", [PLATFORM])[0])
+            except ValueError as e:
+                self._send_json(400, {"message": str(e)})
+                return
             image = f"{fromImage}:{tag}" if ":" not in fromImage else fromImage
             self._send_stream_started()
             try:
