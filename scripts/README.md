@@ -20,7 +20,7 @@ Every inventory entry now also carries a `migration` object with a proposed dest
 |---|---:|---|
 | `runtime-package-needed` | 1 | Needed to stage runtime/APK payloads or otherwise part of packaging flow. |
 | `build-developer` | 8 | Build, setup, fetch, or developer environment helper. |
-| `test-verification` | 72 | Test, smoke, benchmark, contract, or device verification helper. |
+| `test-verification` | 74 | Test, smoke, benchmark, contract, or device verification helper. |
 | `generated-maintenance` | 3 | Generated-doc/evidence maintenance or manifest data. |
 | `obsolete-suspect` | 3 | Unreferenced or weakly referenced candidate; not deleted without audit. |
 
@@ -122,6 +122,7 @@ entrypoint counts.
 | `scripts/android-llama-tool-bench.sh` | `device-helper` | Android/device, GPU, llama, or runtime benchmark/smoke helper. |
 | `scripts/android-memory-pager-managed-poc.sh` | `device-helper` | Android/device, GPU, llama, or runtime benchmark/smoke helper. |
 | `scripts/android-memory-pager-transparent-poc.sh` | `device-helper` | Android/device, GPU, llama, or runtime benchmark/smoke helper. |
+| `scripts/android-no-proot-runtime-truth-gate.sh` | `device-helper` | Android/device no-proot runtime truth gate wrapper and evidence capture helper. |
 | `scripts/android-runtime-bench.sh` | `device-helper` | Android/device, GPU, llama, or runtime benchmark/smoke helper. |
 | `scripts/android-selfdebug.sh` | `stable-entrypoint` | Android/device, GPU, llama, or runtime benchmark/smoke helper. |
 | `scripts/android-storage-metrics-sequence.sh` | `device-helper` | Android/device, GPU, llama, or runtime benchmark/smoke helper. |
@@ -156,6 +157,7 @@ entrypoint counts.
 | `scripts/verify-memory-pager-contract.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-memory-pager-design.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-metadata-index.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
+| `scripts/verify-no-proot-runtime-truth-artifact.py` | `test-helper` | Host-side verifier for no-proot runtime truth gate artifacts. |
 | `scripts/verify-oom-lmk-survival-gate.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-project-library.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-refactor-resilience.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
