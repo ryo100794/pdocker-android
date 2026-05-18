@@ -140,6 +140,9 @@ issues, and deciding which planned gaps become hard gates.
   gates, current agent assignments, merge checklists, and decomposition rules.
   Active T0 lanes are Android single-container smoke, memory-layer UI
   source/age telemetry, and service-health executable acceptance criteria.
+- [next] Documentation/script sprawl guard: new docs or scripts are durable
+  only when connected to a category README, inventory/manifest, verifier, or
+  fast/heavy gate.
 - [doing] [#4](https://github.com/ryo100794/pdocker-android/issues/4)
   llama GPU bridge ABI: keep llama.cpp unmodified while expanding the
   pdocker Vulkan/OpenCL bridge from device discovery and model-buffer

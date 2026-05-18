@@ -43,6 +43,18 @@ def require(name: str, condition: bool) -> None:
     ok(name) if condition else fail(name)
 
 
+def read_script_with_migrated_body(path: Path) -> str:
+    """Read a stable script wrapper plus its relocated implementation, if any."""
+
+    text = path.read_text()
+    bodies = [text]
+    for match in re.finditer(r"scripts/(?:test|maintenance)/[A-Za-z0-9_.-]+", text):
+        candidate = ROOT / match.group(0)
+        if candidate.is_file():
+            bodies.append(candidate.read_text())
+    return "\n".join(bodies)
+
+
 def main() -> int:
     main_src = MAIN.read_text()
     image_src = IMAGE.read_text()
@@ -55,11 +67,11 @@ def main() -> int:
     pdockerd_src = (ROOT / "docker-proot-setup/bin/pdockerd").read_text()
     android_smoke_src = ANDROID_SMOKE.read_text() if ANDROID_SMOKE.exists() else ""
     api29_feasibility_src = (ROOT / "scripts/android-api29-direct-feasibility.sh").read_text()
-    device_llama_template_src = (ROOT / "scripts/verify-device-llama-template.sh").read_text()
+    device_llama_template_src = read_script_with_migrated_body(ROOT / "scripts/verify-device-llama-template.sh")
     llama_compare_src = (ROOT / "scripts/android-llama-gpu-compare.sh").read_text()
     vulkan_smoke_src = (ROOT / "scripts/smoke-vulkan-icd-bridge.sh").read_text()
-    vulkan_llama_init_src = (ROOT / "scripts/smoke-vulkan-llama-init.sh").read_text()
-    opencl_smoke_src = (ROOT / "scripts/smoke-opencl-bridge.sh").read_text()
+    vulkan_llama_init_src = read_script_with_migrated_body(ROOT / "scripts/smoke-vulkan-llama-init.sh")
+    opencl_smoke_src = read_script_with_migrated_body(ROOT / "scripts/smoke-opencl-bridge.sh")
     compat_audit_src = (ROOT / "scripts/compat-audit.py").read_text()
     verify_fast_src = (ROOT / "scripts/verify-fast.sh").read_text()
     bug_report_src = (ROOT / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text()

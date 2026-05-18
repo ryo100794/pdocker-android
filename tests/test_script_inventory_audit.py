@@ -12,6 +12,29 @@ class ScriptInventoryAuditTest(unittest.TestCase):
         self.readme = (ROOT / "scripts" / "README.md").read_text(encoding="utf-8")
         self.entries = {entry["path"]: entry for entry in self.inventory["entries"]}
 
+    def assertIsExecutable(self, path):
+        self.assertTrue(
+            path.stat().st_mode & 0o111,
+            f"{path.relative_to(ROOT)} must keep an executable bit",
+        )
+
+    def assertShellWrapper(self, path, candidate_path, wrapper):
+        self.assertIn("#!/usr/bin/env bash", wrapper)
+        self.assertIn("set -euo pipefail", wrapper)
+        self.assertIn('ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"', wrapper)
+        self.assertIn(f'exec "$ROOT/{candidate_path}" "$@"', wrapper)
+
+    def assertPythonWrapper(self, path, candidate_path, wrapper):
+        self.assertTrue(wrapper.startswith("#!/usr/bin/env python3\n"))
+        for snippet in (
+            "import runpy",
+            "import sys",
+            f'TARGET_REL = "{candidate_path}"',
+            "sys.argv[0] = str(TARGET)",
+            'runpy.run_path(str(TARGET), run_name="__main__")',
+        ):
+            self.assertIn(snippet, wrapper)
+
     def test_every_entry_has_move_candidate_and_wrapper_policy(self):
         expected_targets = {
             "runtime-package-needed": "scripts/runtime",
@@ -42,7 +65,23 @@ class ScriptInventoryAuditTest(unittest.TestCase):
                 if entry["category"] == "obsolete-suspect":
                     self.assertEqual(migration["action"], "audit-delete-or-archive")
                 else:
-                    self.assertEqual(migration["action"], "candidate-move-behind-wrapper")
+                    self.assertIn(
+                        migration["action"],
+                        {"candidate-move-behind-wrapper", "migrated-behind-wrapper"},
+                    )
+                if migration["action"] == "migrated-behind-wrapper":
+                    candidate_path = migration["candidate_path"]
+                    self.assertTrue((ROOT / candidate_path).is_file())
+                    wrapper_path = ROOT / entry["path"]
+                    self.assertIsExecutable(wrapper_path)
+                    wrapper = wrapper_path.read_text(encoding="utf-8")
+                    self.assertIn(candidate_path, wrapper)
+                    if entry["path"].endswith(".sh"):
+                        self.assertShellWrapper(entry["path"], candidate_path, wrapper)
+                    elif entry["path"].endswith(".py"):
+                        self.assertPythonWrapper(entry["path"], candidate_path, wrapper)
+                    else:
+                        self.fail(f"unsupported wrapper type: {entry['path']}")
 
     def test_obsolete_suspects_have_audit_decisions_and_replacements(self):
         expected_replacements = {

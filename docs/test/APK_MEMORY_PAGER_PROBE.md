@@ -1,5 +1,11 @@
 # APK Memory Pager Probe
 
+Canonical design/policy links:
+
+- [APK memory pager design](../design/APK_MEMORY_PAGER.md)
+- [Runtime OOM survival design](../design/RUNTIME_OOM_SURVIVAL.md)
+- [Memory ownership design](../design/MEMORY_OWNERSHIP.md)
+
 Snapshot date: 2026-05-05.
 
 ## Purpose

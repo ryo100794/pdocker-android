@@ -15,6 +15,8 @@ tradeoffs, accepted behavior, and non-goals.
 | [`DOCKER_COMPAT_SCOPE.md`](DOCKER_COMPAT_SCOPE.md) | Docker compatibility scope, non-goals, and replacement strategies |
 | [`COW_OVERLAY_STORAGE.md`](COW_OVERLAY_STORAGE.md) | Overlay-like storage plan |
 | [`SAF_UNIXFS_METADATA_SIDECAR.md`](SAF_UNIXFS_METADATA_SIDECAR.md) | SAF/SD/FAT Unix-like backend and metadata sidecar |
+| [`STORAGE_LAYER_ARCHITECTURE.md`](STORAGE_LAYER_ARCHITECTURE.md) | Storage layer responsibilities, path resolution, and persistence boundaries |
+| [`PROJECT_METADATA_INDEX.md`](PROJECT_METADATA_INDEX.md) | Disposable SQLite metadata index contract for projects, Engine state, and overlay paths |
 | [`RUNTIME_STRATEGY.md`](RUNTIME_STRATEGY.md) | Direct runtime direction and PRoot retirement plan |
 | [`API29_DIRECT_EXEC_FEASIBILITY.md`](API29_DIRECT_EXEC_FEASIBILITY.md) | API 29+ direct execution feasibility notes |
 | [`GPU_COMPAT.md`](GPU_COMPAT.md) | Android GPU, Vulkan, cuVK, and benchmark design direction |
@@ -36,6 +38,9 @@ tradeoffs, accepted behavior, and non-goals.
   lower/upper model.
 - Treat [`SAF_UNIXFS_METADATA_SIDECAR.md`](SAF_UNIXFS_METADATA_SIDECAR.md) as
   the backend boundary for SAF/SD/FAT payloads and emulated Unix metadata.
+- Treat [`STORAGE_LAYER_ARCHITECTURE.md`](STORAGE_LAYER_ARCHITECTURE.md) and
+  [`PROJECT_METADATA_INDEX.md`](PROJECT_METADATA_INDEX.md) as the storage
+  architecture and rebuildable metadata-index contracts.
 - Treat [`GPU_COMPAT.md`](GPU_COMPAT.md) as the Android GPU design entry point,
   with backend request/env details delegated to
   [`../../docker-proot-setup/docs/GPU_COMPAT.md`](../../docker-proot-setup/docs/GPU_COMPAT.md).

@@ -29,7 +29,7 @@ documentation remains.
   - Required evidence: passing CPU-vs-GPU correctness artifact with
     `benchmark_claim_allowed=true`; Q6_K/local-size/descriptor evidence for the
     active blocker; update
-    [`LLAMA_GPU_BRIDGE_NEXT_STEPS.md`](LLAMA_GPU_BRIDGE_NEXT_STEPS.md).
+    [`LLAMA_GPU_BRIDGE_NEXT_STEPS.md`](../plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md).
 - **Service health truth — blocked**
   - Why it blocks: cards or metadata can look healthy without proof that the
     current Engine container owns the listener and logs.

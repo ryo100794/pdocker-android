@@ -20,6 +20,8 @@ repository-level overview.
 | Plan | Current status, TODOs, and historical steering snapshots | [`plan/README.md`](plan/README.md) |
 | Release | Release gates, fixed build evidence, distribution process, and announcements | [`release/README.md`](release/README.md) |
 | Showcase | GitHub-facing generated dashboard, roadmap timeline, and Wiki seed | [`showcase/README.md`](showcase/README.md) |
+| Maintenance | Documentation inventory, deduplication backlog, and safe cleanup sequencing | [`maintenance/README.md`](maintenance/README.md) |
+| License/compliance | Repository-root policy and notices; no duplicate docs source of truth | [`../LICENSE`](../LICENSE), [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) |
 
 ## Canonical Sources
 
@@ -39,6 +41,14 @@ Within `docs/`, use [`plan/STATUS.md`](plan/STATUS.md) for current state,
 [`test/COMPATIBILITY.md`](test/COMPATIBILITY.md) for measured compatibility,
 and [`design/DOCKER_COMPAT_SCOPE.md`](design/DOCKER_COMPAT_SCOPE.md) for
 product boundaries.
+
+## Duplication Cleanup
+
+Use [`maintenance/DOCUMENTATION_DEDUP_BACKLOG.md`](maintenance/DOCUMENTATION_DEDUP_BACKLOG.md)
+for the current category map, known duplicate/scatter hotspots, canonical
+owners, and safe cleanup sequence. The current backlog has 8 active topic
+groups; do not delete or rename files until their producer/consumer links have
+been checked.
 
 ## Maintenance
 

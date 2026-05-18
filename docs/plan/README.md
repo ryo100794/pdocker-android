@@ -17,6 +17,10 @@ which temporary accommodations must be replaced.
 | [`LLAMA_GPU_BRIDGE_NEXT_STEPS.md`](LLAMA_GPU_BRIDGE_NEXT_STEPS.md) | Active llama.cpp GPU bridge procedure, stage gates, and compact-model handoff |
 | [`INCOMPLETE_IMPLEMENTATION_AUDIT_20260513.md`](INCOMPLETE_IMPLEMENTATION_AUDIT_20260513.md) | Consolidated P0/P1/P2 incomplete-work audit |
 | [`ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md) | GitHub Issue workflow and TODO/timeline synchronization |
+| [`AGENT_COORDINATION.md`](AGENT_COORDINATION.md) | Multi-agent coordination ledger and ownership notes |
+| [`DOCUMENTATION_REORGANIZATION_PLAN.md`](DOCUMENTATION_REORGANIZATION_PLAN.md) | Historical documentation cleanup findings and proposed reorganization sequence |
+| [`EXECUTION_TIMELINE_20260513.md`](EXECUTION_TIMELINE_20260513.md) | Historical execution timeline snapshot from 2026-05-13 |
+| [`GOAL_EXECUTION_QUEUE_20260513.md`](GOAL_EXECUTION_QUEUE_20260513.md) | Historical goal execution queue snapshot from 2026-05-13 |
 | [`REPLAN_2026-05-01.md`](REPLAN_2026-05-01.md) | Historical replan snapshot after UI/build/GPU steering |
 
 ## Canonical Sources
@@ -35,6 +39,9 @@ which temporary accommodations must be replaced.
   summaries into [`TODO.md`](TODO.md).
 - Use [`ISSUE_WORKFLOW.md`](ISSUE_WORKFLOW.md) for the issue promotion and
   timeline synchronization rules.
+- Use [`AGENT_COORDINATION.md`](AGENT_COORDINATION.md) for multi-agent ownership
+  notes, and use [`../maintenance/DOCUMENTATION_DEDUP_BACKLOG.md`](../maintenance/DOCUMENTATION_DEDUP_BACKLOG.md)
+  for current documentation deduplication routing.
 - Use [`REPLAN_2026-05-01.md`](REPLAN_2026-05-01.md) only as historical
   context; do not refresh it with live status.
 - Link to [`../test/COMPATIBILITY.md`](../test/COMPATIBILITY.md) for test

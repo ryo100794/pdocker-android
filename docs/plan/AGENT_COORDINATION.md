@@ -1,11 +1,48 @@
 # Agent Coordination Ledger
 
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 
 This ledger records active delegation lanes and integration risks for the main
 agent. The main agent owns waiting on agents, closing lanes, and integrating
 final changes. The coordinator only records current expectations and flags
 risks; it does not edit implementation files or resolve sibling work.
+
+## Durable Workflow Memory
+
+This file is the durable memory for the multi-agent development workflow. When
+session context is compacted or moved, the next main agent must read this file
+before launching new work.
+
+The standing workflow is:
+
+1. The main agent acts as manager, integrator, git owner, and final reviewer.
+2. Keep several small, narrowly scoped agents active when delegation is useful.
+3. Prefer small tasks with explicit ownership and disjoint write scopes.
+4. Recover completed agents quickly, close them, integrate their output, then
+   launch the next small task if the backlog still has independent work.
+5. Use explorer agents for audits and design review; use worker agents for
+   bounded code or documentation patches.
+6. If several work streams need reconciliation, delegate a short integration or
+   review pass rather than letting conflicts accumulate silently.
+7. Preserve all important agent output in code, tests, `docs/plan/TODO.md`,
+   focused design/test documents, or this coordination ledger.
+8. Commit and push only after integration review, focused tests, `git diff
+   --check`, and an explicit check that untracked moved files are staged.
+
+## Context Hygiene Rule
+
+The main agent must not keep raw agent transcripts, long command logs, or large
+diffs in conversational context. Keep only compact facts needed for the next
+decision:
+
+- active lane, owner, write scope, and blocker;
+- files changed and validation commands;
+- commit SHA or artifact path after the result is landed;
+- next action and acceptance gate.
+
+Everything else must be reduced into source files, tests, focused docs, or this
+ledger. If a future session needs details, it should open the referenced file or
+artifact instead of relying on retained chat history.
 
 ## Active Lanes
 
@@ -27,6 +64,9 @@ risks; it does not edit implementation files or resolve sibling work.
 | Storage metrics validation lane | Leibniz | `scripts/verify-storage-metrics.py`, `docs/test/STORAGE_METRICS.md` | Included in `scripts/verify-fast.sh`; device metric checks remain TODO |
 | Terminal / `-it` investigation | Hypatia | Root cause captured in TODO: direct executor argv rewrite and readonly selection IME | Implement after GPU-safe checkpoint; add direct `/usr/bin/[` smoke |
 | F-Droid/reproducible-build readiness | Carver | `docs/release/FDROID_RELEASE_PROCESS.md`, `metadata/fdroid/README.md` | Keep runtime container downloads documented as user-directed product behavior |
+| Docs maintenance verifier | Linnaeus | `scripts/verify-docs-maintenance.py`, `tests/test_docs_maintenance.py`, fast gate hook | Run with docs/script cleanup commit |
+| Terminal exec doc canonicalization | Poincare | `docs/test/TERMINAL_EXEC_IT_DEVICE_GATE.md`, `docs/test/SCENARIOS.md` | Keep architecture doc as stream-boundary source of truth |
+| Memory/OOM gate canonicalization | Halley | `docs/test/APK_MEMORY_PAGER_PROBE.md`, `docs/test/OOM_LMK_SURVIVAL_GATE.md` | Keep design docs as policy source of truth |
 
 ## Intake Rule
 

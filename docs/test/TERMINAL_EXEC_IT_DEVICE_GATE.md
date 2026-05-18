@@ -1,5 +1,11 @@
 # Terminal `exec -it` Device Gate
 
+Canonical stream-boundary design:
+[`../design/TERMINAL_STREAM_ARCHITECTURE.md`](../design/TERMINAL_STREAM_ARCHITECTURE.md).
+This gate is the executable evidence contract for Engine `exec -it`; the
+architecture document is the source of truth for terminal/session stream
+boundaries.
+
 This gate protects the UI route that opens an interactive container terminal
 through the Engine exec API. It is a hard gate only when a real Engine container
 ID or name is required by the caller.
@@ -216,18 +222,11 @@ private test-only Engine endpoint. Required reproductions are:
 
 ## Layer separation contract
 
-- The terminal surface is a generic terminal UI. It may normalize bytes, expose
-  generic test hooks, and call bridge methods such as `input` and `resize`.
-  IME handling, Enter normalization, Ctrl/Alt modifier mapping, selection-mode
-  keyboard suppression, paste, and soft-key buttons are terminal-surface/input
-  adapter behavior, not Docker exec policy.
-- The terminal surface must not contain Docker command strings, container IDs,
-  Engine endpoints such as `/containers/{id}/exec` or `/exec/{id}/start`, PTY
-  implementation names, artifact validators, or device-smoke policy.
-- Docker exec/PTY semantics belong to the session/API layer. `EngineExecSession`
-  is the named owner for Engine exec create/start hijack, raw stdin, resize, and
-  diagnostic writes; the bridge delegates to that session instead of duplicating
-  Engine endpoint handling.
-- A static host test must fail if Docker/Engine routing tokens move into
-  `app/src/main/assets/xterm/index.html`, and must also prove the Engine exec
-  path is centralized in the named session helper.
+The stream-boundary source of truth is
+[`../design/TERMINAL_STREAM_ARCHITECTURE.md`](../design/TERMINAL_STREAM_ARCHITECTURE.md).
+In this gate, keep only the test-facing rule: the WebView/xterm terminal surface
+emits generic bytes and resize events, while `EngineExecSession` owns Docker
+exec create/start hijack, raw stdin, resize diagnostics, and Engine endpoint
+policy. A static host test must continue to fail if Docker/Engine routing tokens
+move into `app/src/main/assets/xterm/index.html`, or if the Engine exec path is
+not centralized in the named session helper.

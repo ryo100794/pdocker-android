@@ -117,6 +117,12 @@ evidence exists:
 | TTY/exec | `tty.exec.engine-it` |
 | VS Code workspace | `vscode.workspace.default` |
 
+Terminal/editor UI and TTY/exec scenarios should keep only scenario-level
+commands, evidence, and pass/fail criteria here. Detailed terminal stream
+boundaries, including the generic terminal surface versus Engine exec session
+ownership, are canonical in
+[`../design/TERMINAL_STREAM_ARCHITECTURE.md`](../design/TERMINAL_STREAM_ARCHITECTURE.md).
+
 ## Direct Runtime Coverage
 
 The direct-runtime syscall ledger has its own lower-level manifest:

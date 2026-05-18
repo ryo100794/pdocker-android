@@ -142,7 +142,8 @@ def check_protocol_smoke() -> list[Check]:
         text=True,
     )
     try:
-        for _ in range(100):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
             if sock.exists():
                 break
             if proc.poll() is not None:
@@ -150,7 +151,9 @@ def check_protocol_smoke() -> list[Check]:
             time.sleep(0.05)
         if not sock.exists():
             stderr = stop_process_and_collect_stderr(proc)
-            return [Check("protocol: daemon start", "FAIL", stderr[-1000:])]
+            state = "alive" if proc.poll() is None else f"exited rc={proc.returncode}"
+            detail = stderr[-1000:] or f"socket not created within 30s; process {state}"
+            return [Check("protocol: daemon start", "FAIL", detail)]
         checks.append(Check("protocol: daemon start", "PASS", str(sock)))
 
         probes = [

@@ -24,7 +24,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 | Project-library templates | 6 |
 | TODO done entries | 63 |
 | TODO doing entries | 20 |
-| TODO next entries | 31 |
+| TODO next entries | 32 |
 | Compatibility audit PASS | 69 |
 | Compatibility audit FAIL | 0 |
 
@@ -45,6 +45,7 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 |---|---|
 | doing | Cross-project incomplete implementation audit: `docs/plan/INCOMPLETE_IMPLEMENTATION_AUDIT_20260513.md` now tracks unfinished, partial, temporary, or insufficiently verified work across... |
 | doing | Execution timeline and delegated task control: `docs/plan/EXECUTION_TIMELINE_20260513.md` converts the audit into staged gates, current agent assignments, merge checklists, and... |
+| next | Documentation/script sprawl guard: new docs or scripts are durable only when connected to a category README, inventory/manifest, verifier, or fast/heavy gate. |
 | doing | [#4](https://github.com/ryo100794/pdocker-android/issues/4) llama GPU bridge ABI: keep llama.cpp unmodified while expanding the pdocker Vulkan/OpenCL bridge from device discovery and... |
 | next | [#5](https://github.com/ryo100794/pdocker-android/issues/5) Terminal `-it` interactive path: refactor the terminal stack according to `docs/design/TERMINAL_STREAM_ARCHITECTURE.md`. The UI... |
 | doing | [#6](https://github.com/ryo100794/pdocker-android/issues/6) Service truth same-container-ID device gate: the listener health and ID/label truth work are one gate. Probe default workspace... |
@@ -52,7 +53,6 @@ Vulkan/OpenCL GPU bridging for llama.cpp-class workloads.
 | next | [#4](https://github.com/ryo100794/pdocker-android/issues/4) MoE-aware GPU residency layer research and design: after the dense llama GPU bridge is correct, evaluate a pdocker-owned... |
 | doing | [#7](https://github.com/ryo100794/pdocker-android/issues/7) Android storage metrics verification: add device smoke/manual coverage that layer, image-view, container-private, total, and... |
 | next | [#8](https://github.com/ryo100794/pdocker-android/issues/8) Reproducible release/F-Droid readiness: turn the local build wrapper into a broader pinned CI/release process with source-built... |
-| doing | [#9](https://github.com/ryo100794/pdocker-android/issues/9) First public release candidate gate: define and satisfy the minimum GitHub Release criteria for a build that is honest... |
 
 ## Timeline
 

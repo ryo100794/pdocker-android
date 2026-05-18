@@ -46,11 +46,64 @@ REQUIRED_STABLE_ENTRYPOINTS = {
     "scripts/pdocker-test-driver.py",
     "scripts/android-selfdebug.sh",
 }
+ALLOWED_MIGRATION_ACTIONS = {
+    "audit-delete-or-archive",
+    "candidate-move-behind-wrapper",
+    "migrated-behind-wrapper",
+}
 KNOWN_OBSOLETE_SUSPECTS = {
     "scripts/android-terminal-it-repro.sh",
     "scripts/verify-llama-startup-logging.py",
     "scripts/wrap-ndk-box64.sh",
 }
+
+
+def is_executable(path: Path) -> bool:
+    return path.stat().st_mode & 0o111 != 0
+
+
+def validate_wrapper(path: str, candidate_path: str) -> None:
+    wrapper_path = ROOT / path
+    implementation_path = ROOT / candidate_path
+    if not wrapper_path.is_file():
+        fail(f"{path} migrated wrapper missing")
+    if not implementation_path.is_file():
+        fail(f"{path} migrated implementation missing: {candidate_path}")
+    if not is_executable(wrapper_path):
+        fail(f"{path} migrated wrapper is not executable")
+    try:
+        wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        fail(f"{path} migrated wrapper is not UTF-8 text")
+    if candidate_path not in wrapper_text:
+        fail(f"{path} wrapper does not reference migrated implementation {candidate_path}")
+
+    first_line = wrapper_text.splitlines()[0] if wrapper_text.splitlines() else ""
+    if path.endswith(".sh"):
+        required_snippets = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            'ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"',
+            f'exec "$ROOT/{candidate_path}" "$@"',
+        ]
+        missing = [snippet for snippet in required_snippets if snippet not in wrapper_text]
+        if missing:
+            fail(f"{path} shell wrapper is missing required structure: {missing}")
+    elif path.endswith(".py"):
+        if first_line != "#!/usr/bin/env python3":
+            fail(f"{path} python wrapper must start with a python3 shebang")
+        required_snippets = [
+            "import runpy",
+            "import sys",
+            f'TARGET_REL = "{candidate_path}"',
+            "sys.argv[0] = str(TARGET)",
+            'runpy.run_path(str(TARGET), run_name="__main__")',
+        ]
+        missing = [snippet for snippet in required_snippets if snippet not in wrapper_text]
+        if missing:
+            fail(f"{path} python wrapper is missing required structure: {missing}")
+    else:
+        fail(f"{path} migrated wrapper has unsupported extension")
 
 
 def load_manifest() -> dict[str, Any]:
@@ -129,11 +182,15 @@ def main() -> int:
         expected_candidate = f"{target_dir}/{Path(path).name}"
         if candidate_path != expected_candidate:
             fail(f"{path} candidate_path mismatch: expected {expected_candidate!r}, got {candidate_path!r}")
+        if action not in ALLOWED_MIGRATION_ACTIONS:
+            fail(f"{path} has unknown migration action {action!r}")
         if category == "obsolete-suspect":
             if action != "audit-delete-or-archive":
                 fail(f"{path} obsolete-suspect action must be audit-delete-or-archive")
-        elif action != "candidate-move-behind-wrapper":
-            fail(f"{path} non-obsolete action must be candidate-move-behind-wrapper")
+        elif action == "audit-delete-or-archive":
+            fail(f"{path} non-obsolete action must not be audit-delete-or-archive")
+        if action == "migrated-behind-wrapper":
+            validate_wrapper(path, candidate_path)
         for field_name, value in {
             "phase": phase,
             "compat_wrapper": compat_wrapper,

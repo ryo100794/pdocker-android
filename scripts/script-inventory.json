@@ -599,8 +599,8 @@
       "migration": {
         "target_dir": "scripts/test",
         "candidate_path": "scripts/test/smoke-opencl-bridge.sh",
-        "phase": "phase-1-test-helpers-after-manifest-update",
-        "action": "candidate-move-behind-wrapper",
+        "phase": "phase-1-wrapper-migration-started",
+        "action": "migrated-behind-wrapper",
         "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
       }
     },
@@ -625,8 +625,8 @@
       "migration": {
         "target_dir": "scripts/test",
         "candidate_path": "scripts/test/smoke-vulkan-llama-init.sh",
-        "phase": "phase-1-test-helpers-after-manifest-update",
-        "action": "candidate-move-behind-wrapper",
+        "phase": "phase-1-wrapper-migration-started",
+        "action": "migrated-behind-wrapper",
         "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
       }
     },
@@ -638,8 +638,8 @@
       "migration": {
         "target_dir": "scripts/maintenance",
         "candidate_path": "scripts/maintenance/summarize-llama-gpu-artifacts.py",
-        "phase": "phase-2-maintenance-after-doc-reference-update",
-        "action": "candidate-move-behind-wrapper",
+        "phase": "phase-1-wrapper-migration-started",
+        "action": "migrated-behind-wrapper",
         "compat_wrapper": "top-level wrapper or symlink shim allowed after docs and generated-artifact references migrate"
       }
     },
@@ -696,19 +696,6 @@
       }
     },
     {
-      "path": "scripts/verify-build-profile.py",
-      "category": "test-verification",
-      "stability": "test-helper",
-      "role": "Host-side verification/test driver or static contract gate.",
-      "migration": {
-        "target_dir": "scripts/test",
-        "candidate_path": "scripts/test/verify-build-profile.py",
-        "phase": "phase-1-test-helpers-after-manifest-update",
-        "action": "candidate-move-behind-wrapper",
-        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
-      }
-    },
-    {
       "path": "scripts/verify-build-context-tar-compat.py",
       "category": "test-verification",
       "stability": "internal-gate",
@@ -716,6 +703,19 @@
       "migration": {
         "target_dir": "scripts/test",
         "candidate_path": "scripts/test/verify-build-context-tar-compat.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
+    },
+    {
+      "path": "scripts/verify-build-profile.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verification/test driver or static contract gate.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-build-profile.py",
         "phase": "phase-1-test-helpers-after-manifest-update",
         "action": "candidate-move-behind-wrapper",
         "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
@@ -755,8 +755,8 @@
       "migration": {
         "target_dir": "scripts/test",
         "candidate_path": "scripts/test/verify-device-llama-template.sh",
-        "phase": "phase-1-test-helpers-after-manifest-update",
-        "action": "candidate-move-behind-wrapper",
+        "phase": "phase-1-wrapper-migration-started",
+        "action": "migrated-behind-wrapper",
         "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
       }
     },
@@ -768,6 +768,19 @@
       "migration": {
         "target_dir": "scripts/test",
         "candidate_path": "scripts/test/verify-dockerfile-standard.py",
+        "phase": "phase-1-test-helpers-after-manifest-update",
+        "action": "candidate-move-behind-wrapper",
+        "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"
+      }
+    },
+    {
+      "path": "scripts/verify-docs-maintenance.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verifier for documentation maintenance backlog, canonical owners, and local Markdown links.",
+      "migration": {
+        "target_dir": "scripts/test",
+        "candidate_path": "scripts/test/verify-docs-maintenance.py",
         "phase": "phase-1-test-helpers-after-manifest-update",
         "action": "candidate-move-behind-wrapper",
         "compat_wrapper": "stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths"

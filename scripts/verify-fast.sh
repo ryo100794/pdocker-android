@@ -51,6 +51,7 @@ run python3 -m py_compile \
   scripts/verify-storage-metrics.py \
   scripts/verify-script-inventory.py \
   scripts/verify-dev-workspace-compose-artifact.py \
+  scripts/verify-docs-maintenance.py \
   scripts/verify-runtime-teardown-artifact.py \
   scripts/verify-runtime-single-container-artifact.py \
   scripts/verify-saf-direct-output-artifact.py \
@@ -59,6 +60,7 @@ run python3 -m py_compile \
   scripts/verify_terminal_editor_contracts.py \
   scripts/verify-cow-overlay-bench-recovery.py \
   scripts/summarize-llama-gpu-artifacts.py \
+  scripts/maintenance/summarize-llama-gpu-artifacts.py \
   scripts/update-showcase.py \
   docker-proot-setup/scripts/verify_runtime_contract.py
 
@@ -71,6 +73,12 @@ run bash -n \
   scripts/android-llama-gpu-readiness.sh \
   scripts/android-llama-gpu-compare.sh \
   scripts/android-storage-metrics-sequence.sh \
+  scripts/smoke-opencl-bridge.sh \
+  scripts/smoke-vulkan-llama-init.sh \
+  scripts/test/smoke-opencl-bridge.sh \
+  scripts/test/smoke-vulkan-llama-init.sh \
+  scripts/test/verify-device-llama-template.sh \
+  scripts/verify-device-llama-template.sh \
   scripts/verify-heavy.sh
 
 run python3 docker-proot-setup/scripts/verify_runtime_contract.py
@@ -98,6 +106,7 @@ run python3 scripts/verify-cow-overlay-bench-recovery.py --run-local
 run python3 scripts/verify-project-library.py
 run python3 scripts/verify-storage-metrics.py
 run python3 scripts/verify-script-inventory.py
+run python3 scripts/verify-docs-maintenance.py
 run python3 scripts/verify-release-readiness.py
 tmp_storage_sequence="$(mktemp)"
 printf '\n==> python3 scripts/verify-storage-metrics.py --print-sequence-fixture > %s\n' "$tmp_storage_sequence"
@@ -114,6 +123,7 @@ run python3 -m unittest \
   tests.test_self_debug_bundle_verifier \
   tests.test_release_readiness_notice_audit \
   tests.test_script_inventory_audit \
+  tests.test_docs_maintenance \
   tests.test_terminal_exec_it_artifact_verifier \
   tests.test_service_truth_device_gate \
   tests.test_runtime_teardown_device_gate \

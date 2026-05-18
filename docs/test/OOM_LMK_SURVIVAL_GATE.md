@@ -2,6 +2,14 @@
 
 Status: planned-gap for connected-device LMK/backend-death replay.
 
+This document is the gate/procedure for collecting and validating OOM/LMK
+survival evidence. Policy and design authority remain in the canonical design
+docs:
+
+- [APK memory pager design](../design/APK_MEMORY_PAGER.md)
+- [Runtime OOM survival design](../design/RUNTIME_OOM_SURVIVAL.md)
+- [Memory ownership design](../design/MEMORY_OWNERSHIP.md)
+
 `python3 scripts/verify-oom-lmk-survival-gate.py` is the host/static gate for
 memory runtime survival evidence. It verifies large allocation denial telemetry,
 backend death classification, exact device return-code/artifact checks, and

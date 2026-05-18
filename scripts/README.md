@@ -20,7 +20,7 @@ Every inventory entry now also carries a `migration` object with a proposed dest
 |---|---:|---|
 | `runtime-package-needed` | 1 | Needed to stage runtime/APK payloads or otherwise part of packaging flow. |
 | `build-developer` | 8 | Build, setup, fetch, or developer environment helper. |
-| `test-verification` | 71 | Test, smoke, benchmark, contract, or device verification helper. |
+| `test-verification` | 72 | Test, smoke, benchmark, contract, or device verification helper. |
 | `generated-maintenance` | 3 | Generated-doc/evidence maintenance or manifest data. |
 | `obsolete-suspect` | 3 | Unreferenced or weakly referenced candidate; not deleted without audit. |
 
@@ -33,6 +33,24 @@ Every inventory entry now also carries a `migration` object with a proposed dest
 | `test-verification` | `scripts/test/` | Stable verification entrypoints keep wrappers; helper wrappers remain until test manifests and docs stop referencing top-level paths. |
 | `generated-maintenance` | `scripts/maintenance/` | Top-level wrapper or symlink shim allowed after docs and generated-artifact references migrate. |
 | `obsolete-suspect` | `scripts/obsolete-candidates/` | Do not move first; audit for deletion or archive in a focused follow-up commit. |
+
+## Phase-1 wrapper migrations
+
+The following entries have already moved their implementation behind a stable
+top-level wrapper.  Keep both the wrapper and the inventory entry until all
+documented commands, test manifests, and CI lanes explicitly point at the new
+implementation path.
+`scripts/verify-script-inventory.py` and `tests/test_script_inventory_audit.py`
+verify that each migrated top-level wrapper points at its recorded
+`candidate_path`, keeps an executable bit, and follows the expected thin
+shell/python wrapper shape.
+
+| Stable wrapper | Implementation path |
+|---|---|
+| `scripts/smoke-opencl-bridge.sh` | `scripts/test/smoke-opencl-bridge.sh` |
+| `scripts/smoke-vulkan-llama-init.sh` | `scripts/test/smoke-vulkan-llama-init.sh` |
+| `scripts/verify-device-llama-template.sh` | `scripts/test/verify-device-llama-template.sh` |
+| `scripts/summarize-llama-gpu-artifacts.py` | `scripts/maintenance/summarize-llama-gpu-artifacts.py` |
 
 ## Stable Public Entrypoints
 
@@ -109,6 +127,7 @@ Every inventory entry now also carries a `migration` object with a proposed dest
 | `scripts/verify-build-profile.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-build-context-tar-compat.py` | `test-helper` | Host-side verifier for Android build-context tar metadata, symlink, PAX, and dockerignore compatibility. |
 | `scripts/verify-cow-overlay-bench-recovery.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
+| `scripts/verify-docs-maintenance.py` | `test-helper` | Host-side verifier for documentation maintenance backlog, canonical owners, and local Markdown links. |
 | `scripts/verify-dev-workspace-compose-artifact.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-device-llama-template.sh` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-dockerfile-standard.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
