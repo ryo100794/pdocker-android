@@ -28,6 +28,7 @@ run() {
 run python3 -m py_compile \
   scripts/compat-audit.py \
   scripts/verify-abnormal-events.py \
+  scripts/verify-archive-api-compat.py \
   scripts/verify-build-profile.py \
   scripts/verify-blackbox-requirements.py \
   scripts/verify-dockerfile-standard.py \
@@ -53,6 +54,7 @@ run python3 -m py_compile \
   scripts/verify-ui-actions.py \
   scripts/verify-terminal-exec-it-artifact.py \
   scripts/verify_terminal_editor_contracts.py \
+  scripts/verify-cow-overlay-bench-recovery.py \
   scripts/summarize-llama-gpu-artifacts.py \
   scripts/update-showcase.py \
   docker-proot-setup/scripts/verify_runtime_contract.py
@@ -86,6 +88,8 @@ run python3 scripts/verify-stress-regression.py
 run python3 scripts/verify-blackbox-requirements.py
 run python3 scripts/verify-feature-scenarios.py
 run python3 scripts/verify-dockerfile-standard.py
+run python3 scripts/verify-archive-api-compat.py
+run python3 scripts/verify-cow-overlay-bench-recovery.py --run-local
 run python3 scripts/verify-project-library.py
 run python3 scripts/verify-storage-metrics.py
 run python3 scripts/verify-script-inventory.py
