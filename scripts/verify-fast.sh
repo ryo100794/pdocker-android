@@ -43,6 +43,7 @@ run python3 -m py_compile \
   scripts/verify-project-library.py \
   scripts/verify-refactor-resilience.py \
   scripts/verify-service-truth-plan.py \
+  scripts/verify-self-debug-bundle.py \
   scripts/verify-storage-metrics.py \
   scripts/verify-script-inventory.py \
   scripts/verify-dev-workspace-compose-artifact.py \
@@ -58,9 +59,12 @@ run python3 -m py_compile \
 
 run bash -n \
   scripts/android-selfdebug.sh \
+  scripts/android-service-truth-capture.sh \
   scripts/android-device-smoke.sh \
   scripts/android-dev-workspace-compose-smoke.sh \
   scripts/android-documents-mediator-smoke.sh \
+  scripts/android-llama-gpu-readiness.sh \
+  scripts/android-llama-gpu-compare.sh \
   scripts/android-storage-metrics-sequence.sh \
   scripts/verify-heavy.sh
 
@@ -97,7 +101,10 @@ run python3 scripts/verify_terminal_editor_contracts.py
 run python3 -m unittest \
   tests.test_terminal_exec_it_contract \
   tests.test_android_selfdebug_helper \
+  tests.test_self_debug_bundle_verifier \
+  tests.test_script_inventory_audit \
   tests.test_terminal_exec_it_artifact_verifier \
+  tests.test_service_truth_device_gate \
   tests.test_runtime_teardown_device_gate \
   tests.test_runtime_teardown_artifact_verifier \
   tests.test_dev_workspace_smoke_contract \
@@ -106,6 +113,9 @@ run python3 -m unittest \
   tests.test_android_storage_metrics_sequence \
   tests.test_saf_direct_output_contract \
   tests.storage_metrics.test_verify_storage_metrics \
+  tests.test_llama_gpu_env_parity \
+  tests.test_llama_gpu_readiness_contract \
+  tests.test_llama_gpu_artifact_verifier \
   tests.test_llama_gpu_artifact_sweep \
   tests.test_ci_gate_ledger \
   tests.test_test_driver

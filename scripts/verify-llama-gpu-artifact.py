@@ -328,6 +328,11 @@ def _config_propagation(data: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _runtime_env_manifest_record(data: dict[str, Any]) -> dict[str, Any]:
+    value = nested(data, "gpu", "runtime_env_manifest") or data.get("runtime_env_manifest") or {}
+    return value if isinstance(value, dict) else {}
+
+
 def _config_propagation_missing(data: dict[str, Any], config_propagation: dict[str, Any]) -> bool:
     if not _is_compare_artifact(data):
         return False
@@ -964,6 +969,7 @@ def _claim_base(
     swap_free_threshold: dict[str, Any] | None = None,
     swap_policy: dict[str, Any] | None = None,
     runtime_freshness: dict[str, Any] | None = None,
+    runtime_env_manifest: dict[str, Any] | None = None,
     responsibility_boundary: str = "pre-q6",
 ) -> dict[str, Any]:
     swap_threshold = swap_free_threshold or {}
@@ -984,6 +990,7 @@ def _claim_base(
         "swap_free_threshold_state": swap_threshold.get("state") if isinstance(swap_threshold, dict) else None,
         "swap_policy": swap_policy or {},
         "runtime_freshness": runtime_freshness or {},
+        "runtime_env_manifest": runtime_env_manifest or {},
         "responsibility_boundary": responsibility_boundary,
     }
 
@@ -1021,6 +1028,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
     correctness = correctness_summary.get("correctness", "not-run")
     comparison = data.get("comparison") or {}
     runtime_freshness = _runtime_freshness(data)
+    runtime_env_manifest = _runtime_env_manifest_record(data)
 
     pre_http_gpu_blocker = _pre_http_gpu_blocker(data, diagnostics)
     if pre_http_gpu_blocker:
@@ -1028,6 +1036,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             pre_http_gpu_blocker["classification"],
             next_action=str(pre_http_gpu_blocker["next_action"]),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="gpu-setup",
         ) | {
             "gpu_blocker_class": pre_http_gpu_blocker["gpu_blocker_class"],
@@ -1044,6 +1053,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "inspect ICD/executor dispatch begin/end/stage evidence; HTTP /health and /v1/models passed but deterministic /completion timed out"
             ),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="service-readiness",
         ) | {
             "service_readiness": completion_readiness,
@@ -1055,6 +1065,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             "executor-marker-not-observed",
             next_action="rerun compare with fresh GPU executor evidence; compare/benchmark claims require the expected executor marker",
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="runtime-freshness",
         )
 
@@ -1069,6 +1080,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "fix GPU diagnostic environment propagation before accepting compare, correctness, or benchmark claims"
             ),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="env-propagation",
         ) | {
             "config_propagation": config_propagation,
@@ -1088,6 +1100,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "fix the required CPU oracle coverage or disable the unsafe GPU work before accepting compare, correctness, or benchmark claims"
             ),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="oracle-coverage",
         ) | {
             "oracle_fail_closed_evidence": oracle_fail_closed_evidence,
@@ -1103,6 +1116,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "fail or gate unsupported GPU executor/oracle work before accepting correctness or benchmark claims"
             ),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="unsupported-gpu-work",
         ) | {
             "unsupported_gpu_work_evidence": unsupported_evidence,
@@ -1118,6 +1132,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "rerun the standard /completion prompt probes unchanged; do not accept GPU claims without HTTP/API prompt evidence"
             ),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="api-prompt-sanity",
         ) | {
             "api_prompt_sanity": api_prompt_sanity,
@@ -1133,6 +1148,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "rerun compare so comparison and bridge_overhead_phase speedup fields are present before claiming correctness or performance"
             ),
             runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="speedup-evidence",
         ) | {
             "speedup_fields": speedup_fields,
@@ -1195,6 +1211,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         "q6_workgroup_diagnostics": q6,
         "q6_writeback_evidence": q6_writeback_evidence,
         "runtime_freshness": runtime_freshness,
+        "runtime_env_manifest": runtime_env_manifest,
         "config_propagation": config_propagation,
         "api_prompt_sanity": api_prompt_sanity,
         "speedup_fields": speedup_fields,

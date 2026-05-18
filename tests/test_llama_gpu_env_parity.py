@@ -67,6 +67,11 @@ class LlamaGpuEnvParityTest(unittest.TestCase):
         self.assertIn("llama-gpu-env-manifest.json", compare)
         self.assertIn("compare_forward_env_keys", compare)
         self.assertIn('set_env(env, f"{key}={value}")', compare)
+        self.assertIn("record_manifest_runtime_env", compare)
+        self.assertIn("pdocker.llama.gpu.runtime-env-record.v1", compare)
+        self.assertIn("[pdocker llama compare] runtime env", compare)
+        self.assertIn('"runtime_env_manifest": runtime_env_manifest', compare)
+        self.assertIn("requested_env_missing_from_runtime", compare)
 
         for key in manifest["pdockerd_runtime_env_keys"]:
             self.assertRegex(
@@ -83,6 +88,21 @@ class LlamaGpuEnvParityTest(unittest.TestCase):
         # template until promoted to ordinary runtime behavior.
         for key in sorted(set(manifest["compare_diagnostic_env_keys"]) - set(manifest["ui_compose_runtime_env_keys"])):
             self.assertNotIn(f"{key}:", compose, key)
+
+    def test_compare_echoes_and_records_manifest_based_runtime_env(self):
+        compare = COMPARE.read_text(encoding="utf-8")
+        verifier = VERIFIER.read_text(encoding="utf-8")
+
+        self.assertIn('string_list("compare_forward_env_keys")', compare)
+        self.assertIn('string_list("compare_diagnostic_env_keys")', compare)
+        self.assertIn('"config_propagation_env_keys": config_keys', compare)
+        self.assertIn('"host_requested_env": dict(sorted(host_env.items()))', compare)
+        self.assertIn('"host_echo_recorded": bool(runtime_env_record.get("echoed_to_log"))', compare)
+        self.assertIn('"runtime_env_observed_keys": sorted(effective_runtime_env)', compare)
+        self.assertIn('"requested_env_observed_keys"', compare)
+
+        self.assertIn("def _runtime_env_manifest_record", verifier)
+        self.assertIn('"runtime_env_manifest": runtime_env_manifest', verifier)
 
 
 if __name__ == "__main__":

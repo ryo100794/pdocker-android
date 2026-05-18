@@ -83,6 +83,10 @@ Run the tight llama GPU compare loop:
 
 ```bash
 ANDROID_SERIAL=192.168.179.26:45443 \
+bash scripts/android-llama-gpu-readiness.sh \
+  --out docs/test/llama-gpu-device-readiness-latest.json
+
+ANDROID_SERIAL=192.168.179.26:45443 \
 PDOCKER_GPU_CPU_ORACLE=1 \
 PDOCKER_GPU_DISPATCH_PROFILE_LOG=1 \
 PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1 \
@@ -96,6 +100,13 @@ bash scripts/android-llama-gpu-compare.sh \
   --repeat 1 \
   --out docs/test/llama-gpu-ngl1-<short-name>-20260509.json
 ```
+
+Do not start the `ngl=1` Q6_K evidence run unless the readiness artifact has
+`ready=true` and `preconditions.q6_ngl1_evidence_collection_allowed=true`.
+The compare script also writes `gpu.runtime_env_manifest` into the artifact and
+echoes manifest-selected runtime environment variables before collection; keep
+that record with the Q6_K evidence so env propagation can be audited without
+changing llama.cpp, the image, models, or prompts.
 
 Milestone compare with CPU baseline should be run only after a correctness
 blocker changes, not after every small diagnostic edit.

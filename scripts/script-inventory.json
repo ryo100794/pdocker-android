@@ -1,6 +1,6 @@
 {
   "schema": "pdocker.script-inventory.v1",
-  "snapshot_date": "2026-05-17",
+  "snapshot_date": "2026-05-18",
   "policy": {
     "top_level_paths_are_stable": true,
     "move_rule": "Do not move top-level scripts directly. Add subfolder implementations only behind stable wrapper shims and update this inventory first.",
@@ -142,6 +142,12 @@
       "role": "Android/device, GPU, llama, or runtime benchmark/smoke helper."
     },
     {
+      "path": "scripts/android-service-truth-capture.sh",
+      "category": "test-verification",
+      "stability": "device-helper",
+      "role": "Android/device service-truth same-container evidence capture wrapper; delegates to android-device-smoke and never promotes device-pass itself."
+    },
+    {
       "path": "scripts/android-storage-metrics-sequence.sh",
       "category": "test-verification",
       "stability": "device-helper",
@@ -157,7 +163,13 @@
       "path": "scripts/android-terminal-it-repro.sh",
       "category": "obsolete-suspect",
       "stability": "legacy-audit",
-      "role": "Audit candidate; keep until references and intent are confirmed."
+      "role": "Audited obsolete candidate; retained temporarily with replacement command and deletion precondition recorded.",
+      "audit": {
+        "date": "2026-05-18",
+        "reference_scan": "rg found no runtime callers outside script inventory/README/verifier allowlist and the script file itself; pycache-only hits are ignored.",
+        "replacement_command": "python3 scripts/pdocker-test-driver.py --lane android-terminal-exec-it",
+        "decision": "keep as obsolete-suspect for now; do not delete until paired UI self-test and engine-exec-input JSONL device artifacts have fully replaced this ad-hoc repro."
+      }
     },
     {
       "path": "scripts/android-test-suite-container-exec.sh",
@@ -385,7 +397,13 @@
       "path": "scripts/verify-llama-startup-logging.py",
       "category": "obsolete-suspect",
       "stability": "legacy-audit",
-      "role": "Audit candidate; keep until references and intent are confirmed."
+      "role": "Audited obsolete candidate; retained temporarily with replacement command and deletion precondition recorded.",
+      "audit": {
+        "date": "2026-05-18",
+        "reference_scan": "rg found no active caller; llama startup contract is now covered by verify-project-library.py static checks and test_gpu_abi_contract markers.",
+        "replacement_command": "python3 scripts/verify-project-library.py",
+        "decision": "keep as obsolete-suspect for now; future deletion is acceptable only after its early-tee/startup-json assertions are represented in maintained tests."
+      }
     },
     {
       "path": "scripts/verify-memory-pager-contract.py",
@@ -460,6 +478,12 @@
       "role": "Host-side verification/test driver or static contract gate."
     },
     {
+      "path": "scripts/verify-self-debug-bundle.py",
+      "category": "test-verification",
+      "stability": "test-helper",
+      "role": "Host-side verifier for APK-generated ADB-free self-debug bundle JSON artifacts."
+    },
+    {
       "path": "scripts/verify-service-truth-plan.py",
       "category": "test-verification",
       "stability": "test-helper",
@@ -511,7 +535,13 @@
       "path": "scripts/wrap-ndk-box64.sh",
       "category": "obsolete-suspect",
       "stability": "legacy-audit",
-      "role": "Audit candidate; keep until references and intent are confirmed."
+      "role": "Audited obsolete candidate; retained temporarily with replacement command and deletion precondition recorded.",
+      "audit": {
+        "date": "2026-05-18",
+        "reference_scan": "rg found no active caller; current build wrappers use build-native-termux.sh to avoid x86_64 NDK tool invocation on aarch64 hosts.",
+        "replacement_command": "bash scripts/build-native-termux.sh",
+        "decision": "keep as obsolete-suspect for now; future deletion is acceptable after confirming no supported aarch64-host build path depends on mutating the NDK with box64 shims."
+      }
     }
   ]
 }

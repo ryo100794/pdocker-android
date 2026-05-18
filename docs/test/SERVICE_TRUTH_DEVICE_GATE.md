@@ -3,6 +3,7 @@
 Status: planned-gap until complete device proof; device-pass when all seven sources match
 Host gate: `python3 scripts/verify-service-truth-plan.py`
 Device smoke: `bash scripts/android-device-smoke.sh --no-install --service-truth <target>`
+Capture wrapper: `bash scripts/android-service-truth-capture.sh --print-plan` (no adb needed) or `bash scripts/android-service-truth-capture.sh --target <default-workspace|llama> --no-install` when a device is connected.
 Device artifact: `files/pdocker/diagnostics/service-truth-latest.json` copied to `docs/test/service-truth-latest.json` only after a real device run.
 
 This gate exists to prevent UI service cards from claiming healthy/running from
@@ -12,6 +13,46 @@ truth source, the device artifact must remain `Status: planned-gap` and
 `Success: false`. When, and only when, the device runner proves all seven
 sources below are current/proven for one exact 64-hex ID, it may emit
 `Status: device-pass`, `Success: true`, and exit 0.
+
+
+## Command path without claiming a device pass
+
+`bash scripts/android-service-truth-capture.sh --print-plan` is the host-safe
+entrypoint for environments that do not currently have adb installed or a device
+attached. It prints the exact adb-backed command to run later and exits without
+creating, editing, or promoting `files/pdocker/diagnostics/service-truth-latest.json`.
+When a real device is attached, run one of:
+
+```sh
+PDOCKER_SMOKE_ARTIFACT_DIR=tmp/device-smoke-artifacts/service-truth-default \
+  bash scripts/android-service-truth-capture.sh --target default-workspace --no-install
+
+PDOCKER_SMOKE_ARTIFACT_DIR=tmp/device-smoke-artifacts/service-truth-llama \
+  bash scripts/android-service-truth-capture.sh --target llama --no-install
+```
+
+The wrapper delegates to `scripts/android-device-smoke.sh --service-truth` and
+therefore collects, under one diagnostic directory, the raw evidence needed to
+reduce these seven sources to one exact 64-hex Engine container ID:
+
+- UI card: `ui-rendered-service-truth-latest.json`.
+- `docker ps`: `engine-ps.out`, `engine-ps-running.out`, and
+  `engine-candidates.json`.
+- Engine API `/containers/json?all=1`: `engine-containers-json.http`, plus
+  `inspect-selected.http` / `docker-inspect-selected.out` for running-state and
+  PID.
+- `state.json`: `persisted-state-json.txt`, `state-container-ids.tsv`, and
+  `state-id-comparison.json`.
+- Process table: `process-table.txt` checked against the selected inspect PID.
+- Listener owner: `proc-net-tcp.txt`, `listener-probe.json`, and
+  `listener-owner-map.json` / `.tsv` mapping socket inodes to the selected PID.
+- Logs: `logs-selected.out` and `logs-<container-id>.out` with a current
+  `pdocker-service-truth-marker` containing the selected Engine container ID.
+
+This command path is evidence collection only. It must not fake `device-pass`:
+missing adb, missing UI card export, planned-gap, prefix-only IDs,
+configured-port-only evidence, stale `state.json`, stale logs, or a listener
+owned by any other PID/container remain `Success: false` and nonzero.
 
 ## Required same-ID proof
 

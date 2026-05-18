@@ -69,6 +69,19 @@ state, memory/process/fd snapshots, debug resource roots, and known diagnostic
 artifact paths. It is generated entirely inside the APK and therefore does not
 require USB, Wi-Fi ADB, `run-as`, or a host shell.
 
+Verify an exported bundle without ADB:
+
+```sh
+python3 scripts/verify-self-debug-bundle.py /path/to/self-debug-bundle-latest.json
+```
+
+The verifier checks the ADB-free contract (`adb_independent=true` and
+`requires_adb=false`), required `app`, `engine`, `documents`, `debug_roots`,
+`memory_layers`, snapshot text, `LocalEvidenceFiles`, `DocumentsExport`, and
+`DocumentsEvidenceExport` evidence. A planned or failed Documents export is
+accepted only when the export object keeps the normal structure and includes an
+explicit `Error`, `Reason`, or `Message` (directly or in an `Attempts` entry).
+
 ## Connect Each Session
 
 On the Wireless debugging top screen, note the current **IP address and port**

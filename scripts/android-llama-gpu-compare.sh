@@ -116,6 +116,7 @@ mkdir -p "$(dirname "$OUT")"
 TMP="$(mktemp -d)"
 CURRENT_STAGE="initializing"
 RUNTIME_ABORT_JSON="$TMP/runtime-memory-abort.json"
+RUNTIME_ENV_RECORD_JSON="$TMP/runtime-env-record.json"
 
 compare_artifact_dir() {
   if [[ -n "$COMPARE_ARTIFACT_DIR" ]]; then
@@ -152,6 +153,67 @@ event = {
 }
 with open(path, "a", encoding="utf-8") as f:
     f.write(json.dumps(event, separators=(",", ":")) + "\n")
+PY
+}
+
+record_manifest_runtime_env() {
+  local out="$1"
+  python3 - "$ROOT/scripts/llama-gpu-env-manifest.json" "$out" "$GPU_LAYERS" "$GPU_CTX" "$MODEL_PATH" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+manifest_path, out_path, gpu_layers, gpu_ctx, model_path = sys.argv[1:6]
+manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+if manifest.get("schema") != "pdocker.llama.gpu.env-manifest.v1":
+    raise SystemExit(f"unsupported llama GPU env manifest schema: {manifest_path}")
+
+def string_list(name):
+    values = manifest.get(name)
+    if not isinstance(values, list) or not all(isinstance(value, str) and value for value in values):
+        raise SystemExit(f"invalid {name} in llama GPU env manifest: {manifest_path}")
+    return values
+
+forward_keys = string_list("compare_forward_env_keys")
+diagnostic_keys = string_list("compare_diagnostic_env_keys")
+config_fields = manifest.get("config_propagation_env_fields")
+if not isinstance(config_fields, list):
+    raise SystemExit(f"invalid config_propagation_env_fields in llama GPU env manifest: {manifest_path}")
+config_keys = [
+    str(item.get("env"))
+    for item in config_fields
+    if isinstance(item, dict) and isinstance(item.get("env"), str) and item.get("env")
+]
+manifest_keys = list(dict.fromkeys(forward_keys + diagnostic_keys + config_keys))
+host_env = {key: os.environ[key] for key in manifest_keys if key in os.environ}
+record = {
+    "schema": "pdocker.llama.gpu.runtime-env-record.v1",
+    "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "manifest": {
+        "schema": manifest["schema"],
+        "path": manifest_path,
+        "compare_forward_env_keys": forward_keys,
+        "compare_diagnostic_env_keys": diagnostic_keys,
+        "config_propagation_env_keys": config_keys,
+    },
+    "run_settings": {
+        "gpu_layers": int(gpu_layers),
+        "gpu_ctx": int(gpu_ctx),
+        "model_path": model_path,
+    },
+    "host_requested_env": dict(sorted(host_env.items())),
+    "echoed_to_log": True,
+}
+Path(out_path).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(
+    "[pdocker llama compare] runtime env manifest "
+    f"keys={len(manifest_keys)} requested={len(host_env)} record={out_path}",
+    file=sys.stderr,
+)
+for key, value in sorted(host_env.items()):
+    print(f"[pdocker llama compare] runtime env {key}={value}", file=sys.stderr)
 PY
 }
 
@@ -1529,6 +1591,7 @@ PY
 }
 
 CURRENT_STAGE="memory preflight"
+record_manifest_runtime_env "$RUNTIME_ENV_RECORD_JSON"
 stop_stale_target_if_engine_alive
 wait_for_memory_headroom "preflight before daemon start"
 restart_app_daemon_for_test
@@ -1618,7 +1681,7 @@ container_archive_file "/workspace/logs/llama-startup.json" "$STARTUP_JSON"
 container_logs > "$GPU_LOG"
 
 PDOCKER_LLAMA_RUNTIME_ABORT_JSON="$RUNTIME_ABORT_JSON" \
-python3 - "$CPU_JSON" "$CPU_CORRECTNESS_JSON" "$GPU_JSON" "$GPU_LOG" "$GPU_STATE" "$CORRECTNESS_JSON" "$SERVICE_READINESS_JSON" "$STARTUP_JSON" "$OUT" "$gpu_served" "$GPU_LAYERS" "$GPU_CTX" "$PREDICT" "$REPEAT" "$WARMUP_DISCARD" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" "$ROOT/scripts/llama-gpu-env-manifest.json" <<'PY'
+python3 - "$CPU_JSON" "$CPU_CORRECTNESS_JSON" "$GPU_JSON" "$GPU_LOG" "$GPU_STATE" "$CORRECTNESS_JSON" "$SERVICE_READINESS_JSON" "$STARTUP_JSON" "$RUNTIME_ENV_RECORD_JSON" "$OUT" "$gpu_served" "$GPU_LAYERS" "$GPU_CTX" "$PREDICT" "$REPEAT" "$WARMUP_DISCARD" "$TRACE_ALLOC" "$MODEL_PATH" "$MODEL_URL" "$ROOT/scripts/llama-gpu-env-manifest.json" <<'PY'
 import json
 import math
 import os
@@ -1627,7 +1690,7 @@ import sys
 import time
 from pathlib import Path
 
-cpu_path, cpu_correctness_path, gpu_path, gpu_log_path, gpu_state_path, correctness_path, service_readiness_path, startup_path, out_path, gpu_served_s, gpu_layers, gpu_ctx, predict, repeat, warmup_discard, trace_alloc, model_path, model_url, manifest_path = sys.argv[1:20]
+cpu_path, cpu_correctness_path, gpu_path, gpu_log_path, gpu_state_path, correctness_path, service_readiness_path, startup_path, runtime_env_record_path, out_path, gpu_served_s, gpu_layers, gpu_ctx, predict, repeat, warmup_discard, trace_alloc, model_path, model_url, manifest_path = sys.argv[1:21]
 env_manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
 if env_manifest.get("schema") != "pdocker.llama.gpu.env-manifest.v1":
     raise SystemExit(f"unsupported llama GPU env manifest schema: {manifest_path}")
@@ -1658,6 +1721,12 @@ if Path(startup_path).is_file() and Path(startup_path).stat().st_size:
         startup_diagnostics = json.load(open(startup_path, encoding="utf-8"))
     except Exception:
         startup_diagnostics = {}
+runtime_env_record = {}
+if Path(runtime_env_record_path).is_file() and Path(runtime_env_record_path).stat().st_size:
+    try:
+        runtime_env_record = json.load(open(runtime_env_record_path, encoding="utf-8"))
+    except Exception:
+        runtime_env_record = {}
 runtime_abort = {}
 runtime_abort_path = os.environ.get("PDOCKER_LLAMA_RUNTIME_ABORT_JSON", "")
 if runtime_abort_path and Path(runtime_abort_path).is_file() and Path(runtime_abort_path).stat().st_size:
@@ -1716,6 +1785,28 @@ startup_env = startup_diagnostics.get("env") if isinstance(startup_diagnostics.g
 effective_runtime_env = dict(runtime_env)
 for name, value in startup_env.items():
     effective_runtime_env[str(name)] = str(value)
+manifest_forward_env_keys = env_manifest.get("compare_forward_env_keys")
+if not isinstance(manifest_forward_env_keys, list):
+    manifest_forward_env_keys = []
+manifest_requested_env = runtime_env_record.get("host_requested_env") if isinstance(runtime_env_record, dict) else {}
+if not isinstance(manifest_requested_env, dict):
+    manifest_requested_env = {}
+runtime_env_manifest = {
+    "schema": "pdocker.llama.gpu.runtime-env-artifact.v1",
+    "record_schema": runtime_env_record.get("schema") if isinstance(runtime_env_record, dict) else None,
+    "manifest_schema": env_manifest.get("schema"),
+    "manifest_path": manifest_path,
+    "compare_forward_env_keys": [str(key) for key in manifest_forward_env_keys if isinstance(key, str)],
+    "host_requested_env": {str(k): str(v) for k, v in sorted(manifest_requested_env.items())},
+    "host_echo_recorded": bool(runtime_env_record.get("echoed_to_log")) if isinstance(runtime_env_record, dict) else False,
+    "runtime_env_observed_keys": sorted(effective_runtime_env),
+    "requested_env_observed_keys": sorted(
+        key for key in manifest_requested_env if str(key) in effective_runtime_env
+    ),
+    "requested_env_missing_from_runtime": sorted(
+        str(key) for key in manifest_requested_env if str(key) not in effective_runtime_env
+    ),
+}
 
 def probe_map(report):
     return {
@@ -2998,6 +3089,7 @@ result = {
         "state_excerpt": state[:2000],
         "log_excerpt": log[-12000:],
         "runtime_env": effective_runtime_env,
+        "runtime_env_manifest": runtime_env_manifest,
         "container_config_env": runtime_env,
         "startup_diagnostics": startup_diagnostics,
         "service_readiness": service_readiness,

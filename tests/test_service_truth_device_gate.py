@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs/test/SERVICE_TRUTH_DEVICE_GATE.md"
 SMOKE = ROOT / "scripts/android-device-smoke.sh"
+CAPTURE = ROOT / "scripts/android-service-truth-capture.sh"
 VERIFIER = ROOT / "scripts/verify-service-truth-plan.py"
 
 _spec = importlib.util.spec_from_file_location("verify_service_truth_plan", VERIFIER)
@@ -223,6 +224,45 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
             "missing or stale UI export is not success",
         ]:
             self.assertIn(term, body)
+
+    def test_capture_wrapper_documents_adb_free_plan_and_real_device_command_path(self):
+        capture = CAPTURE.read_text()
+        doc = DOC.read_text()
+        self.assertIn("android-service-truth-capture.sh --print-plan", doc)
+        self.assertIn("android-service-truth-capture.sh --target <default-workspace|llama> --no-install", doc)
+        for text in [capture, doc]:
+            for term in [
+                "--print-plan",
+                "android-device-smoke.sh",
+                "--service-truth",
+                "UI card",
+                "docker ps",
+                "/containers/json?all=1",
+                "state.json",
+                "process table",
+                "listener owner",
+                "logs-selected.out",
+                "logs-<container-id>.out",
+                "same 64-hex",
+                "planned-gap",
+                "prefix-only",
+                "configured-port-only",
+            ]:
+                self.assertIn(term, text)
+        for term in [
+            "command -v",
+            "get-state",
+            "adb executable not found",
+            "no connected adb device is ready",
+            "never manufactures",
+            "never promotes",
+            "exec",
+        ]:
+            self.assertIn(term, capture)
+        # The wrapper is an execution/plan conduit only; pass promotion remains
+        # inside android-device-smoke.sh's strict same-container-ID branch.
+        self.assertNotIn('SERVICE_TRUTH_STATUS="device-pass"', capture)
+        self.assertNotIn('SERVICE_TRUTH_SUCCESS=true', capture)
 
     def test_static_verifier_includes_service_truth_device_gate_doc(self):
         verifier = VERIFIER.read_text()

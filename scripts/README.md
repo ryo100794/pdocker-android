@@ -1,6 +1,6 @@
 # Script Inventory
 
-Snapshot date: 2026-05-17.
+Snapshot date: 2026-05-18.
 
 This directory is intentionally kept with stable top-level entrypoints while the implementation is reorganized.  The machine-readable source of truth is [`script-inventory.json`](script-inventory.json).
 
@@ -17,7 +17,7 @@ This directory is intentionally kept with stable top-level entrypoints while the
 |---|---:|---|
 | `runtime-package-needed` | 1 | Needed to stage runtime/APK payloads or otherwise part of packaging flow. |
 | `build-developer` | 8 | Build, setup, fetch, or developer environment helper. |
-| `test-verification` | 68 | Test, smoke, benchmark, contract, or device verification helper. |
+| `test-verification` | 70 | Test, smoke, benchmark, contract, or device verification helper. |
 | `generated-maintenance` | 3 | Generated-doc/evidence maintenance or manifest data. |
 | `obsolete-suspect` | 3 | Unreferenced or weakly referenced candidate; not deleted without audit. |
 
@@ -29,6 +29,7 @@ This directory is intentionally kept with stable top-level entrypoints while the
 - `scripts/verify-heavy.sh` — heavier/device-oriented lane wrapper.
 - `scripts/pdocker-test-driver.py` — canonical test-driver manifest executor.
 - `scripts/android-selfdebug.sh` — Android single-device localhost Wireless debugging helper.
+| `scripts/android-service-truth-capture.sh` | `device-helper` | Android/device service-truth same-container evidence capture wrapper; delegates to android-device-smoke and never promotes device-pass itself. |
 
 ## Entries
 
@@ -114,6 +115,7 @@ This directory is intentionally kept with stable top-level entrypoints while the
 | `scripts/verify-runtime-teardown-artifact.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-saf-direct-output-artifact.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-scenarios.sh` | `test-helper` | Host-side verification/test driver or static contract gate. |
+| `scripts/verify-self-debug-bundle.py` | `test-helper` | Host-side verifier for APK-generated ADB-free self-debug bundle JSON artifacts. |
 | `scripts/verify-script-inventory.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-service-truth-plan.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
 | `scripts/verify-storage-metrics.py` | `test-helper` | Host-side verification/test driver or static contract gate. |
@@ -134,11 +136,11 @@ This directory is intentionally kept with stable top-level entrypoints while the
 
 ### obsolete-suspect
 
-| Path | Stability | Role |
-|---|---|---|
-| `scripts/android-terminal-it-repro.sh` | `legacy-audit` | Audit candidate; keep until references and intent are confirmed. |
-| `scripts/verify-llama-startup-logging.py` | `legacy-audit` | Audit candidate; keep until references and intent are confirmed. |
-| `scripts/wrap-ndk-box64.sh` | `legacy-audit` | Audit candidate; keep until references and intent are confirmed. |
+| Path | Stability | Reference scan | Replacement command | Decision |
+|---|---|---|---|---|
+| `scripts/android-terminal-it-repro.sh` | `legacy-audit` | No runtime callers found outside inventory/README/verifier allowlist and the script itself; pycache-only hits ignored. | `python3 scripts/pdocker-test-driver.py --lane android-terminal-exec-it` | Keep for now; do not delete until paired UI self-test and Engine exec-input JSONL artifacts fully replace the ad-hoc repro. |
+| `scripts/verify-llama-startup-logging.py` | `legacy-audit` | No active caller found; llama startup contract is covered by `scripts/verify-project-library.py` static checks and `tests/test_gpu_abi_contract.py` markers. | `python3 scripts/verify-project-library.py` | Keep for now; deletion is acceptable only after its early-tee/startup-json assertions are represented in maintained tests. |
+| `scripts/wrap-ndk-box64.sh` | `legacy-audit` | No active caller found; current build wrappers use `scripts/build-native-termux.sh` instead of invoking x86_64 NDK tools through box64. | `bash scripts/build-native-termux.sh` | Keep for now; deletion is acceptable after confirming no supported aarch64-host build path depends on mutating the NDK with box64 shims. |
 
 ## Cleanup Plan
 

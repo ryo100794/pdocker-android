@@ -98,6 +98,19 @@
           ]
         },
         {
+          "id": "verify-self-debug-bundle-contract",
+          "argv": [
+            "python3",
+            "-m",
+            "unittest",
+            "tests.test_self_debug_bundle_verifier"
+          ],
+          "artifacts": [
+            "scripts/verify-self-debug-bundle.py",
+            "docs/test/ANDROID_SELFDEBUG.md"
+          ]
+        },
+        {
           "id": "verify-image-pull-crash-safety",
           "argv": [
             "python3",

@@ -25,6 +25,11 @@ class LlamaGpuReadinessContractTest(unittest.TestCase):
         self.assertIn('"swap_pressure_advisory"', self.source)
         self.assertIn("low SwapFree is advisory", self.source)
         self.assertIn('"device_actions": actions', self.source)
+        self.assertIn('"preconditions"', self.source)
+        self.assertIn('"q6_ngl1_evidence_collection_allowed": ready', self.source)
+        self.assertIn('"adb_connected": adb_connected', self.source)
+        self.assertIn('"run_as_ok": run_as_ok', self.source)
+        self.assertIn('"project_dir_ok": project_ok', self.source)
         self.assertIn("raise SystemExit(0 if ready else 20)", self.source)
 
     def test_readiness_does_not_start_or_kill_user_processes(self):
@@ -48,6 +53,9 @@ class LlamaGpuReadinessContractTest(unittest.TestCase):
         self.assertIn("readiness=false is a hard GPU-run stop", self.source)
         self.assertIn("Do not classify compare, correctness, or benchmark claims", self.source)
         self.assertIn("Do not force-stop the browser/VS Code session", self.source)
+        self.assertIn("Connect exactly one ADB device", self.source)
+        self.assertIn("before collecting ngl=1 Q6_K evidence", self.source)
+        self.assertIn("Open the llama-cpp-gpu project once", self.source)
 
 
 if __name__ == "__main__":
