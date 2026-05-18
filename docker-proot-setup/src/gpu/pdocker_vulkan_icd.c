@@ -548,15 +548,28 @@ static void unregister_guarded_memory(PdockerVkMemory *memory) {
     }
 }
 
+typedef struct {
+    VkStructureType sType;
+    const void *pNext;
+} PdockerVkStructHeader;
+
+static PdockerVkStructHeader read_vk_struct_header(const void *node) {
+    PdockerVkStructHeader header;
+    memset(&header, 0, sizeof(header));
+    if (node) memcpy(&header, node, sizeof(header));
+    return header;
+}
+
 static void trace_pnext_chain(const char *prefix, const void *pNext) {
     if (!trace_allocations()) return;
-    const VkBaseInStructure *base = (const VkBaseInStructure *)pNext;
-    while (base) {
+    const void *node = pNext;
+    while (node) {
+        PdockerVkStructHeader header = read_vk_struct_header(node);
         fprintf(stderr,
                 "pdocker-vulkan-icd: %s pnext sType=%d\n",
                 prefix,
-                (int)base->sType);
-        base = base->pNext;
+                (int)header.sType);
+        node = header.pNext;
     }
 }
 
@@ -1468,23 +1481,24 @@ static uint32_t advertised_subgroup_size(void) {
 }
 
 static void fill_pnext_properties(void *pNext) {
-    for (VkBaseOutStructure *cur = (VkBaseOutStructure *)pNext; cur; cur = cur->pNext) {
-        switch (cur->sType) {
+    for (void *node = pNext; node;) {
+        PdockerVkStructHeader header = read_vk_struct_header(node);
+        switch (header.sType) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES: {
-                VkPhysicalDeviceMaintenance3Properties *p = (VkPhysicalDeviceMaintenance3Properties *)cur;
+                VkPhysicalDeviceMaintenance3Properties *p = (VkPhysicalDeviceMaintenance3Properties *)node;
                 p->maxPerSetDescriptors = 1024;
                 p->maxMemoryAllocationSize = pdocker_vulkan_max_buffer_size();
                 break;
             }
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES: {
-                VkPhysicalDeviceMaintenance4Properties *p = (VkPhysicalDeviceMaintenance4Properties *)cur;
+                VkPhysicalDeviceMaintenance4Properties *p = (VkPhysicalDeviceMaintenance4Properties *)node;
                 p->maxBufferSize = pdocker_vulkan_max_buffer_size();
                 break;
             }
 #endif
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES: {
-                VkPhysicalDeviceSubgroupProperties *p = (VkPhysicalDeviceSubgroupProperties *)cur;
+                VkPhysicalDeviceSubgroupProperties *p = (VkPhysicalDeviceSubgroupProperties *)node;
                 p->subgroupSize = advertised_subgroup_size();
                 p->supportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
                 p->supportedOperations = advertised_subgroup_operations();
@@ -1492,7 +1506,7 @@ static void fill_pnext_properties(void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES: {
-                VkPhysicalDeviceDriverProperties *p = (VkPhysicalDeviceDriverProperties *)cur;
+                VkPhysicalDeviceDriverProperties *p = (VkPhysicalDeviceDriverProperties *)node;
                 p->driverID = VK_DRIVER_ID_MESA_LLVMPIPE;
                 snprintf(p->driverName, sizeof(p->driverName), "pdocker-vulkan-bridge");
                 snprintf(p->driverInfo, sizeof(p->driverInfo), "pdocker neutral Vulkan bridge");
@@ -1503,7 +1517,7 @@ static void fill_pnext_properties(void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES: {
-                VkPhysicalDeviceVulkan11Properties *p = (VkPhysicalDeviceVulkan11Properties *)cur;
+                VkPhysicalDeviceVulkan11Properties *p = (VkPhysicalDeviceVulkan11Properties *)node;
                 p->subgroupSize = advertised_subgroup_size();
                 p->subgroupSupportedStages = VK_SHADER_STAGE_COMPUTE_BIT;
                 p->subgroupSupportedOperations = advertised_subgroup_operations();
@@ -1515,7 +1529,7 @@ static void fill_pnext_properties(void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES: {
-                VkPhysicalDeviceVulkan12Properties *p = (VkPhysicalDeviceVulkan12Properties *)cur;
+                VkPhysicalDeviceVulkan12Properties *p = (VkPhysicalDeviceVulkan12Properties *)node;
                 p->driverID = VK_DRIVER_ID_MESA_LLVMPIPE;
                 snprintf(p->driverName, sizeof(p->driverName), "pdocker-vulkan-bridge");
                 snprintf(p->driverInfo, sizeof(p->driverInfo), "pdocker neutral Vulkan bridge");
@@ -1528,6 +1542,7 @@ static void fill_pnext_properties(void *pNext) {
             default:
                 break;
         }
+        node = (void *)header.pNext;
     }
 }
 
@@ -1538,10 +1553,11 @@ static void fill_physical_device_features(VkPhysicalDeviceFeatures *pFeatures) {
 }
 
 static void fill_pnext_features(void *pNext) {
-    for (VkBaseOutStructure *cur = (VkBaseOutStructure *)pNext; cur; cur = cur->pNext) {
-        switch (cur->sType) {
+    for (void *node = pNext; node;) {
+        PdockerVkStructHeader header = read_vk_struct_header(node);
+        switch (header.sType) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
-                VkPhysicalDeviceVulkan11Features *p = (VkPhysicalDeviceVulkan11Features *)cur;
+                VkPhysicalDeviceVulkan11Features *p = (VkPhysicalDeviceVulkan11Features *)node;
                 VkBool32 storage16 = advertised_storage16();
                 p->storageBuffer16BitAccess = storage16;
                 p->uniformAndStorageBuffer16BitAccess = VK_FALSE;
@@ -1550,7 +1566,7 @@ static void fill_pnext_features(void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
-                VkPhysicalDevice16BitStorageFeatures *p = (VkPhysicalDevice16BitStorageFeatures *)cur;
+                VkPhysicalDevice16BitStorageFeatures *p = (VkPhysicalDevice16BitStorageFeatures *)node;
                 VkBool32 storage16 = advertised_storage16();
                 p->storageBuffer16BitAccess = storage16;
                 p->uniformAndStorageBuffer16BitAccess = VK_FALSE;
@@ -1559,7 +1575,7 @@ static void fill_pnext_features(void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: {
-                VkPhysicalDeviceVulkan12Features *p = (VkPhysicalDeviceVulkan12Features *)cur;
+                VkPhysicalDeviceVulkan12Features *p = (VkPhysicalDeviceVulkan12Features *)node;
                 VkBool32 storage8 = advertised_storage8();
                 p->storageBuffer8BitAccess = storage8;
                 p->uniformAndStorageBuffer8BitAccess = VK_FALSE;
@@ -1571,21 +1587,21 @@ static void fill_pnext_features(void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES: {
-                VkPhysicalDevice8BitStorageFeatures *p = (VkPhysicalDevice8BitStorageFeatures *)cur;
+                VkPhysicalDevice8BitStorageFeatures *p = (VkPhysicalDevice8BitStorageFeatures *)node;
                 p->storageBuffer8BitAccess = advertised_storage8();
                 p->uniformAndStorageBuffer8BitAccess = VK_FALSE;
                 p->storagePushConstant8 = VK_FALSE;
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: {
-                VkPhysicalDeviceShaderFloat16Int8Features *p = (VkPhysicalDeviceShaderFloat16Int8Features *)cur;
+                VkPhysicalDeviceShaderFloat16Int8Features *p = (VkPhysicalDeviceShaderFloat16Int8Features *)node;
                 p->shaderFloat16 = VK_FALSE;
                 p->shaderInt8 = advertised_storage8();
                 break;
             }
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES: {
-                VkPhysicalDeviceMaintenance4Features *p = (VkPhysicalDeviceMaintenance4Features *)cur;
+                VkPhysicalDeviceMaintenance4Features *p = (VkPhysicalDeviceMaintenance4Features *)node;
                 p->maintenance4 = VK_TRUE;
                 break;
             }
@@ -1593,6 +1609,7 @@ static void fill_pnext_features(void *pNext) {
             default:
                 break;
         }
+        node = (void *)header.pNext;
     }
 }
 
@@ -1611,35 +1628,36 @@ static uint64_t feature_mask_from_pnext_chain(const void *pNext) {
      * Vulkan applications commonly pass VkPhysicalDeviceFeatures2 in
      * VkDeviceCreateInfo::pNext and hang the actual 1.1/1.2/extension feature
      * structs from Features2::pNext.  Treat the pNext list as one continuous
-     * VkBaseInStructure chain so requested_feature_mask mirrors what the app
-     * asked Vulkan to enable.  This mask is forwarded unchanged to the Android
-     * executor for strict passthrough validation.
+     * header-compatible chain so requested_feature_mask mirrors what the app
+     * asked Vulkan to enable.  The header is copied out before dispatching to
+     * concrete struct types; this avoids relying on compiler strict-aliasing
+     * behavior for the generic VkBaseInStructure view.  This mask is forwarded
+     * unchanged to the Android executor for strict passthrough validation.
      */
-    for (const VkBaseInStructure *cur = (const VkBaseInStructure *)pNext;
-         cur;
-         cur = cur->pNext) {
-        switch (cur->sType) {
+    for (const void *node = pNext; node;) {
+        PdockerVkStructHeader header = read_vk_struct_header(node);
+        switch (header.sType) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: {
-                const VkPhysicalDeviceFeatures2 *p = (const VkPhysicalDeviceFeatures2 *)cur;
+                const VkPhysicalDeviceFeatures2 *p = (const VkPhysicalDeviceFeatures2 *)node;
                 mask |= feature_mask_from_base_features(&p->features);
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
-                const VkPhysicalDeviceVulkan11Features *p = (const VkPhysicalDeviceVulkan11Features *)cur;
+                const VkPhysicalDeviceVulkan11Features *p = (const VkPhysicalDeviceVulkan11Features *)node;
                 if (p->storageBuffer16BitAccess) mask |= PDOCKER_VK_FEATURE_STORAGE_BUFFER_16;
                 if (p->uniformAndStorageBuffer16BitAccess) mask |= PDOCKER_VK_FEATURE_UNIFORM_STORAGE_BUFFER_16;
                 if (p->storagePushConstant16) mask |= PDOCKER_VK_FEATURE_STORAGE_PUSH_CONSTANT_16;
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
-                const VkPhysicalDevice16BitStorageFeatures *p = (const VkPhysicalDevice16BitStorageFeatures *)cur;
+                const VkPhysicalDevice16BitStorageFeatures *p = (const VkPhysicalDevice16BitStorageFeatures *)node;
                 if (p->storageBuffer16BitAccess) mask |= PDOCKER_VK_FEATURE_STORAGE_BUFFER_16;
                 if (p->uniformAndStorageBuffer16BitAccess) mask |= PDOCKER_VK_FEATURE_UNIFORM_STORAGE_BUFFER_16;
                 if (p->storagePushConstant16) mask |= PDOCKER_VK_FEATURE_STORAGE_PUSH_CONSTANT_16;
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: {
-                const VkPhysicalDeviceVulkan12Features *p = (const VkPhysicalDeviceVulkan12Features *)cur;
+                const VkPhysicalDeviceVulkan12Features *p = (const VkPhysicalDeviceVulkan12Features *)node;
                 if (p->storageBuffer8BitAccess) mask |= PDOCKER_VK_FEATURE_STORAGE_BUFFER_8;
                 if (p->uniformAndStorageBuffer8BitAccess) mask |= PDOCKER_VK_FEATURE_UNIFORM_STORAGE_BUFFER_8;
                 if (p->storagePushConstant8) mask |= PDOCKER_VK_FEATURE_STORAGE_PUSH_CONSTANT_8;
@@ -1650,21 +1668,21 @@ static uint64_t feature_mask_from_pnext_chain(const void *pNext) {
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES: {
-                const VkPhysicalDevice8BitStorageFeatures *p = (const VkPhysicalDevice8BitStorageFeatures *)cur;
+                const VkPhysicalDevice8BitStorageFeatures *p = (const VkPhysicalDevice8BitStorageFeatures *)node;
                 if (p->storageBuffer8BitAccess) mask |= PDOCKER_VK_FEATURE_STORAGE_BUFFER_8;
                 if (p->uniformAndStorageBuffer8BitAccess) mask |= PDOCKER_VK_FEATURE_UNIFORM_STORAGE_BUFFER_8;
                 if (p->storagePushConstant8) mask |= PDOCKER_VK_FEATURE_STORAGE_PUSH_CONSTANT_8;
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: {
-                const VkPhysicalDeviceShaderFloat16Int8Features *p = (const VkPhysicalDeviceShaderFloat16Int8Features *)cur;
+                const VkPhysicalDeviceShaderFloat16Int8Features *p = (const VkPhysicalDeviceShaderFloat16Int8Features *)node;
                 if (p->shaderFloat16) mask |= PDOCKER_VK_FEATURE_SHADER_FLOAT16;
                 if (p->shaderInt8) mask |= PDOCKER_VK_FEATURE_SHADER_INT8;
                 break;
             }
 #ifdef VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES: {
-                const VkPhysicalDeviceMaintenance4Features *p = (const VkPhysicalDeviceMaintenance4Features *)cur;
+                const VkPhysicalDeviceMaintenance4Features *p = (const VkPhysicalDeviceMaintenance4Features *)node;
                 if (p->maintenance4) mask |= PDOCKER_VK_FEATURE_MAINTENANCE_4;
                 break;
             }
@@ -1672,6 +1690,7 @@ static uint64_t feature_mask_from_pnext_chain(const void *pNext) {
             default:
                 break;
         }
+        node = header.pNext;
     }
     return mask;
 }
@@ -1693,12 +1712,11 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
             features ? features->shaderInt64 : 0,
             features ? features->shaderInt16 : 0,
             features ? features->shaderFloat64 : 0);
-    for (const VkBaseInStructure *cur = (const VkBaseInStructure *)pCreateInfo->pNext;
-         cur;
-         cur = cur->pNext) {
-        switch (cur->sType) {
+    for (const void *node = pCreateInfo->pNext; node;) {
+        PdockerVkStructHeader header = read_vk_struct_header(node);
+        switch (header.sType) {
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: {
-                const VkPhysicalDeviceFeatures2 *p = (const VkPhysicalDeviceFeatures2 *)cur;
+                const VkPhysicalDeviceFeatures2 *p = (const VkPhysicalDeviceFeatures2 *)node;
                 fprintf(stderr,
                         "pdocker-vulkan-icd: create-device features2={shaderInt64:%u,shaderInt16:%u,shaderFloat64:%u}\n",
                         p->features.shaderInt64,
@@ -1707,7 +1725,7 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES: {
-                const VkPhysicalDeviceVulkan11Features *p = (const VkPhysicalDeviceVulkan11Features *)cur;
+                const VkPhysicalDeviceVulkan11Features *p = (const VkPhysicalDeviceVulkan11Features *)node;
                 fprintf(stderr,
                         "pdocker-vulkan-icd: create-device vk11_features={storage16:%u,ubo_ssbo16:%u,push16:%u,io16:%u}\n",
                         p->storageBuffer16BitAccess,
@@ -1717,7 +1735,7 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: {
-                const VkPhysicalDevice16BitStorageFeatures *p = (const VkPhysicalDevice16BitStorageFeatures *)cur;
+                const VkPhysicalDevice16BitStorageFeatures *p = (const VkPhysicalDevice16BitStorageFeatures *)node;
                 fprintf(stderr,
                         "pdocker-vulkan-icd: create-device storage16_features={storage16:%u,ubo_ssbo16:%u,push16:%u,io16:%u}\n",
                         p->storageBuffer16BitAccess,
@@ -1727,7 +1745,7 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES: {
-                const VkPhysicalDeviceVulkan12Features *p = (const VkPhysicalDeviceVulkan12Features *)cur;
+                const VkPhysicalDeviceVulkan12Features *p = (const VkPhysicalDeviceVulkan12Features *)node;
                 fprintf(stderr,
                         "pdocker-vulkan-icd: create-device vk12_features={storage8:%u,ubo_ssbo8:%u,push8:%u,float16:%u,int8:%u,bufferDeviceAddress:%u,vulkanMemoryModel:%u}\n",
                         p->storageBuffer8BitAccess,
@@ -1740,7 +1758,7 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES: {
-                const VkPhysicalDevice8BitStorageFeatures *p = (const VkPhysicalDevice8BitStorageFeatures *)cur;
+                const VkPhysicalDevice8BitStorageFeatures *p = (const VkPhysicalDevice8BitStorageFeatures *)node;
                 fprintf(stderr,
                         "pdocker-vulkan-icd: create-device storage8_features={storage8:%u,ubo_ssbo8:%u,push8:%u}\n",
                         p->storageBuffer8BitAccess,
@@ -1749,7 +1767,7 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
                 break;
             }
             case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: {
-                const VkPhysicalDeviceShaderFloat16Int8Features *p = (const VkPhysicalDeviceShaderFloat16Int8Features *)cur;
+                const VkPhysicalDeviceShaderFloat16Int8Features *p = (const VkPhysicalDeviceShaderFloat16Int8Features *)node;
                 fprintf(stderr,
                         "pdocker-vulkan-icd: create-device float16_int8_features={float16:%u,int8:%u}\n",
                         p->shaderFloat16,
@@ -1757,9 +1775,10 @@ static void trace_device_create_features(const VkDeviceCreateInfo *pCreateInfo) 
                 break;
             }
             default:
-                fprintf(stderr, "pdocker-vulkan-icd: create-device pnext sType=%d\n", (int)cur->sType);
+                fprintf(stderr, "pdocker-vulkan-icd: create-device pnext sType=%d\n", (int)header.sType);
                 break;
         }
+        node = header.pNext;
     }
 }
 
@@ -2062,11 +2081,10 @@ VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements2(
         VkMemoryRequirements2 *pMemoryRequirements) {
     if (!pInfo || !pMemoryRequirements) return;
     vkGetBufferMemoryRequirements(device, pInfo->buffer, &pMemoryRequirements->memoryRequirements);
-    for (VkBaseOutStructure *base = (VkBaseOutStructure *)pMemoryRequirements->pNext;
-         base;
-         base = base->pNext) {
-        if (base->sType == VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS) {
-            VkMemoryDedicatedRequirements *dedicated = (VkMemoryDedicatedRequirements *)base;
+    for (void *node = pMemoryRequirements->pNext; node;) {
+        PdockerVkStructHeader header = read_vk_struct_header(node);
+        if (header.sType == VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS) {
+            VkMemoryDedicatedRequirements *dedicated = (VkMemoryDedicatedRequirements *)node;
             dedicated->prefersDedicatedAllocation = VK_FALSE;
             dedicated->requiresDedicatedAllocation = VK_FALSE;
             if (trace_allocations()) {
@@ -2076,8 +2094,9 @@ VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements2(
         } else if (trace_allocations()) {
             fprintf(stderr,
                     "pdocker-vulkan-icd: memory-requirements2 ignored pnext sType=%d\n",
-                    (int)base->sType);
+                    (int)header.sType);
         }
+        node = (void *)header.pNext;
     }
 }
 
