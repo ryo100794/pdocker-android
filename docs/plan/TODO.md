@@ -58,9 +58,12 @@ issues, and deciding which planned gaps become hard gates.
    readiness/headroom artifact before model load; (c) NGL=1 Q6_K
    workgroup/writeback oracle run; (d) artifact classification that keeps
    memory blockers and Q6_K mismatches non-promoting; and (e) only after a
-   matching oracle, CPU/GPU benchmark reporting. Effective blocker remains
-   `vulkan-device-execution`; do not interpret memory-safe setup or host-only
-   diagnostics as GPU correctness.
+   matching oracle, CPU/GPU benchmark reporting. The strict Q6 safe-kernel
+   diagnostic was enabled/classified in `5dc330a`/`e1a806d`; the safe-kernel
+   Q6 match clears bridge writeback/descriptors as the active explanation, so
+   the remaining blocker is native llama Q6_K SPIR-V reduction/output-layout.
+   This is still non-promoting diagnostic evidence, not a benchmark or
+   inference claim.
 4. **[#11](https://github.com/ryo100794/pdocker-android/issues/11)
    Image-pull crash safety** `[P0 doing]`: partial pulls, `.pull-*`,
    `.tmp-*`, `.old-*`, interrupted layer extraction, tag publish, and startup
@@ -126,12 +129,15 @@ issues, and deciding which planned gaps become hard gates.
    named device promotion condition produces a passing artifact. This audit
    splits broad blockers into separately executable units so a passing
    sub-check cannot accidentally promote its parent gate.
-10. **Modern/no-PRoot runtime truth** `[P0 doing]`: metadata-only flavors must
-    not expose execution claims. Herschel owns the active no-PRoot worker lane.
-    Either complete the no-PRoot executor or
-    hard-disable `RUN`, `docker run`, Compose service start, service health,
-    and published-port claims with explicit runtime capability errors and a
-    device artifact at `docs/test/no-proot-runtime-truth-latest.json`.
+10. **Modern/no-PRoot runtime truth** `[P0 device-evidence next]`:
+    metadata-only flavors must not expose execution claims. The no-PRoot truth
+    gate was added and pushed in `e0612a3`, with the ledger sync in `753670c`;
+    its latest artifact is intentionally `planned-gap` until real executor or
+    explicit capability-error behavior is proven. Remaining slice: complete the
+    no-PRoot executor or hard-disable `RUN`, `docker run`, Compose service
+    start, service health, and published-port claims with explicit runtime
+    capability errors and a device artifact at
+    `docs/test/no-proot-runtime-truth-latest.json`.
 
 ### Next Queue Generated 2026-05-04
 
@@ -186,15 +192,18 @@ issues, and deciding which planned gaps become hard gates.
   `32x1x1`), emits Q6_K 64-lane diagnostic evidence, and the compare runner
   refuses llama GPU starts when Android swap headroom is unsafe.
   `scripts/verify-llama-gpu-artifact.py` classifies memory blockers, Q6
-  workgroup-clear evidence, and remaining Q6 numeric mismatches so device
-  results are not interpreted ad hoc. Environment propagation is now a
-  first-class blocker: diagnostic flags used by the compare script, pdockerd
-  defaults, UI/compose launches, and artifact verification must remain
-  synchronized before a GPU result can be compared. The effective blocker
-  remains `vulkan-device-execution`; the Q6_K workgroup and writable-output
-  writeback diagnostics are non-promoting blocker evidence until
-  the Q6_K oracle matches; they must not be used for benchmark or inference
-  claims by themselves. Device-side validation steps are maintained in
+  workgroup-clear evidence, Q6 safe-kernel diagnostics, and remaining Q6
+  numeric mismatches so device results are not interpreted ad hoc. Commits
+  `5dc330a` and `e1a806d` enabled the strict safe-kernel diagnostic and its
+  classifier; the safe-kernel Q6 match means the remaining GPU blocker is
+  native llama Q6_K SPIR-V reduction/output-layout, not bridge writeback or
+  descriptor plumbing. Environment propagation remains a first-class blocker:
+  diagnostic flags used by the compare script, pdockerd defaults, UI/compose
+  launches, and artifact verification must stay synchronized before a GPU
+  result can be compared. This evidence is non-promoting until the native
+  Q6_K path matches and `benchmark_claim_allowed=true`; it must not be used for
+  benchmark or inference claims by itself. Device-side validation steps are
+  maintained in
   `docs/test/LLAMA_GPU_DEVICE_RUNBOOK_20260513.md`.
   Stage gates and compact-model handoff are maintained in
   `docs/plan/LLAMA_GPU_BRIDGE_NEXT_STEPS.md`.
@@ -563,8 +572,10 @@ implementation change plus a focused verification artifact.
   as meaningful transformer-layer acceleration. Break the device run into:
   readiness/headroom check, env propagation diff, NGL=1 Q6_K oracle,
   NGL>=2 repeating-layer proof, artifact verifier classification, and finally
-  benchmark reporting. All readiness-blocked or oracle-mismatch artifacts stay
-  non-promoting.
+  benchmark reporting. The strict Q6 safe-kernel match narrows the active
+  blocker to native llama Q6_K SPIR-V reduction/output-layout; bridge
+  writeback/descriptors are no longer the leading explanation. All
+  readiness-blocked or oracle-mismatch artifacts stay non-promoting.
 
 ### Runtime / Compose-Up
 
@@ -1386,10 +1397,10 @@ Reusable scenario:
   1. local ABI/env contract checks and `scripts/llama-gpu-env-manifest.json`
      parity;
   2. Android readiness/headroom artifact that may block without starting llama;
-  3. forced NGL=1 Q6_K workgroup/writeback oracle run;
+  3. forced NGL=1 Q6_K workgroup/writeback/safe-kernel oracle run;
   4. NGL>=2 transformer-layer proof only after the NGL=1 blocker is classified;
   5. verifier classification of memory blockers, writeback/workgroup evidence,
-     and Q6_K numeric mismatch; and
+     safe-kernel evidence, and Q6_K numeric mismatch; and
   6. benchmark/performance claim only when correctness and
      `benchmark_claim_allowed=true` pass. Units 1-5 are non-promoting blocker
      evidence when readiness is blocked or the Q6_K oracle mismatches.
