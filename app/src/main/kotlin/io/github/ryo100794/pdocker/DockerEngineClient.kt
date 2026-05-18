@@ -74,8 +74,13 @@ class DockerEngineClient(private val socket: File) {
         return resp
     }
 
-    fun pullImage(image: String): String {
-        val resp = request("POST", "/images/create?fromImage=${encodeQuery(image)}", timeoutMs = 600_000)
+    fun pullImage(image: String, platform: String? = null): String {
+        val platformQuery = platform
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "&platform=${encodeQuery(it)}" }
+            .orEmpty()
+        val resp = request("POST", "/images/create?fromImage=${encodeQuery(image)}$platformQuery", timeoutMs = 600_000)
         require(resp.status in 200..299) { resp.text.ifBlank { "HTTP ${resp.status}" } }
         return decodeJsonStream(resp.text)
     }

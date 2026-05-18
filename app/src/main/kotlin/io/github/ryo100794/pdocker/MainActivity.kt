@@ -1364,20 +1364,21 @@ class MainActivity : AppCompatActivity() {
                 if (image.isBlank()) {
                     status.text = getString(R.string.message_image_reference_required)
                 } else {
-                    runPullImage(image)
+                    runPullImage(image, imagePlatform)
                 }
             }
             .show()
     }
 
-    private fun runPullImage(image: String) {
+    private fun runPullImage(image: String, platform: String = currentImagePlatform()) {
         runEngineJob(
             getString(R.string.terminal_pull_image_fmt, image),
             workspaceGroup(),
-            "engine pull $image",
+            "engine pull $image --platform $platform",
         ) { emit ->
             emit(getString(R.string.message_image_pull_start_fmt, image))
-            pullImage(image)
+            emit("[pdocker] platform=$platform")
+            pullImage(image, platform)
         }
     }
 

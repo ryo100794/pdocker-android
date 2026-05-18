@@ -317,8 +317,10 @@ risk, not stable checkpoint credit.
   `image:` refs, Dockerfile `FROM` refs, common defaults, and Docker Hub public
   search results. The selected architecture/platform must come from pdockerd
   host environment (`/system/host` / `PDOCKER_PLATFORM`) with ABI fallback only
-  when the daemon is unreachable. Acceptance: static UI wiring check, APK
-  build, and device smoke that pulls a user-selected ref without opening a
+  when the daemon is unreachable. Local implementation now passes the selected
+  platform through `/images/create?platform=...` into `pull_image(...,
+  platform=...)` and records it in the Engine job log. Acceptance still needs a
+  connected-device smoke that pulls a user-selected ref without opening a
   Docker shell.
 - [doing] Image pull crash safety. `pull_image` and layer extraction must stage
   into temporary directories and atomically publish completed layers/tags so an

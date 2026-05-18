@@ -7965,15 +7965,16 @@ class DockerAPIHandler(BaseHTTPRequestHandler):
         if path == "/images/create" and method == "POST":
             fromImage = query.get("fromImage", [""])[0]
             tag = query.get("tag", ["latest"])[0]
+            platform = query.get("platform", [PLATFORM])[0] or PLATFORM
             image = f"{fromImage}:{tag}" if ":" not in fromImage else fromImage
             self._send_stream_started()
             try:
-                self.wfile.write(json.dumps({"status": f"Pulling {image}"}).encode() + b"\r\n")
+                self.wfile.write(json.dumps({"status": f"Pulling {image}", "id": platform}).encode() + b"\r\n")
                 self.wfile.flush()
-                pull_image(image)
+                pull_image(image, platform=platform)
                 norm = normalize_image(image)
                 record_event("image", "pull", image_id(norm), {"name": norm})
-                self.wfile.write(json.dumps({"status": f"Status: Downloaded newer image for {image}"}).encode() + b"\r\n")
+                self.wfile.write(json.dumps({"status": f"Status: Downloaded newer image for {image}", "id": platform}).encode() + b"\r\n")
             except Exception as e:
                 self.wfile.write(json.dumps({"errorDetail": {"message": str(e)}, "error": str(e)}).encode() + b"\r\n")
             return
