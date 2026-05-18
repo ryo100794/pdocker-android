@@ -83,6 +83,11 @@ def artifact_digest(path: Path, verifier: Any) -> dict[str, Any]:
     correctness = (((payload.get("gpu") or {}).get("correctness") or {}) if isinstance(payload.get("gpu"), dict) else {})
     correctness_summary = correctness.get("summary") if isinstance(correctness, dict) else {}
     correctness_summary = correctness_summary if isinstance(correctness_summary, dict) else {}
+    q6_effective_blocker = report.get("q6_effective_blocker_class")
+    if not q6_effective_blocker and report.get("classification") == "q6-workgroup-cleared-and-oracle-match":
+        q6_effective_blocker = "cleared"
+    if not q6_effective_blocker:
+        q6_effective_blocker = q6.get("blocker_class")
 
     return base | {
         "schema": payload.get("schema"),
@@ -94,7 +99,8 @@ def artifact_digest(path: Path, verifier: Any) -> dict[str, Any]:
         "speedup": report.get("speedup"),
         "next_action": report.get("next_action"),
         "q6_latest_status": q6.get("latest_status"),
-        "q6_blocker_class": q6.get("blocker_class"),
+        "q6_blocker_class": q6_effective_blocker,
+        "q6_raw_blocker_class": q6.get("blocker_class"),
         "q6_writeback_summary": (report.get("q6_writeback_evidence") or {}).get("summary"),
         "q6_writeback_verified_all": q6.get("q6_writeback_verified_all"),
         "q6_row_indexed_writeback_verified": q6.get("q6_row_indexed_writeback_verified"),
