@@ -200,11 +200,12 @@
     <string name="action_build_fmt">%1$s をビルド</string>
 
     <string name="section_images">イメージ</string>
-    <string name="action_pull_image">イメージを pull</string>
-    <string name="detail_pull_image">イメージ参照を検索または入力して Engine API で pull</string>
-    <string name="dialog_pull_image_title">イメージを pull</string>
+    <string name="action_pull_image">イメージを pull/更新</string>
+    <string name="detail_pull_image">イメージ参照を検索または入力します。既存タグは成功するまで保持したまま Engine API で原子的に更新します。</string>
+    <string name="dialog_pull_image_title">イメージを pull または更新</string>
     <string name="hint_image_reference">イメージ参照 例: ubuntu:22.04</string>
     <string name="message_image_reference_required">pull するイメージ参照を入力してください。</string>
+    <string name="message_image_pull_start_fmt">Engine API でイメージ %1$s を pull/更新します。既存タグは公開成功まで保持します。</string>
     <string name="terminal_pull_image_fmt">pull image: %1$s</string>
     <string name="label_image_pull_suggestions_fmt">%1$s 向け候補</string>
     <string name="message_docker_hub_searching_fmt">Docker Hub で %1$s を検索中 (%2$s)</string>

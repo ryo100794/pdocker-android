@@ -415,10 +415,14 @@ risk, not stable checkpoint credit.
   docs/test/build-context-tar-compat-latest.json`. This remains non-promoting
   for release until a connected-device byte corpus and upstream Docker
   differential fixture prove external Dockerfile context parity.
-- [next] Pull/update operation semantics. "Pull image" is an Engine API
-  operation, not "open docker pull shell"; if the ref already exists, treat it
-  as update/re-pull with old tag preserved until success. Acceptance: wording,
-  logs, and crash-safety behavior are consistent.
+- [doing] Pull/update operation semantics. "Pull/update image" is an Engine API
+  operation, not "open docker pull shell"; if the ref already exists, the UI
+  now describes it as an atomic update/re-pull and the job log says the old tag
+  is kept until publish succeeds. Host static coverage in
+  `python3 scripts/verify-ui-actions.py` ties that wording to pdockerd's
+  `.old-*` backup and `os.replace(stage, d)` publish path. Remaining
+  acceptance: connected-device visual pass for wording/logs and an interrupted
+  live-pull artifact proving the crash-safety behavior end-to-end.
 - [next] Device verification after rebuild. Install the next compat APK and run:
   image pull dialog, Docker Hub search fallback, selected platform display,
   image browse/back behavior, image tree actions, VS Code compose up build log

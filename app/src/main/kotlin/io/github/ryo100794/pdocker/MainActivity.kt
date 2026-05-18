@@ -1371,7 +1371,7 @@ class MainActivity : AppCompatActivity() {
             workspaceGroup(),
             "engine pull $image",
         ) { emit ->
-            emit("Image $image Pulling")
+            emit(getString(R.string.message_image_pull_start_fmt, image))
             pullImage(image)
         }
     }
