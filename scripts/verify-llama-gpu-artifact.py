@@ -292,6 +292,17 @@ def _observed_executor_marker_ok(runtime_freshness: dict[str, Any]) -> bool:
     return bool(markers)
 
 
+def _observed_icd_marker_ok(runtime_freshness: dict[str, Any]) -> bool:
+    markers = runtime_freshness.get("observed_icd_markers") or []
+    if not isinstance(markers, list):
+        markers = []
+    markers = [str(marker) for marker in markers if str(marker)]
+    expected = str(runtime_freshness.get("expected_icd_marker") or "")
+    if expected:
+        return expected in markers
+    return bool(markers) if markers else True
+
+
 def _readiness_false(data: dict[str, Any]) -> bool:
     readiness = data.get("readiness")
     if isinstance(readiness, dict) and readiness.get("ready") is False:
@@ -1102,21 +1113,6 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
     runtime_freshness = _runtime_freshness(data)
     runtime_env_manifest = _runtime_env_manifest_record(data)
 
-    pre_http_gpu_blocker = _pre_http_gpu_blocker(data, diagnostics)
-    if pre_http_gpu_blocker:
-        return _claim_base(
-            pre_http_gpu_blocker["classification"],
-            next_action=str(pre_http_gpu_blocker["next_action"]),
-            runtime_freshness=runtime_freshness,
-            runtime_env_manifest=runtime_env_manifest,
-            responsibility_boundary="gpu-setup",
-        ) | {
-            "gpu_blocker_class": pre_http_gpu_blocker["gpu_blocker_class"],
-            "gpu_blocker_detail": pre_http_gpu_blocker["gpu_blocker_detail"],
-            "pre_http_failure_evidence": _pre_http_failure_evidence(diagnostics),
-            "config_propagation": _config_propagation(data),
-        }
-
     completion_readiness = _service_completion_timeout(data)
     if completion_readiness.get("timeout") is True:
         return _claim_base(
@@ -1141,6 +1137,30 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             runtime_env_manifest=runtime_env_manifest,
             responsibility_boundary="runtime-freshness",
         )
+
+    if not _observed_icd_marker_ok(runtime_freshness):
+        return _claim_base(
+            "icd-marker-not-observed",
+            next_action="rerun compare after installing an APK with the expected Vulkan ICD marker; pre-Q6 and Q6 conclusions require fresh ICD evidence",
+            runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
+            responsibility_boundary="runtime-freshness",
+        )
+
+    pre_http_gpu_blocker = _pre_http_gpu_blocker(data, diagnostics)
+    if pre_http_gpu_blocker:
+        return _claim_base(
+            pre_http_gpu_blocker["classification"],
+            next_action=str(pre_http_gpu_blocker["next_action"]),
+            runtime_freshness=runtime_freshness,
+            runtime_env_manifest=runtime_env_manifest,
+            responsibility_boundary="gpu-setup",
+        ) | {
+            "gpu_blocker_class": pre_http_gpu_blocker["gpu_blocker_class"],
+            "gpu_blocker_detail": pre_http_gpu_blocker["gpu_blocker_detail"],
+            "pre_http_failure_evidence": _pre_http_failure_evidence(diagnostics),
+            "config_propagation": _config_propagation(data),
+        }
 
     config_propagation = _config_propagation(data)
     config_propagation_missing = _config_propagation_missing(data, config_propagation)
@@ -1324,6 +1344,8 @@ def main(argv: list[str]) -> int:
         return 21
     if classification == "executor-marker-not-observed":
         return 34
+    if classification == "icd-marker-not-observed":
+        return 42
     if classification == "config-propagation-mismatch":
         return 35
     if classification == "unsupported-gpu-work-accepted":
