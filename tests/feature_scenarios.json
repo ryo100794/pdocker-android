@@ -1032,6 +1032,19 @@
       ]
     },
     {
+      "id": "build.run-changed-path-parser",
+      "area": "build-dockerfile",
+      "lane": "fast-local",
+      "command": "python3 -m unittest tests.test_dockerfile_run_changed_paths",
+      "status": "runnable",
+      "docs": [
+        "docs/plan/TODO.md",
+        "tests/direct_syscall_coverage.json"
+      ],
+      "checks": "Host gate for Dockerfile RUN changed-path manifests: wildcard chmod paths expand against rootfs, literal absolute paths stay scoped, and unsafe relative/env/unmatched/non-chmod commands fall back to full snapshots instead of recording false narrow layers.",
+      "checkpoint_credit": "fast parser regression gate only; release performance credit still requires device build-profile evidence for broad snapshot avoidance"
+    },
+    {
       "id": "build.context.tar-compatibility",
       "area": "build-dockerfile",
       "lane": "fast-local",

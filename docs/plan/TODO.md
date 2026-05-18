@@ -373,12 +373,16 @@ risk, not stable checkpoint credit.
   static acceptance-plan guard remains `python3 scripts/verify-service-truth-plan.py`;
   future same-ID service-truth evidence also writes
   `docs/test/service-truth-latest.json`.
-- [next] RUN changed-path/snapshot performance. `RUN chmod +x
-  /usr/local/bin/pdocker-*` is functionally correct but still triggers an
-  expensive broad snapshot in the default workspace build. Acceptance: profile
-  the changed-path detection, add regression coverage for wildcard RUN paths,
-  and reduce the final no-op-style metadata snapshot without changing Dockerfile
-  semantics.
+- [doing] RUN changed-path/snapshot performance. `RUN chmod +x
+  /usr/local/bin/pdocker-*` is functionally correct but still needs device
+  profile evidence that the broad snapshot has been avoided in default
+  workspace builds. Fast local coverage is now wired into
+  `scripts/verify-fast.sh` through `python3 -m unittest
+  tests.test_dockerfile_run_changed_paths`, proving wildcard RUN paths expand
+  against the rootfs while unsafe/relative/env/unmatched commands fall back to
+  full snapshots instead of recording false narrow layers. Remaining
+  acceptance: capture build-profile evidence and reduce the final no-op-style
+  metadata snapshot without changing Dockerfile semantics.
 - [done] Image reference graph app-code/static slice. Task G reconnaissance on
   2026-05-16 found actual app-code evidence rather than a planned-only gap:
   `MainActivity.kt` now wires `renderImages()` into

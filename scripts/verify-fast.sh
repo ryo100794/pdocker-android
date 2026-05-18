@@ -117,6 +117,7 @@ run python3 -m unittest \
   tests.test_runtime_teardown_artifact_verifier \
   tests.test_dev_workspace_smoke_contract \
   tests.test_dev_workspace_compose_artifact_verifier \
+  tests.test_dockerfile_run_changed_paths \
   tests.test_image_pull_crash_safety_verifier \
   tests.test_runtime_single_container_artifact_verifier \
   tests.test_android_storage_metrics_sequence \
