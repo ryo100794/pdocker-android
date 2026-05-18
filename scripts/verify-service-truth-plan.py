@@ -57,6 +57,26 @@ SERVICE_ARTIFACT_SOURCES = [
     "ContainerLogs",
 ]
 ENGINE_CONTAINER_ID_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+SERVICE_REDUCTION_SOURCES = {
+    "UICard": "UI card",
+    "DockerPs": "docker ps",
+    "EngineApiContainersJson": "/containers/json",
+    "PersistedStateJson": "state.json",
+    "ProcessTable": "process table",
+    "ListenerProbe": "listener owner",
+    "ContainerLogs": "logs",
+}
+SERVICE_REQUIRED_REDUCTION_FLAGS = [
+    "UICardSameContainerId",
+    "DockerPsSameContainerId",
+    "EngineApiContainersJsonSameContainerId",
+    "PersistedStateJsonSameContainerId",
+    "ProcessTableSameContainerId",
+    "ListenerOwnerSameContainerId",
+    "ContainerLogsSameContainerId",
+]
+
 SOURCE_ARTIFACT_TERMS = {
     "UICard": ["ui-rendered-service-truth-latest.json"],
     "DockerPs": ["engine-ps"],
@@ -105,6 +125,17 @@ TEARDOWN_REQUIRED_PROOF_SOURCES = [
     "LifecycleLogs",
     "ContainerLogs",
 ]
+TEARDOWN_REDUCTION_SOURCE_IDS = [
+    "EngineApiContainersJson",
+    "EngineApiInspect",
+    "PersistedStateJson",
+    "ProcessTable",
+    "ProcessTree",
+    "ListenerOwner",
+    "ContainerLogs",
+    "LifecycleLogs",
+]
+
 TEARDOWN_REQUIRED_REDUCTION_FLAGS = [
     "EngineInspectSameContainerId",
     "ProcessTreeClear",
@@ -265,6 +296,28 @@ def validate_service_truth_artifact(artifact: dict[str, Any]) -> None:
     if not isinstance(contract_sources, list) or not set(SERVICE_ARTIFACT_SOURCES).issubset(set(contract_sources)):
         raise artifact_error("TruthContract.RequiredSameContainerId is incomplete")
 
+    reduction = artifact.get("VerifierReduction")
+    if not isinstance(reduction, dict):
+        raise artifact_error("VerifierReduction object is required to reduce UI card/docker ps//containers/json/state.json/process table/listener owner/logs")
+    if _exact_service_container_id(reduction.get("ReducedEngineContainerId"), "VerifierReduction.ReducedEngineContainerId") != expected:
+        raise artifact_error("VerifierReduction.ReducedEngineContainerId must exactly match Proof.EngineContainerId")
+    reduction_sources = reduction.get("RequiredSources")
+    if not isinstance(reduction_sources, list) or not set(SERVICE_ARTIFACT_SOURCES).issubset(set(reduction_sources)):
+        raise artifact_error("VerifierReduction.RequiredSources must include UI card, docker ps, /containers/json, state.json, process table, listener owner, and logs")
+    source_ids = reduction.get("SourceContainerIds")
+    if not isinstance(source_ids, dict):
+        raise artifact_error("VerifierReduction.SourceContainerIds object is required")
+    for source_name, human_name in SERVICE_REDUCTION_SOURCES.items():
+        if _exact_service_container_id(source_ids.get(source_name), f"VerifierReduction.SourceContainerIds.{source_name}") != expected:
+            raise artifact_error(f"VerifierReduction must reduce {human_name} to Proof.EngineContainerId")
+    for flag in SERVICE_REQUIRED_REDUCTION_FLAGS:
+        if reduction.get(flag) is not True:
+            raise artifact_error(f"VerifierReduction.{flag} must be true")
+    if reduction.get("MismatchedSources"):
+        raise artifact_error("VerifierReduction cannot promote with mismatched sources")
+    if reduction.get("MissingSources"):
+        raise artifact_error("VerifierReduction cannot promote with missing sources")
+
     sources = artifact.get("Sources")
     if not isinstance(sources, dict):
         raise artifact_error("Sources object is required")
@@ -334,6 +387,24 @@ def validate_service_truth_artifact(artifact: dict[str, Any]) -> None:
 def _require_teardown(condition: bool, message: str) -> None:
     if not condition:
         raise teardown_artifact_error(message)
+
+
+def _require_service(condition: bool, message: str) -> None:
+    if not condition:
+        raise artifact_error(message)
+
+
+def _exact_service_container_id(value: Any, field_name: str) -> str:
+    _require_service(isinstance(value, str) and bool(ENGINE_CONTAINER_ID_RE.fullmatch(value)), f"{field_name} must be an exact 64-hex Engine container ID")
+    return value
+
+
+def validate_service_truth_device_pass_artifact(artifact: dict[str, Any]) -> None:
+    """Require a promoted device-pass service-truth artifact, not a planned-gap scaffold."""
+
+    if artifact.get("Status") != "device-pass" or artifact.get("Success") is not True:
+        raise artifact_error("expected Status=device-pass and Success=true for service truth pass")
+    validate_service_truth_artifact(artifact)
 
 
 def _exact_container_id(value: Any, field_name: str) -> str:
@@ -436,6 +507,15 @@ def validate_runtime_teardown_proof(
 
     reduction = proof.get("VerifierReduction")
     _require_teardown(isinstance(reduction, dict), f"{name}.VerifierReduction must be present for device-pass")
+    reduced_cid = _exact_container_id(reduction.get("ReducedEngineContainerId"), f"{name}.VerifierReduction.ReducedEngineContainerId")
+    if reduced_cid != expected_cid:
+        raise teardown_artifact_error(f"{name}.VerifierReduction.ReducedEngineContainerId must exactly match ContainerId")
+    source_ids = reduction.get("SourceContainerIds")
+    _require_teardown(isinstance(source_ids, dict), f"{name}.VerifierReduction.SourceContainerIds must reduce /containers/json/state.json/process table/listener owner/logs to one Engine container ID")
+    for source in TEARDOWN_REDUCTION_SOURCE_IDS:
+        source_cid = _exact_container_id(source_ids.get(source), f"{name}.VerifierReduction.SourceContainerIds.{source}")
+        if source_cid != expected_cid:
+            raise teardown_artifact_error(f"{name}.VerifierReduction.SourceContainerIds.{source} must exactly match ContainerId")
     for flag in TEARDOWN_REQUIRED_REDUCTION_FLAGS:
         if reduction.get(flag) is not True:
             raise teardown_artifact_error(f"{name}.VerifierReduction.{flag} must be true")
@@ -605,6 +685,20 @@ def build_success_fixture() -> dict[str, Any]:
         "Success": True,
         "TruthContract": {"RequiredSameContainerId": SERVICE_ARTIFACT_SOURCES},
         "Proof": {"EngineContainerId": cid, "SameEngineContainerId": True, "MismatchedSources": [], "MissingSources": []},
+        "VerifierReduction": {
+            "ReducedEngineContainerId": cid,
+            "RequiredSources": SERVICE_ARTIFACT_SOURCES,
+            "SourceContainerIds": {source: cid for source in SERVICE_ARTIFACT_SOURCES},
+            "UICardSameContainerId": True,
+            "DockerPsSameContainerId": True,
+            "EngineApiContainersJsonSameContainerId": True,
+            "PersistedStateJsonSameContainerId": True,
+            "ProcessTableSameContainerId": True,
+            "ListenerOwnerSameContainerId": True,
+            "ContainerLogsSameContainerId": True,
+            "MismatchedSources": [],
+            "MissingSources": [],
+        },
         "Sources": sources,
     }
 
@@ -630,6 +724,10 @@ def validate_service_truth_fixture_contract() -> None:
         lambda a: a["Sources"]["ProcessTable"].update({"SelectedPidPresent": False}),
         lambda a: a["Sources"]["UICard"].pop("ExactEngineContainerIdRequired"),
         lambda a: a["Sources"]["ContainerLogs"].update({"Artifacts": []}),
+        lambda a: a.pop("VerifierReduction"),
+        lambda a: a["VerifierReduction"]["SourceContainerIds"].update({"DockerPs": "f" * 64}),
+        lambda a: a["VerifierReduction"].update({"ListenerOwnerSameContainerId": False}),
+        lambda a: a["VerifierReduction"].update({"MismatchedSources": ["state.json"]}),
     ]
     for mutate in mutations:
         candidate = json.loads(json.dumps(fixture))
@@ -715,6 +813,8 @@ def _teardown_proof_fixture(cid: str, operation: str, prefix: str) -> dict[str, 
             "ContainerLogs": list(before_after["ContainerLogs"].values()),
         },
         "VerifierReduction": {
+            "ReducedEngineContainerId": cid,
+            "SourceContainerIds": {source: cid for source in TEARDOWN_REDUCTION_SOURCE_IDS},
             "EngineInspectSameContainerId": True,
             "ProcessTreeClear": True,
             "DirectChildAbsence": True,
@@ -862,6 +962,8 @@ def validate_runtime_teardown_fixture_contract() -> None:
         lambda a, p, n: p["same-container-id-stop-rm"].update({"ContainerId": a["ContainerIds"]["StopRm"][:12]}),
         lambda a, p, n: p["same-container-id-stop-rm"]["Evidence"].pop("ListenerAbsenceBeforeAfter"),
         lambda a, p, n: p["same-container-id-stop-rm"]["VerifierReduction"].update({"DirectChildAbsence": False}),
+        lambda a, p, n: p["same-container-id-stop-rm"]["VerifierReduction"]["SourceContainerIds"].update({"ProcessTable": "3" * 64}),
+        lambda a, p, n: p["same-container-id-kill-rm"]["VerifierReduction"].update({"ReducedEngineContainerId": "3" * 64}),
         lambda a, p, n: p["same-container-id-kill-rm"]["VerifierReduction"].update({"Survivors": ["pid 99"]}),
         lambda a, p, n: n["negative-http-204-only"].update({"Success": True}),
         lambda a, p, n: n["negative-wrong-container-id"].update({"ExpectedAccepted": True}),

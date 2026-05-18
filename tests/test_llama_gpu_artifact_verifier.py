@@ -238,6 +238,74 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         self.assertFalse(report["correctness_claim_allowed"])
         self.assertFalse(report["benchmark_claim_allowed"])
 
+    def test_env_mismatch_takes_precedence_over_q6_oracle_writeback_and_local_size(self):
+        config = passing_config_propagation()
+        config["summary"] = "fail"
+        config["checks"][0]["expected"] = True
+        config["checks"][0]["observed_values"] = [False]
+        config["checks"][0]["status"] = "mismatch"
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": config,
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": True,
+                        "latest_status": "mismatch",
+                        "blocker_class": "vulkan-device-execution-or-writeback",
+                        **q6_verified_writeback(),
+                    },
+                },
+                "correctness": gpu_correctness_report("fail", required_failures=1, passed=False, content="4"),
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            **speedup_sections(speedup=0.5, target_met=False, cpu_tps=0.1, gpu_tps=0.05),
+        }
+        result = self.run_verifier(payload, "--require-q6-workgroup-clear")
+        self.assertEqual(result.returncode, 35, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "config-propagation-mismatch")
+        self.assertEqual(report["responsibility_boundary"], "env-propagation")
+        self.assertNotIn("q6_writeback_evidence", report)
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
+    def test_q6_local_size_takes_precedence_over_writeback_and_oracle_boundaries(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "q6_workgroup_diagnostics": {
+                        "workgroup_shape_blocker": True,
+                        "latest_status": "match",
+                        "q6_writable_writeback_mismatches": [
+                            {
+                                "index": 2,
+                                "binding": 2,
+                                "gpu_after_dispatch_hash": "0x1111111111111111",
+                                "fd_after_hash": "0x2222222222222222",
+                                "writeback_mismatch": True,
+                            }
+                        ],
+                    },
+                },
+                "correctness": gpu_correctness_report(),
+            },
+            "cpu": {"tokens_per_second": 0.1},
+            **speedup_sections(speedup=2.0, target_met=True),
+        }
+        result = self.run_verifier(payload)
+        self.assertEqual(result.returncode, 32, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-workgroup-shape-blocker")
+        self.assertEqual(report["responsibility_boundary"], "q6-local-size")
+        self.assertEqual(report["q6_writeback_evidence"]["summary"], "mismatch")
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+
     def test_missing_executor_marker_blocks_compare_and_benchmark_claims(self):
         payload = {
             "schema": "pdocker.llama.gpu.compare.v1",

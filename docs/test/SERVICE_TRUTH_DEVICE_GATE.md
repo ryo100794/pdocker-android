@@ -82,6 +82,28 @@ Required top-level shape:
     "MismatchedSources": [],
     "MissingSources": ["ProcessTable", "ListenerProbe", "ContainerLogs"]
   },
+  "VerifierReduction": {
+    "ReducedEngineContainerId": null,
+    "RequiredSources": ["UICard", "DockerPs", "EngineApiContainersJson", "PersistedStateJson", "ProcessTable", "ListenerProbe", "ContainerLogs"],
+    "SourceContainerIds": {
+      "UICard": null,
+      "DockerPs": null,
+      "EngineApiContainersJson": null,
+      "PersistedStateJson": null,
+      "ProcessTable": null,
+      "ListenerProbe": null,
+      "ContainerLogs": null
+    },
+    "UICardSameContainerId": false,
+    "DockerPsSameContainerId": false,
+    "EngineApiContainersJsonSameContainerId": false,
+    "PersistedStateJsonSameContainerId": false,
+    "ProcessTableSameContainerId": false,
+    "ListenerOwnerSameContainerId": false,
+    "ContainerLogsSameContainerId": false,
+    "MismatchedSources": [],
+    "MissingSources": ["ProcessTable", "ListenerProbe", "ContainerLogs"]
+  },
   "Sources": {
     "UICard": {"ContainerId": null, "TruthState": "unknown", "CurrentReason": null, "StaleReason": null, "UnknownReason": "EngineSnapshotMissing", "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
     "DockerPs": {"ContainerId": null, "Running": false, "ExactEngineContainerIdRequired": true, "Proven": false, "Artifacts": []},
@@ -120,6 +142,14 @@ The passing form must set `Success: true` only when:
 - `Status` is exactly `device-pass`.
 - `Proof.SameEngineContainerId` is `true`.
 - `Proof.EngineContainerId` is a non-empty exact Engine container ID.
+- `VerifierReduction.ReducedEngineContainerId` exactly equals `Proof.EngineContainerId`;
+  `VerifierReduction.SourceContainerIds` must reduce UI card, docker ps,
+  `/containers/json`, `state.json`, process table, listener owner, and logs to
+  that same exact Engine container ID. All reducer flags (`UICardSameContainerId`,
+  `DockerPsSameContainerId`, `EngineApiContainersJsonSameContainerId`,
+  `PersistedStateJsonSameContainerId`, `ProcessTableSameContainerId`,
+  `ListenerOwnerSameContainerId`, and `ContainerLogsSameContainerId`) must be
+  `true`, with empty `MismatchedSources` and `MissingSources`.
 - `TruthContract.RequiredSameContainerId` contains all seven required sources.
 - Every required `Sources.<name>.Proven` is `true`.
 - Every required `Sources.<name>.ContainerId` exactly equals

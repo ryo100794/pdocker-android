@@ -63,16 +63,21 @@ evidence agrees on the **same Engine container ID**.
 
 The Android smoke now also writes a conservative, non-promoting
 `VerifierReduction` object for each proof. It records the reducer-visible
-status of `EngineInspectSameContainerId`, `ProcessTreeClear`,
+status of `ReducedEngineContainerId`, `SourceContainerIds`,
+`EngineInspectSameContainerId`, `ProcessTreeClear`,
 `EngineContainersAfterIdAbsent`, `DirectChildAbsence`, `ListenerAbsence`,
 `StalePidAbsence`, `StaleNameAbsence`, `GpuMediaExecutorResidueAbsence`,
 `PersistedStateCleared`, `LifecycleLogsBound`, and `ContainerLogsBound`, plus
 `MismatchedContainerIds` and `Survivors`. Companion reduction artifacts
 (`*-gap-reasons.txt`, `*-fail-reasons.txt`,
 `*-mismatched-container-ids.txt`, and `*-survivors.txt`) explain why the proof
-is still planned-gap or what concrete residue was observed. These fields are
-diagnostic only until every required flag is true and the top-level artifact is
-explicitly promoted to `device-pass`.
+is still planned-gap or what concrete residue was observed. For a promoted
+`device-pass`, the reducer must also bind `/containers/json`, Engine inspect,
+`state.json`, process table/process tree, listener owner, lifecycle logs, and
+container logs to the proof `ContainerId` through `SourceContainerIds`; any
+missing, prefix-only, or mismatched Engine container ID is a hard failure. These
+fields are diagnostic only until every required flag is true and the top-level
+artifact is explicitly promoted to `device-pass`.
 
 Required before/after evidence for that same ID:
 

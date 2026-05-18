@@ -285,6 +285,7 @@ class RuntimeTeardownDeviceGateTest(unittest.TestCase):
             lambda a, p, n: a["Evidence"].pop("EngineApiInspect"),
             lambda a, p, n: p["same-container-id-stop-rm"]["Evidence"].pop("ProcessTreeBeforeAfter"),
             lambda a, p, n: p["same-container-id-stop-rm"]["VerifierReduction"].update({"ProcessTreeClear": False}),
+            lambda a, p, n: p["same-container-id-stop-rm"]["VerifierReduction"]["SourceContainerIds"].update({"ContainerLogs": "3" * 64}),
             lambda a, p, n: p["same-container-id-stop-rm"]["VerifierReduction"].update({"ContainerLogsBound": False}),
             lambda a, p, n: p["same-container-id-kill-rm"].update({"Success": False}),
         ]:

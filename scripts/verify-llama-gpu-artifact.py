@@ -108,6 +108,12 @@ LLAMA_GPU_ENV_MANIFEST = _load_env_manifest()
 # diverge while still leaving the executor, Dockerfiles, llama.cpp, and UI
 # untouched.
 LLAMA_GPU_UI_RUNTIME_ENV_KEYS = _manifest_string_tuple(LLAMA_GPU_ENV_MANIFEST, "ui_runtime_env_keys")
+LLAMA_GPU_PDOCKERD_RUNTIME_ENV_KEYS = _manifest_string_tuple(
+    LLAMA_GPU_ENV_MANIFEST, "pdockerd_runtime_env_keys"
+)
+LLAMA_GPU_UI_COMPOSE_RUNTIME_ENV_KEYS = _manifest_string_tuple(
+    LLAMA_GPU_ENV_MANIFEST, "ui_compose_runtime_env_keys"
+)
 LLAMA_GPU_COMPARE_DIAGNOSTIC_ENV_KEYS = _manifest_string_tuple(
     LLAMA_GPU_ENV_MANIFEST, "compare_diagnostic_env_keys"
 )
@@ -958,6 +964,7 @@ def _claim_base(
     swap_free_threshold: dict[str, Any] | None = None,
     swap_policy: dict[str, Any] | None = None,
     runtime_freshness: dict[str, Any] | None = None,
+    responsibility_boundary: str = "pre-q6",
 ) -> dict[str, Any]:
     swap_threshold = swap_free_threshold or {}
     return {
@@ -977,6 +984,7 @@ def _claim_base(
         "swap_free_threshold_state": swap_threshold.get("state") if isinstance(swap_threshold, dict) else None,
         "swap_policy": swap_policy or {},
         "runtime_freshness": runtime_freshness or {},
+        "responsibility_boundary": responsibility_boundary,
     }
 
 
@@ -995,6 +1003,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             memory_thresholds=_memory_thresholds(data),
             swap_free_threshold=_swap_free_threshold(data),
             swap_policy=_swap_policy(data),
+            responsibility_boundary="device-memory-readiness",
         )
 
     if _readiness_false(data):
@@ -1003,6 +1012,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             next_action="do not start or accept a GPU run until android-llama-gpu-readiness reports ready=true",
             device_actions=nested(data, "readiness", "device_actions") or data.get("device_actions") or [],
             memory=nested(data, "readiness", "memory") or data.get("memory") or {},
+            responsibility_boundary="device-memory-readiness",
         )
 
     diagnostics = nested(data, "gpu", "diagnostics") or {}
@@ -1018,6 +1028,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             pre_http_gpu_blocker["classification"],
             next_action=str(pre_http_gpu_blocker["next_action"]),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="gpu-setup",
         ) | {
             "gpu_blocker_class": pre_http_gpu_blocker["gpu_blocker_class"],
             "gpu_blocker_detail": pre_http_gpu_blocker["gpu_blocker_detail"],
@@ -1033,6 +1044,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "inspect ICD/executor dispatch begin/end/stage evidence; HTTP /health and /v1/models passed but deterministic /completion timed out"
             ),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="service-readiness",
         ) | {
             "service_readiness": completion_readiness,
             "runtime_env": nested(data, "gpu", "runtime_env") or {},
@@ -1043,6 +1055,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             "executor-marker-not-observed",
             next_action="rerun compare with fresh GPU executor evidence; compare/benchmark claims require the expected executor marker",
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="runtime-freshness",
         )
 
     config_propagation = _config_propagation(data)
@@ -1056,6 +1069,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "fix GPU diagnostic environment propagation before accepting compare, correctness, or benchmark claims"
             ),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="env-propagation",
         ) | {
             "config_propagation": config_propagation,
             "config_propagation_missing": config_propagation_missing,
@@ -1074,6 +1088,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "fix the required CPU oracle coverage or disable the unsafe GPU work before accepting compare, correctness, or benchmark claims"
             ),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="oracle-coverage",
         ) | {
             "oracle_fail_closed_evidence": oracle_fail_closed_evidence,
             "config_propagation": config_propagation,
@@ -1088,6 +1103,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "fail or gate unsupported GPU executor/oracle work before accepting correctness or benchmark claims"
             ),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="unsupported-gpu-work",
         ) | {
             "unsupported_gpu_work_evidence": unsupported_evidence,
             "config_propagation": config_propagation,
@@ -1102,6 +1118,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "rerun the standard /completion prompt probes unchanged; do not accept GPU claims without HTTP/API prompt evidence"
             ),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="api-prompt-sanity",
         ) | {
             "api_prompt_sanity": api_prompt_sanity,
             "config_propagation": config_propagation,
@@ -1116,6 +1133,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 or "rerun compare so comparison and bridge_overhead_phase speedup fields are present before claiming correctness or performance"
             ),
             runtime_freshness=runtime_freshness,
+            responsibility_boundary="speedup-evidence",
         ) | {
             "speedup_fields": speedup_fields,
             "api_prompt_sanity": api_prompt_sanity,
@@ -1125,28 +1143,35 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
     q6_writeback_evidence = _q6_writeback_evidence(q6)
     if not q6:
         classification = "q6-not-reached"
+        responsibility_boundary = "q6-not-reached"
         next_action = data.get("next_action") or "collect an ngl=1 artifact with Q6_K oracle enabled"
     elif q6.get("workgroup_shape_blocker") is True:
         classification = "q6-workgroup-shape-blocker"
+        responsibility_boundary = "q6-local-size"
         next_action = "fix Q6_K local-size propagation/materialization"
     elif q6_writeback_evidence.get("summary") == "mismatch":
         classification = "q6-writeback-mismatch"
+        responsibility_boundary = "q6-writeback"
         next_action = "fix Q6_K writable output writeback before accepting correctness or benchmark claims"
     elif q6_writeback_evidence.get("summary") != "pass":
         classification = "q6-writeback-unverified"
+        responsibility_boundary = "q6-writeback"
         next_action = (
             data.get("next_action")
             or "rerun with PDOCKER_GPU_DISPATCH_PROFILE_RESPONSE=1 so Q6_K compact writable output hashes and row-indexed before/after writeback samples are present and verified"
         )
     elif q6.get("latest_status") == "match":
         classification = "q6-workgroup-cleared-and-oracle-match"
+        responsibility_boundary = "q6-oracle-match"
         next_action = "advance to ngl=2 or performance tuning"
     elif q6.get("latest_status") == "mismatch":
         classification = "q6-workgroup-cleared-but-oracle-mismatch"
+        responsibility_boundary = "q6-oracle"
         q6_blocker_class = str(q6.get("blocker_class") or "descriptor-memory-synchronization-or-q6-arithmetic")
         next_action = f"continue Q6_K strict-passthrough split at the {q6_blocker_class} boundary"
     else:
         classification = "q6-inconclusive"
+        responsibility_boundary = "q6-oracle"
         next_action = data.get("next_action") or "rerun with PDOCKER_GPU_CPU_ORACLE=1"
 
     correctness_claim_allowed = correctness == "pass" and classification == "q6-workgroup-cleared-and-oracle-match"
@@ -1175,6 +1200,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         "speedup_fields": speedup_fields,
         "oracle_fail_closed_evidence": [],
         "unsupported_gpu_work_evidence": [],
+        "responsibility_boundary": responsibility_boundary,
     }
 
 

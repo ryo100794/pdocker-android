@@ -438,6 +438,12 @@ is explicit rather than implicit:
   driver and artifact verifier both load this file; `tests.test_gpu_abi_contract`
   checks the verifier constants derived from it, so future edits cannot silently
   drop one side of the bridge.
+- Lightweight env parity guard: `tests.test_llama_gpu_env_parity` checks that
+  the manifest's pdockerd runtime env list, UI-compose runtime env list,
+  compare diagnostic/forward env lists, and verifier constants stay in sync
+  without running a device.  Compare-only Q6_K diagnostic knobs must remain out
+  of the UI compose template until explicitly promoted to ordinary runtime
+  behavior.
 - Artifact guard: `scripts/verify-llama-gpu-artifact.py` treats failed
   `gpu.diagnostics.config_propagation` evidence as
   `config-propagation-mismatch` and blocks correctness/benchmark claims.  This
@@ -452,6 +458,12 @@ is explicit rather than implicit:
   `gpu.diagnostics.config_propagation.checks` is missing entirely.  This closes
   the stale-artifact hole where a run with no env reflection evidence could
   still inherit a later Q6_K/pass classification.
+- Artifact responsibility-boundary guard: `config-propagation-mismatch` is
+  classified before Q6_K local-size, writeback, or oracle evidence and reports
+  `responsibility_boundary="env-propagation"`.  Once env propagation is trusted,
+  Q6_K classifications keep separate `q6-local-size`, `q6-writeback`, and
+  `q6-oracle` boundaries so an env mismatch cannot be mixed with
+  oracle/writeback/local-size root-cause work.
 - Unsupported GPU work gate: structured executor/oracle fields such as
   `status`, `latest_status`, `error`, `blocker_class`, or `classification`
   containing `unsupported`/`kernel-not-implemented-yet` are classified as

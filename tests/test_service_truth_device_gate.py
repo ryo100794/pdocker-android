@@ -39,6 +39,13 @@ def validate_same_container_id_contract(artifact: dict) -> None:
         raise AssertionError(str(exc)) from exc
 
 
+def validate_device_pass_contract(artifact: dict) -> None:
+    try:
+        verify_service_truth_plan.validate_service_truth_device_pass_artifact(artifact)
+    except ValueError as exc:
+        raise AssertionError(str(exc)) from exc
+
+
 def passing_artifact() -> dict:
     return deepcopy(verify_service_truth_plan.build_success_fixture())
 
@@ -149,6 +156,28 @@ class ServiceTruthDeviceGateTest(unittest.TestCase):
         artifact = passing_artifact()
         artifact["Sources"]["UICard"]["TruthState"] = "current"
         validate_same_container_id_contract(artifact)
+        validate_device_pass_contract(artifact)
+
+    def test_planned_gap_is_not_accepted_by_device_pass_contract(self):
+        artifact = passing_artifact()
+        artifact["Status"] = "planned-gap"
+        artifact["Success"] = False
+        validate_same_container_id_contract(artifact)
+        with self.assertRaises(AssertionError):
+            validate_device_pass_contract(artifact)
+
+    def test_reducer_summary_must_bind_all_truth_sources_to_one_engine_id(self):
+        for mutate in [
+            lambda a: a.pop("VerifierReduction"),
+            lambda a: a["VerifierReduction"]["SourceContainerIds"].update({"UICard": "f" * 64}),
+            lambda a: a["VerifierReduction"].update({"DockerPsSameContainerId": False}),
+            lambda a: a["VerifierReduction"].update({"MismatchedSources": ["/containers/json"]}),
+        ]:
+            with self.subTest(mutate=mutate):
+                artifact = passing_artifact()
+                mutate(artifact)
+                with self.assertRaises(AssertionError):
+                    validate_device_pass_contract(artifact)
 
     def test_device_smoke_entrypoint_only_passes_with_complete_same_id_proof(self):
         smoke = SMOKE.read_text()
