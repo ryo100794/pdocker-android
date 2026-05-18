@@ -2763,11 +2763,31 @@ q6_workgroup_shape_blocker = bool(
         )
     )
 )
+q6_local_size_resolved = q6_latest.get("spirv_local_size_resolved")
+q6_shader_like_64_required = q6_local_size_resolved != [32, 2, 1]
+q6_shader_like_64_interpretation = (
+    "diagnostic-only-for-32x2x1; flattened 64 tids are not required same-row oracle lanes"
+    if not q6_shader_like_64_required
+    else "required-for-non-32x2x1-local-size"
+)
 q6_shader_like_oracle_cleared = (
     q6_latest_oracle.get("status") == "mismatch"
     and numeric_close_to_zero(q6_latest_partial.get("q6_shader_like_abs_delta"))
-    and numeric_close_to_zero(q6_latest_partial.get("q6_shader_like_64_abs_delta"))
+    and (
+        not q6_shader_like_64_required
+        or numeric_close_to_zero(q6_latest_partial.get("q6_shader_like_64_abs_delta"))
+    )
 )
+q6_shader_like_clear_basis = []
+if numeric_close_to_zero(q6_latest_partial.get("q6_shader_like_abs_delta")):
+    q6_shader_like_clear_basis.append("q6_shader_like_abs_delta")
+if not q6_shader_like_64_required:
+    q6_shader_like_clear_basis.extend([
+        "local_size_resolved=[32,2,1]",
+        "q6_shader_like_64_abs_delta=diagnostic-only",
+    ])
+elif numeric_close_to_zero(q6_latest_partial.get("q6_shader_like_64_abs_delta")):
+    q6_shader_like_clear_basis.append("q6_shader_like_64_abs_delta")
 q6_blocker_class = (
     "not-reached"
     if not q6_oracle_events
@@ -2807,6 +2827,9 @@ q6_workgroup_diagnostics = {
     "q6_shader_like_abs_delta": q6_latest_partial.get("q6_shader_like_abs_delta"),
     "q6_shader_like_64_abs_delta": q6_latest_partial.get("q6_shader_like_64_abs_delta"),
     "q6_shader_like_oracle_cleared": q6_shader_like_oracle_cleared,
+    "q6_shader_like_64_required": q6_shader_like_64_required,
+    "q6_shader_like_clear_basis": q6_shader_like_clear_basis,
+    "q6_shader_like_64_interpretation": q6_shader_like_64_interpretation,
     "q6_first_mismatch": q6_first_mismatch,
     "q6_row_indexed_sample_indices": q6_oracle_row_indexed_sample_indices[:48],
     "q6_row_indexed_writeback_evidence": q6_row_indexed_writeback_evidence[:8],

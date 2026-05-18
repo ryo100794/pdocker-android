@@ -963,6 +963,13 @@ def _pre_http_gpu_blocker(data: dict[str, Any], diagnostics: dict[str, Any]) -> 
         return {}
     if nested(data, "gpu", "served") is True:
         return {}
+    q6 = diagnostics.get("q6_workgroup_diagnostics")
+    if isinstance(q6, dict):
+        try:
+            if int(q6.get("event_count", 0)) > 0:
+                return {}
+        except (TypeError, ValueError):
+            pass
     blocker_class = str(diagnostics.get("blocker_class") or "")
     classification = PRE_HTTP_GPU_BLOCKER_CLASSIFICATIONS.get(blocker_class)
     if not classification:
@@ -1044,6 +1051,59 @@ def _pre_http_failure_evidence(diagnostics: dict[str, Any]) -> dict[str, Any]:
             "blocker_class": q6.get("blocker_class") or "not-reached",
             "diagnostic_interpretation": q6.get("diagnostic_interpretation") or "",
         },
+    }
+
+
+def _numeric_close_to_zero(value: Any, tolerance: float = 1.0e-3) -> bool:
+    return _is_finite_number(value) and abs(float(value)) <= tolerance
+
+
+def _q6_local_size_resolved(q6: Any) -> list[int] | None:
+    if not isinstance(q6, dict):
+        return None
+    return _integer_list(q6.get("local_size_resolved") or q6.get("local_size"))
+
+
+def _q6_shader_like_interpretation(q6: Any) -> dict[str, Any]:
+    """Explain whether the Q6 shader-like CPU oracle cleared.
+
+    For the observed Q6_K kernel with local_size=[32,2,1], the 32-lane
+    shader-like CPU oracle is the proven same-row arithmetic check.  The
+    flattened 64-lane diagnostic spans the Y dimension and is useful context,
+    but it is not a fail-closed requirement for clearing CPU-side arithmetic.
+    """
+
+    if not isinstance(q6, dict):
+        return {
+            "q6_shader_like_oracle_cleared": False,
+            "q6_shader_like_64_required": True,
+            "q6_shader_like_clear_basis": [],
+            "q6_shader_like_64_interpretation": "no-q6-diagnostics",
+        }
+    local_size = _q6_local_size_resolved(q6)
+    sixty_four_required = local_size != [32, 2, 1]
+    thirty_two_clear = _numeric_close_to_zero(q6.get("q6_shader_like_abs_delta"))
+    sixty_four_clear = _numeric_close_to_zero(q6.get("q6_shader_like_64_abs_delta"))
+    cleared = q6.get("latest_status") == "mismatch" and thirty_two_clear and (
+        not sixty_four_required or sixty_four_clear
+    )
+    basis = ["q6_shader_like_abs_delta"] if thirty_two_clear else []
+    if not sixty_four_required:
+        basis.extend([
+            "local_size_resolved=[32,2,1]",
+            "q6_shader_like_64_abs_delta=diagnostic-only",
+        ])
+    elif sixty_four_clear:
+        basis.append("q6_shader_like_64_abs_delta")
+    return {
+        "q6_shader_like_oracle_cleared": cleared,
+        "q6_shader_like_64_required": sixty_four_required,
+        "q6_shader_like_clear_basis": basis,
+        "q6_shader_like_64_interpretation": (
+            "diagnostic-only-for-32x2x1; flattened 64 tids are not required same-row oracle lanes"
+            if not sixty_four_required
+            else "required-for-non-32x2x1-local-size"
+        ),
     }
 
 
@@ -1267,8 +1327,16 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             "config_propagation": config_propagation,
         }
 
+    q6_evidence_reached = False
+    if isinstance(q6, dict):
+        try:
+            q6_evidence_reached = int(q6.get("event_count", 0)) > 0
+        except (TypeError, ValueError):
+            q6_evidence_reached = False
+    q6_oracle_mismatch_evidence = q6_evidence_reached and q6.get("latest_status") == "mismatch"
+
     api_prompt_sanity = _api_prompt_sanity(data)
-    if api_prompt_sanity.get("summary") == "fail":
+    if api_prompt_sanity.get("summary") == "fail" and not q6_oracle_mismatch_evidence:
         return _claim_base(
             "api-prompt-sanity-missing",
             next_action=(
@@ -1284,7 +1352,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     speedup_fields = _speedup_field_status(data)
-    if speedup_fields.get("summary") == "fail":
+    if speedup_fields.get("summary") == "fail" and not q6_oracle_mismatch_evidence:
         return _claim_base(
             "speedup-fields-missing",
             next_action=(
@@ -1301,6 +1369,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     q6_writeback_evidence = _q6_writeback_evidence(q6)
+    q6_shader_like = _q6_shader_like_interpretation(q6)
     if not q6:
         classification = "q6-not-reached"
         responsibility_boundary = "q6-not-reached"
@@ -1328,6 +1397,12 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         classification = "q6-workgroup-cleared-but-oracle-mismatch"
         responsibility_boundary = "q6-oracle"
         q6_blocker_class = str(q6.get("blocker_class") or "descriptor-memory-synchronization-or-q6-arithmetic")
+        if (
+            q6_blocker_class == "q6-arithmetic-reduction-or-output-layout"
+            and q6_shader_like["q6_shader_like_oracle_cleared"] is True
+            and q6_writeback_evidence.get("summary") == "pass"
+        ):
+            q6_blocker_class = "vulkan-device-execution"
         next_action = f"continue Q6_K strict-passthrough split at the {q6_blocker_class} boundary"
     else:
         classification = "q6-inconclusive"
@@ -1353,6 +1428,10 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         "target_met": comparison.get("target_met", False),
         "next_action": next_action,
         "q6_workgroup_diagnostics": q6,
+        "q6_shader_like_interpretation": q6_shader_like,
+        "q6_effective_blocker_class": (
+            q6_blocker_class if classification == "q6-workgroup-cleared-but-oracle-mismatch" else None
+        ),
         "q6_writeback_evidence": q6_writeback_evidence,
         "runtime_freshness": runtime_freshness,
         "runtime_env_manifest": runtime_env_manifest,
