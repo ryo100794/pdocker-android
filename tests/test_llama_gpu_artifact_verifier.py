@@ -434,6 +434,40 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
             interpretation["q6_shader_like_clear_basis"],
         )
 
+    def test_q6_safe_kernel_uses_single_invocation_local_size_and_bypasses_api_gate(self):
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "served": False,
+                "diagnostics": {
+                    "blocker_class": "vulkan_device_discovery",
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "q6_workgroup_diagnostics": {
+                        "event_count": 2,
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "match",
+                        "q6k_safe_kernel": True,
+                        "local_size_resolved": [1, 1, 1],
+                        "q6_shader_like_abs_delta": 1.0e-7,
+                        "q6_shader_like_64_abs_delta": 7.8,
+                        **q6_verified_writeback(),
+                    },
+                },
+            },
+        }
+        payload["gpu"]["diagnostics"]["q6_workgroup_diagnostics"]["local_size_resolved"] = [1, 1, 1]
+        result = self.run_verifier(payload, "--require-q6-match")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-workgroup-cleared-and-oracle-match")
+        self.assertEqual(report["responsibility_boundary"], "q6-oracle-match")
+        self.assertFalse(report["correctness_claim_allowed"])
+        self.assertFalse(report["benchmark_claim_allowed"])
+        interpretation = report["q6_shader_like_interpretation"]
+        self.assertFalse(interpretation["q6_shader_like_64_required"])
+        self.assertIn("q6k_safe_kernel=true", interpretation["q6_shader_like_clear_basis"])
+
     def test_q6_non_expected_local_size_fails_closed_as_shape_blocker(self):
         payload = {
             "schema": "pdocker.llama.gpu.compare.v1",

@@ -1064,8 +1064,34 @@ def _q6_local_size_resolved(q6: Any) -> list[int] | None:
     return _integer_list(q6.get("local_size_resolved") or q6.get("local_size"))
 
 
+def _q6_safe_kernel_enabled(q6: Any) -> bool:
+    return (
+        isinstance(q6, dict)
+        and (
+            q6.get("q6k_safe_kernel") is True
+            or str(q6.get("latest_spirv_hash") or "").lower() == "0x7ec0292e948c9b41"
+        )
+    )
+
+
+def _q6_expected_local_size(q6: Any) -> list[int]:
+    return [1, 1, 1] if _q6_safe_kernel_enabled(q6) else [32, 2, 1]
+
+
 def _q6_required_local_size_clear(q6: Any) -> bool:
-    return _q6_local_size_resolved(q6) == [32, 2, 1]
+    return _q6_local_size_resolved(q6) == _q6_expected_local_size(q6)
+
+
+def _q6_workgroup_shape_blocked(q6: Any) -> bool:
+    if not isinstance(q6, dict):
+        return False
+    if q6.get("local_size_consistent") is False:
+        return True
+    local_size = _q6_local_size_resolved(q6)
+    q6_local_size = _integer_list(q6.get("q6_local_size"))
+    if q6_local_size is not None and local_size is not None and q6_local_size != local_size:
+        return True
+    return not _q6_required_local_size_clear(q6)
 
 
 def _q6_shader_like_interpretation(q6: Any) -> dict[str, Any]:
@@ -1085,7 +1111,8 @@ def _q6_shader_like_interpretation(q6: Any) -> dict[str, Any]:
             "q6_shader_like_64_interpretation": "no-q6-diagnostics",
         }
     local_size = _q6_local_size_resolved(q6)
-    sixty_four_required = local_size != [32, 2, 1]
+    safe_kernel = _q6_safe_kernel_enabled(q6)
+    sixty_four_required = (not safe_kernel) and local_size != [32, 2, 1]
     thirty_two_clear = _numeric_close_to_zero(q6.get("q6_shader_like_abs_delta"))
     sixty_four_clear = _numeric_close_to_zero(q6.get("q6_shader_like_64_abs_delta"))
     cleared = q6.get("latest_status") == "mismatch" and thirty_two_clear and (
@@ -1093,10 +1120,17 @@ def _q6_shader_like_interpretation(q6: Any) -> dict[str, Any]:
     )
     basis = ["q6_shader_like_abs_delta"] if thirty_two_clear else []
     if not sixty_four_required:
-        basis.extend([
-            "local_size_resolved=[32,2,1]",
-            "q6_shader_like_64_abs_delta=diagnostic-only",
-        ])
+        if safe_kernel:
+            basis.extend([
+                "q6k_safe_kernel=true",
+                "local_size_resolved=[1,1,1]",
+                "q6_shader_like_64_abs_delta=diagnostic-only",
+            ])
+        else:
+            basis.extend([
+                "local_size_resolved=[32,2,1]",
+                "q6_shader_like_64_abs_delta=diagnostic-only",
+            ])
     elif sixty_four_clear:
         basis.append("q6_shader_like_64_abs_delta")
     return {
@@ -1104,6 +1138,9 @@ def _q6_shader_like_interpretation(q6: Any) -> dict[str, Any]:
         "q6_shader_like_64_required": sixty_four_required,
         "q6_shader_like_clear_basis": basis,
         "q6_shader_like_64_interpretation": (
+            "diagnostic-only-for-q6k-safe-kernel; single-invocation replacement is an explicit bridge diagnostic"
+            if safe_kernel
+            else
             "diagnostic-only-for-32x2x1; flattened 64 tids are not required same-row oracle lanes"
             if not sixty_four_required
             else "required-for-non-32x2x1-local-size"
@@ -1337,10 +1374,10 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
             q6_evidence_reached = int(q6.get("event_count", 0)) > 0
         except (TypeError, ValueError):
             q6_evidence_reached = False
-    q6_oracle_mismatch_evidence = q6_evidence_reached and q6.get("latest_status") == "mismatch"
+    q6_oracle_evidence = q6_evidence_reached and q6.get("latest_status") in {"match", "mismatch"}
 
     api_prompt_sanity = _api_prompt_sanity(data)
-    if api_prompt_sanity.get("summary") == "fail" and not q6_oracle_mismatch_evidence:
+    if api_prompt_sanity.get("summary") == "fail" and not q6_oracle_evidence:
         return _claim_base(
             "api-prompt-sanity-missing",
             next_action=(
@@ -1356,7 +1393,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         }
 
     speedup_fields = _speedup_field_status(data)
-    if speedup_fields.get("summary") == "fail" and not q6_oracle_mismatch_evidence:
+    if speedup_fields.get("summary") == "fail" and not q6_oracle_evidence:
         return _claim_base(
             "speedup-fields-missing",
             next_action=(
@@ -1378,10 +1415,13 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
         classification = "q6-not-reached"
         responsibility_boundary = "q6-not-reached"
         next_action = data.get("next_action") or "collect an ngl=1 artifact with Q6_K oracle enabled"
-    elif q6.get("workgroup_shape_blocker") is True or not _q6_required_local_size_clear(q6):
+    elif _q6_workgroup_shape_blocked(q6):
         classification = "q6-workgroup-shape-blocker"
         responsibility_boundary = "q6-local-size"
-        next_action = "fix Q6_K local-size propagation/materialization to the expected [32,2,1] workgroup shape"
+        next_action = (
+            "fix Q6_K local-size propagation/materialization to the expected "
+            f"{_q6_expected_local_size(q6)} workgroup shape"
+        )
     elif q6_writeback_evidence.get("summary") == "mismatch":
         classification = "q6-writeback-mismatch"
         responsibility_boundary = "q6-writeback"
