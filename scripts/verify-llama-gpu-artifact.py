@@ -1173,6 +1173,29 @@ def _q6_output_layout_probe(q6: Any) -> dict[str, Any]:
     }
 
 
+def _q6_output_layout_fixed_offset_rejected(probe: dict[str, Any]) -> bool:
+    """Return True when a broad probe weakens the fixed-layout hypothesis.
+
+    A few value-only nearest-neighbor hits can occur by chance in a 4096-float
+    output scan.  Treat the output-layout hypothesis as rejected only after a
+    broad probe covers many mismatched rows, finds at least one elsewhere value,
+    and those hits do not share one relative offset.  This keeps the classifier
+    fail-closed: single-hit or short probes remain inconclusive.
+    """
+    if probe.get("summary") != "canonical-mismatch-inconclusive":
+        return False
+    try:
+        mismatch_count = int(probe.get("mismatch_count") or 0)
+        found_elsewhere_count = int(probe.get("found_elsewhere_count") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (
+        mismatch_count >= 16
+        and found_elsewhere_count > 0
+        and probe.get("consistent_relative_offset") is False
+    )
+
+
 def _pre_http_feature_evidence_missing(
     blocker: dict[str, Any],
     evidence: dict[str, Any],
@@ -1472,6 +1495,13 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 classification = "q6-native-output-layout"
                 responsibility_boundary = "q6-output-layout"
                 q6_blocker_class = "native-q6-output-layout"
+            elif (
+                _q6_output_layout_fixed_offset_rejected(q6_output_layout)
+                and q6_shader_like["q6_shader_like_oracle_cleared"] is True
+            ):
+                classification = "q6-native-device-execution-or-final-store"
+                responsibility_boundary = "q6-native-device-execution"
+                q6_blocker_class = "native-q6-device-execution-or-final-store"
             elif q6_output_layout.get("summary") == "canonical-mismatch-inconclusive":
                 classification = "q6-native-output-layout-inconclusive"
                 responsibility_boundary = "q6-output-layout"
@@ -1521,6 +1551,7 @@ def classify(data: dict[str, Any]) -> dict[str, Any]:
                 "q6-workgroup-cleared-but-oracle-mismatch",
                 "q6-native-output-layout",
                 "q6-native-output-layout-inconclusive",
+                "q6-native-device-execution-or-final-store",
                 "q6-native-reduction-or-device-execution",
             }
             else None
@@ -1593,6 +1624,7 @@ def main(argv: list[str]) -> int:
             "q6-workgroup-cleared-but-oracle-mismatch",
             "q6-native-output-layout",
             "q6-native-output-layout-inconclusive",
+            "q6-native-device-execution-or-final-store",
             "q6-native-reduction-or-device-execution",
         } else 31
     if classification == "q6-workgroup-shape-blocker":

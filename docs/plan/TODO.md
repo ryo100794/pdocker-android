@@ -67,7 +67,9 @@ issues, and deciding which planned gaps become hard gates.
    `docs/test/llama-gpu-ngl1-q6-native-output-layout-20260519.json` reached the
    native Q6_K shader with fresh executor/ICD markers, verified row-indexed
    writeback, matched the native reduction-tree oracle, and classified the
-   remaining blocker as `q6-native-output-layout-inconclusive`. This is still
+   remaining blocker as `q6-native-output-layout-inconclusive`. The follow-up
+   32-sample probe rejected a simple fixed-offset layout explanation and now
+   classifies as `q6-native-device-execution-or-final-store`. This is still
    non-promoting diagnostic evidence, not a benchmark or inference claim.
 4. **[#11](https://github.com/ryo100794/pdocker-android/issues/11)
    Image-pull crash safety** `[P0 doing]`: partial pulls, `.pull-*`,
@@ -204,10 +206,12 @@ issues, and deciding which planned gaps become hard gates.
   classifier; `3b8eecb` added the bounded native Q6_K reduction/output-layout
   probe, and `be93398` refreshed the artifact sweep. The 2026-05-19 device run
   reached native Q6_K with writeback verified and reduction-tree math matching
-  the canonical oracle, but the output-layout probe was inconclusive
-  (`found_elsewhere_count=1/8`). The safe-kernel Q6 match plus the native probe
-  means the remaining GPU blocker is native llama Q6_K output-layout/device
-  execution around the final store, not bridge writeback or descriptor plumbing.
+  the canonical oracle, but the output-layout probe was inconclusive. The
+  expanded 32-sample probe found only inconsistent value-only elsewhere hits,
+  so the current classifier moves the boundary to
+  `q6-native-device-execution-or-final-store`. The safe-kernel Q6 match plus
+  the native probe means the remaining GPU blocker is native llama Q6_K device
+  execution/final-store behavior, not bridge writeback or descriptor plumbing.
   Environment propagation remains a first-class blocker:
   diagnostic flags used by the compare script, pdockerd defaults, UI/compose
   launches, and artifact verification must stay synchronized before a GPU
@@ -586,11 +590,13 @@ implementation change plus a focused verification artifact.
   benchmark reporting. The strict Q6 safe-kernel match narrows the active
   blocker to native llama Q6_K SPIR-V reduction/output-layout; `3b8eecb` added
   the bounded native layout probe and `be93398` refreshed the sweep ledger. The
-  2026-05-19 strict device artifact preserved those fields and classified
-  `q6-native-output-layout-inconclusive`; bridge writeback/descriptors are no
-  longer the leading explanation. Next evidence should bisect the native final
-  store/output layout versus device execution without changing llama.cpp,
-  Dockerfile, model, or prompt. All
+  2026-05-19 strict device artifact preserved those fields and first classified
+  `q6-native-output-layout-inconclusive`; the 32-sample follow-up rejected a
+  simple fixed-offset layout explanation and classifies
+  `q6-native-device-execution-or-final-store`. Bridge writeback/descriptors are
+  no longer the leading explanation. Next evidence should bisect the native
+  final store versus device execution without changing llama.cpp, Dockerfile,
+  model, or prompt. All
   readiness-blocked or oracle-mismatch artifacts stay non-promoting.
 
 ### Runtime / Compose-Up

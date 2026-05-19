@@ -579,6 +579,53 @@ class LlamaGpuArtifactVerifierTest(unittest.TestCase):
         self.assertEqual(report["classification"], "q6-native-output-layout-inconclusive")
         self.assertEqual(report["q6_effective_blocker_class"], "native-q6-output-layout-inconclusive")
 
+    def test_q6_broad_inconsistent_elsewhere_probe_rejects_fixed_output_layout(self):
+        samples = []
+        for index in range(16):
+            samples.append(
+                {
+                    "dst_index": index,
+                    "expected": float(index + 1),
+                    "gpu_at_dst": 0.0,
+                    "best_index": index + 100 + index,
+                    "best_value": float(index + 1),
+                    "best_abs_error": 0.0,
+                    "best_relative_offset": 100 + index,
+                    "found_elsewhere": index < 4,
+                }
+            )
+        payload = {
+            "schema": "pdocker.llama.gpu.compare.v1",
+            "gpu": {
+                "served": False,
+                "diagnostics": {
+                    "runtime_freshness": runtime_marker(),
+                    "config_propagation": passing_config_propagation(),
+                    "q6_workgroup_diagnostics": {
+                        "event_count": 1,
+                        "workgroup_shape_blocker": False,
+                        "latest_status": "mismatch",
+                        "local_size_resolved": [32, 2, 1],
+                        "q6_shader_like_abs_delta": 1.0e-7,
+                        "q6_output_layout_probe": {
+                            "summary": "canonical-mismatch-inconclusive",
+                            "mismatch_count": 16,
+                            "found_elsewhere_count": 4,
+                            "consistent_relative_offset": False,
+                            "samples": samples,
+                        },
+                        **q6_verified_writeback(),
+                    },
+                },
+            },
+        }
+        result = self.run_verifier(payload, "--require-q6-workgroup-clear")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["classification"], "q6-native-device-execution-or-final-store")
+        self.assertEqual(report["responsibility_boundary"], "q6-native-device-execution")
+        self.assertEqual(report["q6_effective_blocker_class"], "native-q6-device-execution-or-final-store")
+
     def test_q6_native_reduction_probe_gets_specific_classification(self):
         payload = {
             "schema": "pdocker.llama.gpu.compare.v1",

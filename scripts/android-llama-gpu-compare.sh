@@ -2759,6 +2759,20 @@ q6_output_layout_probe = (
     else {}
 )
 q6_output_layout_probe_summary = q6_output_layout_probe.get("summary") or "not-run"
+try:
+    q6_output_layout_mismatch_count = int(q6_output_layout_probe.get("mismatch_count") or 0)
+except (TypeError, ValueError):
+    q6_output_layout_mismatch_count = 0
+try:
+    q6_output_layout_found_elsewhere_count = int(q6_output_layout_probe.get("found_elsewhere_count") or 0)
+except (TypeError, ValueError):
+    q6_output_layout_found_elsewhere_count = 0
+q6_output_layout_fixed_offset_rejected = (
+    q6_output_layout_probe_summary == "canonical-mismatch-inconclusive"
+    and q6_output_layout_mismatch_count >= 16
+    and q6_output_layout_found_elsewhere_count > 0
+    and q6_output_layout_probe.get("consistent_relative_offset") is False
+)
 q6_native_spirv_identity = {
     "source_spirv_hash": q6_latest.get("source_spirv_hash"),
     "effective_spirv_hash": q6_latest.get("effective_spirv_hash"),
@@ -2829,6 +2843,8 @@ q6_blocker_class = (
     if q6_writable_writeback_mismatches
     else "native-q6-output-layout"
     if q6_output_layout_probe_summary == "canonical-mismatch-found-elsewhere" and q6_writeback_verified_all
+    else "native-q6-device-execution-or-final-store"
+    if q6_output_layout_fixed_offset_rejected and q6_shader_like_oracle_cleared and q6_writeback_verified_all
     else "native-q6-output-layout-inconclusive"
     if q6_output_layout_probe_summary == "canonical-mismatch-inconclusive" and q6_writeback_verified_all
     else "native-q6-reduction-or-device-execution"
@@ -2870,6 +2886,7 @@ q6_workgroup_diagnostics = {
     "q6_native_spirv_identity": q6_native_spirv_identity,
     "q6_output_layout_probe": q6_output_layout_probe,
     "q6_output_layout_probe_summary": q6_output_layout_probe_summary,
+    "q6_output_layout_fixed_offset_rejected": q6_output_layout_fixed_offset_rejected,
     "q6_shader_like_oracle_cleared": q6_shader_like_oracle_cleared,
     "q6_shader_like_64_required": q6_shader_like_64_required,
     "q6_shader_like_clear_basis": q6_shader_like_clear_basis,
