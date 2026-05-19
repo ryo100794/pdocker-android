@@ -111,7 +111,13 @@ class GpuAbiContractTest(unittest.TestCase):
         self.assertIn("q6_first_mismatch", source)
         self.assertIn("row_window", source)
         self.assertIn("Q6OutputLayoutProbeSample", source)
+        self.assertIn("PDOCKER_GPU_Q6_OUTPUT_LAYOUT_PROBE_MAX_SAMPLES 32u", source)
         self.assertIn("PDOCKER_GPU_Q6_OUTPUT_LAYOUT_PROBE_MAX_FLOATS 4096u", source)
+        self.assertIn(
+            "q6_output_layout_probe_samples[\n"
+            "        PDOCKER_GPU_Q6_OUTPUT_LAYOUT_PROBE_MAX_SAMPLES]",
+            source,
+        )
         self.assertIn("q6k_record_output_layout_probe_sample", source)
         self.assertIn("q6k_finalize_output_layout_probe", source)
         self.assertIn("canonical-mismatch-inconclusive", source)

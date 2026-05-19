@@ -125,6 +125,8 @@ typedef struct {
     int found_elsewhere;
 } Q6OutputLayoutProbeSample;
 
+#define PDOCKER_GPU_Q6_OUTPUT_LAYOUT_PROBE_MAX_SAMPLES 32u
+
 typedef struct CpuOracleReport CpuOracleReport;
 
 typedef struct {
@@ -4080,7 +4082,8 @@ struct CpuOracleReport {
     size_t q6_output_layout_probe_found_elsewhere_count;
     int q6_output_layout_probe_consistent_offset;
     int64_t q6_output_layout_probe_relative_offset;
-    Q6OutputLayoutProbeSample q6_output_layout_probe_samples[8];
+    Q6OutputLayoutProbeSample q6_output_layout_probe_samples[
+        PDOCKER_GPU_Q6_OUTPUT_LAYOUT_PROBE_MAX_SAMPLES];
     size_t q6_output_layout_probe_sample_count;
     int has_first_mismatch;
     CpuOracleSample first_mismatch;
